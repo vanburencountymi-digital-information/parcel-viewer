@@ -1,7 +1,13 @@
 # Slim read-only stack for standalone Parcel Viewer deployments.
 #
-# Usage (from repo root):
-#   docker compose -f infra/docker-compose.viewer.yml --env-file .env up -d
+# Usage (recommended — from repo root):
+#   cp .env.example .env
+#   .\infra\compose.ps1 up --build -d
+#
+# Or manually from infra/:
+#   docker compose -f docker-compose.viewer.yml --env-file ..\.env up --build -d
+#
+# Open http://localhost:8080/demo/  (PV_HTTP_PORT defaults to 8080)
 
 services:
   api:
