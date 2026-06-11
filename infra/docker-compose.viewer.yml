@@ -1,0 +1,40 @@
+# Slim read-only stack for standalone Parcel Viewer deployments.
+#
+# Usage (from repo root):
+#   docker compose -f infra/docker-compose.viewer.yml --env-file .env up -d
+
+services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    env_file: ../.env
+    environment:
+      PV_MARTIN_PUBLIC_URL: /tiles
+    restart: unless-stopped
+    expose:
+      - "8000"
+
+  martin:
+    image: ghcr.io/maplibre/martin:1.10.1
+    platform: linux/amd64
+    command: ["--config", "/config/martin.yaml"]
+    env_file: ../.env
+    volumes:
+      - ./martin/martin.yaml:/config/martin.yaml:ro
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  web:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../frontend/public:/usr/share/nginx/html/parcel-viewer:ro
+      - ../demo:/usr/share/nginx/html/demo:ro
+    ports:
+      - "${PV_HTTP_PORT:-8080}:80"
+    depends_on:
+      - api
+      - martin
+    restart: unless-stopped

@@ -1,0 +1,22 @@
+# Martin tile server configuration for Parcel Studio.
+#
+# Serves geo.parcel_tiles(z, x, y) — a PostGIS function source created by
+# county-data-services migration 008. The function filters archived parcels
+# and joins owner attributes; tile layer name is "parcels".
+#
+# MARTIN_DATABASE_URL comes from parcel-studio/.env (martin_ro user, SELECT-only).
+# Local docker run: pass -e MARTIN_DATABASE_URL=... or -e DATABASE_URL=... and
+# set connection_string to match.
+
+listen_addresses: "0.0.0.0:3000"
+
+cache:
+  tiles: 0
+
+postgres:
+  connection_string: "${MARTIN_DATABASE_URL}"
+  auto_publish:
+    tables: false
+    functions:
+      from_schemas:
+        - geo

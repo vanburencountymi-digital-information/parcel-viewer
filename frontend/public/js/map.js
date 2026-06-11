@@ -1,0 +1,1791 @@
+/**
+ * MapLibre map — Parcel Studio parcel viewer.
+ *
+ * Parcels render from the Martin MVT tile server (source "parcels",
+ * source-layer "parcels", feature id promoted from the "pin" property).
+ * A viewport-scoped GeoJSON index is hydrated from GET /parcels?bbox= to feed
+ * the snapping engine, spatial selection tools, and parcel labels; full
+ * parcel records come from GET /parcel/{id}.
+ *
+ * Selection architecture:
+ *   - selectedPins[]          ordered array of PINs (preserves selection order)
+ *   - selectedFeatureMap      Map<pin, {props, geometry}>
+ *   - activeInfoPin           PIN shown in the info panel
+ *   - featureState "selected" drives the shared highlight layer
+ *   - featureState "activeInfo" drives the active-parcel layer
+ */
+
+(function () {
+  const API_BASE = window.API_BASE || "";
+  const MARTIN_URL = (window.PS_CONFIG && window.PS_CONFIG.MARTIN_URL) || "/tiles";
+  const SOURCE_LAYER = "parcels";
+
+  // ── Map instance ───────────────────────────────────────────────────────
+  let map = null;
+  let hoveredParcelId = null;
+
+  // ── Selection state ────────────────────────────────────────────────────
+  let selectedPins = [];
+  let selectedFeatureMap = new Map();
+  let activeInfoPin = null;
+  let activeInfoIndex = 0;
+
+  // ── Active spatial tool (IIFE-scope so map click handler can read it) ──
+  let activeTool        = null;
+  let bufferSeedPin     = null;
+  let bufferSeedGeom    = null;
+  let bufferPreviewPins = [];
+  let bufferDebounceTimer = null;
+
+  // Track Shift key state independently — more reliable than e.originalEvent.shiftKey in MapLibre v4
+  let isShiftDown = false;
+  document.addEventListener("keydown", (e) => { if (e.key === "Shift") isShiftDown = true; });
+  document.addEventListener("keyup",   (e) => { if (e.key === "Shift") isShiftDown = false; });
+  window.addEventListener("blur",      ()  => { isShiftDown = false; });
+
+  window.PS_STATE = { parcel: null };
+
+  // ── Status strip ───────────────────────────────────────────────────────
+  const DEFAULT_STATUS = "Select a parcel on the map.";
+  function setStatusStrip(text) {
+    const el = document.getElementById("parcel-context");
+    if (el) el.textContent = text;
+  }
+
+  // ── Style ──────────────────────────────────────────────────────────────
+  // The backend serves the MapLibre style with a {MARTIN_URL} placeholder in
+  // the parcel tile URL; substitute the browser-facing Martin base here so the
+  // same style works in dev (Vite proxy) and behind nginx.
+  function absoluteMartinUrl() {
+    if (/^https?:\/\//.test(MARTIN_URL)) return MARTIN_URL;
+    return window.location.origin + MARTIN_URL;
+  }
+
+  async function resolveStyle() {
+    const res = await fetch(API_BASE + "/style.json");
+    const style = await res.json();
+    const src = style.sources && style.sources.parcels;
+    if (src && Array.isArray(src.tiles)) {
+      src.tiles = src.tiles.map((t) => t.replace("{MARTIN_URL}", absoluteMartinUrl()));
+    }
+    return style;
+  }
+
+  // ── Switch selection layers from filter-based to featureState ──────────
+  function setupSelectionLayers() {
+    if (map.getLayer("parcels-selected-fill")) {
+      map.setFilter("parcels-selected-fill", null);
+      map.setPaintProperty("parcels-selected-fill", "fill-color", "#ffffff");
+      map.setPaintProperty("parcels-selected-fill", "fill-opacity", [
+        "case",
+        ["boolean", ["feature-state", "activeInfo"], false], 0.10,
+        ["boolean", ["feature-state", "selected"], false], 0.06,
+        0
+      ]);
+    }
+    if (map.getLayer("parcels-selected-line")) {
+      map.setFilter("parcels-selected-line", null);
+      map.setPaintProperty("parcels-selected-line", "line-color", [
+        "case",
+        ["boolean", ["feature-state", "activeInfo"], false], "#1d4ed8",
+        "#0b1220"
+      ]);
+      map.setPaintProperty("parcels-selected-line", "line-width", [
+        "case",
+        ["boolean", ["feature-state", "activeInfo"], false], 4,
+        ["boolean", ["feature-state", "selected"], false], 2.5,
+        0
+      ]);
+      map.setPaintProperty("parcels-selected-line", "line-opacity", [
+        "case",
+        ["boolean", ["feature-state", "selected"], false], 1,
+        ["boolean", ["feature-state", "activeInfo"], false], 1,
+        0
+      ]);
+    }
+  }
+
+  // ── Selection management ───────────────────────────────────────────────
+  function addToSelection(pin, props, geometry) {
+    if (selectedPins.includes(pin)) return false;
+    selectedPins.push(pin);
+    selectedFeatureMap.set(pin, { props, geometry });
+    if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: true });
+    return true;
+  }
+
+  function removeFromSelection(pin) {
+    const idx = selectedPins.indexOf(pin);
+    if (idx === -1) return false;
+    selectedPins.splice(idx, 1);
+    selectedFeatureMap.delete(pin);
+    if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: false, activeInfo: false });
+    return true;
+  }
+
+  function clearSelectionAll() {
+    for (const pin of selectedPins) {
+      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: false, activeInfo: false });
+    }
+    selectedPins = [];
+    selectedFeatureMap.clear();
+    activeInfoPin = null;
+    activeInfoIndex = 0;
+    updateSelectionBadge();
+    if (infoPanel) infoPanel.hidden = true;
+    const navEl = document.getElementById("parcel-info-nav");
+    if (navEl) navEl.hidden = true;
+    setStatusStrip(DEFAULT_STATUS);
+    window.PS_STATE.parcel = null;
+  }
+
+  function setActiveInfoPin(pin) {
+    if (activeInfoPin && map) {
+      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: activeInfoPin }, { activeInfo: false });
+    }
+    activeInfoPin = pin;
+    if (pin && map) {
+      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { activeInfo: true });
+    }
+  }
+
+  function updateSelectionBadge() {
+    // Notify listeners (Parcel Edits pane) whenever the selection set changes
+    document.dispatchEvent(new CustomEvent("ps:selection-changed", {
+      detail: { pins: [...selectedPins] },
+    }));
+    const badge   = document.getElementById("selection-badge");
+    const countEl = document.getElementById("selection-count");
+    if (!badge) return;
+    if (selectedPins.length === 0) {
+      badge.hidden = true;
+    } else {
+      if (countEl) countEl.textContent = selectedPins.length;
+      badge.hidden = false;
+    }
+    const selActions = document.getElementById("sel-actions");
+    if (selActions) selActions.hidden = selectedPins.length === 0;
+  }
+
+  // ── Full parcel record fetch (property card / selection payload) ───────
+  // Vector-tile features carry only the lightweight tile attributes and
+  // tile-clipped geometry; the authoritative record comes from the API.
+  const _parcelCache = new Map();   // id -> Feature
+
+  async function fetchParcel(id) {
+    if (_parcelCache.has(id)) return _parcelCache.get(id);
+    const res = await fetch(API_BASE + "/parcel/" + id);
+    if (!res.ok) throw new Error("Parcel fetch failed (" + res.status + ")");
+    const feature = await res.json();
+    _parcelCache.set(id, feature);
+    return feature;
+  }
+
+  function invalidateParcelCache() { _parcelCache.clear(); }
+
+  // ── Viewport parcel index hydration ────────────────────────────────────
+  // Feeds PS_PARCEL_INDEX (snapping engine, selection tools, labels) from
+  // GET /parcels?bbox= for the current viewport. Replaces ZIP-POC's full
+  // client-side parcels.geojson load.
+  const PARCEL_INDEX_MIN_ZOOM = 12;
+  let _hydrateTimer = null;
+  let _hydrateController = null;
+
+  function scheduleParcelIndexRefresh() {
+    clearTimeout(_hydrateTimer);
+    _hydrateTimer = setTimeout(refreshParcelIndex, 350);
+  }
+
+  function refreshParcelIndex() {
+    if (!map) return;
+    if (map.getZoom() < PARCEL_INDEX_MIN_ZOOM) return;   // keep last index when zoomed out
+
+    const b = map.getBounds();
+    const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
+
+    if (_hydrateController) _hydrateController.abort();
+    _hydrateController = new AbortController();
+
+    fetch(API_BASE + "/parcels?bbox=" + bbox, { signal: _hydrateController.signal })
+      .then(r => r.json())
+      .then(data => {
+        parcelIndex = (data.features || []).filter(f => f.geometry);
+        window.PS_PARCEL_INDEX = parcelIndex;
+        document.dispatchEvent(new CustomEvent("ps:parcel-index-updated"));
+      })
+      .catch(() => { /* aborted or transient network error — keep last index */ });
+  }
+
+  // ── Tile invalidation (WebSocket) ──────────────────────────────────────
+  // The backend broadcasts after commit/split/merge; force a parcel tile
+  // reload so edits appear within ~2s.
+  function connectInvalidationSocket() {
+    let url = (window.PS_CONFIG && window.PS_CONFIG.WS_URL) || "";
+    if (!url) {
+      const proto = window.location.protocol === "https:" ? "wss://" : "ws://";
+      url = proto + window.location.host + "/ws";
+    }
+    let socket;
+    function open() {
+      try { socket = new WebSocket(url); } catch (_) { return; }
+      socket.onmessage = (ev) => {
+        let msg = null;
+        try { msg = JSON.parse(ev.data); } catch (_) { return; }
+        if (msg && msg.type === "parcels-updated") refreshParcelTiles();
+      };
+      socket.onclose = () => setTimeout(open, 3000);   // auto-reconnect
+    }
+    open();
+  }
+
+  function refreshParcelTiles() {
+    if (!map) return;
+    const src = map.getSource("parcels");
+    if (!src) return;
+
+    // Update the tile URL so any server-side caches see a new request
+    const base = absoluteMartinUrl() + "/parcel_tiles/{z}/{x}/{y}";
+    if (typeof src.setTiles === "function") {
+      src.setTiles([base + "?v=" + Date.now()]);
+    }
+
+    // reload() re-requests every tile MapLibre has loaded across ALL zoom levels,
+    // not just the current viewport. This covers wider-zoom tiles that
+    // clearTiles()+update(transform) misses because update() only queues tiles
+    // for the current zoom.
+    const sc = map.style && map.style.sourceCaches && map.style.sourceCaches["parcels"];
+    if (sc) {
+      sc.reload();
+      map.triggerRepaint();
+    }
+
+    invalidateParcelCache();
+    refreshParcelIndex();
+  }
+  window.PS_refreshParcelTiles = refreshParcelTiles;
+
+  // ── Hover (filter-based, unchanged) ───────────────────────────────────
+  function setHoverFilter(pin) {
+    if (!map || !map.getLayer("parcels-hover")) return;
+    map.setFilter("parcels-hover", ["==", ["get", "pin"], pin || ""]);
+  }
+
+  // ── Map init ───────────────────────────────────────────────────────────
+  async function initMap() {
+    const style = await resolveStyle();
+    // Van Buren County, MI
+    const EXTENT = [[-86.33, 42.06], [-85.76, 42.43]];
+
+    map = new maplibregl.Map({
+      container: "map",
+      style: style,
+      center: [-86.03, 42.24],
+      zoom: 9,
+      preserveDrawingBuffer: true,
+      boxZoom: false,  // we use our own box-select; default shift+drag zoom conflicts with shift-click
+    });
+
+    map.on("load", () => {
+      requestAnimationFrame(() => {
+        map.resize();
+        const cam = map.cameraForBounds(EXTENT, { padding: 0 });
+        map.flyTo({ center: cam.center, zoom: cam.zoom + 0.5, duration: 1400, curve: 1.4, essential: true });
+      });
+
+      // Expose map instance for drawing modules and MapControlAPI
+      window.PS_MAP = map;
+
+      setupSelectionLayers();
+      setupBufferLayers();
+      setupAnnotationLayers();
+
+      // Hydrate the viewport parcel index now and on every move
+      refreshParcelIndex();
+      map.on("moveend", scheduleParcelIndexRefresh);
+
+      // Live tile invalidation after commits/splits/merges
+      connectInvalidationSocket();
+
+      // Click — drawing tool intercepts first; buffer sets seed; shift-click toggles; normal replaces.
+      // Tile features carry clipped geometry, so resolve the full record first.
+      map.on("click", "parcels-fill", (e) => {
+        const feature = e.features[0];
+        // Drawing tools handle their own click via map.on('click') in drawing-tools.js
+        if (window.PS_STATE && window.PS_STATE.activeDrawTool) return;
+        const shift = isShiftDown || !!(e.originalEvent && e.originalEvent.shiftKey);
+        const id = feature.properties.id;
+        if (id == null) return;
+        fetchParcel(id)
+          .then((full) => {
+            if (activeTool === "buffer") {
+              handleBufferSeedClick(full);
+              return;
+            }
+            selectParcel(full.properties, full.geometry, shift);
+          })
+          .catch((err) => console.warn("parcel fetch:", err));
+      });
+
+      // Layer toggles
+      const origFillOpacity = map.getPaintProperty("parcels-fill", "fill-opacity");
+      const origLineColor   = map.getPaintProperty("parcels-line", "line-color");
+
+      const aerialToggle = document.getElementById("toggle-aerial");
+      const zoningToggle = document.getElementById("toggle-zoning");
+
+      function updateZoningOpacity() {
+        const zoningOn = zoningToggle.checked;
+        const aerialOn = aerialToggle.checked;
+        if (!zoningOn) {
+          map.setPaintProperty("parcels-fill", "fill-opacity", 0);
+        } else if (aerialOn) {
+          map.setPaintProperty("parcels-fill", "fill-opacity", 0.25);
+        } else {
+          map.setPaintProperty("parcels-fill", "fill-opacity", origFillOpacity);
+        }
+      }
+
+      aerialToggle.addEventListener("change", (e) => {
+        map.setLayoutProperty("mi-aerial", "visibility", e.target.checked ? "visible" : "none");
+        if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.aerial = e.target.checked;
+        updateZoningOpacity();
+      });
+
+      zoningToggle.addEventListener("change", (e) => {
+        if (e.target.checked) {
+          map.setPaintProperty("parcels-line", "line-color", origLineColor);
+          map.setLayoutProperty("parcels-labels", "visibility", "visible");
+        } else {
+          map.setPaintProperty("parcels-line", "line-color", "rgba(255,255,255,0.65)");
+          map.setLayoutProperty("parcels-labels", "visibility", "none");
+        }
+        if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.zoning = e.target.checked;
+        updateZoningOpacity();
+      });
+
+      const HOVER_MIN_ZOOM = 14;
+
+      map.on("mousemove", "parcels-fill", (e) => {
+        if (map.getZoom() < HOVER_MIN_ZOOM) return;
+        if (!e.features.length) return;
+        const pin = e.features[0].properties.pin || e.features[0].properties.PIN;
+        if (pin !== hoveredParcelId) {
+          hoveredParcelId = pin;
+          setHoverFilter(pin);
+        }
+        map.getCanvas().style.cursor = "pointer";
+      });
+
+      map.on("mouseleave", "parcels-fill", () => {
+        hoveredParcelId = null;
+        setHoverFilter(null);
+        map.getCanvas().style.cursor = "";
+      });
+
+      map.on("zoom", () => {
+        if (map.getZoom() < HOVER_MIN_ZOOM && hoveredParcelId) {
+          hoveredParcelId = null;
+          setHoverFilter(null);
+          map.getCanvas().style.cursor = "";
+        }
+      });
+    });
+  }
+
+  // ── Geometry helpers ───────────────────────────────────────────────────
+  function computeBounds(geometry) {
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    const traverse = (arr) => {
+      if (typeof arr[0] === "number") {
+        if (arr[0] < minLng) minLng = arr[0];
+        if (arr[1] < minLat) minLat = arr[1];
+        if (arr[0] > maxLng) maxLng = arr[0];
+        if (arr[1] > maxLat) maxLat = arr[1];
+      } else {
+        arr.forEach(traverse);
+      }
+    };
+    traverse(geometry.coordinates);
+    return [[minLng, minLat], [maxLng, maxLat]];
+  }
+
+  function computeCentroid(geometry) {
+    const b = computeBounds(geometry);
+    return [(b[0][0] + b[1][0]) / 2, (b[0][1] + b[1][1]) / 2];
+  }
+
+  // ── Parcel info panel ──────────────────────────────────────────────────
+  const infoPanel  = document.getElementById("parcel-info-panel");
+  const infoBody   = infoPanel ? infoPanel.querySelector(".parcel-info-body") : null;
+  const infoHeader = infoPanel ? infoPanel.querySelector(".parcel-info-header") : null;
+  const infoClose  = infoPanel ? infoPanel.querySelector(".parcel-info-close") : null;
+
+  // ── Field tooltip — single fixed-position div, avoids overflow-y:auto clipping ──
+  const _tip = document.createElement("div");
+  _tip.id = "parcel-tip";
+  _tip.setAttribute("aria-hidden", "true");
+  document.body.appendChild(_tip);
+
+  if (infoBody) {
+    infoBody.addEventListener("mouseover", (e) => {
+      const el = e.target.closest("[data-tip]");
+      if (!el) return;
+      _tip.textContent = el.dataset.tip;
+      _tip.classList.add("parcel-tip-visible");
+    });
+    infoBody.addEventListener("mousemove", (e) => {
+      if (!_tip.classList.contains("parcel-tip-visible")) return;
+      // Position above the cursor, clamped to viewport
+      const tw = _tip.offsetWidth || 220;
+      const th = _tip.offsetHeight || 40;
+      let x = e.clientX + 12;
+      let y = e.clientY - th - 8;
+      if (x + tw > window.innerWidth  - 8) x = e.clientX - tw - 12;
+      if (y < 8) y = e.clientY + 20;
+      _tip.style.left = x + "px";
+      _tip.style.top  = y + "px";
+    });
+    infoBody.addEventListener("mouseout", (e) => {
+      if (!e.target.closest("[data-tip]")) return;
+      _tip.classList.remove("parcel-tip-visible");
+    });
+  }
+
+  if (infoClose) {
+    infoClose.addEventListener("click", () => {
+      if (infoPanel) infoPanel.hidden = true;
+      const navEl = document.getElementById("parcel-info-nav");
+      if (navEl) navEl.hidden = true;
+    });
+  }
+
+  // Drag
+  if (infoHeader && infoPanel) {
+    let dragging = false, startX, startY, startLeft, startTop;
+    infoHeader.addEventListener("pointerdown", (e) => {
+      if (e.target === infoClose) return;
+      dragging = true;
+      infoHeader.setPointerCapture(e.pointerId);
+      const rect = infoPanel.getBoundingClientRect();
+      startX = e.clientX; startY = e.clientY;
+      startLeft = rect.left; startTop = rect.top;
+      infoPanel.style.bottom = "auto";
+      infoPanel.style.left = startLeft + "px";
+      infoPanel.style.top  = startTop + "px";
+    });
+    infoHeader.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const panel = infoPanel.parentElement.getBoundingClientRect();
+      const newLeft = Math.max(0, Math.min(panel.width  - infoPanel.offsetWidth,  startLeft - panel.left + e.clientX - startX));
+      const newTop  = Math.max(0, Math.min(panel.height - infoPanel.offsetHeight, startTop  - panel.top  + e.clientY - startY));
+      infoPanel.style.left = newLeft + "px";
+      infoPanel.style.top  = newTop  + "px";
+    });
+    infoHeader.addEventListener("pointerup",     () => { dragging = false; });
+    infoHeader.addEventListener("pointercancel", () => { dragging = false; });
+  }
+
+  // Nav buttons and keyboard cycling
+  const navEl    = document.getElementById("parcel-info-nav");
+  const navPrev  = document.getElementById("parcel-nav-prev");
+  const navNext  = document.getElementById("parcel-nav-next");
+  const navLabel = document.getElementById("parcel-nav-label");
+  const navFly   = document.getElementById("parcel-fly-btn");
+
+  if (navPrev) navPrev.addEventListener("click", () => cycleParcel(-1));
+  if (navNext) navNext.addEventListener("click", () => cycleParcel(1));
+  if (navFly)  navFly.addEventListener("click",  () => flyToActiveParcel(true));
+
+  document.addEventListener("keydown", (e) => {
+    if (!infoPanel || infoPanel.hidden) return;
+    if (selectedPins.length < 2) return;
+    const tag = document.activeElement && document.activeElement.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.key === "ArrowLeft")  { e.preventDefault(); cycleParcel(-1); }
+    if (e.key === "ArrowRight") { e.preventDefault(); cycleParcel(1); }
+  });
+
+  function cycleParcel(direction) {
+    if (selectedPins.length === 0) return;
+    const newIdx = ((activeInfoIndex + direction) % selectedPins.length + selectedPins.length) % selectedPins.length;
+    showParcelAtIndex(newIdx);
+  }
+
+  function flyToActiveParcel(force) {
+    if (!map || !activeInfoPin) return;
+    const entry = selectedFeatureMap.get(activeInfoPin);
+    if (!entry) return;
+    const [lng, lat] = computeCentroid(entry.geometry);
+    if (force || !map.getBounds().contains([lng, lat])) {
+      map.easeTo({ center: [lng, lat], duration: 600 });
+    }
+  }
+
+  // ── Info display ───────────────────────────────────────────────────────
+  // Field layout matches the geo.parcels / assessing.vbc_parcels payload
+  // returned by GET /parcel/{id}.
+  function showParcelInfo(pin, p) {
+    if (!infoPanel || !infoBody) return;
+
+    const fmt   = (n) => n != null ? "$" + parseInt(n).toLocaleString() : "—";
+    const dash  = (v) => (v != null && v !== "") ? v : "—";
+    const fmtAc = (v) => v != null ? parseFloat(v).toFixed(2) : "—";
+
+    const siteAddr = [p.prop_street || p.PCOMBINED, p.prop_city].filter(Boolean).join(", ");
+    const ownerMail = [
+      p.owner_street || "",
+      [p.owner_city || "", p.owner_state || ""].filter(Boolean).join(" "),
+      p.owner_zip || ""
+    ].filter(Boolean).join(", ");
+    const homestead = p.homestead != null ? parseFloat(p.homestead) : null;
+    const legalDesc = p.ps_legal_description || p.legal_description || "";
+
+    const av0 = p.assessed_value      != null ? parseInt(p.assessed_value)      : null;
+    const tv0 = p.taxable_value       != null ? parseInt(p.taxable_value)       : null;
+    const av1 = p.prev_assessed_value != null ? parseInt(p.prev_assessed_value) : null;
+    const tv1 = p.prev_taxable_value  != null ? parseInt(p.prev_taxable_value)  : null;
+
+    const histVals = [p.assessed_value_yr0, p.assessed_value_yr1, p.assessed_value_yr2,
+                      p.assessed_value_yr3, p.assessed_value_yr4]
+      .map(v => v != null ? parseInt(v) : null);
+
+    const provenance = p.source && p.source !== "migration"
+      ? `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="How this geometry row was created (COGO commit, split, merge, boundary adjustment, or original shapefile migration)">Geometry</span><span class="parcel-info-value">${dash(p.source)}</span></div>`
+      : "";
+
+    infoBody.innerHTML =
+      `<div class="parcel-info-pin">${pin}</div>` +
+      `<div class="parcel-info-zoning">${dash(p.municipality)}</div>` +
+      `<hr class="parcel-info-divider">` +
+
+      `<div class="parcel-info-section-title">Parcel</div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label">Address</span><span class="parcel-info-value">${dash(siteAddr)}</span></div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Acreage computed from the parcel's mapped boundary (ST_Area of the PostGIS geometry)">GIS Acres</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Property classification code used to set the assessment ratio (e.g. 101 = Agricultural, 201 = Commercial, 401 = Residential, 301 = Industrial)">Class</span><span class="parcel-info-value">${dash(p.prop_class)}</span></div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="School district associated with this parcel for millage purposes">School</span><span class="parcel-info-value">${dash(p.school_dist)}</span></div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Homestead (PRE) percentage — reduces taxable value for owner-occupied homes">Homestead</span><span class="parcel-info-value">${homestead != null ? homestead + "%" : "—"}</span></div>` +
+      provenance +
+      `<hr class="parcel-info-divider">` +
+
+      `<div class="parcel-info-section-title">Owner</div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label">Name</span><span class="parcel-info-value">${dash(p.owner_name)}</span></div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>` +
+      `<hr class="parcel-info-divider">` +
+
+      `<div class="parcel-info-section-title">Assessed Values</div>` +
+      `<table class="parcel-info-table">` +
+      `<thead><tr><th></th><th>Current</th><th>Prior</th></tr></thead>` +
+      `<tbody>` +
+      `<tr><td data-tip="Assessed Value — set by the assessor at 50% of estimated True Cash Value (TCV)">AV</td><td>${fmt(av0)}</td><td>${fmt(av1)}</td></tr>` +
+      `<tr><td data-tip="Taxable Value — the value taxes are actually levied on. Capped each year at the lesser of SEV or prior year TV plus the inflation rate (Michigan Proposal A).">TV</td><td>${fmt(tv0)}</td><td>${fmt(tv1)}</td></tr>` +
+      `<tr><td data-tip="True Market Value (estimated) — calculated as 2× Assessed Value">TMV</td><td>${fmt(av0 != null ? av0 * 2 : null)}</td><td>${fmt(av1 != null ? av1 * 2 : null)}</td></tr>` +
+      `</tbody></table>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Assessed value 5-year history (newest first)">AV History</span><span class="parcel-info-value">${histVals.map(v => v != null ? "$" + (v / 1000).toFixed(0) + "k" : "—").join(" · ")}</span></div>` +
+      `<hr class="parcel-info-divider">` +
+
+      `<div class="parcel-info-section-title">Legal Description</div>` +
+      `<div class="parcel-info-desc">${dash(legalDesc)}</div>`;
+
+    infoPanel.hidden = false;
+  }
+
+  function updateInfoPanelNav() {
+    if (!navEl) return;
+    const multi = selectedPins.length > 1;
+    navEl.hidden = !multi;
+    if (multi && navLabel) {
+      navLabel.textContent = `${activeInfoIndex + 1} of ${selectedPins.length}`;
+    }
+  }
+
+  function showParcelAtIndex(idx) {
+    if (selectedPins.length === 0) return;
+    idx = Math.max(0, Math.min(selectedPins.length - 1, idx));
+    activeInfoIndex = idx;
+
+    const pin   = selectedPins[idx];
+    const entry = selectedFeatureMap.get(pin);
+    if (!entry) return;
+
+    setActiveInfoPin(pin);
+    updateInfoPanelNav();
+
+    const p = entry.props;
+    showParcelInfo(pin, p);
+
+    const [cLng, cLat] = entry.geometry ? computeCentroid(entry.geometry) : [null, null];
+    const pBounds      = entry.geometry ? computeBounds(entry.geometry) : [[null,null],[null,null]];
+
+    window.PS_STATE.parcel = {
+      id:           p.id ?? null,
+      pin,
+      acres:        p.gis_acres != null ? parseFloat(p.gis_acres) : (p.acres != null ? parseFloat(p.acres) : null),
+      owner_name:   p.owner_name || null,
+      site_address: p.prop_street || p.PCOMBINED || null,
+      municipality: p.municipality || null,
+      source:       p.source || null,
+      cogo_legs:    p.cogo_legs || null,
+      centroid:     [cLng, cLat],
+      bbox:         [pBounds[0][0], pBounds[0][1], pBounds[1][0], pBounds[1][1]], // [w, s, e, n]
+      geometry:     entry.geometry || null,
+    };
+
+    const n = selectedPins.length;
+    const acresStr = window.PS_STATE.parcel.acres != null ? window.PS_STATE.parcel.acres.toFixed(2) : "?";
+    setStatusStrip(n > 1
+      ? `${n} parcels selected — viewing ${pin}`
+      : `Parcel ${pin} · ${p.owner_name || "unknown owner"} · ${acresStr} acres`);
+
+    flyToActiveParcel(false);
+
+    if (window.PS_onParcelSelect) window.PS_onParcelSelect(window.PS_STATE.parcel);
+  }
+
+  // ── selectParcel ───────────────────────────────────────────────────────
+  function selectParcel(props, geometry, shiftKey) {
+    const pin = props.pin || props.PIN;
+
+    if (shiftKey) {
+      if (selectedPins.includes(pin)) {
+        // Deselect
+        const wasActive = (activeInfoPin === pin);
+        const prevIdx   = activeInfoIndex;
+        removeFromSelection(pin);
+        updateSelectionBadge();
+
+        if (selectedPins.length === 0) {
+          setActiveInfoPin(null);
+          if (infoPanel) infoPanel.hidden = true;
+          if (navEl) navEl.hidden = true;
+          setStatusStrip(DEFAULT_STATUS);
+          window.PS_STATE.parcel = null;
+          return;
+        }
+
+        if (wasActive) {
+          showParcelAtIndex(Math.min(prevIdx, selectedPins.length - 1));
+        } else {
+          activeInfoIndex = selectedPins.indexOf(activeInfoPin);
+          updateInfoPanelNav();
+        }
+      } else {
+        // Add
+        addToSelection(pin, props, geometry);
+        updateSelectionBadge();
+        showParcelAtIndex(selectedPins.length - 1);
+      }
+    } else {
+      // Replace entire selection
+      for (const p of selectedPins) {
+        if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: p }, { selected: false, activeInfo: false });
+      }
+      selectedPins = [];
+      selectedFeatureMap.clear();
+      activeInfoPin = null;
+      activeInfoIndex = 0;
+
+      addToSelection(pin, props, geometry);
+      updateSelectionBadge();
+      showParcelAtIndex(0);
+    }
+  }
+
+  // ── Public APIs ────────────────────────────────────────────────────────
+  window.PS_zoomToParcel = function () {
+    if (!map || !activeInfoPin) return;
+    const entry = selectedFeatureMap.get(activeInfoPin);
+    if (!entry) return;
+    map.fitBounds(computeBounds(entry.geometry), { padding: 80, duration: 600, maxZoom: 17 });
+  };
+
+  window.PS_highlightParcel = function (pin) {
+    if (!map) return;
+    if (selectedPins.includes(pin)) return;
+    const feature = parcelIndex.find(f => (f.properties.pin || f.properties.PIN) === pin);
+    if (feature) {
+      addToSelection(pin, feature.properties, feature.geometry);
+      updateSelectionBadge();
+      showParcelAtIndex(selectedPins.length - 1);
+    }
+  };
+
+  // Programmatic parcel selection by DB id: fetches the full record, replaces
+  // the current selection, and zooms to the parcel. Used by omni-search and
+  // the Parcel Edits workflows.
+  window.PS_selectParcelById = function (id) {
+    if (!map || id == null) return Promise.resolve(null);
+    return fetchParcel(id).then((feature) => {
+      const pin = feature.properties.pin || feature.properties.parcel_no;
+      for (const p of selectedPins) {
+        map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: p }, { selected: false, activeInfo: false });
+      }
+      selectedPins = [];
+      selectedFeatureMap.clear();
+      activeInfoPin = null;
+      activeInfoIndex = 0;
+
+      addToSelection(pin, feature.properties, feature.geometry);
+      updateSelectionBadge();
+      showParcelAtIndex(0);
+      map.fitBounds(computeBounds(feature.geometry), { padding: 80, duration: 800, maxZoom: 17 });
+      return feature;
+    });
+  };
+
+  // Legacy pin-based selection (viewport index lookup) — kept for
+  // MapControlAPI compatibility.
+  window.PS_selectParcel = function (pin) {
+    const feature = parcelIndex.find(f => (f.properties.pin || f.properties.PIN) === pin);
+    if (feature && feature.properties.id != null) {
+      window.PS_selectParcelById(feature.properties.id);
+    }
+  };
+
+  // ── Parcel search (server-side omni-search via GET /search) ────────────
+  let parcelIndex = [];
+  window.PS_PARCEL_INDEX = parcelIndex;
+
+  const searchInput   = document.getElementById("parcel-search-input");
+  const searchResults = document.getElementById("parcel-search-results");
+
+  function hideResults() { searchResults.hidden = true; }
+  function clearResults() { searchResults.hidden = true; searchResults.innerHTML = ""; }
+
+  let _searchTimer = null;
+  let _searchController = null;
+
+  searchInput.addEventListener("input", () => {
+    const q = searchInput.value.trim();
+    if (q.length < 2) { clearResults(); return; }
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(() => runSearch(q), 250);
+  });
+
+  function runSearch(q) {
+    if (_searchController) _searchController.abort();
+    _searchController = new AbortController();
+
+    fetch(API_BASE + "/search?q=" + encodeURIComponent(q) + "&limit=25",
+          { signal: _searchController.signal })
+      .then(r => r.json())
+      .then(data => renderSearchResults(data.results || []))
+      .catch(() => { /* aborted */ });
+  }
+
+  function renderSearchResults(results) {
+    searchResults.innerHTML = "";
+    searchResults.hidden = false;
+
+    if (!results.length) {
+      searchResults.innerHTML = '<div class="parcel-search-no-results">No matches found</div>';
+      return;
+    }
+
+    const container = document.createElement("div");
+    container.className = "parcel-search-page";
+
+    results.forEach(r => {
+      const row = document.createElement("div");
+      row.className = "parcel-search-result";
+      row.innerHTML =
+        `<div class="parcel-search-result-pin">${r.pin}${r.municipality ? " &middot; " + r.municipality : ""}</div>` +
+        `<div class="parcel-search-result-owner">${r.owner_name || "—"}</div>` +
+        (r.address ? `<div class="parcel-search-result-address">${r.address}</div>` : "");
+      row.addEventListener("click", () => {
+        window.PS_selectParcelById(r.id);
+        hideResults();
+      });
+      container.appendChild(row);
+    });
+
+    searchResults.appendChild(container);
+  }
+
+  searchInput.addEventListener("focus", () => {
+    if (searchResults.innerHTML) searchResults.hidden = false;
+  });
+
+  searchInput.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { searchInput.value = ""; clearResults(); }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest("#parcel-search")) hideResults();
+  });
+
+  // ── Map Control Panel ──────────────────────────────────────────────────
+  function initMapControlPanel() {
+    const panel = document.getElementById("map-control-panel");
+    if (!panel) return;
+
+    const tabs = panel.querySelectorAll(".mcp-tab");
+
+    function switchTab(tabId) {
+      const prevTab = window.PS_MAP_PANEL ? window.PS_MAP_PANEL._activeTab : null;
+      tabs.forEach(t => {
+        t.classList.toggle("active", t.dataset.tab === tabId);
+        t.setAttribute("aria-selected", String(t.dataset.tab === tabId));
+      });
+      panel.querySelectorAll(".mcp-pane").forEach(p => { p.hidden = true; });
+      const pane = document.getElementById("mcp-pane-" + tabId);
+      if (pane) pane.hidden = false;
+      if (window.PS_MAP_PANEL) window.PS_MAP_PANEL._activeTab = tabId;
+
+      // Drawing tools tab lifecycle hooks
+      if (window.PS_DRAWING_TOOLS) {
+        if (tabId === "draw") {
+          window.PS_DRAWING_TOOLS.onDrawTabActivated();
+        } else if (prevTab === "draw") {
+          window.PS_DRAWING_TOOLS.onDrawTabDeactivated();
+        }
+      }
+      // Measurement tab lifecycle hooks
+      if (window.PS_MEASURE_TOOL) {
+        if (tabId === "measure") {
+          window.PS_MEASURE_TOOL.onMeasureTabActivated();
+        } else if (prevTab === "measure") {
+          window.PS_MEASURE_TOOL.onMeasureTabDeactivated();
+        }
+      }
+    }
+
+    tabs.forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
+
+    const resizeHandle = document.getElementById("mcp-resize");
+    if (resizeHandle) {
+      let dragging = false, startX, startY, startW, startH;
+      resizeHandle.addEventListener("pointerdown", (e) => {
+        dragging = true;
+        resizeHandle.setPointerCapture(e.pointerId);
+        startX = e.clientX; startY = e.clientY;
+        startW = panel.offsetWidth; startH = panel.offsetHeight;
+        panel.style.height = startH + "px";
+      });
+      resizeHandle.addEventListener("pointermove", (e) => {
+        if (!dragging) return;
+        panel.style.width  = Math.max(170, Math.min(420, startW + startX - e.clientX)) + "px";
+        panel.style.height = Math.max(120, Math.min(600, startH + startY - e.clientY)) + "px";
+      });
+      resizeHandle.addEventListener("pointerup",     () => { dragging = false; });
+      resizeHandle.addEventListener("pointercancel", () => { dragging = false; });
+    }
+
+    window.PS_MAP_PANEL = {
+      _activeTab: "layers",
+      setTab:  function (tabId) { switchTab(tabId); },
+      getTab:  function () { return this._activeTab; },
+      layers: {
+        aerial: false, zoning: true,
+        setAerial: function (v) {
+          const cb = document.getElementById("toggle-aerial");
+          if (cb) { cb.checked = !!v; cb.dispatchEvent(new Event("change")); this.aerial = !!v; }
+        },
+        setZoning: function (v) {
+          const cb = document.getElementById("toggle-zoning");
+          if (cb) { cb.checked = !!v; cb.dispatchEvent(new Event("change")); this.zoning = !!v; }
+        },
+        getState: function () { return { aerial: this.aerial, zoning: this.zoning }; },
+      },
+      selection: {
+        getSelected: function () { return [...selectedPins]; },
+        getEntries:  function () {
+          return selectedPins.map(pin => {
+            const e = selectedFeatureMap.get(pin);
+            return { pin, props: e ? e.props : {}, geometry: e ? e.geometry : null };
+          });
+        },
+        clearAll:    function () { clearSelectionAll(); },
+      },
+    };
+  }
+
+  // ── CSV download ───────────────────────────────────────────────────────
+  function downloadSelectionCSV() {
+    if (selectedPins.length === 0) return;
+
+    // Gather all field names from selected features (union of keys)
+    const fieldSet = new Set();
+    for (const entry of selectedFeatureMap.values()) {
+      for (const k of Object.keys(entry.props)) fieldSet.add(k);
+    }
+    const fields = [...fieldSet];
+
+    const cell = (v) => {
+      if (v == null) return "";
+      const s = String(v);
+      return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const rows = [fields.map(cell).join(",")];
+    for (const pin of selectedPins) {
+      const entry = selectedFeatureMap.get(pin);
+      if (!entry) continue;
+      rows.push(fields.map(f => cell(entry.props[f])).join(","));
+    }
+
+    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url  = URL.createObjectURL(blob);
+    const a    = Object.assign(document.createElement("a"), { href: url, download: `parcels_${selectedPins.length}_selected.csv` });
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Selection tools ────────────────────────────────────────────────────
+  function initSelectionTools() {
+    // activeTool lives at IIFE scope so the map click handler can read it
+
+    function setActiveTool(tool) {
+      if (activeTool === tool) tool = null; // toggle off
+
+      // Clean up buffer state when leaving buffer mode
+      if (activeTool === "buffer" && tool !== "buffer") clearBufferState();
+
+      activeTool = tool;
+
+      document.getElementById("tool-box-select")?.classList.toggle("active", tool === "box");
+      document.getElementById("tool-lasso")?.classList.toggle("active", tool === "lasso");
+      document.getElementById("tool-filter")?.classList.toggle("active", tool === "filter");
+      document.getElementById("tool-buffer")?.classList.toggle("active", tool === "buffer");
+
+      const filterPanel = document.getElementById("filter-panel");
+      if (filterPanel) filterPanel.hidden = tool !== "filter";
+
+      const bufferPanel = document.getElementById("buffer-panel");
+      if (bufferPanel) bufferPanel.hidden = tool !== "buffer";
+
+      const lassoCanvas = document.getElementById("lasso-canvas");
+      const boxOverlay  = document.getElementById("box-select-overlay");
+
+      if (lassoCanvas) {
+        lassoCanvas.style.pointerEvents = tool === "lasso" ? "all" : "none";
+        if (tool !== "lasso") {
+          const ctx = lassoCanvas.getContext("2d");
+          ctx.clearRect(0, 0, lassoCanvas.width, lassoCanvas.height);
+        }
+      }
+      if (boxOverlay) {
+        // display:none blocks pointer-events regardless of the property, so set both
+        boxOverlay.style.display       = tool === "box" ? "block" : "none";
+        boxOverlay.style.pointerEvents = tool === "box" ? "all"   : "none";
+      }
+
+      const toolActiveBar = document.getElementById("tool-active-bar");
+      if (toolActiveBar) {
+        toolActiveBar.hidden = (tool !== "box" && tool !== "lasso");
+        const label = toolActiveBar.querySelector(".tool-active-label");
+        if (label) label.textContent = tool === "box" ? "Box Select active" : tool === "lasso" ? "Lasso active" : "";
+      }
+
+      if (map) {
+        if (tool === "box" || tool === "lasso") {
+          map.dragPan.disable();
+          map.getCanvas().style.cursor = "crosshair";
+        } else if (tool === "buffer") {
+          map.getCanvas().style.cursor = "crosshair";
+        } else {
+          map.dragPan.enable();
+          map.getCanvas().style.cursor = "";
+        }
+      }
+    }
+
+    document.getElementById("tool-box-select")?.addEventListener("click", () => setActiveTool("box"));
+    document.getElementById("tool-lasso")?.addEventListener("click",      () => setActiveTool("lasso"));
+    document.getElementById("tool-filter")?.addEventListener("click",     () => setActiveTool("filter"));
+    document.getElementById("tool-buffer")?.addEventListener("click",     () => setActiveTool("buffer"));
+    document.getElementById("exit-tool-btn")?.addEventListener("click",   () => setActiveTool(null));
+    document.getElementById("clear-selection-btn")?.addEventListener("click", clearSelectionAll);
+    document.getElementById("download-csv-btn")?.addEventListener("click", downloadSelectionCSV);
+
+    // ── Buffer event handlers ────────────────────────────────────────────
+    document.getElementById("buffer-cancel-btn")?.addEventListener("click", () => setActiveTool(null));
+
+    document.getElementById("buffer-apply-btn")?.addEventListener("click", () => {
+      if (!bufferSeedGeom) return;
+      const dist  = parseFloat(document.getElementById("buffer-distance")?.value);
+      const units = document.getElementById("buffer-units")?.value || "feet";
+      if (!dist || dist <= 0) return;
+      const includeSeed = document.getElementById("buffer-include-seed")?.checked ?? true;
+      const bufferPoly  = computeBufferGeometry(bufferSeedGeom, dist, units);
+      if (!bufferPoly) return;
+
+      const firstIdx = selectedPins.length;
+      let added = 0;
+      for (const f of findParcelsInBuffer(bufferPoly)) {
+        const pin = f.properties.pin || f.properties.PIN;
+        if (!includeSeed && pin === bufferSeedPin) continue;
+        if (addToSelection(pin, f.properties, f.geometry)) added++;
+      }
+      clearBufferState();
+      updateSelectionBadge();
+      if (added > 0) showParcelAtIndex(firstIdx);
+      setActiveTool(null);
+    });
+
+    document.getElementById("buffer-remove-btn")?.addEventListener("click", () => {
+      if (!bufferSeedGeom) return;
+      const dist  = parseFloat(document.getElementById("buffer-distance")?.value);
+      const units = document.getElementById("buffer-units")?.value || "feet";
+      if (!dist || dist <= 0) return;
+      const includeSeed = document.getElementById("buffer-include-seed")?.checked ?? true;
+      const bufferPoly  = computeBufferGeometry(bufferSeedGeom, dist, units);
+      if (!bufferPoly) return;
+
+      let removed = 0;
+      for (const f of findParcelsInBuffer(bufferPoly)) {
+        const pin = f.properties.pin || f.properties.PIN;
+        if (!includeSeed && pin === bufferSeedPin) continue;
+        if (removeFromSelection(pin)) removed++;
+      }
+      if (removed > 0) {
+        updateSelectionBadge();
+        if (selectedPins.length === 0) {
+          setActiveInfoPin(null);
+          if (infoPanel) infoPanel.hidden = true;
+          setStatusStrip(DEFAULT_STATUS);
+          window.PS_STATE.parcel = null;
+        } else if (!selectedPins.includes(activeInfoPin)) {
+          showParcelAtIndex(0);
+        } else {
+          activeInfoIndex = selectedPins.indexOf(activeInfoPin);
+          updateInfoPanelNav();
+        }
+      }
+      clearBufferState();
+      setActiveTool(null);
+    });
+
+    document.getElementById("buffer-distance")?.addEventListener("input",  scheduleBufferPreview);
+    document.getElementById("buffer-units")?.addEventListener("change",    scheduleBufferPreview);
+    document.getElementById("buffer-include-seed")?.addEventListener("change", scheduleBufferPreview);
+    document.getElementById("buffer-live-preview")?.addEventListener("change", () => {
+      const live = document.getElementById("buffer-live-preview");
+      if (live?.checked) scheduleBufferPreview(); else clearBufferPreviewOnly();
+    });
+
+    // Escape key cancels active spatial tool
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && (activeTool === "box" || activeTool === "lasso" || activeTool === "buffer")) {
+        setActiveTool(null);
+      }
+    });
+
+    // Forward scroll wheel from spatial tool overlays so map zoom still works
+    for (const elId of ["lasso-canvas", "box-select-overlay"]) {
+      const el = document.getElementById(elId);
+      if (!el) continue;
+      el.addEventListener("wheel", (e) => {
+        const container = map && map.getContainer();
+        if (container) container.dispatchEvent(new WheelEvent("wheel", {
+          bubbles: true, cancelable: true, view: window,
+          deltaX: e.deltaX, deltaY: e.deltaY, deltaZ: e.deltaZ,
+          deltaMode: e.deltaMode, clientX: e.clientX, clientY: e.clientY,
+          ctrlKey: e.ctrlKey, shiftKey: e.shiftKey, altKey: e.altKey,
+        }));
+        e.preventDefault();
+      }, { passive: false });
+    }
+
+    // ── Box Select ─────────────────────────────────────────────────────
+    const boxOverlay = document.getElementById("box-select-overlay");
+    if (boxOverlay) {
+      let boxStart = null;
+      let boxRect  = null;
+
+      function mapPoint(e) {
+        const r = document.getElementById("map").getBoundingClientRect();
+        return { x: e.clientX - r.left, y: e.clientY - r.top };
+      }
+
+      boxOverlay.addEventListener("pointerdown", (e) => {
+        if (activeTool !== "box") return;
+        e.preventDefault();
+        boxOverlay.setPointerCapture(e.pointerId);
+        boxStart = mapPoint(e);
+        boxRect = document.createElement("div");
+        boxRect.className = "box-select-rect";
+        boxOverlay.appendChild(boxRect);
+        boxOverlay.style.display = "block";
+      });
+
+      boxOverlay.addEventListener("pointermove", (e) => {
+        if (!boxStart || !boxRect) return;
+        const cur = mapPoint(e);
+        boxRect.style.cssText =
+          `left:${Math.min(boxStart.x, cur.x)}px;` +
+          `top:${Math.min(boxStart.y, cur.y)}px;` +
+          `width:${Math.abs(cur.x - boxStart.x)}px;` +
+          `height:${Math.abs(cur.y - boxStart.y)}px;`;
+      });
+
+      boxOverlay.addEventListener("pointerup", (e) => {
+        if (!boxStart) return;
+        const cur = mapPoint(e);
+
+        const sw = map.unproject([Math.min(boxStart.x, cur.x), Math.max(boxStart.y, cur.y)]);
+        const ne = map.unproject([Math.max(boxStart.x, cur.x), Math.min(boxStart.y, cur.y)]);
+        const [minLng, maxLng] = [Math.min(sw.lng, ne.lng), Math.max(sw.lng, ne.lng)];
+        const [minLat, maxLat] = [Math.min(sw.lat, ne.lat), Math.max(sw.lat, ne.lat)];
+
+        let added = 0;
+        const firstIdx = selectedPins.length;
+        for (const f of parcelIndex) {
+          const [lng, lat] = computeCentroid(f.geometry);
+          if (lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat) {
+            if (addToSelection(f.properties.pin || f.properties.PIN, f.properties, f.geometry)) added++;
+          }
+        }
+        updateSelectionBadge();
+        if (added > 0) showParcelAtIndex(firstIdx);
+
+        if (boxRect) { boxRect.remove(); boxRect = null; }
+        boxStart = null;
+        boxOverlay.style.display = "none";
+      });
+    }
+
+    // ── Lasso Select ───────────────────────────────────────────────────
+    const lassoCanvas = document.getElementById("lasso-canvas");
+    if (lassoCanvas) {
+      let lassoPoints  = [];
+      let lassoDragging = false;
+      let lassoCtx     = null;
+
+      function resizeLasso() {
+        const r = document.getElementById("map").getBoundingClientRect();
+        lassoCanvas.width  = r.width;
+        lassoCanvas.height = r.height;
+      }
+
+      lassoCanvas.addEventListener("pointerdown", (e) => {
+        if (activeTool !== "lasso") return;
+        e.preventDefault();
+        lassoCanvas.setPointerCapture(e.pointerId);
+        resizeLasso();
+        lassoCtx = lassoCanvas.getContext("2d");
+        lassoCtx.clearRect(0, 0, lassoCanvas.width, lassoCanvas.height);
+        const r = document.getElementById("map").getBoundingClientRect();
+        lassoPoints = [{ x: e.clientX - r.left, y: e.clientY - r.top }];
+        lassoDragging = true;
+      });
+
+      lassoCanvas.addEventListener("pointermove", (e) => {
+        if (!lassoDragging || !lassoCtx) return;
+        const r  = document.getElementById("map").getBoundingClientRect();
+        lassoPoints.push({ x: e.clientX - r.left, y: e.clientY - r.top });
+
+        lassoCtx.clearRect(0, 0, lassoCanvas.width, lassoCanvas.height);
+        lassoCtx.beginPath();
+        lassoCtx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+        for (const pt of lassoPoints) lassoCtx.lineTo(pt.x, pt.y);
+        lassoCtx.closePath();
+        lassoCtx.fillStyle   = "rgba(37,99,235,0.08)";
+        lassoCtx.strokeStyle = "#1d4ed8";
+        lassoCtx.lineWidth   = 1.5;
+        lassoCtx.setLineDash([4, 3]);
+        lassoCtx.fill();
+        lassoCtx.stroke();
+      });
+
+      lassoCanvas.addEventListener("pointerup", () => {
+        lassoDragging = false;
+        if (lassoPoints.length < 3) { lassoPoints = []; return; }
+
+        // Convert pixel coords to lngLat and build a closed ring
+        const ring = lassoPoints.map(pt => {
+          const ll = map.unproject([pt.x, pt.y]);
+          return [ll.lng, ll.lat];
+        });
+        ring.push(ring[0]);
+
+        let added = 0;
+        const firstIdx = selectedPins.length;
+
+        if (typeof turf !== "undefined") {
+          try {
+            const polygon = turf.polygon([ring]);
+            for (const f of parcelIndex) {
+              const [lng, lat] = computeCentroid(f.geometry);
+              if (turf.booleanPointInPolygon(turf.point([lng, lat]), polygon)) {
+                if (addToSelection(f.properties.pin || f.properties.PIN, f.properties, f.geometry)) added++;
+              }
+            }
+          } catch (_) {}
+        }
+
+        updateSelectionBadge();
+        if (added > 0) showParcelAtIndex(firstIdx);
+
+        if (lassoCtx) lassoCtx.clearRect(0, 0, lassoCanvas.width, lassoCanvas.height);
+        lassoPoints = [];
+      });
+    }
+
+    // ── Filter Select ──────────────────────────────────────────────────
+    const filterField = document.getElementById("filter-field");
+    const filterOp    = document.getElementById("filter-op");
+    const filterValue = document.getElementById("filter-value");
+    const matchCount  = document.getElementById("filter-match-count");
+
+    // Populate field list once parcelIndex loads
+    const fieldPoll = setInterval(() => {
+      if (!parcelIndex.length || !filterField) return;
+      clearInterval(fieldPoll);
+      const existing = new Set(Array.from(filterField.options).map(o => o.value));
+      for (const key of Object.keys(parcelIndex[0].properties)) {
+        if (!existing.has(key)) {
+          const opt = document.createElement("option");
+          opt.value = key;
+          opt.textContent = key.replace(/_/g, " ");
+          filterField.appendChild(opt);
+        }
+      }
+    }, 400);
+
+    function runFilter() {
+      if (!filterField || !filterOp || !filterValue) return [];
+      const field = filterField.value;
+      const op    = filterOp.value;
+      const val   = filterValue.value.trim().toLowerCase();
+      if (!field || !val) return [];
+
+      return parcelIndex.filter(f => {
+        const raw = f.properties[field];
+        if (raw == null) return false;
+        const v  = String(raw).toLowerCase();
+        const n  = parseFloat(raw);
+        const qn = parseFloat(val);
+        switch (op) {
+          case "eq":       return v === val;
+          case "contains": return v.includes(val);
+          case "gt":       return !isNaN(n) && !isNaN(qn) && n > qn;
+          case "lt":       return !isNaN(n) && !isNaN(qn) && n < qn;
+          default:         return false;
+        }
+      });
+    }
+
+    function refreshMatchCount() {
+      if (!matchCount) return;
+      if (!filterField?.value || !filterValue?.value.trim()) { matchCount.textContent = ""; return; }
+      const m = runFilter();
+      matchCount.textContent = `${m.length} parcel${m.length !== 1 ? "s" : ""} match`;
+    }
+
+    filterField?.addEventListener("change", refreshMatchCount);
+    filterOp?.addEventListener("change",    refreshMatchCount);
+    filterValue?.addEventListener("input",  refreshMatchCount);
+
+    document.getElementById("filter-add-btn")?.addEventListener("click", () => {
+      const matches = runFilter();
+      const firstIdx = selectedPins.length;
+      let added = 0;
+      for (const f of matches) {
+        if (addToSelection(f.properties.pin || f.properties.PIN, f.properties, f.geometry)) added++;
+      }
+      updateSelectionBadge();
+      if (added > 0) showParcelAtIndex(firstIdx);
+      if (matchCount) matchCount.textContent = `Added ${added} parcel${added !== 1 ? "s" : ""}`;
+    });
+
+    document.getElementById("filter-replace-btn")?.addEventListener("click", () => {
+      const matches = runFilter();
+      let removed = 0;
+      for (const f of matches) {
+        const pin = f.properties.pin || f.properties.PIN;
+        if (selectedPins.includes(pin)) {
+          removeFromSelection(pin);
+          removed++;
+        }
+      }
+      if (removed > 0) {
+        updateSelectionBadge();
+        if (selectedPins.length === 0) {
+          setActiveInfoPin(null);
+          if (infoPanel) infoPanel.hidden = true;
+          setStatusStrip(DEFAULT_STATUS);
+          window.PS_STATE.parcel = null;
+        } else {
+          // keep activeInfoPin if it survived; otherwise reset to first
+          if (!selectedPins.includes(activeInfoPin)) {
+            showParcelAtIndex(0);
+          } else {
+            activeInfoIndex = selectedPins.indexOf(activeInfoPin);
+            updateInfoPanelNav();
+          }
+        }
+      }
+      if (matchCount) matchCount.textContent = removed > 0 ? `Removed ${removed} parcel${removed !== 1 ? "s" : ""}` : "None in selection";
+    });
+  }
+
+  // ── Annotation visualization layers ─────────────────────────────────────
+
+  // Arrow bearing helper (geographic bearing, 0=north, CW from north)
+  function _arrowBearing(ax, ay, bx, by) {
+    var dx = bx - ax, dy = by - ay;
+    return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+  }
+
+  function setupAnnotationLayers() {
+    const before = "parcels-labels";
+
+    // ── Arrow SDF image (upward-pointing triangle; SDF → data-driven icon-color) ─
+    if (!map.hasImage("ps-arrow")) {
+      (function () {
+        var sz  = 14;
+        var cv  = document.createElement("canvas");
+        cv.width = sz; cv.height = sz;
+        var ctx = cv.getContext("2d");
+        ctx.fillStyle = "white";
+        ctx.beginPath();
+        ctx.moveTo(sz / 2, 0);   // tip  (top-center)
+        ctx.lineTo(0,      sz);  // base left
+        ctx.lineTo(sz,     sz);  // base right
+        ctx.closePath();
+        ctx.fill();
+        var d = ctx.getImageData(0, 0, sz, sz);
+        map.addImage("ps-arrow", { width: sz, height: sz, data: d.data }, { sdf: true });
+      }());
+    }
+
+    // Sources
+    if (!map.getSource("annotation-source")) {
+      map.addSource("annotation-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        generateId: false,  // IDs are managed by AnnotationStore
+      });
+    }
+    if (!map.getSource("snap-indicator-source")) {
+      map.addSource("snap-indicator-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+    }
+    // Arrow point sources (computed from arrowEnd/arrowStart style flags)
+    if (!map.getSource("annotation-arrow-end-source")) {
+      map.addSource("annotation-arrow-end-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+    }
+    if (!map.getSource("annotation-arrow-start-source")) {
+      map.addSource("annotation-arrow-start-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+    }
+    // Selection overlay sources
+    if (!map.getSource("select-overlay-source")) {
+      map.addSource("select-overlay-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+    }
+    if (!map.getSource("select-handles-source")) {
+      map.addSource("select-handles-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+    }
+
+    // Polygon fill
+    if (!map.getLayer("annotation-fill")) {
+      map.addLayer({
+        id:     "annotation-fill",
+        type:   "fill",
+        source: "annotation-source",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: {
+          "fill-color":   ["coalesce", ["get", "fillColor",   ["get", "style"]], "#3b82f6"],
+          "fill-opacity": ["coalesce", ["get", "fillOpacity", ["get", "style"]], 0.18],
+        },
+      }, before);
+    }
+
+    // Line / polygon outline
+    if (!map.getLayer("annotation-line")) {
+      map.addLayer({
+        id:     "annotation-line",
+        type:   "line",
+        source: "annotation-source",
+        filter: ["in", ["geometry-type"], ["literal", ["LineString", "Polygon"]]],
+        paint: {
+          // coalesce guards against null when nested-get expressions are evaluated
+          "line-color": ["coalesce", ["get", "strokeColor", ["get", "style"]], "#1d4ed8"],
+          "line-width": ["coalesce", ["get", "strokeWidth", ["get", "style"]], 2],
+          // Note: data-driven line-dasharray can silently prevent the layer from
+          // rendering in some MapLibre v4 builds.  Dash style is applied at
+          // draw-time by the style picker in Phase 3 via a separate layer or a
+          // static paint update.  Keep this solid for now.
+        },
+      }, before);
+    }
+
+    // Point circles
+    if (!map.getLayer("annotation-circle")) {
+      map.addLayer({
+        id:     "annotation-circle",
+        type:   "circle",
+        source: "annotation-source",
+        filter: ["==", ["get", "featureType"], "point"],
+        paint: {
+          "circle-color":        ["coalesce", ["get", "fillColor",   ["get", "style"]], "#3b82f6"],
+          "circle-radius":       5,
+          "circle-stroke-color": ["coalesce", ["get", "strokeColor", ["get", "style"]], "#1d4ed8"],
+          "circle-stroke-width": 2,
+        },
+      }, before);
+    }
+
+    // Text labels
+    if (!map.getLayer("annotation-labels")) {
+      map.addLayer({
+        id:     "annotation-labels",
+        type:   "symbol",
+        source: "annotation-source",
+        filter: ["!=", ["get", "label"], null],
+        layout: {
+          "text-field":              ["coalesce", ["get", "label"], ""],
+          "text-size":               ["coalesce", ["get", "fontSize", ["get", "style"]], 12],
+          "text-allow-overlap":      true,
+          "text-ignore-placement":   true,
+          // labelRotation is stored inside the style object (annotation-store strips top-level custom props)
+          "text-rotate":             ["coalesce", ["get", "labelRotation", ["get", "style"]], 0],
+          "text-rotation-alignment": "map",
+        },
+        paint: {
+          "text-color":      ["coalesce", ["get", "fontColor", ["get", "style"]], "#1f2937"],
+          "text-halo-color": "#ffffff",
+          "text-halo-width": 2,
+        },
+      }, before);
+    }
+
+    // ── Arrow symbol layers ─────────────────────────────────────────────
+    // Both use a pre-computed "bearing" property placed at the endpoint.
+    // icon-rotation-alignment:"map" keeps the arrow geographically oriented.
+    const arrowLayout = {
+      "icon-image":              "ps-arrow",
+      "icon-size":               0.85,
+      "icon-rotate":             ["get", "bearing"],
+      "icon-rotation-alignment": "map",
+      "icon-allow-overlap":      true,
+      "icon-ignore-placement":   true,
+    };
+    const arrowPaint = {
+      "icon-color":   ["coalesce", ["get", "strokeColor", ["get", "style"]], "#1d4ed8"],
+      "icon-opacity": 1,
+    };
+    if (!map.getLayer("annotation-arrow-end")) {
+      map.addLayer({ id: "annotation-arrow-end",   type: "symbol",
+                     source: "annotation-arrow-end-source",   layout: arrowLayout, paint: arrowPaint });
+    }
+    if (!map.getLayer("annotation-arrow-start")) {
+      map.addLayer({ id: "annotation-arrow-start", type: "symbol",
+                     source: "annotation-arrow-start-source", layout: arrowLayout, paint: arrowPaint });
+    }
+
+    // ── Selection overlay layers (rendered above annotations) ───────────
+    // Fill (polygons only)
+    if (!map.getLayer("select-fill")) {
+      map.addLayer({
+        id:     "select-fill",
+        type:   "fill",
+        source: "select-overlay-source",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint:  { "fill-color": "#00cfff", "fill-opacity": 0.10 },
+      });
+    }
+    // Outline (lines + polygon outlines)
+    if (!map.getLayer("select-outline")) {
+      map.addLayer({
+        id:     "select-outline",
+        type:   "line",
+        source: "select-overlay-source",
+        paint:  { "line-color": "#00cfff", "line-width": 2, "line-dasharray": [4, 3] },
+      });
+    }
+    // Point highlight ring
+    if (!map.getLayer("select-point-highlight")) {
+      map.addLayer({
+        id:     "select-point-highlight",
+        type:   "circle",
+        source: "select-overlay-source",
+        filter: ["==", ["geometry-type"], "Point"],
+        paint:  {
+          "circle-radius":       9,
+          "circle-color":        "transparent",
+          "circle-stroke-color": "#00cfff",
+          "circle-stroke-width": 2.5,
+        },
+      });
+    }
+    // Rotate handle (small circle above bbox)
+    if (!map.getLayer("select-rotate-handle")) {
+      map.addLayer({
+        id:     "select-rotate-handle",
+        type:   "circle",
+        source: "select-handles-source",
+        filter: ["==", ["get", "handleType"], "rotate"],
+        paint:  {
+          "circle-radius":       7,
+          "circle-color":        "#ffffff",
+          "circle-stroke-color": "#00cfff",
+          "circle-stroke-width": 2,
+        },
+      });
+    }
+
+    // Snap indicator (rendered on top of everything)
+    if (!map.getLayer("snap-indicator")) {
+      map.addLayer({
+        id:     "snap-indicator",
+        type:   "circle",
+        source: "snap-indicator-source",
+        paint: {
+          "circle-radius":       8,
+          "circle-color":        "transparent",
+          "circle-stroke-color": "#00bfff",
+          "circle-stroke-width": 2,
+        },
+      }); // no 'before' — rendered above all parcel layers
+    }
+
+    // ── Draw preview source (in-progress geometry while drawing) ─────────
+    if (!map.getSource("draw-preview-source")) {
+      map.addSource("draw-preview-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+    }
+    // Preview polygon fill
+    if (!map.getLayer("draw-preview-fill")) {
+      map.addLayer({
+        id:     "draw-preview-fill",
+        type:   "fill",
+        source: "draw-preview-source",
+        filter: ["==", ["geometry-type"], "Polygon"],
+        paint: {
+          "fill-color":   ["coalesce", ["get", "fillColor",   ["get", "style"]], "#3b82f6"],
+          "fill-opacity": ["coalesce", ["get", "fillOpacity", ["get", "style"]], 0.15],
+        },
+      }, before);
+    }
+    // Preview line (no dasharray expression — fixed visual dash for in-progress distinction)
+    if (!map.getLayer("draw-preview-line")) {
+      map.addLayer({
+        id:     "draw-preview-line",
+        type:   "line",
+        source: "draw-preview-source",
+        paint: {
+          "line-color":   ["coalesce", ["get", "strokeColor", ["get", "style"]], "#1d4ed8"],
+          "line-width":   ["coalesce", ["get", "strokeWidth", ["get", "style"]], 2],
+          "line-opacity": 0.8,
+        },
+      }); // rendered above parcel layers, below snap-indicator
+    }
+
+    // ── Wire annotation store → MapLibre sources ─────────────────────────
+    if (window.PS_ANNOTATION_STORE) {
+      window.PS_ANNOTATION_STORE.subscribe(function () {
+        const visible = window.PS_ANNOTATION_STORE.getVisibleAnnotations();
+
+        // Inject top-level id into properties._id so queryRenderedFeatures
+        // can reliably retrieve it (MapLibre may not expose feature.id for GeoJSON sources).
+        const features = visible.features.map(function (f) {
+          return Object.assign({}, f, {
+            properties: Object.assign({}, f.properties, { _id: f.id }),
+          });
+        });
+
+        const annotSrc = map.getSource("annotation-source");
+        if (annotSrc) annotSrc.setData({ type: "FeatureCollection", features: features });
+
+        // Build arrow endpoint point-features from arrowEnd / arrowStart flags.
+        const endPts   = [];
+        const startPts = [];
+        features.forEach(function (f) {
+          if (!f.geometry || f.geometry.type !== "LineString") return;
+          const coords = f.geometry.coordinates;
+          if (coords.length < 2) return;
+          const style = (f.properties && f.properties.style) || {};
+          const baseProps = Object.assign({}, f.properties);
+
+          if (style.arrowEnd) {
+            const n = coords.length;
+            endPts.push({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: coords[n - 1] },
+              properties: Object.assign({}, baseProps, {
+                bearing: _arrowBearing(coords[n-2][0], coords[n-2][1], coords[n-1][0], coords[n-1][1]),
+              }),
+            });
+          }
+          if (style.arrowStart) {
+            startPts.push({
+              type: "Feature",
+              geometry: { type: "Point", coordinates: coords[0] },
+              properties: Object.assign({}, baseProps, {
+                bearing: _arrowBearing(coords[1][0], coords[1][1], coords[0][0], coords[0][1]),
+              }),
+            });
+          }
+        });
+
+        const arrowEndSrc   = map.getSource("annotation-arrow-end-source");
+        const arrowStartSrc = map.getSource("annotation-arrow-start-source");
+        if (arrowEndSrc)   arrowEndSrc.setData({ type: "FeatureCollection", features: endPts });
+        if (arrowStartSrc) arrowStartSrc.setData({ type: "FeatureCollection", features: startPts });
+      });
+    }
+  }
+
+  // ── Buffer visualization layers ────────────────────────────────────────
+  function setupBufferLayers() {
+    if (!map.getSource("buffer-preview-source")) {
+      map.addSource("buffer-preview-source", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+    }
+    const before = "parcels-labels";
+    if (!map.getLayer("buffer-preview-fill")) {
+      map.addLayer({ id: "buffer-preview-fill", type: "fill", source: "buffer-preview-source",
+        paint: { "fill-color": "#0ea5e9", "fill-opacity": 0.12 } }, before);
+    }
+    if (!map.getLayer("buffer-preview-outline")) {
+      map.addLayer({ id: "buffer-preview-outline", type: "line", source: "buffer-preview-source",
+        paint: { "line-color": "#0ea5e9", "line-width": 2, "line-dasharray": [4, 3] } }, before);
+    }
+    if (!map.getLayer("buffer-preview-parcels")) {
+      map.addLayer({ id: "buffer-preview-parcels", type: "fill", source: "parcels",
+        paint: { "fill-color": "#0ea5e9",
+          "fill-opacity": ["case", ["boolean", ["feature-state", "bufferPreview"], false], 0.22, 0] } }, before);
+    }
+    if (!map.getLayer("buffer-seed-fill")) {
+      map.addLayer({ id: "buffer-seed-fill", type: "fill", source: "parcels",
+        paint: { "fill-color": "#f97316",
+          "fill-opacity": ["case", ["boolean", ["feature-state", "bufferSeed"], false], 0.40, 0] } }, before);
+    }
+    if (!map.getLayer("buffer-seed-line")) {
+      map.addLayer({ id: "buffer-seed-line", type: "line", source: "parcels",
+        paint: { "line-color": "#ea580c",
+          "line-width":   ["case", ["boolean", ["feature-state", "bufferSeed"], false], 3, 0],
+          "line-opacity": ["case", ["boolean", ["feature-state", "bufferSeed"], false], 1, 0] } }, before);
+    }
+  }
+
+  // ── Buffer geometry — isolated for future PostGIS migration ────────────
+  function computeBufferGeometry(geometry, distance, units) {
+    if (typeof turf === "undefined") return null;
+    try {
+      return turf.buffer({ type: "Feature", geometry }, distance, { units });
+    } catch (e) {
+      console.warn("turf.buffer:", e);
+      return null;
+    }
+  }
+
+  function findParcelsInBuffer(bufferPolygon) {
+    if (!bufferPolygon) return [];
+    return parcelIndex.filter(f => {
+      try { return turf.booleanIntersects(f, bufferPolygon); }
+      catch (_) { return false; }
+    });
+  }
+
+  // ── Buffer state helpers ───────────────────────────────────────────────
+  function clearBufferPreviewOnly() {
+    for (const pin of bufferPreviewPins) {
+      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { bufferPreview: false });
+    }
+    bufferPreviewPins = [];
+    if (map && map.getSource("buffer-preview-source")) {
+      map.getSource("buffer-preview-source").setData({ type: "FeatureCollection", features: [] });
+    }
+    const countEl = document.getElementById("buffer-match-count");
+    if (countEl) countEl.textContent = "";
+  }
+
+  function clearBufferState() {
+    if (bufferSeedPin && map) {
+      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: bufferSeedPin }, { bufferSeed: false });
+    }
+    bufferSeedPin  = null;
+    bufferSeedGeom = null;
+    clearBufferPreviewOnly();
+    const statusEl   = document.getElementById("buffer-seed-status");
+    const controlsEl = document.getElementById("buffer-controls");
+    if (statusEl)   { statusEl.textContent = "Click a parcel on the map to set the seed"; statusEl.classList.remove("has-seed"); }
+    if (controlsEl) controlsEl.hidden = true;
+  }
+
+  function handleBufferSeedClick(feature) {
+    if (bufferSeedPin && map) {
+      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: bufferSeedPin }, { bufferSeed: false });
+    }
+    bufferSeedPin  = feature.properties.pin || feature.properties.PIN;
+    bufferSeedGeom = feature.geometry;
+    if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: bufferSeedPin }, { bufferSeed: true });
+
+    const statusEl   = document.getElementById("buffer-seed-status");
+    const controlsEl = document.getElementById("buffer-controls");
+    if (statusEl)   { statusEl.textContent = `Seed: ${bufferSeedPin}`; statusEl.classList.add("has-seed"); }
+    if (controlsEl) controlsEl.hidden = false;
+
+    scheduleBufferPreview();
+  }
+
+  // ── Buffer preview ─────────────────────────────────────────────────────
+  function scheduleBufferPreview() {
+    clearTimeout(bufferDebounceTimer);
+    bufferDebounceTimer = setTimeout(updateBufferPreview, 300);
+  }
+
+  function updateBufferPreview() {
+    if (!bufferSeedGeom) return;
+
+    const liveEl = document.getElementById("buffer-live-preview");
+    if (!liveEl?.checked) { clearBufferPreviewOnly(); return; }
+
+    const dist  = parseFloat(document.getElementById("buffer-distance")?.value);
+    const units = document.getElementById("buffer-units")?.value || "feet";
+    if (!dist || dist <= 0) { clearBufferPreviewOnly(); return; }
+
+    const bufferPoly = computeBufferGeometry(bufferSeedGeom, dist, units);
+    if (!bufferPoly) { clearBufferPreviewOnly(); return; }
+
+    if (map && map.getSource("buffer-preview-source")) {
+      map.getSource("buffer-preview-source").setData({ type: "FeatureCollection", features: [bufferPoly] });
+    }
+
+    // Clear old preview states
+    for (const pin of bufferPreviewPins) {
+      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { bufferPreview: false });
+    }
+    bufferPreviewPins = [];
+
+    // Seed gets its own highlight; skip it in the preview set
+    const matches = findParcelsInBuffer(bufferPoly);
+    for (const f of matches) {
+      const pin = f.properties.pin || f.properties.PIN;
+      if (pin === bufferSeedPin) continue;
+      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { bufferPreview: true });
+      bufferPreviewPins.push(pin);
+    }
+
+    const includeSeed = document.getElementById("buffer-include-seed")?.checked ?? true;
+    const total = bufferPreviewPins.length + (includeSeed && bufferSeedPin ? 1 : 0);
+    const countEl = document.getElementById("buffer-match-count");
+    if (countEl) countEl.textContent = `${total} parcel${total !== 1 ? "s" : ""} in buffer`;
+  }
+
+  // ── Bootstrap ──────────────────────────────────────────────────────────
+  initMap();
+  initMapControlPanel();
+  initSelectionTools();
+})();
