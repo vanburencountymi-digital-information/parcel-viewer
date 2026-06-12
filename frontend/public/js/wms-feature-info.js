@@ -29,11 +29,45 @@
       color:     '#3b82f6',
       restUrl:   'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query',
       attrs: [
-        { key: 'FLD_ZONE',   label: 'Flood Zone'       },
-        { key: 'ZONE_SUBTY', label: 'Zone Subtype'     },
-        { key: 'SFHA_TF',    label: 'SFHA'             },
-        { key: 'STATIC_BFE', label: 'Base Flood Elev.' }
-      ]
+        {
+          key: 'FLD_ZONE', label: 'Flood Zone',
+          fmt: function (v) {
+            var desc = {
+              'A':    'No base flood elevation determined',
+              'AE':   'Base flood elevation determined',
+              'AH':   'Shallow flooding — ponding (BFE determined)',
+              'AO':   'Shallow flooding — sheet flow (depth 1–3 ft)',
+              'AR':   'Temporary increase due to levee restoration',
+              'A99':  'Protected by federal flood control under construction',
+              'ANI':  'Area not included in NFIP',
+              'V':    'Coastal — wave action, no BFE determined',
+              'VE':   'Coastal — wave action, BFE determined',
+              'D':    'Possible but undetermined flood hazard',
+            }[v.toUpperCase()];
+            return 'Zone ' + v + (desc ? ' — ' + desc : '');
+          }
+        },
+        { key: 'ZONE_SUBTY', label: 'Zone Subtype' },
+        {
+          key: 'SFHA_TF', label: 'Special Flood Hazard Area',
+          fmt: function (v) {
+            if (v === 'T' || v === true  || v === 'true')  return 'Yes — within the 1% annual chance (100-year) floodplain';
+            if (v === 'F' || v === false || v === 'false') return 'No — outside the 100-year floodplain';
+            return v;
+          }
+        },
+        {
+          key: 'STATIC_BFE', label: 'Base Flood Elevation',
+          fmt: function (v) {
+            var n = parseFloat(v);
+            return (isNaN(n) || n < -9000) ? null : n.toFixed(1) + ' ft NAVD88';
+          }
+        }
+      ],
+      suppress: function(props) {
+        var zone = props['FLD_ZONE'] || props['fld_zone'] || '';
+        return zone.toUpperCase() === 'X';
+      }
     },
     {
       overlayId: 'overlay-wetlands',
@@ -43,7 +77,7 @@
       attrs: [
         { key: 'WETLAND_TYPE', label: 'Wetland Type' },
         { key: 'ATTRIBUTE',    label: 'Attribute'    },
-        { key: 'ACRES',        label: 'Acres'        }
+        { key: 'ACRES',        label: 'Acres', fmt: function(v) { return parseFloat(v).toFixed(2) + ' ac'; } }
       ]
     },
     {
@@ -208,18 +242,18 @@
   // ── Popup HTML ───────────────────────────────────────────────────────────
 
   function _attrRows(props, attrs) {
-    return attrs
-      .filter(function (a) {
-        var v = props[a.key] !== undefined ? props[a.key] : props[a.key.toUpperCase()];
-        return v !== undefined && v !== null && v !== '' && v !== 'null';
-      })
-      .map(function (a) {
-        var v = props[a.key] !== undefined ? props[a.key] : props[a.key.toUpperCase()];
-        return '<div class="wfi-attr-row">' +
-          '<span class="wfi-attr-label">' + a.label + '</span>' +
-          '<span class="wfi-attr-value">'  + v       + '</span>' +
-          '</div>';
-      }).join('');
+    var rows = [];
+    attrs.forEach(function (a) {
+      var v = props[a.key] !== undefined ? props[a.key] : props[a.key.toUpperCase()];
+      if (v === undefined || v === null || v === '' || v === 'null') return;
+      var display = a.fmt ? a.fmt(v) : v;
+      if (display === null || display === undefined) return; // fmt returning null suppresses the row
+      rows.push('<div class="wfi-attr-row">' +
+        '<span class="wfi-attr-label">' + a.label + '</span>' +
+        '<span class="wfi-attr-value">'  + display + '</span>' +
+        '</div>');
+    });
+    return rows.join('');
   }
 
   function _buildHtml(results) {
@@ -239,6 +273,11 @@
 
     var sections = results
       .filter(function (r) { return r.features && r.features.length > 0; })
+      .filter(function (r) {
+        if (!r.cfg.suppress) return true;
+        var props = (r.features[0] && r.features[0].properties) || {};
+        return !r.cfg.suppress(props);
+      })
       .map(function (r) {
         var props = (r.features[0] && r.features[0].properties) || {};
         var rows  = _attrRows(props, r.cfg.attrs);
@@ -258,6 +297,7 @@
           '</div>';
       }).join('');
 
+    if (!sections) return null;
     return '<div class="wfi-popup">' + sections + '</div>';
   }
 

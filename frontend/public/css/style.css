@@ -160,11 +160,9 @@ body {
 
 /* Parcel search */
 .parcel-search {
-  position: absolute;
-  top: 12px;
-  left: 12px;
-  z-index: 10;
-  width: 260px;
+  position: relative;
+  flex: 1;
+  max-width: 420px;
 }
 
 .parcel-search-input {
@@ -174,10 +172,7 @@ body {
   border-radius: 6px;
   font-size: 13px;
   font-family: inherit;
-  background: rgba(255, 255, 255, 0.88) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 10px center;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.70) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 10px center;
   box-sizing: border-box;
 }
 
@@ -187,7 +182,11 @@ body {
 }
 
 .parcel-search-results {
-  margin-top: 4px;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 100;
   background: white;
   border: 1px solid #d1d5db;
   border-radius: 6px;
@@ -313,14 +312,14 @@ body {
   position: absolute;
   bottom: 12px;
   left: 12px;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   border-radius: 8px;
   box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.16),
-    0 2px 8px rgba(0, 0, 0, 0.10),
-    0 0 0 1px rgba(163, 71, 59, 0.08);
+    0 20px 48px rgba(0, 0, 0, 0.28),
+    0 6px 16px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(163, 71, 59, 0.12);
   font-size: 12px;
   width: 280px;
   min-width: 210px;
@@ -436,8 +435,18 @@ body {
   margin-right: -10px;
   padding: 3px 10px 3px 8px;
   border-left: 3px solid var(--ui-accent);
-  background: linear-gradient(90deg, var(--ui-accent-bg) 0%, rgba(163,71,59,0) 100%);
+  background: linear-gradient(90deg, rgba(163,71,59,0.13) 0%, rgba(163,71,59,0.02) 100%);
   flex-shrink: 0;
+}
+
+.parcel-info-caveat {
+  color: var(--ui-accent);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: help;
+  text-decoration: underline dotted var(--ui-accent);
+  text-underline-offset: 2px;
+  margin-left: 2px;
 }
 
 .parcel-info-desc {
@@ -593,9 +602,9 @@ body {
   -webkit-backdrop-filter: blur(14px);
   border-radius: 8px;
   box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.16),
-    0 2px 8px rgba(0, 0, 0, 0.10),
-    0 0 0 1px rgba(181, 141, 74, 0.12);
+    0 20px 48px rgba(0, 0, 0, 0.28),
+    0 6px 16px rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(181, 141, 74, 0.15);
   width: 220px;
   max-height: 60vh;
   min-height: 80px;
@@ -641,6 +650,60 @@ body {
   flex-shrink: 0;
 }
 .mcp-header-close:hover { color: #ffffff; }
+
+/* ── MCP reopen tab (shown when panel is collapsed) ─────────────────────── */
+.mcp-reopen-tab {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  background: linear-gradient(180deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+  color: rgba(255, 255, 255, 0.90);
+  border: none;
+  border-radius: 6px 0 0 6px;
+  padding: 14px 8px;
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  user-select: none;
+  box-shadow:
+    -4px 0 16px rgba(0, 0, 0, 0.28),
+    -1px 0 4px rgba(0, 0, 0, 0.16);
+  transition: color 0.15s;
+}
+.mcp-reopen-tab:hover { color: #ffffff; }
+
+/* ── Parcel info reopen tab (shown when panel is collapsed) ─────────────── */
+.parcel-info-reopen-tab {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 30;
+  background: linear-gradient(180deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+  color: rgba(255, 255, 255, 0.90);
+  border: none;
+  border-radius: 0 6px 6px 0;
+  padding: 14px 8px;
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  user-select: none;
+  box-shadow:
+    4px 0 16px rgba(0, 0, 0, 0.28),
+    1px 0 4px rgba(0, 0, 0, 0.16);
+  transition: color 0.15s;
+}
+.parcel-info-reopen-tab:hover { color: #ffffff; }
 
 /* ── MCP main row (tabs + body) ─────────────────────────────────────────── */
 .mcp-main {
@@ -3679,4 +3742,213 @@ body {
   border-top: 1px solid #f3f4f6;
   padding-top: 6px;
   margin-top: 8px;
+}
+
+/* ── Mobile overrides (≤640px) ───────────────────────────────────────────────
+   Desktop is completely unaffected — all rules below are scoped to narrow
+   viewports only. Goal: bottom-sheet panels, no resize gripper, larger touch
+   targets, prevent panels from overlapping the entire map.
+   ─────────────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+
+  /* Parcel info panel — full-width bottom sheet */
+  .parcel-info-panel {
+    width: calc(100vw - 16px) !important;
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 36px !important;
+    top: auto !important;
+    max-height: 52vh;
+    min-width: unset !important;
+    resize: none !important;
+    border-radius: 10px 10px 6px 6px;
+  }
+
+  /* Map control panel — full-width bottom sheet, offset above parcel panel */
+  .map-control-panel {
+    width: calc(100vw - 16px) !important;
+    left: 8px !important;
+    right: 8px !important;
+    bottom: 36px !important;
+    top: auto !important;
+    max-height: 52vh;
+    min-width: unset !important;
+    resize: none !important;
+    border-radius: 10px 10px 6px 6px;
+  }
+
+  /* Reopen tabs — larger touch targets, nudge inward from edges */
+  .parcel-info-reopen-tab,
+  .mcp-reopen-tab {
+    padding: 18px 11px;
+    font-size: 12px;
+  }
+
+  /* Parcel info reopen tab — keep on left */
+  .parcel-info-reopen-tab {
+    left: 0;
+    border-radius: 0 8px 8px 0;
+  }
+
+  /* MCP reopen tab — keep on right */
+  .mcp-reopen-tab {
+    right: 0;
+    border-radius: 8px 0 0 8px;
+  }
+
+  /* Tooltip: hide entirely on touch — hover doesn't exist */
+  #parcel-tip { display: none !important; }
+
+  /* Search box: already flex:1 inside topbar, just remove max-width cap */
+  .parcel-search {
+    max-width: none !important;
+  }
+
+  /* MCP tabs: horizontal scrollable row on narrow screens */
+  .mcp-tabs {
+    flex-direction: row !important;
+    width: auto !important;
+    min-width: unset !important;
+    overflow-x: auto;
+    border-right: none !important;
+    border-bottom: 1px solid rgba(181,141,74,0.18);
+    border-radius: 0 !important;
+  }
+  .mcp-tab {
+    writing-mode: horizontal-tb !important;
+    padding: 8px 12px !important;
+  }
+  .mcp-main {
+    flex-direction: column !important;
+  }
+
+}
+
+/* ── Dark mode ───────────────────────────────────────────────────────────────
+   Scoped to [data-theme="dark"] on <html>. Desktop and mobile both inherit.
+   ─────────────────────────────────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --ui-accent-bg:      rgba(196, 98,  90,  0.10);
+  --ui-interactive-bg: rgba(212, 168, 98,  0.14);
+  --ui-interactive-bd: rgba(212, 168, 98,  0.30);
+}
+
+/* Floating panels */
+[data-theme="dark"] .parcel-info-panel,
+[data-theme="dark"] .map-control-panel {
+  background: rgba(20, 15, 13, 0.88);
+  box-shadow: 0 20px 48px rgba(0,0,0,0.55), 0 6px 16px rgba(0,0,0,0.40), 0 0 0 1px rgba(163,71,59,0.18);
+}
+
+/* Panel body text */
+[data-theme="dark"] .parcel-info-row        { border-bottom-color: rgba(255,255,255,0.05); }
+[data-theme="dark"] .parcel-info-label      { color: #9e9087; }
+[data-theme="dark"] .parcel-info-value      { color: #e2d8ce; }
+[data-theme="dark"] .parcel-info-pin        { color: var(--ui-accent); }
+[data-theme="dark"] .parcel-info-zoning     { color: #7a706a; }
+[data-theme="dark"] .parcel-info-desc       { color: #7a706a; }
+[data-theme="dark"] .parcel-info-link       { color: var(--ui-interactive); }
+[data-theme="dark"] .parcel-info-divider    { border-color: rgba(255,255,255,0.07); }
+
+/* Section titles */
+[data-theme="dark"] .parcel-info-section-title {
+  color: #c8b89a;
+  background: linear-gradient(90deg, rgba(163,71,59,0.20) 0%, rgba(163,71,59,0.03) 100%);
+}
+
+/* AV table */
+[data-theme="dark"] .parcel-info-table td,
+[data-theme="dark"] .parcel-info-table th   { color: #9e9087; }
+[data-theme="dark"] .parcel-info-table td:not(:first-child),
+[data-theme="dark"] .parcel-info-table th:not(:first-child) { color: #e2d8ce; }
+[data-theme="dark"] .parcel-info-table tbody tr:nth-child(even) td {
+  background: rgba(255,255,255,0.04);
+}
+
+/* Nav bar */
+[data-theme="dark"] .parcel-info-nav        { background: rgba(30,22,19,0.95); border-bottom-color: rgba(255,255,255,0.07); }
+[data-theme="dark"] .parcel-nav-btn         { color: #9e9087; }
+[data-theme="dark"] .parcel-nav-btn:hover   { color: #e2d8ce; }
+[data-theme="dark"] .parcel-nav-label       { color: #7a706a; }
+
+/* Search */
+[data-theme="dark"] .parcel-search-input {
+  background-color: rgba(30, 22, 19, 0.80);
+  border-color: rgba(255,255,255,0.10);
+  color: #e2d8ce;
+}
+[data-theme="dark"] .parcel-search-input::placeholder { color: #5a5048; }
+[data-theme="dark"] .parcel-search-results { background: #1a1210; border-color: rgba(255,255,255,0.10); }
+[data-theme="dark"] .parcel-search-result  { color: #c8b89a; border-bottom-color: rgba(255,255,255,0.05); }
+[data-theme="dark"] .parcel-search-result:hover { background: rgba(163,71,59,0.15); }
+[data-theme="dark"] .parcel-search-result.selected { background: rgba(181,141,74,0.15); border-color: rgba(181,141,74,0.30); }
+
+/* MCP body */
+[data-theme="dark"] .mcp-body              { color: #c8b89a; }
+[data-theme="dark"] .mcp-tabs              { background: rgba(12,8,7,0.60); border-right-color: rgba(255,255,255,0.07); }
+[data-theme="dark"] .mcp-tab              { color: #7a706a; }
+[data-theme="dark"] .mcp-tab:hover        { color: #c8b89a; }
+[data-theme="dark"] .mcp-tab.active       { color: var(--ui-interactive); }
+[data-theme="dark"] .mcp-section-title    { color: #7a706a; border-bottom-color: rgba(255,255,255,0.07); }
+[data-theme="dark"] .mcp-toggle-row       { color: #c8b89a; border-bottom-color: rgba(255,255,255,0.05); }
+[data-theme="dark"] .mcp-toggle-row:hover { color: var(--ui-interactive); background: var(--ui-interactive-bg); }
+[data-theme="dark"] .mcp-sublabel         { color: #5a5048; }
+
+/* Quick action buttons */
+[data-theme="dark"] .parcel-quick-action-btn {
+  background: rgba(181,141,74,0.10);
+  border-color: rgba(181,141,74,0.25);
+  color: var(--ui-interactive);
+}
+
+/* Overlay popup */
+[data-theme="dark"] .wfi-popup    { background: rgba(20,15,13,0.97); border-color: rgba(255,255,255,0.08); color: #c8b89a; }
+[data-theme="dark"] .wfi-section  { border-bottom-color: rgba(255,255,255,0.07); }
+[data-theme="dark"] .wfi-section-title { color: #e2d8ce; }
+[data-theme="dark"] .wfi-attr-label    { color: #7a706a; }
+[data-theme="dark"] .wfi-attr-value    { color: #c8b89a; }
+[data-theme="dark"] .wfi-loading       { color: #7a706a; }
+
+/* Sliders */
+[data-theme="dark"] .drw-slider,
+[data-theme="dark"] input[type="range"] {
+  accent-color: var(--ui-interactive);
+}
+[data-theme="dark"] .drw-slider::-webkit-slider-runnable-track,
+[data-theme="dark"] input[type="range"]::-webkit-slider-runnable-track {
+  background: rgba(255,255,255,0.12);
+  border-radius: 4px;
+  height: 4px;
+}
+[data-theme="dark"] .drw-slider::-moz-range-track,
+[data-theme="dark"] input[type="range"]::-moz-range-track {
+  background: rgba(255,255,255,0.12);
+  border-radius: 4px;
+  height: 4px;
+}
+[data-theme="dark"] .drw-slider-label,
+[data-theme="dark"] .drw-slider-caption { color: #5a5048; }
+
+/* Scrollbars */
+[data-theme="dark"] .parcel-info-body,
+[data-theme="dark"] .mcp-body,
+[data-theme="dark"] .parcel-search-results {
+  scrollbar-color: rgba(255,255,255,0.14) transparent;
+  scrollbar-width: thin;
+}
+[data-theme="dark"] .parcel-info-body::-webkit-scrollbar,
+[data-theme="dark"] .mcp-body::-webkit-scrollbar,
+[data-theme="dark"] .parcel-search-results::-webkit-scrollbar { width: 5px; }
+[data-theme="dark"] .parcel-info-body::-webkit-scrollbar-track,
+[data-theme="dark"] .mcp-body::-webkit-scrollbar-track,
+[data-theme="dark"] .parcel-search-results::-webkit-scrollbar-track { background: transparent; }
+[data-theme="dark"] .parcel-info-body::-webkit-scrollbar-thumb,
+[data-theme="dark"] .mcp-body::-webkit-scrollbar-thumb,
+[data-theme="dark"] .parcel-search-results::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.14);
+  border-radius: 3px;
+}
+[data-theme="dark"] .parcel-info-body::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .mcp-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255,255,255,0.22);
 }

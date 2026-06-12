@@ -132,9 +132,7 @@
     activeInfoPin = null;
     activeInfoIndex = 0;
     updateSelectionBadge();
-    if (infoPanel) infoPanel.hidden = true;
-    const navEl = document.getElementById("parcel-info-nav");
-    if (navEl) navEl.hidden = true;
+    hideInfoPanel();
     setStatusStrip(DEFAULT_STATUS);
     window.PS_STATE.parcel = null;
   }
@@ -270,6 +268,64 @@
     map.setFilter("parcels-hover", ["==", ["get", "pin"], pin || ""]);
   }
 
+  // ── Theme (dark / light) ───────────────────────────────────────────────
+  const CARTO_LIGHT = [
+    "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+    "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+    "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+    "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+  ];
+  const CARTO_DARK = [
+    "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+    "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+    "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+    "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+  ];
+
+  function applyTheme(dark) {
+    document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+    const moonIcon = document.getElementById("theme-icon-moon");
+    const sunIcon  = document.getElementById("theme-icon-sun");
+    if (moonIcon) moonIcon.hidden = dark;
+    if (sunIcon)  sunIcon.hidden  = !dark;
+
+    if (map) {
+      const src = map.getSource("carto-positron");
+      if (src) src.setTiles(dark ? CARTO_DARK : CARTO_LIGHT);
+
+      // Parcel layer colors
+      if (dark) {
+        map.setPaintProperty("parcels-fill",   "fill-color",  "#1e1a14");
+        map.setPaintProperty("parcels-line",   "line-color",  "#b8a97a");
+        map.setPaintProperty("parcels-hover",  "line-color",  "#e2d8ce");
+        map.setPaintProperty("parcels-labels", "text-color",  "#c8b89a");
+        map.setPaintProperty("parcels-labels", "text-halo-color", "#111009");
+      } else {
+        map.setPaintProperty("parcels-fill",   "fill-color",  "#FDF6E3");
+        map.setPaintProperty("parcels-line",   "line-color",  "#8a7a55");
+        map.setPaintProperty("parcels-hover",  "line-color",  "#111827");
+        map.setPaintProperty("parcels-labels", "text-color",  "#1f2937");
+        map.setPaintProperty("parcels-labels", "text-halo-color", "#ffffff");
+      }
+    }
+    localStorage.setItem("pv-theme", dark ? "dark" : "light");
+  }
+
+  function initTheme() {
+    const saved = localStorage.getItem("pv-theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const dark = saved ? saved === "dark" : prefersDark;
+    applyTheme(dark);
+
+    const btn = document.getElementById("theme-toggle");
+    if (btn) {
+      btn.addEventListener("click", () => {
+        const isDark = document.documentElement.getAttribute("data-theme") === "dark";
+        applyTheme(!isDark);
+      });
+    }
+  }
+
   // ── Map init ───────────────────────────────────────────────────────────
   async function initMap() {
     const style = await resolveStyle();
@@ -291,6 +347,11 @@
         const cam = map.cameraForBounds(EXTENT, { padding: 0 });
         map.flyTo({ center: cam.center, zoom: cam.zoom + 0.5, duration: 1400, curve: 1.4, essential: true });
       });
+
+      // Re-apply theme now that map sources are available
+      const savedTheme = localStorage.getItem("pv-theme");
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      applyTheme(savedTheme ? savedTheme === "dark" : prefersDark);
 
       // Expose map instance for drawing modules and MapControlAPI
       window.PS_MAP = map;
@@ -415,10 +476,34 @@
   }
 
   // ── Parcel info panel ──────────────────────────────────────────────────
-  const infoPanel  = document.getElementById("parcel-info-panel");
-  const infoBody   = infoPanel ? infoPanel.querySelector(".parcel-info-body") : null;
-  const infoHeader = infoPanel ? infoPanel.querySelector(".parcel-info-header") : null;
-  const infoClose  = infoPanel ? infoPanel.querySelector(".parcel-info-close") : null;
+  const infoPanel     = document.getElementById("parcel-info-panel");
+  const infoBody      = infoPanel ? infoPanel.querySelector(".parcel-info-body") : null;
+  const infoHeader    = infoPanel ? infoPanel.querySelector(".parcel-info-header") : null;
+  const infoClose     = infoPanel ? infoPanel.querySelector(".parcel-info-close") : null;
+  const infoReopenTab = document.getElementById("parcel-info-reopen-tab");
+  let   infoPanelCollapsed = false;
+
+  function collapseInfoPanel() {
+    infoPanelCollapsed = true;
+    if (infoPanel) infoPanel.hidden = true;
+    const navEl = document.getElementById("parcel-info-nav");
+    if (navEl) navEl.hidden = true;
+    if (infoReopenTab) infoReopenTab.hidden = false;
+  }
+
+  function expandInfoPanel() {
+    infoPanelCollapsed = false;
+    if (infoReopenTab) infoReopenTab.hidden = true;
+    if (infoPanel) infoPanel.hidden = false;
+  }
+
+  function hideInfoPanel() {
+    infoPanelCollapsed = false;
+    if (infoPanel) infoPanel.hidden = true;
+    if (infoReopenTab) infoReopenTab.hidden = true;
+    const navEl = document.getElementById("parcel-info-nav");
+    if (navEl) navEl.hidden = true;
+  }
 
   // ── Field tooltip — single fixed-position div, avoids overflow-y:auto clipping ──
   const _tip = document.createElement("div");
@@ -452,11 +537,11 @@
   }
 
   if (infoClose) {
-    infoClose.addEventListener("click", () => {
-      if (infoPanel) infoPanel.hidden = true;
-      const navEl = document.getElementById("parcel-info-nav");
-      if (navEl) navEl.hidden = true;
-    });
+    infoClose.addEventListener("click", () => collapseInfoPanel());
+  }
+
+  if (infoReopenTab) {
+    infoReopenTab.addEventListener("click", () => expandInfoPanel());
   }
 
   // Drag
@@ -615,6 +700,10 @@
       const maxVal = Math.max(...validVals);
       const W = 240, H = 74, labelH = 13, valueH = 11, barAreaH = H - labelH - valueH;
       const colW = W / vals.length, barW = colW * 0.55;
+      const dark = document.documentElement.getAttribute("data-theme") === "dark";
+      const barTop = dark ? "#6b5a38" : "#CBAB7A";
+      const barBot = dark ? "#4a3e26" : "#B58D4A";
+      const lblClr = dark ? "#7a6a52" : "#6D5C52";
       const bars = vals.map((v, i) => {
         const cx = colW * i + colW / 2;
         const yr = curYear - (vals.length - 1 - i);
@@ -623,10 +712,10 @@
         const bx = cx - barW / 2, by = valueH + barAreaH - bh;
         const lbl = '$' + Math.round(v / 1000) + 'k';
         return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="url(#av-bar-grad)" rx="2"/>` +
-               `<text x="${cx}" y="${(by - 2).toFixed(1)}" text-anchor="middle" font-size="9" fill="#6D5C52">${lbl}</text>` +
+               `<text x="${cx}" y="${(by - 2).toFixed(1)}" text-anchor="middle" font-size="9" fill="${lblClr}">${lbl}</text>` +
                `<text x="${cx}" y="${H - 2}" text-anchor="middle" font-size="9" fill="#9ca3af">${yr}</text>`;
       }).join('');
-      const defs = `<defs><linearGradient id="av-bar-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#CBAB7A"/><stop offset="100%" stop-color="#B58D4A"/></linearGradient></defs>`;
+      const defs = `<defs><linearGradient id="av-bar-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${barTop}"/><stop offset="100%" stop-color="${barBot}"/></linearGradient></defs>`;
       return `<div style="margin-top:6px"><span class="parcel-info-label" data-tip="5-year assessed value history (oldest to newest)">AV History</span>` +
              `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin-top:3px" aria-label="AV history chart">${defs}${bars}</svg></div>`;
     })();
@@ -665,10 +754,10 @@
       `<div class="parcel-info-row" style="margin-top:6px"><span class="parcel-info-label" data-tip="Principal Residence Exemption — reduces taxable value for the owner's primary home. 100% = full exemption; 0% = no exemption (rental, vacant, or non-homestead)">PRE</span><span class="parcel-info-value">${homestead != null ? homestead + "%" : "—"}</span></div>` +
       `<hr class="parcel-info-divider">` +
 
-      `<div class="parcel-info-section-title">Legal Description</div>` +
+      `<div class="parcel-info-section-title">Tax Description <span class="parcel-info-caveat" data-tip="The Tax Description is an abbreviated version of the deeded legal description used for taxation purposes only. It should never be used on deeds, titles, mortgages, or other legal documents. Always refer to the recorded deed for the full legal description.">*</span></div>` +
       `<div class="parcel-info-desc">${dash(legalDesc)}</div>`;
 
-    infoPanel.hidden = false;
+    if (!infoPanelCollapsed) infoPanel.hidden = false;
   }
 
   function updateInfoPanelNav() {
@@ -737,8 +826,7 @@
 
         if (selectedPins.length === 0) {
           setActiveInfoPin(null);
-          if (infoPanel) infoPanel.hidden = true;
-          if (navEl) navEl.hidden = true;
+          hideInfoPanel();
           setStatusStrip(DEFAULT_STATUS);
           window.PS_STATE.parcel = null;
           return;
@@ -941,8 +1029,20 @@
     const mcpHeader = document.getElementById("mcp-header");
     const mcpHeaderClose = document.getElementById("mcp-header-close");
 
+    const mcpReopenTab = document.getElementById("mcp-reopen-tab");
+
     if (mcpHeaderClose) {
-      mcpHeaderClose.addEventListener("click", () => { panel.hidden = true; });
+      mcpHeaderClose.addEventListener("click", () => {
+        panel.hidden = true;
+        if (mcpReopenTab) mcpReopenTab.hidden = false;
+      });
+    }
+
+    if (mcpReopenTab) {
+      mcpReopenTab.addEventListener("click", () => {
+        panel.hidden = false;
+        mcpReopenTab.hidden = true;
+      });
     }
 
     if (mcpHeader) {
@@ -1142,7 +1242,7 @@
         updateSelectionBadge();
         if (selectedPins.length === 0) {
           setActiveInfoPin(null);
-          if (infoPanel) infoPanel.hidden = true;
+          hideInfoPanel();
           setStatusStrip(DEFAULT_STATUS);
           window.PS_STATE.parcel = null;
         } else if (!selectedPins.includes(activeInfoPin)) {
@@ -1403,7 +1503,7 @@
         updateSelectionBadge();
         if (selectedPins.length === 0) {
           setActiveInfoPin(null);
-          if (infoPanel) infoPanel.hidden = true;
+          hideInfoPanel();
           setStatusStrip(DEFAULT_STATUS);
           window.PS_STATE.parcel = null;
         } else {
@@ -1884,6 +1984,7 @@
   }
 
   // ── Bootstrap ──────────────────────────────────────────────────────────
+  initTheme();
   initMap();
   initMapControlPanel();
   initSelectionTools();
