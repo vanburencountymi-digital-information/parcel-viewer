@@ -3744,6 +3744,319 @@ body {
   margin-top: 8px;
 }
 
+/* ── Map Buddy Panel (AI Assistant) ─────────────────────────────────────────
+   Flex sibling of #panel-map inside #app.pv-app. Opening it pushes the map
+   left via flexbox — it is NOT position:absolute like the other panels.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+#map-buddy-panel {
+  flex: 0 0 auto;
+  width: var(--mb-panel-width, 340px); /* overridden by inline style from JS */
+  display: flex;
+  flex-direction: row;
+  position: relative;
+  background: rgba(255, 253, 251, 0.97);
+  border-left: 1px solid #e5e7eb;
+  overflow: hidden;
+  transition: width 0.22s ease;
+  z-index: 5;
+}
+
+#map-buddy-panel.mb-collapsed {
+  width: 28px !important;
+  background: linear-gradient(180deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+  border-left: none;
+  box-shadow: -4px 0 16px rgba(0,0,0,0.22), -1px 0 4px rgba(0,0,0,0.12);
+  transition: width 0.22s ease;
+}
+
+/* Disable transition during drag-resize to avoid lag */
+#map-buddy-panel.mb-resizing {
+  transition: none !important;
+}
+
+/* ── Resize handle (left edge drag strip) ── */
+.mb-resize-handle {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 5px;
+  cursor: col-resize;
+  z-index: 10;
+  background: transparent;
+  transition: background 0.15s;
+}
+.mb-resize-handle:hover {
+  background: rgba(181,141,74,0.45);
+}
+#map-buddy-panel.mb-collapsed .mb-resize-handle {
+  display: none;
+}
+
+/* ── Vertical tab strip (collapsed desktop state) ── */
+.mb-tab-btn {
+  display: none;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  transform: rotate(180deg);
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255,255,255,0.88);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 16px 0;
+  user-select: none;
+  transition: color 0.12s;
+}
+.mb-tab-btn:hover { color: #ffffff; }
+#map-buddy-panel.mb-collapsed .mb-tab-btn { display: flex; }
+
+/* ── Panel inner (hidden when collapsed) ── */
+.mb-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+#map-buddy-panel.mb-collapsed .mb-inner { display: none; }
+
+/* ── Header bar ── */
+.mb-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 10px 9px 14px;
+  background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+  flex-shrink: 0;
+  user-select: none;
+}
+.mb-header-icon { font-size: 13px; line-height: 1; }
+.mb-header-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  flex: 1;
+  letter-spacing: 0.02em;
+}
+.mb-collapse-btn {
+  background: none;
+  border: none;
+  color: rgba(255,255,255,0.55);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+.mb-collapse-btn:hover { color: #ffffff; }
+
+/* ── Context pill ── */
+.mb-context {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 10.5px;
+  border-bottom: 1px solid #f0ede8;
+  background: #f7f5f2;
+  flex-shrink: 0;
+  overflow: hidden;
+  min-height: 28px;
+}
+.mb-context-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.mb-context-empty .mb-context-dot { background: #d1d5db; }
+#mb-context-text {
+  color: #374151;
+  font-size: 10.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mb-context-empty #mb-context-text { color: #9ca3af; }
+
+/* ── Messages area ── */
+.mb-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+}
+
+/* User message bubble */
+.mb-msg-user {
+  align-self: flex-end;
+  max-width: 88%;
+  background: var(--ui-interactive);
+  color: #ffffff;
+  padding: 7px 11px;
+  border-radius: 12px 12px 3px 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+/* AI message bubble */
+.mb-msg-ai {
+  align-self: flex-start;
+  max-width: 92%;
+  background: #f3f4f6;
+  color: #1f2937;
+  padding: 7px 11px;
+  border-radius: 12px 12px 12px 3px;
+  border: 1px solid #e5e7eb;
+  font-size: 12px;
+  line-height: 1.55;
+  word-break: break-word;
+}
+.mb-msg-ai-label {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--vbc-brown);
+  margin-bottom: 4px;
+}
+
+/* Thinking / streaming indicator */
+.mb-thinking {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: #9ca3af;
+  padding: 6px 10px;
+  background: #f9f8f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+}
+.mb-thinking-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+.mb-thinking-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #b58d4a;
+  animation: mb-bop 1.2s infinite;
+}
+.mb-thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.mb-thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes mb-bop {
+  0%, 60%, 100% { transform: translateY(0); }
+  30%            { transform: translateY(-4px); }
+}
+
+/* ── Empty / welcome state ── */
+.mb-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 20px 16px;
+  text-align: center;
+  color: #9ca3af;
+}
+.mb-empty-icon   { font-size: 26px; line-height: 1; }
+.mb-empty-title  { font-size: 13px; font-weight: 600; color: #6b7280; margin-top: 2px; }
+.mb-empty-hint   { font-size: 11px; line-height: 1.55; color: #9ca3af; }
+.mb-quick-btns   { display: flex; flex-direction: column; gap: 5px; width: 100%; margin-top: 6px; }
+.mb-quick-btn {
+  width: 100%;
+  text-align: left;
+  font-size: 11px;
+  padding: 6px 10px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  color: #374151;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, border-color 0.12s;
+}
+.mb-quick-btn:hover {
+  background: var(--ui-interactive-bg);
+  border-color: var(--ui-interactive-bd);
+  color: var(--ui-interactive-dk);
+}
+
+/* ── Input area ── */
+.mb-input-area {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid #e5e7eb;
+  background: #faf9f7;
+  flex-shrink: 0;
+}
+.mb-input {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: inherit;
+  resize: none;
+  line-height: 1.4;
+  max-height: 100px;
+  overflow-y: auto;
+  background: #ffffff;
+  color: #1f2937;
+  transition: border-color 0.12s;
+}
+.mb-input:focus {
+  outline: none;
+  border-color: var(--ui-interactive);
+  box-shadow: 0 0 0 2px var(--ui-interactive-bg);
+}
+.mb-input::placeholder { color: #9ca3af; }
+.mb-send-btn {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  background: var(--ui-interactive);
+  border: none;
+  border-radius: 7px;
+  color: #ffffff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s;
+  padding: 0;
+}
+.mb-send-btn:hover { background: var(--ui-interactive-dk); }
+.mb-send-btn:disabled { background: #e5e7eb; cursor: not-allowed; color: #9ca3af; }
+
+/* ── Mobile: drawer handle bar ── */
+.mb-drawer-handle {
+  display: none; /* desktop: hidden; mobile: visible */
+}
+
 /* ── Mobile overrides (≤640px) ───────────────────────────────────────────────
    Desktop is completely unaffected — all rules below are scoped to narrow
    viewports only. Goal: bottom-sheet panels, no resize gripper, larger touch
@@ -3821,6 +4134,73 @@ body {
   .mcp-main {
     flex-direction: column !important;
   }
+
+  /* ── Map Buddy mobile: fixed bottom drawer ── */
+  #map-buddy-panel {
+    position: fixed;
+    bottom: 0; left: 0; right: 0;
+    width: 100% !important;
+    height: 44px;
+    flex-direction: column;
+    border-left: none;
+    border-top: 2px solid var(--ui-interactive-bd);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.18);
+    transition: height 0.25s ease;
+    z-index: 25;
+  }
+  #map-buddy-panel.mb-collapsed {
+    /* On mobile "collapsed" = drawer is closed = just the handle bar */
+    background: linear-gradient(180deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.22);
+    border-top-color: rgba(163,71,59,0.30);
+  }
+  #map-buddy-panel:not(.mb-collapsed) {
+    height: 52vh;
+  }
+
+  /* Hide desktop-only elements on mobile */
+  .mb-resize-handle { display: none !important; }
+  .mb-tab-btn       { display: none !important; }
+
+  /* Show inner content in all states on mobile */
+  #map-buddy-panel.mb-collapsed .mb-inner { display: flex; }
+
+  /* Mobile drawer handle bar (replaces vertical tab) */
+  .mb-drawer-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    flex-shrink: 0;
+    padding: 0 12px;
+    height: 44px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .mb-drawer-pill {
+    width: 32px; height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,0.35);
+  }
+  .mb-drawer-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255,255,255,0.88);
+    letter-spacing: 0.04em;
+  }
+  #map-buddy-panel:not(.mb-collapsed) .mb-drawer-handle {
+    background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+  }
+  #map-buddy-panel:not(.mb-collapsed) .mb-drawer-pill {
+    background: rgba(255,255,255,0.35);
+  }
+  #map-buddy-panel.mb-collapsed .mb-header { display: none; }
+  #map-buddy-panel.mb-collapsed .mb-context,
+  #map-buddy-panel.mb-collapsed .mb-messages,
+  #map-buddy-panel.mb-collapsed .mb-input-area { display: none; }
+
+  /* Status strip: lift above closed drawer */
+  .pv-status-strip { bottom: 44px; }
 
 }
 
@@ -3952,3 +4332,58 @@ body {
 [data-theme="dark"] .mcp-body::-webkit-scrollbar-thumb:hover {
   background: rgba(255,255,255,0.22);
 }
+
+/* ── Map Buddy dark mode ─────────────────────────────────────────────────── */
+[data-theme="dark"] #map-buddy-panel {
+  background: rgba(22, 15, 13, 0.97);
+  border-left-color: rgba(255,255,255,0.07);
+}
+[data-theme="dark"] #map-buddy-panel.mb-collapsed {
+  /* gradient matches existing tabs — no change needed (uses CSS vars) */
+  box-shadow: -4px 0 16px rgba(0,0,0,0.45), -1px 0 4px rgba(0,0,0,0.22);
+}
+[data-theme="dark"] .mb-context {
+  background: rgba(18,11,9,0.80);
+  border-bottom-color: rgba(255,255,255,0.07);
+}
+[data-theme="dark"] #mb-context-text        { color: #9e9087; }
+[data-theme="dark"] .mb-context:not(.mb-context-empty) #mb-context-text { color: #c8b89a; }
+[data-theme="dark"] .mb-messages            { background: rgba(22,15,13,0.97); }
+[data-theme="dark"] .mb-msg-ai {
+  background: #2d2420;
+  border-color: rgba(255,255,255,0.08);
+  color: #c8b89a;
+}
+[data-theme="dark"] .mb-msg-ai-label        { color: var(--vbc-warm-gray); }
+[data-theme="dark"] .mb-thinking {
+  background: #241a17;
+  border-color: rgba(255,255,255,0.08);
+  color: #7a706a;
+}
+[data-theme="dark"] .mb-empty-title         { color: #9e9087; }
+[data-theme="dark"] .mb-empty-hint          { color: #5a5048; }
+[data-theme="dark"] .mb-quick-btn {
+  background: #2d2420;
+  border-color: rgba(255,255,255,0.08);
+  color: #c8b89a;
+}
+[data-theme="dark"] .mb-quick-btn:hover {
+  background: var(--ui-interactive-bg);
+  border-color: var(--ui-interactive-bd);
+  color: var(--ui-interactive);
+}
+[data-theme="dark"] .mb-input-area {
+  background: rgba(18,11,9,0.90);
+  border-top-color: rgba(255,255,255,0.07);
+}
+[data-theme="dark"] .mb-input {
+  background: #2d2420;
+  border-color: rgba(255,255,255,0.12);
+  color: #c8b89a;
+}
+[data-theme="dark"] .mb-input::placeholder   { color: #5a5048; }
+[data-theme="dark"] .mb-input:focus {
+  border-color: var(--ui-interactive);
+  box-shadow: 0 0 0 2px rgba(181,141,74,0.15);
+}
+[data-theme="dark"] .mb-resize-handle:hover  { background: rgba(181,141,74,0.35); }

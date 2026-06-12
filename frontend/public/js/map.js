@@ -1040,6 +1040,14 @@
 
     if (mcpReopenTab) {
       mcpReopenTab.addEventListener("click", () => {
+        // Clear any inline drag-position so the panel resets to CSS default
+        // (right:12px bottom:12px inside #panel-map). Without this, a prior
+        // drag position can place the panel outside the map area when the map
+        // is narrower than it was when the drag happened (e.g. Map Buddy open).
+        panel.style.left   = '';
+        panel.style.top    = '';
+        panel.style.right  = '';
+        panel.style.bottom = '';
         panel.hidden = false;
         mcpReopenTab.hidden = true;
       });
