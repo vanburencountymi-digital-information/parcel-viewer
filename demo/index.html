@@ -558,46 +558,6 @@
       </button>
     </div>
 
-    <!-- ── Map Buddy AI Assistant ──────────────────────────────────────────
-         Flex sibling of #panel-map so opening it pushes the map left.
-         Collapses to a 28px vertical tab strip matching the other panel tabs.
-         ─────────────────────────────────────────────────────────────────── -->
-    <div id="map-buddy-panel" class="mb-panel mb-collapsed">
-      <div id="mb-resize-handle" class="mb-resize-handle"
-           role="separator" aria-label="Drag to resize Map Buddy panel"></div>
-
-      <!-- Collapsed state: vertical gradient tab strip -->
-      <button id="mb-tab-btn" class="mb-tab-btn"
-              title="Open Map Buddy" aria-label="Open Map Buddy panel">
-        <span aria-hidden="true">✨</span><span>Map Buddy</span>
-      </button>
-
-      <!-- Panel body (hidden when collapsed) -->
-      <div class="mb-inner">
-        <div class="mb-header">
-          <span class="mb-header-icon" aria-hidden="true">✨</span>
-          <span class="mb-header-title">Map Buddy</span>
-          <button id="mb-collapse-btn" class="mb-collapse-btn"
-                  title="Collapse panel" aria-label="Collapse Map Buddy">&#x276E;</button>
-        </div>
-        <div id="mb-context" class="mb-context mb-context-empty">
-          <span class="mb-context-dot"></span>
-          <span id="mb-context-text">No parcel selected</span>
-        </div>
-        <div id="mb-messages" class="mb-messages"
-             role="log" aria-live="polite" aria-label="Map Buddy conversation"></div>
-        <div class="mb-input-area">
-          <textarea id="mb-input" class="mb-input" rows="1"
-                    placeholder="Ask about this parcel or search by owner…"
-                    aria-label="Message Map Buddy"></textarea>
-          <button id="mb-send-btn" class="mb-send-btn" aria-label="Send">
-            <svg width="13" height="13" viewBox="0 0 13 13" fill="currentColor" aria-hidden="true">
-              <path d="M1.5 6.5 L11.5 1 L8.5 6.5 L11.5 12 Z"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script>
@@ -626,6 +586,8 @@
   <script src="/frontend/public/js/overlay-layers.js"></script>
   <script src="/frontend/public/js/legend-panel.js"></script>
   <script src="/frontend/public/js/wms-feature-info.js"></script>
-  <script src="/frontend/public/js/chat.js"></script>
+  <!-- Map Buddy AI assistant — remove these two lines to detach -->
+  <script src="/map-buddy/js/map-buddy.js"></script>
+  <script>MapBuddy.mount({ apiBase: window.API_BASE || '/api' });</script>
 </body>
 </html>

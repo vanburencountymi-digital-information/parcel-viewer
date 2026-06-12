@@ -38,6 +38,7 @@ services:
       - ./nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro
       - ../frontend/public:/usr/share/nginx/html/parcel-viewer:ro
       - ../demo:/usr/share/nginx/html/demo:ro
+      - ../map-buddy:/usr/share/nginx/html/map-buddy:ro
     ports:
       - "${PV_HTTP_PORT:-8080}:80"
     depends_on:
