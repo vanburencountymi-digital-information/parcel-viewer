@@ -1,3 +1,25 @@
+/* ── Van Buren County brand palette ──────────────────────────────────────── */
+:root {
+  --vbc-primary:       #A3473B;          /* terracotta — section marks, PIN */
+  --vbc-secondary:     #B58D4A;          /* gold — interactive / active states */
+  --vbc-tan:           #CBAB7A;          /* light gold — chart highlight */
+  --vbc-warm-gray-l:   #B5A382;          /* light warm gray */
+  --vbc-warm-gray:     #8B8278;          /* medium warm gray */
+  --vbc-brown:         #6D5C52;          /* dark warm brown — panel header */
+  --vbc-slate:         #B3C7D6;          /* cool slate — bg tints */
+  --vbc-sage:          #7A8C85;          /* sage gray-green */
+
+  /* UI role aliases */
+  --ui-header-from:    #2d1613;          /* near-black warm — header gradient start */
+  --ui-header-to:      #6D5C52;          /* warm brown — header gradient end */
+  --ui-accent:         #A3473B;          /* terracotta accent stripe */
+  --ui-accent-bg:      rgba(163,71,59,0.05);   /* barely-there warm wash */
+  --ui-interactive:    #B58D4A;          /* gold — buttons, focus, active */
+  --ui-interactive-dk: #8B6535;          /* darker gold — hover */
+  --ui-interactive-bg: rgba(181,141,74,0.10);  /* gold tint — selected/hover bg */
+  --ui-interactive-bd: rgba(181,141,74,0.35);  /* gold tint — borders */
+}
+
 * {
   box-sizing: border-box;
 }
@@ -60,33 +82,8 @@ body {
 
 /* Left tools panel: smooth width collapse */
 .map-control-panel {
-  transition: width 250ms ease-in-out;
+  transition: none;
 }
-.map-control-panel.mcp-collapsed {
-  width: 36px !important;  /* show only the tab icons strip */
-}
-.map-control-panel.mcp-collapsed .mcp-body {
-  display: none;
-}
-
-/* Collapse/expand button inside .mcp-tabs */
-.mcp-collapse-btn {
-  width: 30px;
-  height: 22px;
-  margin-top: auto;
-  padding: 0;
-  border: none;
-  background: none;
-  color: #9ca3af;
-  font-size: 12px;
-  cursor: pointer;
-  border-radius: 5px;
-  transition: background 0.12s, color 0.12s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.mcp-collapse-btn:hover { background: #e5e7eb; color: #374151; }
 
 /* Right-panel expand tab (thin vertical strip on the right edge of #panel-map) */
 .right-expand-tab {
@@ -172,19 +169,21 @@ body {
 
 .parcel-search-input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 8px 12px 8px 34px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 13px;
   font-family: inherit;
-  background: rgba(255, 255, 255, 0.97);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.88) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cline x1='21' y1='21' x2='16.65' y2='16.65'/%3E%3C/svg%3E") no-repeat 10px center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   box-sizing: border-box;
 }
 
 .parcel-search-input:focus {
   outline: none;
-  border-color: #2563eb;
+  border-color: var(--ui-interactive);
 }
 
 .parcel-search-results {
@@ -213,8 +212,8 @@ body {
 }
 
 .parcel-search-result.selected {
-  background: #dbeafe;
-  border-left: 3px solid #2563eb;
+  background: var(--ui-interactive-bg);
+  border-left: 3px solid var(--ui-interactive);
   padding-left: 9px;
 }
 
@@ -314,9 +313,14 @@ body {
   position: absolute;
   bottom: 12px;
   left: 12px;
-  background: rgba(255, 255, 255, 0.97);
-  border-radius: 6px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 8px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.16),
+    0 2px 8px rgba(0, 0, 0, 0.10),
+    0 0 0 1px rgba(163, 71, 59, 0.08);
   font-size: 12px;
   width: 280px;
   min-width: 210px;
@@ -334,8 +338,10 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 7px 10px;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 8px 10px;
+  background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
   cursor: grab;
   flex-shrink: 0;
   user-select: none;
@@ -349,13 +355,13 @@ body {
 .parcel-info-title {
   font-weight: 600;
   font-size: 12px;
-  color: #1f2937;
+  color: #ffffff;
 }
 
 .parcel-info-close {
   background: none;
   border: none;
-  color: #9ca3af;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 11px;
   cursor: pointer;
   padding: 0;
@@ -363,7 +369,7 @@ body {
 }
 
 .parcel-info-close:hover {
-  color: #374151;
+  color: #ffffff;
 }
 
 .parcel-info-body {
@@ -381,7 +387,7 @@ body {
   font-family: "SF Mono", "Consolas", monospace;
   font-size: 11px;
   font-weight: 600;
-  color: #2563eb;
+  color: var(--ui-accent);
   margin-bottom: 2px;
 }
 
@@ -422,10 +428,15 @@ body {
 .parcel-info-section-title {
   font-size: 10px;
   font-weight: 700;
-  color: #9ca3af;
+  color: var(--vbc-brown);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin-top: 4px;
+  margin-top: 6px;
+  margin-left: -10px;
+  margin-right: -10px;
+  padding: 3px 10px 3px 8px;
+  border-left: 3px solid var(--ui-accent);
+  background: linear-gradient(90deg, var(--ui-accent-bg) 0%, rgba(163,71,59,0) 100%);
   flex-shrink: 0;
 }
 
@@ -462,7 +473,7 @@ body {
   font-size: 10px;
 }
 .parcel-info-table tbody tr:nth-child(even) td {
-  background: #f9fafb;
+  background: rgba(249, 250, 251, 0.45);
 }
 
 .parcel-info-links {
@@ -473,17 +484,17 @@ body {
 }
 .parcel-info-link {
   font-size: 10.5px;
-  color: #2563eb;
+  color: var(--vbc-brown);
   text-decoration: none;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--ui-interactive-bd);
   border-radius: 3px;
   padding: 3px 8px;
-  background: #eff6ff;
+  background: var(--ui-interactive-bg);
   white-space: nowrap;
 }
 .parcel-info-link:hover {
-  background: #dbeafe;
-  color: #1d4ed8;
+  background: rgba(181,141,74,0.18);
+  color: var(--ui-interactive-dk);
 }
 
 /* Quick-action buttons in parcel info panel */
@@ -498,18 +509,18 @@ body {
   text-align: left;
   font-size: 11px;
   font-weight: 500;
-  color: #1e40af;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+  color: var(--vbc-brown);
+  background: var(--ui-interactive-bg);
+  border: 1px solid var(--ui-interactive-bd);
   border-radius: 5px;
   padding: 5px 9px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
 .parcel-quick-action-btn:hover {
-  background: #dbeafe;
-  color: #1d4ed8;
-  border-color: #93c5fd;
+  background: rgba(181,141,74,0.18);
+  color: var(--ui-interactive-dk);
+  border-color: var(--ui-interactive);
 }
 
 /* ── Toast notification ──────────────────────────────────────────────────── */
@@ -576,39 +587,68 @@ body {
   right: 12px;
   z-index: 10;
   display: flex;
-  flex-direction: row;
-  background: rgba(255, 255, 255, 0.97);
+  flex-direction: column;
+  background: rgba(255, 253, 251, 0.88);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-  width: 200px;
+  box-shadow:
+    0 10px 30px rgba(0, 0, 0, 0.16),
+    0 2px 8px rgba(0, 0, 0, 0.10),
+    0 0 0 1px rgba(181, 141, 74, 0.12);
+  width: 220px;
   max-height: 60vh;
   min-height: 80px;
+  min-width: 160px;
+  resize: both;
   overflow: hidden;
   user-select: none;
   touch-action: none;
 }
 
-.mcp-resize {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 16px;
-  height: 16px;
-  cursor: nwse-resize;
-  z-index: 2;
+/* ── MCP header bar (drag handle, mirrors .parcel-info-header) ───────────── */
+.mcp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+  border-radius: 8px 8px 0 0;
+  cursor: grab;
+  flex-shrink: 0;
+  user-select: none;
   touch-action: none;
 }
+.mcp-header:active { cursor: grabbing; }
 
-.mcp-resize::before {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 8px;
-  height: 8px;
-  border-top: 2px solid #d1d5db;
-  border-left: 2px solid #d1d5db;
-  border-radius: 1px;
+.mcp-header-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-header-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 11px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.mcp-header-close:hover { color: #ffffff; }
+
+/* ── MCP main row (tabs + body) ─────────────────────────────────────────── */
+.mcp-main {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .mcp-tabs {
@@ -617,10 +657,10 @@ body {
   align-items: center;
   width: 36px;
   flex-shrink: 0;
-  background: #f3f4f6;
-  border-right: 1px solid #e5e7eb;
-  border-radius: 8px 0 0 8px;
-  padding: 20px 3px 6px;
+  background: rgba(240, 235, 228, 0.70);
+  border-right: 1px solid rgba(181, 141, 74, 0.18);
+  border-radius: 0 0 0 8px;
+  padding: 6px 3px 6px;
   gap: 2px;
 }
 
@@ -646,7 +686,7 @@ body {
 
 .mcp-tab.active {
   background: white;
-  color: #2563eb;
+  color: var(--ui-interactive);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
@@ -677,11 +717,11 @@ body {
 }
 
 .mcp-toggle-row:hover {
-  color: #2563eb;
+  color: var(--ui-interactive-dk);
 }
 
 .mcp-toggle-row input[type="checkbox"] {
-  accent-color: #2563eb;
+  accent-color: var(--ui-interactive);
   width: 14px;
   height: 14px;
   cursor: pointer;
@@ -1337,7 +1377,7 @@ body {
 .mcp-analyze-btn {
   width: 100%;
   padding: 7px 12px;
-  background: #2563eb;
+  background: var(--ui-interactive);
   color: white;
   border: none;
   border-radius: 6px;
@@ -1349,7 +1389,7 @@ body {
 }
 
 .mcp-analyze-btn:hover {
-  background: #1d4ed8;
+  background: var(--ui-interactive-dk);
 }
 
 .mcp-analyze-btn:disabled {
@@ -1415,7 +1455,7 @@ body {
   bottom: calc(12px + 80px + 8px); /* above map-control-panel */
   right: 12px;
   z-index: 10;
-  background: #1d4ed8;
+  background: var(--ui-accent);
   color: white;
   font-size: 11px;
   font-weight: 600;
@@ -1517,13 +1557,13 @@ body {
   font-family: inherit;
   font-weight: 500;
   cursor: pointer;
-  background: #2563eb;
+  background: var(--ui-interactive);
   color: white;
   transition: background 0.12s;
 }
 
 .filter-btn:hover {
-  background: #1d4ed8;
+  background: var(--ui-interactive-dk);
 }
 
 .filter-btn-replace {
@@ -1634,11 +1674,11 @@ body {
 }
 
 .buffer-btn-add {
-  background: #2563eb;
+  background: var(--ui-interactive);
 }
 
 .buffer-btn-add:hover {
-  background: #1d4ed8;
+  background: var(--ui-interactive-dk);
 }
 
 .buffer-btn-remove {
@@ -2002,7 +2042,7 @@ body {
 }
 
 .drw-toggle-row input[type="checkbox"] {
-  accent-color: #2563eb;
+  accent-color: var(--ui-interactive);
   width: 13px;
   height: 13px;
   cursor: pointer;
@@ -2061,7 +2101,7 @@ body {
 
 .drw-swatch.active {
   border-color: white;
-  box-shadow: 0 0 0 2px #2563eb;
+  box-shadow: 0 0 0 2px var(--ui-interactive);
 }
 
 .drw-style-row {
@@ -2094,7 +2134,7 @@ body {
 .drw-slider {
   flex: 1;
   min-width: 0;
-  accent-color: #2563eb;
+  accent-color: var(--ui-interactive);
   height: 4px;
   cursor: pointer;
 }
@@ -2144,7 +2184,7 @@ body {
 }
 
 .drw-group-check {
-  accent-color: #2563eb;
+  accent-color: var(--ui-interactive);
   width: 13px;
   height: 13px;
   cursor: pointer;

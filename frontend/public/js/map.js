@@ -87,7 +87,7 @@
       map.setFilter("parcels-selected-line", null);
       map.setPaintProperty("parcels-selected-line", "line-color", [
         "case",
-        ["boolean", ["feature-state", "activeInfo"], false], "#1d4ed8",
+        ["boolean", ["feature-state", "activeInfo"], false], "#A3473B",
         "#0b1220"
       ]);
       map.setPaintProperty("parcels-selected-line", "line-width", [
@@ -522,6 +522,47 @@
   }
 
   // ── Info display ───────────────────────────────────────────────────────
+  // Michigan STC property classification codes → human label
+  const PROP_CLASS_LABELS = {
+    "001":"Commercial – Personal Property", "002":"Industrial – Personal Property",
+    "003":"Utility – Personal Property",    "004":"Agricultural – Personal Property",
+    "005":"Residential – Personal Property","006":"Exempt – Personal Property",
+    "007":"Other – Personal Property",
+    "101":"Agricultural",                   "102":"Agricultural – Leased Federal/State",
+    "110":"Agricultural – Other",           "111":"Agricultural – Timber Cutover",
+    "120":"Agricultural – Vacant Land",
+    "201":"Commercial",                     "202":"Commercial – Hotel / Motel",
+    "203":"Commercial – Office",            "210":"Commercial – Other",
+    "251":"Commercial – Rehabilitation",    "260":"Commercial – Special Acts",
+    "301":"Industrial",                     "302":"Industrial – Leased Land",
+    "310":"Industrial – Other",             "351":"Industrial – Rehabilitation",
+    "401":"Residential",                    "402":"Residential – Condominium",
+    "403":"Residential – Mobile Home",      "407":"Residential – Non-Homestead",
+    "408":"Residential – Industrial Rehab", "410":"Residential – Personal Property",
+    "501":"Timber-Cutover",                 "502":"Timber-Cutover – Leased",
+    "551":"Timber-Cutover – Other",
+    "601":"Developmental",
+    "700":"Exempt",         "701":"Exempt – Publicly Owned",
+    "702":"Exempt – Federal","703":"Exempt – State",
+    "704":"Exempt – County","705":"Exempt – Local Government",
+    "706":"Exempt – School","707":"Exempt – Church / Religious",
+    "708":"Exempt – Charitable / Educational","709":"Exempt – Cemetery",
+    "710":"Exempt – Hospital / Medical",
+  };
+
+  // Michigan school district codes → district name (Van Buren County + adjacent)
+  const SCHOOL_DIST_LABELS = {
+    "80010":"South Haven Public Schools",   "80020":"Bangor Public Schools",
+    "80040":"Covert Public Schools",        "80050":"Decatur Public Schools",
+    "80090":"Bloomingdale Public Schools",  "80110":"Gobles Public Schools",
+    "80120":"Hartford Public Schools",      "80130":"Lawrence Public Schools",
+    "80140":"Lawton Community Schools",     "80150":"Mattawan Consolidated Schools",
+    "80160":"Paw Paw Public Schools",       "80240":"Van Buren ISD",
+    "03020":"Allegan County District",
+    "11320":"Cass County District",         "11330":"Cass County District",
+    "14020":"Watervliet Public Schools",    "14050":"Berrien County District",
+  };
+
   // Field layout matches the geo.parcels / assessing.vbc_parcels payload
   // returned by GET /parcel/{id}.
   function showParcelInfo(pin, p) {
@@ -529,7 +570,15 @@
 
     const fmt   = (n) => n != null ? "$" + parseInt(n).toLocaleString() : "—";
     const dash  = (v) => (v != null && v !== "") ? v : "—";
-    const fmtAc = (v) => v != null ? parseFloat(v).toFixed(2) : "—";
+    const fmtAc = (v) => {
+      if (v == null) return "—";
+      const ac = parseFloat(v);
+      if (!ac) return "—";
+      const acStr = ac.toFixed(2) + " ac";
+      if (ac >= 1) return acStr;
+      const sqft = Math.round(ac * 43560).toLocaleString();
+      return `${acStr} (${sqft} sq ft)`;
+    };
 
     const siteAddr = [p.prop_street || p.PCOMBINED, p.prop_city].filter(Boolean).join(", ");
     const ownerMail = [
@@ -538,6 +587,13 @@
       p.owner_zip || ""
     ].filter(Boolean).join(", ");
     const homestead = p.homestead != null ? parseFloat(p.homestead) : null;
+    const classCode = p.prop_class ? String(p.prop_class).trim() : null;
+    const classLabel = classCode && PROP_CLASS_LABELS[classCode];
+    const classDisplay = classCode ? (classLabel ? `${classCode} – ${classLabel}` : classCode) : "—";
+    const schoolCode = p.school_dist ? String(p.school_dist).trim() : null;
+    const schoolName = schoolCode && SCHOOL_DIST_LABELS[schoolCode];
+    const schoolDisplay = schoolName || (schoolCode ? schoolCode : "—");
+    const schoolTip = schoolName ? `District code: ${schoolCode}` : "School district code";
     const legalDesc = p.ps_legal_description || p.legal_description || "";
 
     const av0 = p.assessed_value      != null ? parseInt(p.assessed_value)      : null;
@@ -548,6 +604,32 @@
     const histVals = [p.assessed_value_yr0, p.assessed_value_yr1, p.assessed_value_yr2,
                       p.assessed_value_yr3, p.assessed_value_yr4]
       .map(v => v != null ? parseInt(v) : null);
+
+    // Build a compact SVG bar chart for AV history.
+    // histVals is newest-first (yr0…yr4); reverse so bars read oldest→newest left to right.
+    const avChartHtml = (() => {
+      const vals = histVals.slice().reverse();
+      const validVals = vals.filter(v => v != null);
+      if (validVals.length === 0) return '<div class="parcel-info-row"><span class="parcel-info-label">AV History</span><span class="parcel-info-value">—</span></div>';
+      const curYear = new Date().getFullYear();
+      const maxVal = Math.max(...validVals);
+      const W = 240, H = 74, labelH = 13, valueH = 11, barAreaH = H - labelH - valueH;
+      const colW = W / vals.length, barW = colW * 0.55;
+      const bars = vals.map((v, i) => {
+        const cx = colW * i + colW / 2;
+        const yr = curYear - (vals.length - 1 - i);
+        if (v == null) return `<text x="${cx}" y="${H - 2}" text-anchor="middle" font-size="9" fill="#9ca3af">${yr}</text>`;
+        const bh = Math.max(3, Math.round((v / maxVal) * barAreaH));
+        const bx = cx - barW / 2, by = valueH + barAreaH - bh;
+        const lbl = '$' + Math.round(v / 1000) + 'k';
+        return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="url(#av-bar-grad)" rx="2"/>` +
+               `<text x="${cx}" y="${(by - 2).toFixed(1)}" text-anchor="middle" font-size="9" fill="#6D5C52">${lbl}</text>` +
+               `<text x="${cx}" y="${H - 2}" text-anchor="middle" font-size="9" fill="#9ca3af">${yr}</text>`;
+      }).join('');
+      const defs = `<defs><linearGradient id="av-bar-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#CBAB7A"/><stop offset="100%" stop-color="#B58D4A"/></linearGradient></defs>`;
+      return `<div style="margin-top:6px"><span class="parcel-info-label" data-tip="5-year assessed value history (oldest to newest)">AV History</span>` +
+             `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin-top:3px" aria-label="AV history chart">${defs}${bars}</svg></div>`;
+    })();
 
     const provenance = p.source && p.source !== "migration"
       ? `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="How this geometry row was created (COGO commit, split, merge, boundary adjustment, or original shapefile migration)">Geometry</span><span class="parcel-info-value">${dash(p.source)}</span></div>`
@@ -560,10 +642,9 @@
 
       `<div class="parcel-info-section-title">Parcel</div>` +
       `<div class="parcel-info-row"><span class="parcel-info-label">Address</span><span class="parcel-info-value">${dash(siteAddr)}</span></div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Acreage computed from the parcel's mapped boundary (ST_Area of the PostGIS geometry)">GIS Acres</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Property classification code used to set the assessment ratio (e.g. 101 = Agricultural, 201 = Commercial, 401 = Residential, 301 = Industrial)">Class</span><span class="parcel-info-value">${dash(p.prop_class)}</span></div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="School district associated with this parcel for millage purposes">School</span><span class="parcel-info-value">${dash(p.school_dist)}</span></div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Homestead (PRE) percentage — reduces taxable value for owner-occupied homes">Homestead</span><span class="parcel-info-value">${homestead != null ? homestead + "%" : "—"}</span></div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Parcel area calculated from the mapped boundary">Area</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Michigan STC property classification code and description">Class</span><span class="parcel-info-value">${classDisplay}</span></div>` +
+      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="${schoolTip}">School</span><span class="parcel-info-value">${schoolDisplay}</span></div>` +
       provenance +
       `<hr class="parcel-info-divider">` +
 
@@ -580,7 +661,8 @@
       `<tr><td data-tip="Taxable Value — the value taxes are actually levied on. Capped each year at the lesser of SEV or prior year TV plus the inflation rate (Michigan Proposal A).">TV</td><td>${fmt(tv0)}</td><td>${fmt(tv1)}</td></tr>` +
       `<tr><td data-tip="True Market Value (estimated) — calculated as 2× Assessed Value">TMV</td><td>${fmt(av0 != null ? av0 * 2 : null)}</td><td>${fmt(av1 != null ? av1 * 2 : null)}</td></tr>` +
       `</tbody></table>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Assessed value 5-year history (newest first)">AV History</span><span class="parcel-info-value">${histVals.map(v => v != null ? "$" + (v / 1000).toFixed(0) + "k" : "—").join(" · ")}</span></div>` +
+      avChartHtml +
+      `<div class="parcel-info-row" style="margin-top:6px"><span class="parcel-info-label" data-tip="Principal Residence Exemption — reduces taxable value for the owner's primary home. 100% = full exemption; 0% = no exemption (rental, vacant, or non-homestead)">PRE</span><span class="parcel-info-value">${homestead != null ? homestead + "%" : "—"}</span></div>` +
       `<hr class="parcel-info-divider">` +
 
       `<div class="parcel-info-section-title">Legal Description</div>` +
@@ -820,6 +902,9 @@
 
     const tabs = panel.querySelectorAll(".mcp-tab");
 
+    const TAB_LABELS = { layers: "Layers", select: "Selection", draw: "Drawing", measure: "Measure" };
+    const mcpHeaderTitle = document.getElementById("mcp-header-title");
+
     function switchTab(tabId) {
       const prevTab = window.PS_MAP_PANEL ? window.PS_MAP_PANEL._activeTab : null;
       tabs.forEach(t => {
@@ -829,6 +914,7 @@
       panel.querySelectorAll(".mcp-pane").forEach(p => { p.hidden = true; });
       const pane = document.getElementById("mcp-pane-" + tabId);
       if (pane) pane.hidden = false;
+      if (mcpHeaderTitle) mcpHeaderTitle.textContent = TAB_LABELS[tabId] || tabId;
       if (window.PS_MAP_PANEL) window.PS_MAP_PANEL._activeTab = tabId;
 
       // Drawing tools tab lifecycle hooks
@@ -851,23 +937,36 @@
 
     tabs.forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 
-    const resizeHandle = document.getElementById("mcp-resize");
-    if (resizeHandle) {
-      let dragging = false, startX, startY, startW, startH;
-      resizeHandle.addEventListener("pointerdown", (e) => {
+    // ── Header drag (same pattern as parcel info panel) ──
+    const mcpHeader = document.getElementById("mcp-header");
+    const mcpHeaderClose = document.getElementById("mcp-header-close");
+
+    if (mcpHeaderClose) {
+      mcpHeaderClose.addEventListener("click", () => { panel.hidden = true; });
+    }
+
+    if (mcpHeader) {
+      let dragging = false, startX, startY, startLeft, startTop;
+      mcpHeader.addEventListener("pointerdown", (e) => {
+        if (e.target === mcpHeaderClose) return;
         dragging = true;
-        resizeHandle.setPointerCapture(e.pointerId);
+        mcpHeader.setPointerCapture(e.pointerId);
+        const rect = panel.getBoundingClientRect();
         startX = e.clientX; startY = e.clientY;
-        startW = panel.offsetWidth; startH = panel.offsetHeight;
-        panel.style.height = startH + "px";
+        startLeft = rect.left; startTop = rect.top;
+        panel.style.bottom = "auto";
+        panel.style.right  = "auto";
+        panel.style.left   = startLeft + "px";
+        panel.style.top    = startTop  + "px";
       });
-      resizeHandle.addEventListener("pointermove", (e) => {
+      mcpHeader.addEventListener("pointermove", (e) => {
         if (!dragging) return;
-        panel.style.width  = Math.max(170, Math.min(420, startW + startX - e.clientX)) + "px";
-        panel.style.height = Math.max(120, Math.min(600, startH + startY - e.clientY)) + "px";
+        const par = panel.parentElement.getBoundingClientRect();
+        panel.style.left = Math.max(0, Math.min(par.width  - panel.offsetWidth,  startLeft - par.left + e.clientX - startX)) + "px";
+        panel.style.top  = Math.max(0, Math.min(par.height - panel.offsetHeight, startTop  - par.top  + e.clientY - startY)) + "px";
       });
-      resizeHandle.addEventListener("pointerup",     () => { dragging = false; });
-      resizeHandle.addEventListener("pointercancel", () => { dragging = false; });
+      mcpHeader.addEventListener("pointerup",     () => { dragging = false; });
+      mcpHeader.addEventListener("pointercancel", () => { dragging = false; });
     }
 
     window.PS_MAP_PANEL = {

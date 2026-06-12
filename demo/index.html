@@ -68,7 +68,11 @@
 
       <!-- Map Control Panel: Layers | Edits | Select | Draw | Measure -->
       <div id="map-control-panel" class="map-control-panel" role="complementary" aria-label="Map controls">
-        <div class="mcp-resize" id="mcp-resize" title="Resize panel"></div>
+        <div class="mcp-header" id="mcp-header">
+          <span class="mcp-header-title" id="mcp-header-title">Layers</span>
+          <button class="mcp-header-close" id="mcp-header-close" title="Hide panel" aria-label="Hide panel">&#x2715;</button>
+        </div>
+        <div class="mcp-main">
         <nav class="mcp-tabs" role="tablist" aria-label="Map tool tabs">
           <button class="mcp-tab active" data-tab="layers" title="Layers" role="tab" aria-selected="true" aria-controls="mcp-pane-layers">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
@@ -100,7 +104,6 @@
               <line x1="11" y1="6.5" x2="11" y2="9.5"/>
             </svg>
           </button>
-          <button class="mcp-collapse-btn" id="mcp-collapse-btn" title="Collapse / expand tools panel" aria-label="Collapse tools panel">◀</button>
         </nav>
         <div class="mcp-body">
           <!-- Layers pane -->
@@ -538,8 +541,9 @@
 
           </div><!-- #mcp-pane-measure -->
 
-        </div>
-      </div>
+        </div><!-- .mcp-body -->
+        </div><!-- .mcp-main -->
+      </div><!-- #map-control-panel -->
     </div>
   </div>
 

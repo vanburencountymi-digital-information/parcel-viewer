@@ -234,7 +234,7 @@
           .join('');
         return '<div class="wfi-popup">' + errLines + '</div>';
       }
-      return '<div class="wfi-popup"><div class="wfi-empty">No overlay data at this location</div></div>';
+      return null;
     }
 
     var sections = results
@@ -271,22 +271,21 @@
     var visible = QUERYABLE.filter(function (cfg) { return !!state[cfg.overlayId]; });
     if (visible.length === 0) return;
 
-    if (_popup) _popup.remove();
-    _popup = new maplibregl.Popup({
-      className:    'wfi-mgl-popup',
-      closeButton:  true,
-      closeOnClick: true,
-      maxWidth:     '300px'
-    })
-      .setLngLat(e.lngLat)
-      .setHTML('<div class="wfi-popup"><div class="wfi-loading"><span class="wfi-spinner"></span>Querying overlays…</div></div>')
-      .addTo(map);
+    if (_popup) { _popup.remove(); _popup = null; }
 
     Promise.all(visible.map(function (cfg) { return _fetchOne(cfg, map, e.point); }))
       .then(function (results) {
-        if (_popup && _popup.isOpen()) {
-          _popup.setHTML(_buildHtml(results));
-        }
+        var html = _buildHtml(results);
+        if (html === null) return;
+        _popup = new maplibregl.Popup({
+          className:    'wfi-mgl-popup',
+          closeButton:  true,
+          closeOnClick: true,
+          maxWidth:     '300px'
+        })
+          .setLngLat(e.lngLat)
+          .setHTML(html)
+          .addTo(map);
       });
   }
 

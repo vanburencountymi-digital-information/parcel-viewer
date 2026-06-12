@@ -6,12 +6,16 @@
 .pv-topbar {
   position: absolute; top: 0; left: 0; right: 0; z-index: 5;
   display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px; background: rgba(255,255,255,0.92);
-  border-bottom: 1px solid #e5e7eb; pointer-events: none;
+  padding: 10px 14px;
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(229,231,235,0.6);
+  pointer-events: none;
 }
 .pv-topbar > * { pointer-events: auto; }
-.pv-brand { font-weight: 700; color: #0b1220; }
-.pv-brand-county { font-weight: 500; color: #6b7280; margin-left: 4px; }
+.pv-brand { font-weight: 700; color: #2d1613; }
+.pv-brand-county { font-weight: 500; color: #8B8278; margin-left: 4px; }
 
 #parcel-search.parcel-search { top: 56px; }
 

@@ -214,6 +214,7 @@ async def search(q: str = Query(..., min_length=2), limit: int = Query(10, le=50
 async def get_parcel(parcel_id: int):
     sql = """
         SELECT pg.id, pg.parcel_no, pg.county, pg.municipality, pg.acres, pg.area,
+               ST_Area(ST_Transform(pg.geom, 4326)::geography) / 4046.8564224 AS computed_acres,
                pg.source, pg.source_file, pg.cogo_legs, pg.legal_description AS ps_legal_description,
                pg.tax_description, pg.created_at, pg.updated_at,
                a.owner_name, a.prop_street, a.prop_city, a.prop_state, a.prop_zip,
@@ -235,7 +236,7 @@ async def get_parcel(parcel_id: int):
         raise HTTPException(status_code=404, detail="Parcel not found")
 
     row["pin"] = row["parcel_no"]
-    row["gis_acres"] = row["acres"]
+    row["gis_acres"] = row["computed_acres"] if row.get("computed_acres") else row["acres"]
     row["PCOMBINED"] = row["prop_street"]
     for key in ("created_at", "updated_at"):
         if row.get(key) is not None:
