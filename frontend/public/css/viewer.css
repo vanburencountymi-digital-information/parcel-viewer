@@ -15,7 +15,34 @@
 }
 .pv-topbar > * { pointer-events: auto; }
 .pv-brand { font-weight: 700; color: #2d1613; }
-.pv-brand-county { font-weight: 500; color: #8B8278; margin-left: 4px; }
+.pv-brand-county { font-weight: 500; color: #5c5349; margin-left: 4px; }
+
+/* ── Accessibility helpers (DIC-376) ─────────────────────────────────────── */
+/* Visually hidden but available to assistive tech */
+.pv-sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0);
+  white-space: nowrap; border: 0;
+}
+/* Skip link — first focusable element; slides into view on focus */
+.pv-skip-link {
+  position: absolute;
+  left: 8px; top: -48px;
+  z-index: 2000;
+  background: #2d1613; color: #fff;
+  padding: 8px 14px;
+  border-radius: 0 0 6px 6px;
+  font: 600 14px/1 system-ui, -apple-system, sans-serif;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.pv-skip-link:focus {
+  top: 0;
+  outline: 2px solid var(--ui-interactive);
+  outline-offset: 2px;
+}
 
 /* ── Search icon button (mobile only, replaces inline input) ─────────────── */
 .pv-search-btn {
@@ -228,7 +255,7 @@
   border-bottom-color: rgba(255,255,255,0.06);
 }
 [data-theme="dark"] .pv-brand        { color: #e8d8c4; }
-[data-theme="dark"] .pv-brand-county { color: #9e9087; }
+[data-theme="dark"] .pv-brand-county { color: #b0a89e; }
 [data-theme="dark"] .pv-theme-toggle { color: #9ca3af; border-color: rgba(255,255,255,0.12); }
 [data-theme="dark"] .pv-theme-toggle:hover { color: var(--ui-interactive); }
 [data-theme="dark"] .pv-status-strip {

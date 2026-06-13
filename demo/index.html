@@ -9,12 +9,14 @@
   <link rel="stylesheet" href="/frontend/public/css/viewer.css">
 </head>
 <body>
+  <a class="pv-skip-link" href="#map">Skip to map</a>
+  <h1 class="pv-sr-only">Parcel Viewer — Van Buren County</h1>
   <div id="app" class="pv-app">
     <div id="panel-map" class="panel">
-      <div id="map"></div>
+      <div id="map" role="main" tabindex="-1" aria-label="Parcel map"></div>
 
       <!-- Top bar: brand + search -->
-      <div id="pv-topbar" class="pv-topbar">
+      <div id="pv-topbar" class="pv-topbar" role="banner">
         <span class="pv-brand">Parcel Viewer <span class="pv-brand-county">Van Buren County</span></span>
         <!-- Search icon button: mobile only, opens overlay -->
         <button id="pv-search-btn" class="pv-search-btn" title="Search parcels" aria-label="Search parcels">
@@ -22,7 +24,7 @@
           Search
         </button>
         <div id="parcel-search" class="parcel-search">
-          <input id="parcel-search-input" class="parcel-search-input" type="text" placeholder="Search parcel number, owner, or address…" autocomplete="off">
+          <input id="parcel-search-input" class="parcel-search-input" type="text" placeholder="Search parcel number, owner, or address…" aria-label="Search parcels by parcel number, owner, or address" autocomplete="off">
           <div id="parcel-search-results" class="parcel-search-results" hidden></div>
           <!-- Close button: visible only in mobile overlay mode via CSS -->
           <button id="pv-search-close" class="pv-search-close" aria-label="Close search">✕</button>
@@ -95,7 +97,7 @@
 
       <div id="parcel-info-panel" class="parcel-info-panel" hidden>
         <div class="parcel-info-header">
-          <span class="parcel-info-title">Parcel</span>
+          <span class="parcel-info-title" id="parcel-info-title" role="heading" aria-level="2">Parcel</span>
           <button class="parcel-info-close" title="Close">✕</button>
         </div>
         <div id="parcel-info-nav" class="parcel-info-nav" hidden>
@@ -137,7 +139,7 @@
       <!-- Map Control Panel: Layers | Edits | Select | Draw | Measure -->
       <div id="map-control-panel" class="map-control-panel" role="complementary" aria-label="Map controls">
         <div class="mcp-header" id="mcp-header">
-          <span class="mcp-header-title" id="mcp-header-title">Layers</span>
+          <span class="mcp-header-title" id="mcp-header-title" role="heading" aria-level="2">Layers</span>
           <button class="mcp-header-close" id="mcp-header-close" title="Hide panel" aria-label="Hide panel">&#x2715;</button>
         </div>
         <div class="mcp-main">
@@ -176,7 +178,7 @@
         <div class="mcp-body">
           <!-- Layers pane -->
           <div class="mcp-pane" id="mcp-pane-layers" role="tabpanel">
-            <div class="mcp-pane-title">Layers</div>
+            <div class="mcp-pane-title" role="heading" aria-level="3">Layers</div>
 
             <label class="mcp-toggle-row">
               <input type="checkbox" id="toggle-aerial"> Aerial Imagery
@@ -262,7 +264,7 @@
               <input type="checkbox" id="plbl-toggle"> Parcel Labels
             </label>
             <div id="plbl-controls" class="plbl-controls" style="display:none">
-              <select id="plbl-field" class="plbl-field-select">
+              <select id="plbl-field" class="plbl-field-select" aria-label="Parcel label field">
                 <option value="owner">Owner Name</option>
                 <option value="pin">Parcel Number</option>
                 <option value="address">Address</option>
@@ -294,7 +296,7 @@
 
           <!-- Select pane -->
           <div class="mcp-pane" id="mcp-pane-select" role="tabpanel" hidden>
-            <div class="mcp-pane-title">Selection Tools</div>
+            <div class="mcp-pane-title" role="heading" aria-level="3">Selection Tools</div>
             <p class="sel-hint">Shift-click parcels to add/remove from selection.</p>
             <div class="sel-tools">
               <button class="sel-tool-btn" id="tool-box-select" title="Box: drag a rectangle to select">
@@ -320,14 +322,14 @@
             </div>
             <!-- Filter panel -->
             <div id="filter-panel" class="filter-panel" hidden>
-              <select id="filter-field" class="filter-select"><option value="">— field —</option></select>
-              <select id="filter-op" class="filter-select">
+              <select id="filter-field" class="filter-select" aria-label="Filter field"><option value="">— field —</option></select>
+              <select id="filter-op" class="filter-select" aria-label="Filter operator">
                 <option value="eq">equals</option>
                 <option value="contains">contains</option>
                 <option value="gt">greater than</option>
                 <option value="lt">less than</option>
               </select>
-              <input id="filter-value" class="filter-input" type="text" placeholder="value…">
+              <input id="filter-value" class="filter-input" type="text" placeholder="value…" aria-label="Filter value">
               <div id="filter-match-count" class="filter-match-count"></div>
               <div class="filter-btn-row">
                 <button id="filter-add-btn" class="filter-btn">Add to Selection</button>
@@ -339,8 +341,8 @@
               <div id="buffer-seed-status" class="buffer-seed-status">Click a parcel on the map to set the seed</div>
               <div id="buffer-controls" class="buffer-controls" hidden>
                 <div class="buffer-row">
-                  <input id="buffer-distance" class="buffer-input" type="number" value="500" min="1" step="1">
-                  <select id="buffer-units" class="buffer-select">
+                  <input id="buffer-distance" class="buffer-input" type="number" value="500" min="1" step="1" aria-label="Buffer distance">
+                  <select id="buffer-units" class="buffer-select" aria-label="Buffer distance units">
                     <option value="feet">Feet</option>
                     <option value="miles">Miles</option>
                   </select>
@@ -369,7 +371,7 @@
 
           <!-- Drawing Tools pane -->
           <div class="mcp-pane" id="mcp-pane-draw" role="tabpanel" hidden>
-            <div class="mcp-pane-title">Drawing Tools</div>
+            <div class="mcp-pane-title" role="heading" aria-level="3">Drawing Tools</div>
 
             <div class="drw-section-label">Edit</div>
             <div class="drw-tools-row">
@@ -482,7 +484,7 @@
 
           <!-- Measurement Tools pane -->
           <div class="mcp-pane" id="mcp-pane-measure" role="tabpanel" hidden>
-            <div class="mcp-pane-title">Measurement Tools</div>
+            <div class="mcp-pane-title" role="heading" aria-level="3">Measurement Tools</div>
 
             <div class="msr-settings">
               <div class="msr-setting-row">
@@ -575,7 +577,7 @@
 
               <div id="msr-autodim-opts" class="msr-autodim-opts" hidden>
                 <div class="msr-opt-row">
-                  <label class="msr-opt-label">Label content</label>
+                  <label class="msr-opt-label" for="msr-ad-label-content">Label content</label>
                   <select id="msr-ad-label-content" class="msr-mini-sel">
                     <option value="both">Distance + Bearing</option>
                     <option value="distance">Distance only</option>
@@ -583,7 +585,7 @@
                   </select>
                 </div>
                 <div class="msr-opt-row">
-                  <label class="msr-opt-label">Label position</label>
+                  <label class="msr-opt-label" for="msr-ad-label-pos">Label position</label>
                   <select id="msr-ad-label-pos" class="msr-mini-sel">
                     <option value="outside">Outside parcel</option>
                     <option value="inside">Inside parcel</option>
@@ -591,15 +593,15 @@
                   </select>
                 </div>
                 <div class="msr-opt-row">
-                  <label class="msr-opt-label">Min. segment</label>
+                  <label class="msr-opt-label" for="msr-ad-min-seg">Min. segment</label>
                   <input type="number" id="msr-ad-min-seg" class="msr-mini-num" value="10" min="0" step="1"> ft
                 </div>
                 <div class="msr-opt-row">
-                  <label class="msr-opt-label">Collinearity</label>
+                  <label class="msr-opt-label" for="msr-ad-collinear">Collinearity</label>
                   <input type="number" id="msr-ad-collinear" class="msr-mini-num" value="0.5" min="0" max="5" step="0.1">°
                 </div>
                 <div class="msr-opt-row">
-                  <label class="msr-opt-label">Group name</label>
+                  <label class="msr-opt-label" for="msr-ad-group">Group name</label>
                   <input type="text" id="msr-ad-group" class="msr-group-name-inp" value="{PIN} Dimensions">
                 </div>
               </div>

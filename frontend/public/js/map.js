@@ -749,17 +749,19 @@
       const dark = document.documentElement.getAttribute("data-theme") === "dark";
       const barTop = dark ? "#6b5a38" : "#CBAB7A";
       const barBot = dark ? "#4a3e26" : "#B58D4A";
-      const lblClr = dark ? "#7a6a52" : "#6D5C52";
+      // WCAG 2.1 AA (DIC-376): both label fills must clear 4.5:1 in each theme.
+      const lblClr = dark ? "#b09a7a" : "#6D5C52";  // value labels ($k)
+      const yrClr  = dark ? "#b9bdc4" : "#4b5563";  // year labels
       const bars = vals.map((v, i) => {
         const cx = colW * i + colW / 2;
         const yr = curYear - (vals.length - 1 - i);
-        if (v == null) return `<text x="${cx}" y="${H - 2}" text-anchor="middle" font-size="9" fill="#9ca3af">${yr}</text>`;
+        if (v == null) return `<text x="${cx}" y="${H - 2}" text-anchor="middle" font-size="9" fill="${yrClr}">${yr}</text>`;
         const bh = Math.max(3, Math.round((v / maxVal) * barAreaH));
         const bx = cx - barW / 2, by = valueH + barAreaH - bh;
         const lbl = '$' + Math.round(v / 1000) + 'k';
         return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="url(#av-bar-grad)" rx="2"/>` +
                `<text x="${cx}" y="${(by - 2).toFixed(1)}" text-anchor="middle" font-size="9" fill="${lblClr}">${lbl}</text>` +
-               `<text x="${cx}" y="${H - 2}" text-anchor="middle" font-size="9" fill="#9ca3af">${yr}</text>`;
+               `<text x="${cx}" y="${H - 2}" text-anchor="middle" font-size="9" fill="${yrClr}">${yr}</text>`;
       }).join('');
       const defs = `<defs><linearGradient id="av-bar-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${barTop}"/><stop offset="100%" stop-color="${barBot}"/></linearGradient></defs>`;
       return `<div style="margin-top:6px"><span class="parcel-info-label" data-tip="5-year assessed value history (oldest to newest)">AV History</span>` +

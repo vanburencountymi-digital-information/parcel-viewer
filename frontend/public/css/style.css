@@ -18,6 +18,11 @@
   --ui-interactive-dk: #8B6535;          /* darker gold — hover */
   --ui-interactive-bg: rgba(181,141,74,0.10);  /* gold tint — selected/hover bg */
   --ui-interactive-bd: rgba(181,141,74,0.35);  /* gold tint — borders */
+
+  /* Accessible text tokens (WCAG 2.1 AA, DIC-376). --text-muted is dark enough to
+     clear 4.5:1 even at the worst-case effective background of the translucent
+     "glass" panels over a dark basemap (min panel luminance ≈ rgb(220,220,220)). */
+  --text-muted:        #4b5563;          /* muted/secondary/hint text (light theme) */
 }
 
 * {
@@ -411,7 +416,7 @@ body {
 }
 
 .parcel-info-label {
-  color: #9ca3af;
+  color: var(--text-muted);
   flex-shrink: 0;
   font-size: 11px;
 }
@@ -472,7 +477,7 @@ body {
 .parcel-info-table td:first-child,
 .parcel-info-table th:first-child {
   text-align: left;
-  color: #9ca3af;
+  color: var(--text-muted);
   font-size: 10px;
 }
 .parcel-info-table thead th {
@@ -766,7 +771,7 @@ body {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #6b7280;
+  color: var(--text-muted);
   margin-bottom: 8px;
 }
 
@@ -807,13 +812,13 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #6b7280;
+  color: var(--text-muted);
   margin: 0 0 4px 2px;
 }
 .overlay-hint {
   font-size: 10px;
   font-style: italic;
-  color: #9ca3af;
+  color: var(--text-muted);
   margin: -3px 0 4px 24px;
   line-height: 1.3;
 }
@@ -969,7 +974,7 @@ body {
 #parcel-context {
   margin: 0;
   font-size: 12px;
-  color: #666;
+  color: var(--text-muted);
 }
 
 .chat-messages {
@@ -1441,7 +1446,7 @@ body {
   width: 100%;
   padding: 7px 12px;
   background: var(--ui-interactive);
-  color: white;
+  color: #2d1613;            /* dark warm text on gold — 4.9:1 (DIC-379) */
   border: none;
   border-radius: 6px;
   font-size: 12px;
@@ -1604,7 +1609,7 @@ body {
   font-weight: 500;
   cursor: pointer;
   background: var(--ui-interactive);
-  color: white;
+  color: #2d1613;            /* dark warm text on gold — 4.9:1 (DIC-379) */
   transition: background 0.12s;
 }
 
@@ -1614,6 +1619,7 @@ body {
 
 .filter-btn-replace {
   background: #6b7280;
+  color: #fff;               /* white on gray-500 = 4.8:1 (restore after gold-btn dark text) */
 }
 
 .filter-btn-replace:hover {
@@ -1721,6 +1727,7 @@ body {
 
 .buffer-btn-add {
   background: var(--ui-interactive);
+  color: #2d1613;            /* dark warm text on gold — 4.9:1 (DIC-379) */
 }
 
 .buffer-btn-add:hover {
@@ -1824,7 +1831,7 @@ body {
   border: 1px solid #fecaca;
   border-radius: 4px;
   background: #fef2f2;
-  color: #dc2626;
+  color: #b91c1c;            /* red-700 — 5.9:1 on pink (DIC-379) */
   font-size: 11px;
   font-family: inherit;
   font-weight: 500;
@@ -1937,7 +1944,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: #9ca3af;
+  color: var(--text-muted);
   margin-bottom: 4px;
 }
 
@@ -2058,7 +2065,7 @@ body {
   border: 1px solid #fecaca;
   border-radius: 4px;
   background: #fef2f2;
-  color: #dc2626;
+  color: #b91c1c;            /* red-700 — 5.9:1 on pink (DIC-379) */
   font-size: 10.5px;
   font-family: inherit;
   cursor: pointer;
@@ -2118,7 +2125,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .drw-color-grid {
@@ -3003,7 +3010,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #9ca3af;
+  color: var(--text-muted);
   padding: 0 8px;
   margin-bottom: 4px;
   margin-top: 4px;
@@ -3014,7 +3021,7 @@ body {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #b0b8c8;
+  color: var(--text-muted);
   padding: 0 8px;
   margin-top: 6px;
   margin-bottom: 3px;
@@ -3414,7 +3421,7 @@ body {
   padding: 0;
   border: none;
   background: none;
-  color: #9ca3af;
+  color: var(--text-muted);
   cursor: pointer;
   font-size: 10px;
   line-height: 1;
@@ -3806,6 +3813,7 @@ body {
   --ui-accent-bg:      rgba(196, 98,  90,  0.10);
   --ui-interactive-bg: rgba(212, 168, 98,  0.14);
   --ui-interactive-bd: rgba(212, 168, 98,  0.30);
+  --text-muted:        #b9bdc4;          /* muted text on dark glass panels (≥4.5:1) */
 }
 
 /* Floating panels */
@@ -3819,9 +3827,9 @@ body {
 [data-theme="dark"] .parcel-info-row        { border-bottom-color: rgba(255,255,255,0.05); }
 [data-theme="dark"] .parcel-info-label      { color: #9e9087; }
 [data-theme="dark"] .parcel-info-value      { color: #e2d8ce; }
-[data-theme="dark"] .parcel-info-pin        { color: var(--ui-accent); }
-[data-theme="dark"] .parcel-info-zoning     { color: #7a706a; }
-[data-theme="dark"] .parcel-info-desc       { color: #7a706a; }
+[data-theme="dark"] .parcel-info-pin        { color: #d98a7f; }
+[data-theme="dark"] .parcel-info-zoning     { color: #b7a89d; }
+[data-theme="dark"] .parcel-info-desc       { color: #b7a89d; }
 [data-theme="dark"] .parcel-info-link       { color: var(--ui-interactive); }
 [data-theme="dark"] .parcel-info-divider    { border-color: rgba(255,255,255,0.07); }
 
