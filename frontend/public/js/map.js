@@ -533,6 +533,21 @@
     return [(b[0][0] + b[1][0]) / 2, (b[0][1] + b[1][1]) / 2];
   }
 
+  // A point guaranteed to lie INSIDE the parcel (unlike computeCentroid's
+  // bbox-center, which can fall outside concave/multipart parcels). Used for the
+  // popup coordinate display. Falls back to the bbox center if turf is absent.
+  // NOTE: this is a client-side representative point; the authoritative point
+  // will come from the DB (ST_PointOnSurface) once available — see DIC-374.
+  function representativePoint(geometry) {
+    if (!geometry) return null;
+    try {
+      if (window.turf && turf.pointOnFeature) {
+        return turf.pointOnFeature({ type: "Feature", geometry: geometry }).geometry.coordinates;
+      }
+    } catch (_) { /* fall through */ }
+    return computeCentroid(geometry);
+  }
+
   // ── Parcel info panel ──────────────────────────────────────────────────
   const infoPanel     = document.getElementById("parcel-info-panel");
   const infoBody      = infoPanel ? infoPanel.querySelector(".parcel-info-body") : null;
@@ -674,8 +689,15 @@
 
   // Field layout matches the geo.parcels / assessing.vbc_parcels payload
   // returned by GET /parcel/{id}.
-  function showParcelInfo(pin, p) {
+  function showParcelInfo(pin, p, geometry) {
     if (!infoPanel || !infoBody) return;
+
+    // Representative interior point (lng/lat), formatted to the active readout
+    // format (DD / DMS / State Plane).
+    const repPt = representativePoint(geometry);
+    const coordRow = repPt
+      ? `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="A point inside the parcel boundary. Format follows the coordinate readout at bottom-right (click it to change).">Center</span><span class="parcel-info-value">${_formatLngLat({ lng: repPt[0], lat: repPt[1] })}</span></div>`
+      : "";
 
     const fmt   = (n) => n != null ? "$" + parseInt(n).toLocaleString() : "—";
     const dash  = (v) => (v != null && v !== "") ? v : "—";
@@ -756,6 +778,7 @@
       `<div class="parcel-info-section-title">Parcel</div>` +
       `<div class="parcel-info-row"><span class="parcel-info-label">Address</span><span class="parcel-info-value">${dash(siteAddr)}</span></div>` +
       `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Parcel area calculated from the mapped boundary">Area</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
+      coordRow +
       `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Michigan STC property classification code and description">Class</span><span class="parcel-info-value">${classDisplay}</span></div>` +
       `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="${schoolTip}">School</span><span class="parcel-info-value">${schoolDisplay}</span></div>` +
       provenance +
@@ -833,7 +856,7 @@
     updateInfoPanelNav();
 
     const p = entry.props;
-    showParcelInfo(pin, p);
+    showParcelInfo(pin, p, entry.geometry);
 
     const [cLng, cLat] = entry.geometry ? computeCentroid(entry.geometry) : [null, null];
     const pBounds      = entry.geometry ? computeBounds(entry.geometry) : [[null,null],[null,null]];
