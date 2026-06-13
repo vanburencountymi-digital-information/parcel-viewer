@@ -107,6 +107,25 @@
     return [x, y];
   }
 
+  // ── Fetch with timeout ───────────────────────────────────────────────────
+  // External overlay servers (USFWS, USDA SSURGO, etc.) occasionally go down or
+  // hang. Without a deadline, fetch() can stall for 30s+ and — because the click
+  // handler awaits Promise.all — block the entire feature-info popup. Abort after
+  // a fixed budget so a dead server fails fast and the others still render.
+  var _QUERY_TIMEOUT_MS = 8000;
+
+  function _fetchWithTimeout(url) {
+    var ctrl  = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, _QUERY_TIMEOUT_MS);
+    return fetch(url, { signal: ctrl.signal })
+      .finally(function () { clearTimeout(timer); });
+  }
+
+  function _errResult(cfg, err) {
+    var msg = (err && err.name === 'AbortError') ? 'timed out' : (err && err.message) || 'unavailable';
+    return { cfg: cfg, features: [], error: msg };
+  }
+
   // ── ArcGIS REST point query ──────────────────────────────────────────────
 
   function _fetchRest(cfg, map, point) {
@@ -123,7 +142,7 @@
       '&returnGeometry=false' +
       '&f=json';
 
-    return fetch((window.API_BASE || '') + '/wms-proxy?url=' + encodeURIComponent(restUrl))
+    return _fetchWithTimeout((window.API_BASE || '') + '/wms-proxy?url=' + encodeURIComponent(restUrl))
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
@@ -143,7 +162,7 @@
         return { cfg: cfg, features: features };
       })
       .catch(function (err) {
-        return { cfg: cfg, features: [], error: err.message };
+        return _errResult(cfg, err);
       });
   }
 
@@ -219,7 +238,7 @@
 
   function _fetchWms(cfg, map, point) {
     var wmsUrl = _buildWmsUrl(cfg, map, point);
-    return fetch((window.API_BASE || '') + '/wms-proxy?url=' + encodeURIComponent(wmsUrl))
+    return _fetchWithTimeout((window.API_BASE || '') + '/wms-proxy?url=' + encodeURIComponent(wmsUrl))
       .then(function (r) {
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.text();
@@ -229,7 +248,7 @@
         return { cfg: cfg, features: features };
       })
       .catch(function (err) {
-        return { cfg: cfg, features: [], error: err.message };
+        return _errResult(cfg, err);
       });
   }
 
@@ -261,12 +280,16 @@
     var hasErrors = results.some(function (r) { return !!r.error; });
 
     if (!hasAny) {
+      // Nothing useful to show. If layers errored (server down/timeout), capture
+      // the failure to the console for debugging but do NOT draw an error popup —
+      // a wall of "HTTP 505 / timed out" is noise to the user. A clean miss (no
+      // features, no errors) likewise draws nothing.
       if (hasErrors) {
-        var errLines = results
+        results
           .filter(function (r) { return r.error; })
-          .map(function (r) { return '<div class="wfi-error">' + r.cfg.label + ': ' + r.error + '</div>'; })
-          .join('');
-        return '<div class="wfi-popup">' + errLines + '</div>';
+          .forEach(function (r) {
+            console.warn('[overlay-query] ' + r.cfg.label + ' unavailable: ' + r.error);
+          });
       }
       return null;
     }
