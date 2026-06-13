@@ -498,6 +498,15 @@
 .pv-help-h { font-weight: 600; color: #2d1613; margin-bottom: 2px; }
 .pv-help-p { color: #4b5563; }
 
+/* Keyboard shortcut list (Help) */
+.pv-kbd-list { margin: 4px 0 0; padding-left: 18px; line-height: 1.6; }
+.pv-kbd-list li { margin-bottom: 3px; }
+.pv-kbd-sub {
+  font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.03em;
+  color: var(--ui-interactive-dk); margin: 10px 0 2px;
+}
+[data-theme="dark"] .pv-kbd-sub { color: var(--ui-interactive); }
+
 .pv-about-grid {
   display: grid; grid-template-columns: auto 1fr; gap: 6px 14px;
   margin: 4px 0 2px;

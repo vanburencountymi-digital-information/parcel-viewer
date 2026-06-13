@@ -203,25 +203,59 @@
       helpItem("Overlays", "Open Map Controls to toggle regulatory overlays (wetlands, soils, flood, zoning). Click the map with an overlay on to query it."),
       helpItem("Drawing &amp; measure", "Map Controls includes drawing and measurement tools for annotating the map."),
       helpItem("MapBuddy A.I.", "Ask the assistant questions about the map, parcels, and overlays in plain language."),
+      helpItem("Keyboard navigation",
+        "Everything works without a mouse." +
+        "<ul class=\"pv-kbd-list\">" +
+          "<li><strong>Tab</strong> / <strong>Shift+Tab</strong> &mdash; move forward / back between controls. A &ldquo;Skip to map&rdquo; link is the first stop.</li>" +
+          "<li><strong>Enter</strong> &mdash; activate a button or link, or open the highlighted search result.</li>" +
+          "<li><strong>Space</strong> &mdash; check or uncheck a layer (or any checkbox); also presses a button.</li>" +
+          "<li><strong>&uarr;</strong> / <strong>&darr;</strong> arrows &mdash; move through search results; also adjust sliders and dropdowns.</li>" +
+          "<li><strong>Esc</strong> &mdash; close the search results, a panel, the tools menu, or a dialog.</li>" +
+        "</ul>" +
+        "<div class=\"pv-kbd-sub\">Moving the map</div>" +
+        "Click the map once (or <strong>Tab</strong> to it), then:" +
+        "<ul class=\"pv-kbd-list\">" +
+          "<li><strong>Arrow keys</strong> &mdash; pan (scroll) the map.</li>" +
+          "<li><strong>+</strong> / <strong>&minus;</strong> &mdash; zoom in / out.</li>" +
+          "<li><strong>Shift</strong> + arrow keys &mdash; rotate and tilt the view.</li>" +
+        "</ul>"),
       '<p class="pv-modal-note">Need more help? Use <strong>Feedback</strong> to reach the team.</p>'
     ].join(""));
   }
 
+  // ── Changelog / version (source: frontend/public/changelog.json) ────────────
+  // Single source of truth for the app version + the What's New feed. Interim
+  // hand-curated; intended to be generated from Linear at build time.
+  var _changelog = null;
+  function loadChangelog(cb) {
+    if (_changelog) { cb(_changelog); return; }
+    fetch("/frontend/public/changelog.json", { cache: "no-cache" })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function (d) { _changelog = d; cb(d); })
+      .catch(function () { cb(null); });
+  }
+  function appVersion(cb) { loadChangelog(function (d) { cb(d && d.version ? d.version : null); }); }
+
   function openWhatsNew() {
-    openModal("What's New", [
-      '<p class="pv-modal-lead">Recent updates and new functionality.</p>',
-      changeEntry("June 13, 2026", [
-        "New <strong>Tools</strong> menu in the top bar: Print, Share, Bookmark, Data Request, Report a data error, Help, What&rsquo;s New, About, and Settings.",
-        "<strong>Generate Parcel Packet</strong> and <strong>Compare Parcels</strong> are now available from the parcel popup; <strong>Street View</strong> added to Map Controls.",
-        "Tax Description info window with the usage disclaimer — a full AI-driven explainer is coming soon.",
-        "Mobile UI overhaul: unified tab bar, split-screen MapBuddy A.I., and improved search."
-      ]),
-      changeEntry("June 12, 2026", [
-        "<strong>Dark mode</strong> with a dark basemap (moon icon in the top bar).",
-        "<strong>MapBuddy A.I.</strong> assistant for asking questions about the map and parcels."
-      ]),
-      placeholderTag("This list is curated for now; an automatic release feed is planned.")
-    ].join(""));
+    openModal("What's New",
+      '<p class="pv-modal-lead">Recent updates and new functionality.</p>' +
+      '<div id="pv-changelog" class="pv-changelog">Loading…</div>',
+      function (bodyEl) {
+        loadChangelog(function (d) {
+          var el = bodyEl.querySelector("#pv-changelog");
+          if (!el) return;
+          if (!d || !d.releases || !d.releases.length) {
+            el.innerHTML = '<p class="pv-empty">Release notes are unavailable right now.</p>';
+            return;
+          }
+          el.innerHTML = d.releases.map(function (rel) {
+            var head = "v" + esc(rel.version) + (rel.date ? " &middot; " + esc(rel.date) : "");
+            var items = (rel.items || []).map(function (i) { return "<li>" + esc(i) + "</li>"; }).join("");
+            return '<div class="pv-change"><div class="pv-change-date">' + head + "</div>" +
+              '<ul class="pv-change-list">' + items + "</ul></div>";
+          }).join("");
+        });
+      });
   }
 
   function openAbout() {
@@ -231,13 +265,18 @@
     openModal("About", [
       '<p class="pv-modal-lead"><strong>Parcel Viewer</strong> — ' + esc(place) + '</p>',
       '<div class="pv-about-grid">' +
-        aboutRow("Version", "0.x (preview)") +
+        '<div class="pv-about-k">Version</div><div class="pv-about-v" id="pv-app-version">… (preview)</div>' +
         aboutRow("Maintained by", "DICE Labs") +
         aboutRow("Basemap", "CARTO / OpenStreetMap contributors") +
         aboutRow("Parcel data", countyName + " GIS") +
       '</div>',
-      '<p class="pv-modal-note">This is a preview build. Data shown is for informational purposes only and is not a legal record of survey. Placeholder content — final attributions and version to be confirmed.</p>'
-    ].join(""));
+      '<p class="pv-modal-note">This is a preview build. Data shown is for informational purposes only and is not a legal record of survey.</p>'
+    ].join(""), function (bodyEl) {
+      appVersion(function (v) {
+        var el = bodyEl.querySelector("#pv-app-version");
+        if (el) el.textContent = (v || "0.x") + " (preview)";
+      });
+    });
   }
 
   // ── Map-action tools (placeholders) ─────────────────────────────────────────

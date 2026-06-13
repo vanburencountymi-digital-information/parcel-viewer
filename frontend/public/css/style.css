@@ -320,7 +320,7 @@ body {
 /* Parcel info panel */
 .parcel-info-panel {
   position: absolute;
-  bottom: 12px;
+  bottom: 40px;          /* clear the ~29px status strip at the bottom */
   left: 12px;
   background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(10px);
@@ -799,6 +799,19 @@ body {
   height: 14px;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+/* Keyboard focus indicator — checkboxes had no visible focus, so keyboard
+   users couldn't tell what was focused or that Space toggles it (WCAG 2.4.7). */
+input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--ui-interactive);
+  outline-offset: 2px;
+}
+.mcp-toggle-row:focus-within {
+  color: var(--ui-interactive-dk);
+  background: var(--ui-interactive-bg);
+  border-radius: 4px;
+  box-shadow: 0 0 0 4px var(--ui-interactive-bg);
 }
 
 /* ── Parcel Labels tool ──────────────────────────────────────────────────── */
@@ -3868,6 +3881,12 @@ body {
 [data-theme="dark"] .parcel-search-input::placeholder { color: #5a5048; }
 [data-theme="dark"] .parcel-search-results { background: #1a1210; border-color: rgba(255,255,255,0.10); }
 [data-theme="dark"] .parcel-search-result  { color: #c8b89a; border-bottom-color: rgba(255,255,255,0.05); }
+/* Row text colors are dark by default (light theme); brighten on the dark
+   dropdown so they pass AA contrast (WCAG 1.4.3) — was nearly invisible. */
+[data-theme="dark"] .parcel-search-result-pin     { color: #f0e2cf; }   /* ~14:1 */
+[data-theme="dark"] .parcel-search-result-owner   { color: #d8cdbf; }   /* ~11:1 */
+[data-theme="dark"] .parcel-search-result-address { color: #b3a89c; }   /* ~8:1  */
+[data-theme="dark"] .parcel-search-no-results     { color: #b3a89c; }
 [data-theme="dark"] .parcel-search-result:hover,
 [data-theme="dark"] .parcel-search-result.active { background: rgba(163,71,59,0.15); }
 [data-theme="dark"] .parcel-search-result.selected { background: rgba(181,141,74,0.15); border-color: rgba(181,141,74,0.30); }

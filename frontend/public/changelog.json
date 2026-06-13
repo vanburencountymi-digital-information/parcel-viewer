@@ -1,0 +1,41 @@
+{
+  "version": "0.5.0",
+  "channel": "preview",
+  "_note": "Source of truth for the app version (top `version`) and the What's New feed (`releases`). Interim hand-curated; to be generated from Linear 'Release Notes'-labelled issues at build time (see Linear). Item strings are plain text — rendered escaped, no HTML.",
+  "releases": [
+    {
+      "version": "0.5.0",
+      "date": "2026-06-13",
+      "items": [
+        "Accessibility pass (WCAG 2.1 AA): readable text contrast in light and dark themes, full keyboard operation, screen-reader labels, and focus management throughout.",
+        "Search is now fully keyboard-operable — arrow keys to move through results, Enter to select — with spoken result announcements.",
+        "Tools wired up: Street View (from the parcel panel), Bookmarks, Settings (area units / coordinate format / default basemap), and Report a data error.",
+        "Parcel popup no longer overlaps the bottom status bar."
+      ]
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-06-13",
+      "items": [
+        "New Tools menu in the top bar: Print, Share, Bookmark, Data Request, Report a data error, Help, What's New, About, and Settings.",
+        "Generate Parcel Packet and Compare Parcels available from the parcel popup.",
+        "Tax Description and Assessment info windows with plain-language explanations (full AI-driven explainers coming soon)."
+      ]
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-06-13",
+      "items": [
+        "Mobile overhaul: unified tab bar, split-screen MapBuddy A.I., and a full-screen search experience."
+      ]
+    },
+    {
+      "version": "0.2.0",
+      "date": "2026-06-12",
+      "items": [
+        "Dark mode with a dark basemap (moon icon in the top bar).",
+        "MapBuddy A.I. assistant for asking questions about the map and parcels."
+      ]
+    }
+  ]
+}
