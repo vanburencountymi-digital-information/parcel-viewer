@@ -60,6 +60,63 @@
     if (el) el.textContent = text;
   }
 
+  // ── Live coordinate readout ──────────────────────────────────────────────
+  // Bottom-right pill tracking the cursor. Click cycles the format; choice is
+  // persisted. (Settings can drive this later via window.PV_COORDS.setFormat.)
+  const COORD_FORMATS = ["dd", "dms", "spc"];
+  // Michigan State Plane South (EPSG:6497, us-ft) — matches the Measurement tool.
+  const MI_STATE_PLANE_DEF = "+proj=lcc +lat_0=41.5 +lon_0=-84.3666666666667 " +
+    "+lat_1=42.1 +lat_2=43.6667 +x_0=4000000 +y_0=0 +ellps=GRS80 +units=us-ft +no_defs";
+  const WGS84_DEF = "+proj=longlat +datum=WGS84 +no_defs";
+  let _lastLngLat = null;
+
+  function _coordFormat() {
+    const f = localStorage.getItem("pv-coord-format");
+    return COORD_FORMATS.indexOf(f) !== -1 ? f : "dd";
+  }
+  function _dd(v, pos, neg) { return Math.abs(v).toFixed(5) + "°" + (v >= 0 ? pos : neg); }
+  function _dms(v, pos, neg) {
+    let a = Math.abs(v), d = Math.floor(a), mf = (a - d) * 60, m = Math.floor(mf), s = Math.round((mf - m) * 60);
+    if (s === 60) { s = 0; m++; }
+    if (m === 60) { m = 0; d++; }
+    const pad = (n) => (n < 10 ? "0" + n : "" + n);
+    return d + "°" + pad(m) + "'" + pad(s) + '"' + (v >= 0 ? pos : neg);
+  }
+  function _spc(lng, lat) {
+    if (!window.proj4) return null;
+    try {
+      const xy = window.proj4(WGS84_DEF, MI_STATE_PLANE_DEF, [lng, lat]);
+      return "N " + Math.round(xy[1]).toLocaleString() + "  E " + Math.round(xy[0]).toLocaleString() + " ft";
+    } catch (_) { return null; }
+  }
+  function _formatLngLat(ll) {
+    const lng = ll.lng, lat = ll.lat, f = _coordFormat();
+    if (f === "dms") return _dms(lat, "N", "S") + "  " + _dms(lng, "E", "W");
+    if (f === "spc") { const s = _spc(lng, lat); if (s) return s; }
+    return _dd(lat, "N", "S") + "  " + _dd(lng, "E", "W");
+  }
+  function _renderCoords() {
+    const el = document.getElementById("pv-coords");
+    if (el && _lastLngLat) el.textContent = _formatLngLat(_lastLngLat);
+  }
+  function initCoordReadout() {
+    const el = document.getElementById("pv-coords");
+    if (!el || !map) return;
+    map.on("mousemove", (e) => { _lastLngLat = e.lngLat; el.hidden = false; _renderCoords(); });
+    map.on("mouseout", () => { el.hidden = true; });
+    el.addEventListener("click", () => {
+      const next = COORD_FORMATS[(COORD_FORMATS.indexOf(_coordFormat()) + 1) % COORD_FORMATS.length];
+      localStorage.setItem("pv-coord-format", next);
+      _renderCoords();
+    });
+    // Hook for a future Settings control.
+    window.PV_COORDS = {
+      setFormat: (f) => { if (COORD_FORMATS.indexOf(f) !== -1) { localStorage.setItem("pv-coord-format", f); _renderCoords(); } },
+      getFormat: _coordFormat,
+      formats: COORD_FORMATS.slice(),
+    };
+  }
+
   // ── Style ──────────────────────────────────────────────────────────────
   // The backend serves the MapLibre style with a {MARTIN_URL} placeholder in
   // the parcel tile URL; substitute the browser-facing Martin base here so the
@@ -339,6 +396,8 @@
       preserveDrawingBuffer: true,
       boxZoom: false,  // we use our own box-select; default shift+drag zoom conflicts with shift-click
     });
+
+    initCoordReadout();
 
     map.on("load", () => {
       requestAnimationFrame(() => {
