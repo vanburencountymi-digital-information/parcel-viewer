@@ -46,19 +46,55 @@
 
   // ── Modal builder ───────────────────────────────────────────────────────────
   var _modal = null;
+  var _modalReturnFocus = null;   // element to restore focus to on close (DIC-373)
+
+  function getModalFocusables() {
+    if (!_modal) return [];
+    var sel = 'a[href], button:not([disabled]), input:not([disabled]), ' +
+              'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    return Array.prototype.slice.call(_modal.querySelectorAll(sel))
+      .filter(function (el) { return el.offsetParent !== null || el === document.activeElement; });
+  }
 
   function closeModal() {
     if (!_modal) return;
-    _modal.removeEventListener("keydown", onModalKey);
+    document.removeEventListener("keydown", onModalKey);
     _modal.remove();
     _modal = null;
-    document.removeEventListener("keydown", onModalKey);
+    // Un-hide the rest of the page.
+    var app = document.getElementById("app");
+    if (app) { app.removeAttribute("inert"); app.removeAttribute("aria-hidden"); }
+    // Restore focus to whatever opened the modal; if that trigger is now hidden
+    // (e.g. an admin-menu item that closed with the menu), fall back to the
+    // tools button so focus never lands on <body>.
+    var ret = _modalReturnFocus;
+    _modalReturnFocus = null;
+    if (ret && document.contains(ret) && ret.offsetParent !== null) {
+      ret.focus();
+    } else {
+      var ab = document.getElementById("pv-admin-btn");
+      if (ab) ab.focus();
+    }
   }
-  function onModalKey(e) { if (e.key === "Escape") closeModal(); }
+
+  function onModalKey(e) {
+    if (e.key === "Escape") { closeModal(); return; }
+    if (e.key !== "Tab" || !_modal) return;
+    // Trap focus inside the dialog.
+    var f = getModalFocusables();
+    if (!f.length) { e.preventDefault(); return; }
+    var first = f[0], last = f[f.length - 1], active = document.activeElement;
+    if (e.shiftKey) {
+      if (active === first || !_modal.contains(active)) { e.preventDefault(); last.focus(); }
+    } else {
+      if (active === last || !_modal.contains(active)) { e.preventDefault(); first.focus(); }
+    }
+  }
 
   function openModal(title, bodyHtml, onMount, opts) {
     opts = opts || {};
     closeModal();
+    _modalReturnFocus = document.activeElement;   // restore here on close (DIC-373)
     var modalCls = "pv-modal" + (opts.wide ? " pv-modal--wide" : "");
     var bodyCls  = "pv-modal-body" + (opts.flush ? " pv-modal-body--flush" : "");
     var back = document.createElement("div");
@@ -79,8 +115,11 @@
 
     document.body.appendChild(back);
     _modal = back;
+    // Make the rest of the page inert + hidden from AT while the dialog is open.
+    var app = document.getElementById("app");
+    if (app) { app.setAttribute("inert", ""); app.setAttribute("aria-hidden", "true"); }
     if (typeof onMount === "function") onMount(back.querySelector(".pv-modal-body"));
-    // Focus the dialog for keyboard users.
+    // Focus the first interactive element in the dialog for keyboard users.
     var focusable = back.querySelector("input, textarea, select, button.pv-modal-close");
     if (focusable) focusable.focus();
   }
