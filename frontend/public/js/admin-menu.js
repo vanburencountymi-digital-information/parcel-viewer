@@ -85,10 +85,13 @@
     if (focusable) focusable.focus();
   }
 
-  // Parcel-tool buttons live in the Layers panel (outside the dropdown).
+  // Parcel/map-tool buttons and the tax-description info icon live outside the
+  // dropdown (Layers panel + parcel info panel), wired via event delegation.
   document.addEventListener("click", function (e) {
     var pt = e.target.closest(".pv-ptool");
-    if (pt) openParcelTool(pt.getAttribute("data-ptool"));
+    if (pt) { openParcelTool(pt.getAttribute("data-ptool")); return; }
+    var ti = e.target.closest(".pv-taxinfo-btn");
+    if (ti) openTaxInfo();
   });
 
   // ── Tool content ──────────────────────────────────────────────────────────
@@ -100,6 +103,7 @@
       case "data-request": return openDataRequest();
       case "report-error": return openReportError();
       case "help":         return openHelp();
+      case "whats-new":    return openWhatsNew();
       case "about":        return openAbout();
       case "settings":     return openSettings();
     }
@@ -122,6 +126,23 @@
       helpItem("Drawing &amp; measure", "Map Controls includes drawing and measurement tools for annotating the map."),
       helpItem("MapBuddy A.I.", "Ask the assistant questions about the map, parcels, and overlays in plain language."),
       '<p class="pv-modal-note">Need more help? Use <strong>Feedback</strong> to reach the team.</p>'
+    ].join(""));
+  }
+
+  function openWhatsNew() {
+    openModal("What's New", [
+      '<p class="pv-modal-lead">Recent updates and new functionality.</p>',
+      changeEntry("June 13, 2026", [
+        "New <strong>Tools</strong> menu in the top bar: Print, Share, Bookmark, Data Request, Report a data error, Help, What&rsquo;s New, About, and Settings.",
+        "<strong>Generate Parcel Packet</strong> and <strong>Compare Parcels</strong> are now available from the parcel popup; <strong>Street View</strong> added to Map Controls.",
+        "Tax Description info window with the usage disclaimer — a full AI-driven explainer is coming soon.",
+        "Mobile UI overhaul: unified tab bar, split-screen MapBuddy A.I., and improved search."
+      ]),
+      changeEntry("June 12, 2026", [
+        "<strong>Dark mode</strong> with a dark basemap (moon icon in the top bar).",
+        "<strong>MapBuddy A.I.</strong> assistant for asking questions about the map and parcels."
+      ]),
+      placeholderTag("This list is curated for now; an automatic release feed is planned.")
     ].join(""));
   }
 
@@ -240,6 +261,19 @@
     ].join(""));
   }
 
+  // Tax description info — for now the disclaimer + a teaser for the full
+  // explainer (DIC-369). This window becomes the AI-driven explainer later.
+  function openTaxInfo() {
+    openModal("About the Tax Description", [
+      '<p class="pv-modal-lead">What the Tax Description is — and isn&rsquo;t.</p>',
+      '<p>The Tax Description is an <strong>abbreviated</strong> version of the deeded legal description, used for <strong>taxation purposes only</strong>. It should never be used on deeds, titles, mortgages, or other legal documents. Always refer to the recorded deed for the full legal description.</p>',
+      '<div class="pv-teaser">' +
+        '<div class="pv-teaser-title"><span class="pv-badge">Coming soon</span> Tax Description Explainer</div>' +
+        '<p class="pv-teaser-body">Soon this window will break down every part of this parcel&rsquo;s tax description in plain language — defining each term, explaining how it differs from a legal description, and (where the description supports it) highlighting each call on the map.</p>' +
+      '</div>'
+    ].join(""));
+  }
+
   // Best-effort read of the currently selected parcel's PIN (for Report a data error).
   function currentParcelPin() {
     try {
@@ -308,6 +342,10 @@
   }
   function placeholderTag(text) {
     return '<p class="pv-modal-note"><span class="pv-badge">Preview</span> ' + text + '</p>';
+  }
+  function changeEntry(date, items) {
+    return '<div class="pv-change"><div class="pv-change-date">' + esc(date) + '</div>' +
+      '<ul class="pv-change-list">' + items.map(function (i) { return '<li>' + i + '</li>'; }).join("") + '</ul></div>';
   }
   function esc(s) {
     return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; });

@@ -367,8 +367,42 @@
 
 /* Parcel actions row inside the parcel info panel */
 .parcel-info-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+
+/* Info icon next to the Tax Description header */
+.pv-taxinfo-btn {
+  background: none; border: none; cursor: pointer;
+  color: #9ca3af; padding: 2px; margin-left: 5px;
+  vertical-align: middle; display: inline-flex; align-items: center;
+  border-radius: 4px; transition: color 0.12s, background 0.12s;
+}
+.pv-taxinfo-btn:hover { color: var(--ui-interactive); background: var(--ui-interactive-bg); }
+[data-theme="dark"] .pv-taxinfo-btn { color: #8a8076; }
+[data-theme="dark"] .pv-taxinfo-btn:hover { color: var(--ui-interactive); }
+
+/* "Coming soon" teaser callout inside info modals */
+.pv-teaser {
+  margin-top: 16px; padding: 12px 14px;
+  background: var(--ui-interactive-bg);
+  border: 1px solid var(--ui-interactive-bd);
+  border-radius: 8px;
+}
+.pv-teaser-title { font-weight: 700; font-size: 13.5px; color: #2d1613; margin-bottom: 4px; }
+.pv-teaser-body { margin: 0; font-size: 12.5px; color: #6b7280; line-height: 1.5; }
+[data-theme="dark"] .pv-teaser-title { color: #e8d8c4; }
+[data-theme="dark"] .pv-teaser-body { color: #b3a99d; }
 .pv-modal-lead { margin: 0 0 14px; color: #4b5563; }
 .pv-modal-note { margin: 14px 0 0; font-size: 12px; color: #9ca3af; }
+
+/* What's New — changelog entries */
+.pv-change { margin-bottom: 14px; }
+.pv-change-date {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+  color: var(--ui-interactive-dk); margin-bottom: 5px;
+}
+.pv-change-list { margin: 0; padding-left: 18px; }
+.pv-change-list li { margin-bottom: 4px; color: #4b5563; }
+[data-theme="dark"] .pv-change-date { color: var(--ui-interactive); }
+[data-theme="dark"] .pv-change-list li { color: #b3a99d; }
 
 .pv-help-item { margin-bottom: 11px; }
 .pv-help-h { font-weight: 600; color: #2d1613; margin-bottom: 2px; }
