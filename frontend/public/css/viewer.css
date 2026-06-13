@@ -368,16 +368,16 @@
 /* Parcel actions row inside the parcel info panel */
 .parcel-info-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 
-/* Info icon next to the Tax Description header */
-.pv-taxinfo-btn {
+/* Info icon next to section headers (Tax Description, Assessed Values, …) */
+.pv-info-btn {
   background: none; border: none; cursor: pointer;
   color: #9ca3af; padding: 2px; margin-left: 5px;
   vertical-align: middle; display: inline-flex; align-items: center;
   border-radius: 4px; transition: color 0.12s, background 0.12s;
 }
-.pv-taxinfo-btn:hover { color: var(--ui-interactive); background: var(--ui-interactive-bg); }
-[data-theme="dark"] .pv-taxinfo-btn { color: #8a8076; }
-[data-theme="dark"] .pv-taxinfo-btn:hover { color: var(--ui-interactive); }
+.pv-info-btn:hover { color: var(--ui-interactive); background: var(--ui-interactive-bg); }
+[data-theme="dark"] .pv-info-btn { color: #8a8076; }
+[data-theme="dark"] .pv-info-btn:hover { color: var(--ui-interactive); }
 
 /* "Coming soon" teaser callout inside info modals */
 .pv-teaser {

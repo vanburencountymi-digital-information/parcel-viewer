@@ -90,9 +90,16 @@
   document.addEventListener("click", function (e) {
     var pt = e.target.closest(".pv-ptool");
     if (pt) { openParcelTool(pt.getAttribute("data-ptool")); return; }
-    var ti = e.target.closest(".pv-taxinfo-btn");
-    if (ti) openTaxInfo();
+    var ib = e.target.closest(".pv-info-btn");
+    if (ib) openInfoWindow(ib.getAttribute("data-info"));
   });
+
+  function openInfoWindow(kind) {
+    switch (kind) {
+      case "tax":    return openTaxInfo();
+      case "assess": return openAssessInfo();
+    }
+  }
 
   // ── Tool content ──────────────────────────────────────────────────────────
   function openTool(tool) {
@@ -270,6 +277,24 @@
       '<div class="pv-teaser">' +
         '<div class="pv-teaser-title"><span class="pv-badge">Coming soon</span> Tax Description Explainer</div>' +
         '<p class="pv-teaser-body">Soon this window will break down every part of this parcel&rsquo;s tax description in plain language — defining each term, explaining how it differs from a legal description, and (where the description supports it) highlighting each call on the map.</p>' +
+      '</div>'
+    ].join(""));
+  }
+
+  // Assessment info — for now an educational overview + a teaser for the full
+  // AI/database-backed explainer (DIC-370). Becomes a callable module later.
+  function openAssessInfo() {
+    openModal("About Property Assessment", [
+      '<p class="pv-modal-lead">How your assessment works — and what your taxes pay for.</p>',
+      helpItem("Assessed Value (AV)", "Set by the local assessor at 50% of a property&rsquo;s estimated True Cash Value (market value)."),
+      helpItem("State Equalized Value (SEV)", "AV after county and state equalization confirm assessments sit at the 50% level uniformly across jurisdictions."),
+      helpItem("Taxable Value (TV)", "The value you&rsquo;re actually taxed on. Under Michigan&rsquo;s Proposal A it rises each year by the lesser of inflation or 5% — until the property transfers, when it &ldquo;uncaps&rdquo; to the SEV."),
+      helpItem("Assessing vs. equalization vs. appraisal", "Assessing values every parcel for taxation; equalization checks those values are uniform across units; an appraisal is an independent market-value opinion for a specific purpose (sale, financing)."),
+      helpItem("Where taxes go", "Millage funds schools, county and township services, libraries, roads, and special assessments."),
+      helpItem("Appeals", "Disagree with your assessment? Appeal to the March Board of Review, then the Michigan Tax Tribunal."),
+      '<div class="pv-teaser">' +
+        '<div class="pv-teaser-title"><span class="pv-badge">Coming soon</span> Assessment Explainer</div>' +
+        '<p class="pv-teaser-body">Soon this window will pull this parcel&rsquo;s full assessment history and tax detail, cite the relevant Michigan statutes, and use AI to walk through exactly how these numbers were derived and what they fund.</p>' +
       '</div>'
     ].join(""));
   }

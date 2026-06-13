@@ -736,7 +736,10 @@
       `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>` +
       `<hr class="parcel-info-divider">` +
 
-      `<div class="parcel-info-section-title">Assessed Values</div>` +
+      `<div class="parcel-info-section-title">Assessed Values` +
+        `<button class="pv-info-btn" data-info="assess" data-pin="${pin}" data-tip="About property assessment" aria-label="About property assessment">` +
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>` +
+        `</button></div>` +
       `<table class="parcel-info-table">` +
       `<thead><tr><th></th><th>Current</th><th>Prior</th></tr></thead>` +
       `<tbody>` +
@@ -748,8 +751,8 @@
       `<div class="parcel-info-row" style="margin-top:6px"><span class="parcel-info-label" data-tip="Principal Residence Exemption — reduces taxable value for the owner's primary home. 100% = full exemption; 0% = no exemption (rental, vacant, or non-homestead)">PRE</span><span class="parcel-info-value">${homestead != null ? homestead + "%" : "—"}</span></div>` +
       `<hr class="parcel-info-divider">` +
 
-      `<div class="parcel-info-section-title">Tax Description <span class="parcel-info-caveat" data-tip="The Tax Description is an abbreviated version of the deeded legal description used for taxation purposes only. It should never be used on deeds, titles, mortgages, or other legal documents. Always refer to the recorded deed for the full legal description.">*</span>` +
-        `<button class="pv-taxinfo-btn" data-pin="${pin}" data-tip="About this tax description" aria-label="About this tax description">` +
+      `<div class="parcel-info-section-title">Tax Description` +
+        `<button class="pv-info-btn" data-info="tax" data-pin="${pin}" data-tip="About this tax description" aria-label="About this tax description">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>` +
         `</button></div>` +
       `<div class="parcel-info-desc">${dash(legalDesc)}</div>` +
