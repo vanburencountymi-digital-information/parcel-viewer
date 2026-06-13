@@ -1,84 +1,99 @@
-# Parcel Viewer — Session Handoff (2026-06-13)
+# Parcel Viewer — Session Handoff (2026-06-13, GUI tooling)
 
-Rolling session-to-session handoff (distinct from `docs/HANDOFF.md`, which is the
-deployment runbook). Last session focused on the **mobile UI**.
+Rolling session-to-session handoff (distinct from `docs/HANDOFF.md`, the deployment
+runbook). This session was a **GUI pass**: a Tools menu, in-popup info windows,
+release notes, a county-config extraction, and coordinate features. It follows the
+earlier same-day mobile-UI rework session (commit `5b9245d` / handoff `8c84887`).
+
+Data and real functionality wiring come later — most of what shipped here is UI +
+placeholders, deliberately.
 
 ## What shipped this session
 
-All committed at **`5b9245d`** and pushed to `main`. Rebased cleanly on top of
-**`e6fbaf7` "rewire mapbuddy as a microservice"** (a parallel session's work) — no
-conflicts. MapBuddy now mounts against a Cloud Run URL
-(`window.MAP_BUDDY_API || 'https://map-buddy-toaozre74a-uc.a.run.app'`).
+All committed and pushed to `main` (oldest → newest):
 
-Mobile UI rework (desktop unaffected — everything is scoped under
-`@media (max-width: 640px)` or desktop-specific selectors):
+- `3b63748` **Overlay error handling** — `wms-feature-info.js` now fails fast (8s
+  AbortController timeout per query) and, when all overlay servers error, logs to
+  console instead of drawing a wall of "HTTP 505" in the popup. Fixes the slow/ugly
+  overlay-query window when an upstream is down.
+- `4fc79ce` **Admin Tools menu** — topbar hamburger dropdown + a Layers "Parcel
+  Tools" section. New `frontend/public/js/admin-menu.js` (reusable modal + form
+  helpers + `.pv-ptool`/`.pv-info-btn` event delegation).
+- `d3dd17b` **Relocated tools** — Generate Parcel Packet + Compare Parcels moved to
+  the **parcel popup**; Street View stays in **Map Controls** ("Map Tools" section).
+- `807302c` **Tax Description info window + What's New** — ⓘ on the Tax Description
+  header (disclaimer + explainer teaser); "What's New" dropdown item with curated,
+  dated release notes.
+- `ac981d5` **Assessed Values info window** — ⓘ on the Assessed Values header
+  ("About Property Assessment"); removed the hover-only `*` caveat; generalized the
+  icon to `.pv-info-btn[data-info]`.
+- `ba094ab` **County config manifest** — `frontend/public/js/county-config.js`
+  (`window.COUNTY`). Single source of truth for county-specific values; onboarding a
+  county is now "edit one file." (See DIC-371.)
+- `7cee7f3` **Live coordinate readout** — bottom-right pill tracking the cursor;
+  click cycles DD / DMS / Michigan State Plane (persisted). Exposes
+  `window.PV_COORDS.setFormat()`.
+- `ee262d3` **Parcel center coordinates** — "Center" row in the popup via
+  `turf.pointOnFeature` (interior-guaranteed point, not the bbox center), formatted
+  to the active readout format.
 
-- **Unified mobile tab bar** under the topbar: `Parcel Info | Map Controls | MapBuddy A.I.`
-  All panels start **closed** on load.
-- **Parcel Info & Map Controls** = mutually-exclusive **top drop-downs** from the tab
-  bar (anchored `top:82px` = 50px topbar + 32px tab bar). Opening one closes the other;
-  selecting a parcel auto-opens Parcel Info and closes Map Controls. Parcel Info tab is
-  `disabled` until a parcel is selected.
-- **MapBuddy A.I.** = **bottom-half split-screen drawer** (50vh). Opening it sets
-  `body.mb-mobile-open`, which pushes `#panel-map` into the top half and calls a map
-  resize so the map + a parcel dropdown stay visible while chatting. **No header** on
-  mobile (the `.mb-drawer-handle` is the title + tap-to-collapse); added an explicit
-  **✕ close** button; collapsed = `display:none`.
-- **Search** = full-screen overlay (mobile). Results now **persist after a selection**
-  (desktop parity — pick the wrong parcel, reopen, remaining matches still there). The
-  overlay needs an explicit `height:calc(100dvh-50px)` or it collapses.
-- Removed the red **selection-count badge** (mobile + desktop).
-- Dark-mode **page background** (`[data-theme="dark"] body,#app { #120d0b }`) so panel
-  corners don't flash white.
-- Renamed **"Map Buddy" → "MapBuddy A.I."** across all user-facing labels + the startup
-  screen (code API `MapBuddy.mount()` / `#map-buddy-panel` IDs unchanged).
+## Key seams / where things live
+
+- **`county-config.js`** (`window.COUNTY`) — name, state, `map.{extent,center,zoom}`,
+  `labels.{propClass,schoolDist}`, `forms.dataRequest`, `endpoints.mapBuddy`. Load
+  it first; consumers read with fallbacks.
+- **`admin-menu.js`** — `openModal(title, html, onMount, {wide, flush})` shared modal;
+  the dropdown tools, the parcel/map tools (`.pv-ptool[data-ptool]`), and the section
+  info buttons (`.pv-info-btn[data-info]`) all route through here. Forms log to
+  console only (no backend yet) and placeholders show a "Preview" badge.
+- **`map.js`** — `representativePoint()` (turf), `_formatLngLat()` + the coordinate
+  readout (`window.PV_COORDS`), county-config consumption, `showParcelInfo(pin,p,geom)`.
 
 ## ⚠️ Verification status
 
-Verified the layout/behavior in a connected Chrome at mobile width (tab bar, dropdowns,
-split-screen positions, search persistence, close button, rename). **Could NOT verify**
-two things in the dev sandbox because the map's `load` event never fires there (tiles/
-style unreachable → `window.PS_MAP` stays undefined):
+The Claude preview sandbox **cannot load the live map** — maplibre (and turf) come
+from CDNs that are blocked there, so `map` never constructs. Map-independent UI was
+verified by driving a static server (`python -m http.server`, port 8090 — see the
+`viewer-static` entry in `.claude/launch.json`): dropdown, all modals, forms, dark
+mode, mobile widths, county-config wiring, and the coordinate-format math.
 
-1. The live **map canvas resize** when MapBuddy opens (container shrinks to 50vh, but
-   `map.resize()` couldn't be exercised). `_pushMap()` in `map-buddy.js` calls
-   `PS_MAP.resize()` with a window-resize fallback + retries (0/80/260ms) — correct for
-   prod, but **confirm on a real device/desktop** that the canvas refits cleanly.
-2. The **parcel-selection** flow on mobile (auto-open Parcel Info, close Map Controls).
-
-## How to run / rebuild
-
-- **Frontend** (`demo/`, `frontend/public/`, `map-buddy/css|js`): bind-mounted —
-  edit + hard-refresh (Ctrl+Shift+R). No rebuild.
-- **Read API** (`backend/parcel_viewer`): `docker compose -f infra/docker-compose.viewer.yml --env-file .env up --build -d api`
-- **MapBuddy** is now a **separate microservice** (`map-buddy/backend/`, deployed to
-  Cloud Run via `map-buddy/deploy.sh`) — see commit `e6fbaf7`.
-- Local dev note: port 8080 is held by Docker (`infra-web-1`), so the Claude preview
-  server can't bind; test against the running `localhost:8080` instead.
-
-## Mobile architecture map (for the next editor)
-
-- `demo/index.html` — `#pv-mobile-tabbar` (3 tabs), `#pv-search-btn`/overlay markup
-- `frontend/public/css/viewer.css` — tab bar styles, search overlay, dark `body` bg
-- `frontend/public/css/style.css` — mobile `@media` block: top-dropdown panels,
-  `body.mb-mobile-open #panel-map` push, dropdown caps
-- `frontend/public/js/map.js` — `initMobileTabs()` (exposes `window.PV_MOBILE_TABS.refresh()`),
-  search linger logic (`closeMobileSearch` vs `resetMobileSearch`)
-- `map-buddy/js/map-buddy.js` — `_pushMap()`, `_init` mobile-collapse default, ✕ wiring,
-  `PV_MAP_BUDDY.toggle/isOpen`
-- `map-buddy/css/map-buddy.css` — mobile bottom-drawer + `.mb-mobile-close`
+**Not yet eyeballed on a real map — confirm on `localhost:8080` (hard-refresh):**
+- In-popup buttons (Packet/Compare) + the two ⓘ info icons render with a parcel
+  selected; tax header no longer shows `*`.
+- The **"Center"** coordinate row, and that it reformats when you cycle the readout
+  and reselect.
+- The **live cursor readout** updates and click-cycles DD/DMS/State Plane.
+- Overlay query still shows data popups; a down server now stays silent (console only).
 
 ## Linear
 
-- **DIC-321** (Mobile-friendly UI — ongoing) — description + comment updated this session.
-  Remaining gaps: **swipe-to-dismiss**, **touch tooltip fallback** (`data-tip` is
-  hover-only), **real-device field testing** (incl. the two unverified items above).
-- Other open backlog: **DIC-318** (acreage SQL backfill), **DIC-319** (school districts
-  → DB table), **DIC-320** (public deployment planning).
+Created this session (all in the Parcel Viewer project):
+- **DIC-368** — Tools menu & parcel-tools tracking + wireup checklist (Print→DIC-42,
+  Share→DIC-52, Packet→DIC-340/330, Compare→DIC-54/366, Street View→DIC-55; new:
+  Bookmark, Report-a-data-error, Settings).
+- **DIC-369** — Tax Description Explainer (AI; Phase-0 stub shipped).
+- **DIC-370** — Assessment Explainer (AI + tax DB; Phase-0 stub shipped).
+- **DIC-371** — County config manifest (**initial extraction done**; DB/registry/
+  server-inject follow-ups remain).
+- **DIC-372** — Shared HTML templating + persistence/share/export layer.
+- **DIC-373** — Modal accessibility pass (focus trap/restore).
+- **DIC-374** — Canonical parcel representative point (`ST_PointOnSurface`) in the DB.
 
 ## Good next starting points
 
-- **Real-device pass** on the mobile rework (confirm map resize + parcel selection).
-- **DIC-320** public deployment — now more relevant since MapBuddy is a Cloud Run
-  microservice; the viewer's own hosting/domain/auth is the open question.
-- **DIC-318** acreage SQL — self-contained warm-up.
+- **Confirm the GUI on `localhost:8080`** (the four items above) — quickest close-out.
+- **DIC-373 modal a11y** — small, self-contained (focus trap + restore on the one
+  shared modal).
+- **Wire forms to a backend** (Report a data error, future Feedback) — currently
+  console-only; pick an endpoint or mail/Formspree shim.
+- **DIC-369 Phase 1** — text-only AI explainer (terminology + tax-vs-legal), the
+  low-risk entry into the explainer work.
+- **DIC-371 follow-ups** — move label maps to the DB; data-driven overlay registry.
+
+## How to run / verify
+
+- **Frontend** is bind-mounted into the running `infra-web-1` nginx — edit + hard-
+  refresh `localhost:8080` (Ctrl+Shift+R). No rebuild.
+- Docker holds port 8080, so the Claude preview server can't bind it; for
+  map-independent UI checks use the `viewer-static` launch config (serves the repo on
+  :8090). Live-map checks must be on `localhost:8080`.
