@@ -217,3 +217,255 @@
   border-top-color: rgba(255,255,255,0.07);
   color: #9ca3af;
 }
+
+/* ── Administrative tools menu ──────────────────────────────────────────────── */
+.pv-admin { position: relative; flex-shrink: 0; }
+.pv-admin-btn {
+  background: none;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 6px;
+  padding: 5px 7px;
+  cursor: pointer;
+  color: #6b7280;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s, border-color 0.15s;
+}
+.pv-admin-btn:hover { color: var(--ui-interactive); border-color: var(--ui-interactive-bd); }
+
+.pv-admin-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 188px;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+  padding: 5px;
+  z-index: 70;
+}
+.pv-admin-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: #374151;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+}
+.pv-admin-item svg { color: #9ca3af; flex-shrink: 0; transition: color 0.12s; }
+.pv-admin-item:hover { background: var(--ui-interactive-bg); color: var(--ui-interactive-dk); }
+.pv-admin-item:hover svg { color: var(--ui-interactive); }
+.pv-admin-sep { height: 1px; background: rgba(0,0,0,0.07); margin: 5px 6px; }
+
+[data-theme="dark"] .pv-admin-btn { color: #9ca3af; border-color: rgba(255,255,255,0.12); }
+[data-theme="dark"] .pv-admin-btn:hover { color: var(--ui-interactive); }
+[data-theme="dark"] .pv-admin-menu {
+  background: #1c1612;
+  border-color: rgba(255,255,255,0.10);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+[data-theme="dark"] .pv-admin-item { color: #d6ccc0; }
+[data-theme="dark"] .pv-admin-item:hover { background: var(--ui-interactive-bg); color: var(--ui-interactive); }
+[data-theme="dark"] .pv-admin-sep { background: rgba(255,255,255,0.08); }
+
+/* ── Modal / info window ────────────────────────────────────────────────────── */
+.pv-modal-backdrop {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(17,17,17,0.42);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  padding: 20px;
+}
+.pv-modal {
+  width: 100%;
+  max-width: 460px;
+  max-height: calc(100vh - 40px);
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+.pv-modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+.pv-modal-title { font-weight: 700; font-size: 15px; color: #2d1613; }
+.pv-modal-close {
+  background: none; border: none; cursor: pointer;
+  color: #9ca3af; font-size: 16px; line-height: 1;
+  padding: 4px 6px; border-radius: 5px;
+  transition: background 0.12s, color 0.12s;
+}
+.pv-modal-close:hover { background: rgba(0,0,0,0.06); color: #374151; }
+.pv-modal-body { padding: 16px; overflow-y: auto; color: #374151; font-size: 13.5px; line-height: 1.5; flex: 1 1 auto; min-height: 0; }
+
+/* Wide variant for embedded content (e.g. JotForm) */
+.pv-modal--wide { max-width: 720px; height: 85vh; }
+.pv-modal-body--flush { padding: 0; }
+.pv-embed { display: flex; flex-direction: column; height: 100%; }
+.pv-embed-frame { flex: 1 1 auto; width: 100%; border: 0; display: block; background: #fff; }
+.pv-embed-foot {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: #9ca3af;
+  text-align: center;
+  border-top: 1px solid rgba(0,0,0,0.07);
+}
+.pv-embed-foot a { color: var(--ui-interactive); text-decoration: none; }
+.pv-embed-foot a:hover { text-decoration: underline; }
+[data-theme="dark"] .pv-embed-foot { color: #8a8076; border-top-color: rgba(255,255,255,0.08); }
+
+/* Share: read-only URL + copy button */
+.pv-copy-row { display: flex; gap: 8px; align-items: stretch; }
+.pv-copy-row .pv-input { flex: 1 1 auto; }
+.pv-copy-row .pv-btn-primary { flex-shrink: 0; }
+
+/* "Preview" badge used in placeholder notes */
+.pv-badge {
+  display: inline-block;
+  background: var(--ui-interactive-bg); color: var(--ui-interactive-dk);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase;
+  padding: 1px 6px; border-radius: 4px; margin-right: 4px; vertical-align: middle;
+}
+[data-theme="dark"] .pv-badge { color: var(--ui-interactive); }
+
+/* ── Parcel Tools list (Layers panel) ───────────────────────────────────────── */
+.pv-ptools { display: flex; flex-direction: column; gap: 5px; margin-top: 4px; }
+.pv-ptool {
+  display: flex; align-items: center; gap: 9px;
+  width: 100%;
+  background: none;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 6px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: #374151;
+  font-family: inherit; font-size: 12.5px; font-weight: 500;
+  text-align: left;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.pv-ptool svg { color: #9ca3af; flex-shrink: 0; transition: color 0.12s; }
+.pv-ptool:hover { background: var(--ui-interactive-bg); color: var(--ui-interactive-dk); border-color: var(--ui-interactive-bd); }
+.pv-ptool:hover svg { color: var(--ui-interactive); }
+[data-theme="dark"] .pv-ptool { color: #d6ccc0; border-color: rgba(255,255,255,0.12); }
+[data-theme="dark"] .pv-ptool:hover { background: var(--ui-interactive-bg); color: var(--ui-interactive); }
+.pv-modal-lead { margin: 0 0 14px; color: #4b5563; }
+.pv-modal-note { margin: 14px 0 0; font-size: 12px; color: #9ca3af; }
+
+.pv-help-item { margin-bottom: 11px; }
+.pv-help-h { font-weight: 600; color: #2d1613; margin-bottom: 2px; }
+.pv-help-p { color: #4b5563; }
+
+.pv-about-grid {
+  display: grid; grid-template-columns: auto 1fr; gap: 6px 14px;
+  margin: 4px 0 2px;
+}
+.pv-about-k { color: #9ca3af; font-weight: 500; }
+.pv-about-v { color: #2d1613; }
+
+/* ── Forms ───────────────────────────────────────────────────────────────────── */
+.pv-form { display: flex; flex-direction: column; gap: 12px; }
+.pv-field { display: flex; flex-direction: column; gap: 4px; }
+.pv-field-label { font-size: 12px; font-weight: 600; color: #374151; }
+.pv-field-opt { font-weight: 400; color: #9ca3af; }
+.pv-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(0,0,0,0.16);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: #1f2937;
+  background: #fff;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.pv-input:focus {
+  outline: none;
+  border-color: var(--ui-interactive);
+  box-shadow: 0 0 0 3px var(--ui-interactive-bg);
+}
+textarea.pv-input { resize: vertical; min-height: 70px; }
+.pv-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.pv-btn-primary {
+  background: var(--ui-interactive); color: #fff;
+  border: none; border-radius: 6px; padding: 8px 16px;
+  font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: filter 0.12s;
+}
+.pv-btn-primary:hover { filter: brightness(1.08); }
+.pv-btn-ghost {
+  background: none; color: #6b7280;
+  border: 1px solid rgba(0,0,0,0.14); border-radius: 6px; padding: 8px 14px;
+  font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.pv-btn-ghost:hover { color: #374151; border-color: rgba(0,0,0,0.28); }
+
+.pv-form-success { text-align: center; padding: 12px 4px; }
+.pv-form-success-icon {
+  width: 44px; height: 44px; margin: 0 auto 12px;
+  border-radius: 50%;
+  background: var(--ui-interactive-bg); color: var(--ui-interactive);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 700;
+}
+.pv-form-success-title { font-weight: 700; font-size: 15px; color: #2d1613; margin-bottom: 4px; }
+.pv-form-success-msg { color: #6b7280; margin: 0 0 16px; }
+
+/* Modal dark mode */
+[data-theme="dark"] .pv-modal { background: #1c1612; }
+[data-theme="dark"] .pv-modal-header { border-bottom-color: rgba(255,255,255,0.08); }
+[data-theme="dark"] .pv-modal-title,
+[data-theme="dark"] .pv-help-h,
+[data-theme="dark"] .pv-about-v,
+[data-theme="dark"] .pv-form-success-title { color: #e8d8c4; }
+[data-theme="dark"] .pv-modal-body { color: #c9bfb3; }
+[data-theme="dark"] .pv-modal-lead,
+[data-theme="dark"] .pv-help-p { color: #b3a99d; }
+[data-theme="dark"] .pv-modal-note,
+[data-theme="dark"] .pv-about-k,
+[data-theme="dark"] .pv-field-opt,
+[data-theme="dark"] .pv-form-success-msg { color: #8a8076; }
+[data-theme="dark"] .pv-modal-close:hover { background: rgba(255,255,255,0.08); color: #e8d8c4; }
+[data-theme="dark"] .pv-field-label { color: #c9bfb3; }
+[data-theme="dark"] .pv-input {
+  background: #120d0b; color: #e8d8c4;
+  border-color: rgba(255,255,255,0.14);
+}
+[data-theme="dark"] .pv-btn-ghost { color: #9e9087; border-color: rgba(255,255,255,0.14); }
+[data-theme="dark"] .pv-btn-ghost:hover { color: #e8d8c4; border-color: rgba(255,255,255,0.3); }
+
+/* ── Mobile ──────────────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Anchor the menu to the viewport edge so it never overflows the narrow topbar */
+  .pv-admin-menu {
+    position: fixed;
+    top: 50px; right: 6px; left: auto;
+    min-width: 200px;
+  }
+  .pv-admin-item { padding: 11px 12px; font-size: 14px; }  /* larger touch targets */
+  .pv-modal-backdrop { padding: 0; align-items: stretch; }
+  .pv-modal {
+    max-width: none;
+    max-height: 100dvh;
+    height: 100dvh;
+    border-radius: 0;
+  }
+  .pv-input { font-size: 16px; }  /* prevents iOS zoom-on-focus */
+}
