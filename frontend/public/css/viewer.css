@@ -364,6 +364,9 @@
 .pv-ptool:hover svg { color: var(--ui-interactive); }
 [data-theme="dark"] .pv-ptool { color: #d6ccc0; border-color: rgba(255,255,255,0.12); }
 [data-theme="dark"] .pv-ptool:hover { background: var(--ui-interactive-bg); color: var(--ui-interactive); }
+
+/* Parcel actions row inside the parcel info panel */
+.parcel-info-actions { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .pv-modal-lead { margin: 0 0 14px; color: #4b5563; }
 .pv-modal-note { margin: 14px 0 0; font-size: 12px; color: #9ca3af; }
 

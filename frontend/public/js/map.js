@@ -749,7 +749,19 @@
       `<hr class="parcel-info-divider">` +
 
       `<div class="parcel-info-section-title">Tax Description <span class="parcel-info-caveat" data-tip="The Tax Description is an abbreviated version of the deeded legal description used for taxation purposes only. It should never be used on deeds, titles, mortgages, or other legal documents. Always refer to the recorded deed for the full legal description.">*</span></div>` +
-      `<div class="parcel-info-desc">${dash(legalDesc)}</div>`;
+      `<div class="parcel-info-desc">${dash(legalDesc)}</div>` +
+
+      // Parcel actions — handled by the .pv-ptool delegation in admin-menu.js
+      `<div class="parcel-info-actions">` +
+        `<button class="pv-ptool" data-ptool="packet" data-pin="${pin}">` +
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>` +
+          `<span>Generate Parcel Packet</span>` +
+        `</button>` +
+        `<button class="pv-ptool" data-ptool="compare" data-pin="${pin}">` +
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>` +
+          `<span>Compare Parcels</span>` +
+        `</button>` +
+      `</div>`;
 
     if (!infoPanelCollapsed) {
       infoPanel.hidden = false;
