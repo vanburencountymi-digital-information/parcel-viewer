@@ -127,11 +127,43 @@
   // Parcel/map-tool buttons and the tax-description info icon live outside the
   // dropdown (Layers panel + parcel info panel), wired via event delegation.
   document.addEventListener("click", function (e) {
+    var bm = e.target.closest("[data-bm-toggle]");
+    if (bm) {
+      var pc = window.PS_STATE && window.PS_STATE.parcel;
+      if (pc) setBmButtonState(bm, bmToggle(pc));
+      return;
+    }
     var pt = e.target.closest(".pv-ptool");
     if (pt) { openParcelTool(pt.getAttribute("data-ptool")); return; }
     var ib = e.target.closest(".pv-info-btn");
     if (ib) openInfoWindow(ib.getAttribute("data-info"));
   });
+
+  // ── Bookmarks (device-local, localStorage) ──────────────────────────────────
+  var BM_KEY = "pv-bookmarks";
+  function bmList() {
+    try { var v = JSON.parse(localStorage.getItem(BM_KEY) || "[]"); return Array.isArray(v) ? v : []; }
+    catch (_) { return []; }
+  }
+  function bmSave(list) { try { localStorage.setItem(BM_KEY, JSON.stringify(list)); } catch (_) {} }
+  function bmHas(id) { return id != null && bmList().some(function (b) { return String(b.id) === String(id); }); }
+  function bmAdd(p) {
+    if (!p || p.id == null || bmHas(p.id)) return;
+    var list = bmList();
+    list.push({ id: p.id, pin: p.pin || "", owner: p.owner_name || "", address: p.site_address || "", muni: p.municipality || "" });
+    bmSave(list);
+  }
+  function bmRemove(id) { bmSave(bmList().filter(function (b) { return String(b.id) !== String(id); })); }
+  function bmToggle(p) { if (!p || p.id == null) return false; if (bmHas(p.id)) { bmRemove(p.id); return false; } bmAdd(p); return true; }
+  function setBmButtonState(btn, on) {
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    btn.title = on ? "Remove bookmark" : "Bookmark this parcel";
+    btn.classList.toggle("is-on", on);
+    var label = btn.querySelector(".pv-bm-label");
+    if (label) label.textContent = on ? "Bookmarked" : "Bookmark";
+  }
+  // Exposed so the parcel popup (map.js) can render + reflect the star state.
+  window.PV_BOOKMARKS = { list: bmList, has: bmHas, add: bmAdd, remove: bmRemove, toggle: bmToggle };
 
   function openInfoWindow(kind) {
     switch (kind) {
@@ -217,7 +249,7 @@
         '<button type="button" class="pv-btn-ghost" data-close>Close</button>' +
         '<button type="button" class="pv-btn-primary" id="pv-print-now">Print current view</button>' +
       '</div>',
-      placeholderTag("Full PDF export with a formatted parcel sheet is planned (DIC-42).")
+      placeholderTag("Full PDF export with a formatted parcel sheet is planned.")
     ].join(""), function (bodyEl) {
       bodyEl.addEventListener("click", function (e) {
         if (e.target.closest("[data-close]")) return closeModal();
@@ -234,7 +266,7 @@
         '<input class="pv-input" id="pv-share-url" type="text" readonly value="' + escAttr(url) + '">' +
         '<button type="button" class="pv-btn-primary" id="pv-share-copy">Copy</button>' +
       '</div>',
-      placeholderTag("Links that capture the selected parcel, zoom, and active layers are planned (DIC-52). For now this copies the current page URL.")
+      placeholderTag("Links that capture the selected parcel, zoom, and active layers are planned. For now this copies the current page URL.")
     ].join(""), function (bodyEl) {
       var copyBtn = bodyEl.querySelector("#pv-share-copy");
       copyBtn.addEventListener("click", function () {
@@ -248,12 +280,50 @@
     });
   }
 
+  function bookmarkListHtml() {
+    var list = bmList();
+    if (!list.length) {
+      return '<p class="pv-empty">No bookmarks yet. Open a parcel and use the <strong>★ Bookmark</strong> button on its panel — saved parcels appear here.</p>';
+    }
+    return '<ul class="pv-bm-list">' + list.map(function (b) {
+      var sub = [b.owner, b.address || b.muni].filter(Boolean).join(" · ");
+      return '<li class="pv-bm-item">' +
+        '<button type="button" class="pv-bm-open" data-bm-open="' + escAttr(b.id) + '">' +
+          '<span class="pv-bm-pin">' + esc(b.pin || String(b.id)) + '</span>' +
+          (sub ? '<span class="pv-bm-sub">' + esc(sub) + '</span>' : '') +
+        '</button>' +
+        '<button type="button" class="pv-bm-del" data-bm-del="' + escAttr(b.id) + '" ' +
+          'aria-label="Remove bookmark ' + escAttr(b.pin || String(b.id)) + '" title="Remove">&#10005;</button>' +
+      '</li>';
+    }).join("") + '</ul>';
+  }
+
   function openBookmark() {
-    openModal("Bookmarks", [
-      '<p class="pv-modal-lead">Save parcels to revisit them quickly.</p>',
-      '<p>Bookmarking will let you star a parcel from its info panel and keep a personal list on this device.</p>',
-      placeholderTag("Coming soon.")
-    ].join(""));
+    var pc = window.PS_STATE && window.PS_STATE.parcel;
+    function render(bodyEl) {
+      var addBtn = "";
+      if (pc && pc.id != null) {
+        addBtn = bmHas(pc.id)
+          ? '<p class="pv-modal-note">Current parcel (' + esc(pc.pin) + ') is bookmarked.</p>'
+          : '<div class="pv-form-actions"><button type="button" class="pv-btn-primary" id="pv-bm-add">★ Bookmark current parcel (' + esc(pc.pin) + ')</button></div>';
+      }
+      bodyEl.innerHTML =
+        '<p class="pv-modal-lead">Saved parcels, stored on this device.</p>' +
+        bookmarkListHtml() + addBtn;
+      var add = bodyEl.querySelector("#pv-bm-add");
+      if (add) add.addEventListener("click", function () { bmAdd(pc); render(bodyEl); });
+      Array.prototype.forEach.call(bodyEl.querySelectorAll("[data-bm-open]"), function (el) {
+        el.addEventListener("click", function () {
+          var id = el.getAttribute("data-bm-open");
+          closeModal();
+          if (window.PS_selectParcelById) window.PS_selectParcelById(id);
+        });
+      });
+      Array.prototype.forEach.call(bodyEl.querySelectorAll("[data-bm-del]"), function (el) {
+        el.addEventListener("click", function () { bmRemove(el.getAttribute("data-bm-del")); render(bodyEl); });
+      });
+    }
+    openModal("Bookmarks", "", function (bodyEl) { render(bodyEl); });
   }
 
   function openReportError() {
@@ -272,19 +342,38 @@
           '<button type="submit" class="pv-btn-primary">Send report</button>' +
         '</div>' +
       '</form>';
-    openModal("Report a data error", body, wireForm("Report received!", "Thanks for helping keep the data accurate. (Placeholder — not yet sent to a server.)"));
+    openModal("Report a data error", body,
+      wireFormPost("/report-error", "Report received!", "Thanks for helping keep the data accurate — we&rsquo;ll review it."));
   }
 
   function openSettings() {
+    var coordFmt  = (window.PV_COORDS && window.PV_COORDS.getFormat && window.PV_COORDS.getFormat()) || "dd";
+    var areaUnits = (window.PV_PREFS && window.PV_PREFS.getAreaUnits && window.PV_PREFS.getAreaUnits()) || "acres";
+    var basemap   = (window.PV_PREFS && window.PV_PREFS.getBasemap && window.PV_PREFS.getBasemap()) || "light";
+    function opt(v, label, cur) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + label + '</option>'; }
     openModal("Settings", [
       '<p class="pv-modal-lead">Display preferences for this device.</p>',
       '<div class="pv-form">' +
-        field("Area units",       '<select class="pv-input" disabled><option>Acres</option><option>Square feet</option></select>') +
-        field("Coordinate format",'<select class="pv-input" disabled><option>Latitude / Longitude</option><option>State Plane (Michigan South)</option></select>') +
-        field("Default basemap",  '<select class="pv-input" disabled><option>Light</option><option>Dark</option><option>Aerial</option></select>') +
+        field("Area units",
+          '<select class="pv-input" id="pv-set-area">' +
+            opt("acres", "Acres", areaUnits) + opt("sqft", "Square feet", areaUnits) + '</select>') +
+        field("Coordinate format",
+          '<select class="pv-input" id="pv-set-coord">' +
+            opt("dd", "Decimal degrees", coordFmt) + opt("dms", "Degrees / minutes / seconds", coordFmt) +
+            opt("spc", "State Plane (Michigan South)", coordFmt) + '</select>') +
+        field("Default basemap",
+          '<select class="pv-input" id="pv-set-basemap">' +
+            opt("light", "Light", basemap) + opt("dark", "Dark", basemap) + opt("aerial", "Aerial imagery", basemap) + '</select>') +
       '</div>',
-      placeholderTag("Settings are previews and not yet active. Dark mode is available now via the moon icon in the top bar.")
-    ].join(""));
+      '<p class="pv-modal-note">Changes apply immediately and are saved on this device.</p>'
+    ].join(""), function (bodyEl) {
+      var a = bodyEl.querySelector("#pv-set-area");
+      var c = bodyEl.querySelector("#pv-set-coord");
+      var b = bodyEl.querySelector("#pv-set-basemap");
+      if (a) a.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setAreaUnits(a.value); });
+      if (c) c.addEventListener("change", function () { window.PV_COORDS && window.PV_COORDS.setFormat(c.value); });
+      if (b) b.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setBasemap(b.value); });
+    });
   }
 
   // ── Parcel tools (placeholders, surfaced in the Layers panel) ────────────────
@@ -292,22 +381,29 @@
     openModal("Generate Parcel Packet", [
       '<p class="pv-modal-lead">A comprehensive, professionally formatted report for a parcel.</p>',
       '<p>The packet compiles assessment data, environmental conditions, spatial analysis, proximity metrics, and historical aerial imagery into a single document.</p>',
-      placeholderTag("Flagship feature in development (DIC-340 / DIC-330).")
+      placeholderTag("Flagship feature in development.")
     ].join(""));
   }
   function openCompare() {
     openModal("Compare Parcels", [
       '<p class="pv-modal-lead">Side-by-side comparison of 2–5 parcels.</p>',
       '<p>Compare assessment, size, zoning, and environmental attributes — useful for appeals, neighbor comparisons, and due diligence.</p>',
-      placeholderTag("Coming soon (DIC-54 / DIC-366).")
+      placeholderTag("Coming soon.")
     ].join(""));
   }
   function openStreetView() {
-    openModal("Street View", [
-      '<p class="pv-modal-lead">Street-level imagery for the selected parcel.</p>',
-      '<p>Open Google Street View or Mapillary at the parcel location for desk reviews and orientation.</p>',
-      placeholderTag("Coming soon (DIC-55).")
-    ].join(""));
+    var pc = window.PS_STATE && window.PS_STATE.parcel;
+    var c  = pc && pc.centroid;
+    if (!pc || !c || c[0] == null || c[1] == null) {
+      openModal("Street View", [
+        '<p class="pv-modal-lead">Select a parcel first.</p>',
+        '<p>Click a parcel on the map (or search for one), then open Street View to jump to street-level imagery at that location.</p>'
+      ].join(""));
+      return;
+    }
+    var url = "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=" +
+      encodeURIComponent(c[1] + "," + c[0]);
+    window.open(url, "_blank", "noopener");
   }
 
   // Tax description info — for now the disclaimer + a teaser for the full
@@ -344,8 +440,8 @@
   // Best-effort read of the currently selected parcel's PIN (for Report a data error).
   function currentParcelPin() {
     try {
+      if (window.PS_STATE && window.PS_STATE.parcel && window.PS_STATE.parcel.pin) return window.PS_STATE.parcel.pin;
       if (window.PS_SELECTED_PIN) return window.PS_SELECTED_PIN;
-      if (window.PS_CURRENT_PARCEL && window.PS_CURRENT_PARCEL.pin) return window.PS_CURRENT_PARCEL.pin;
     } catch (_) {}
     return "";
   }
@@ -370,6 +466,55 @@
   }
 
   // ── Form helpers ────────────────────────────────────────────────────────────
+  function formSuccessHtml(successTitle, successMsg) {
+    return '<div class="pv-form-success">' +
+      '<div class="pv-form-success-icon">&#10003;</div>' +
+      '<div class="pv-form-success-title">' + successTitle + '</div>' +
+      '<p class="pv-form-success-msg">' + successMsg + '</p>' +
+      '<button type="button" class="pv-btn-primary" data-close>Close</button>' +
+    '</div>';
+  }
+
+  // Real form submit — POSTs JSON to the API and shows success / error states.
+  function wireFormPost(endpoint, successTitle, successMsg) {
+    return function (bodyEl) {
+      var form = bodyEl.querySelector("form");
+      if (!form) return;
+      bodyEl.addEventListener("click", function (e) { if (e.target.closest("[data-close]")) closeModal(); });
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (!form.checkValidity()) { form.reportValidity(); return; }
+        var data = {};
+        Array.prototype.forEach.call(form.elements, function (el) { if (el.name) data[el.name] = el.value; });
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) { submitBtn.disabled = true; submitBtn.dataset.label = submitBtn.textContent; submitBtn.textContent = "Sending…"; }
+        var base = window.API_BASE || "/api";
+        fetch(base + endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        })
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)); })
+          .then(function (res) {
+            if (res && res.ok === false) return Promise.reject(new Error(res.error || "Server error"));
+            bodyEl.innerHTML = formSuccessHtml(successTitle, successMsg);
+            bodyEl.querySelector("[data-close]").addEventListener("click", closeModal);
+          })
+          .catch(function () {
+            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = submitBtn.dataset.label || "Send"; }
+            var errEl = form.querySelector(".pv-form-error");
+            if (!errEl) {
+              errEl = document.createElement("p");
+              errEl.className = "pv-form-error";
+              errEl.setAttribute("role", "alert");
+              form.insertBefore(errEl, form.querySelector(".pv-form-actions"));
+            }
+            errEl.textContent = "Sorry — couldn’t send your report just now. Please try again.";
+          });
+      });
+    };
+  }
+
   function wireForm(successTitle, successMsg) {
     return function (bodyEl) {
       var form = bodyEl.querySelector("form");

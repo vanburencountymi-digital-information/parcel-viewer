@@ -368,12 +368,7 @@
 
     // Re-render an open parcel popup so theme-dependent SVG (AV chart) re-themes
     // and keeps passing contrast in the new theme (DIC-385 follow-up).
-    if (infoPanel && !infoPanel.hidden && _lastParcelArgs) {
-      const wasFocus = _focusInfoPanelOnShow;
-      _focusInfoPanelOnShow = false;  // don't steal focus on a theme toggle
-      showParcelInfo(_lastParcelArgs.pin, _lastParcelArgs.p, _lastParcelArgs.geometry);
-      _focusInfoPanelOnShow = wasFocus;
-    }
+    rerenderOpenParcel();
   }
 
   function initTheme() {
@@ -479,6 +474,14 @@
         updateZoningOpacity();
       });
 
+      // Apply saved "Default basemap = Aerial" preference (Settings) on load.
+      try {
+        if (localStorage.getItem("pv-basemap") === "aerial" && !aerialToggle.checked) {
+          aerialToggle.checked = true;
+          aerialToggle.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      } catch (_) {}
+
       zoningToggle.addEventListener("change", (e) => {
         if (e.target.checked) {
           map.setPaintProperty("parcels-line", "line-color", origLineColor);
@@ -569,6 +572,40 @@
   let _focusInfoPanelOnShow = false;   // set when opened via the keyboard search path
   let _lastFocusBeforeInfo  = null;    // element to restore focus to on close
   let _lastParcelArgs       = null;    // [pin, p, geometry] for re-render on theme toggle
+
+  // Re-render the open parcel popup (theme change, area-units change, etc.)
+  // without stealing focus.
+  function rerenderOpenParcel() {
+    if (infoPanel && !infoPanel.hidden && _lastParcelArgs) {
+      const wasFocus = _focusInfoPanelOnShow;
+      _focusInfoPanelOnShow = false;
+      showParcelInfo(_lastParcelArgs.pin, _lastParcelArgs.p, _lastParcelArgs.geometry);
+      _focusInfoPanelOnShow = wasFocus;
+    }
+  }
+
+  // Display preferences surfaced in the Settings modal (admin-menu.js).
+  window.PV_PREFS = {
+    getAreaUnits: function () { try { return localStorage.getItem("pv-area-units") || "acres"; } catch (_) { return "acres"; } },
+    setAreaUnits: function (u) {
+      try { localStorage.setItem("pv-area-units", u === "sqft" ? "sqft" : "acres"); } catch (_) {}
+      rerenderOpenParcel();
+    },
+    getBasemap: function () {
+      try { const bm = localStorage.getItem("pv-basemap"); if (bm) return bm; } catch (_) {}
+      return document.documentElement.getAttribute("data-theme") === "dark" ? "dark" : "light";
+    },
+    setBasemap: function (v) {
+      try { localStorage.setItem("pv-basemap", v); } catch (_) {}
+      const aerial = document.getElementById("toggle-aerial");
+      if (v === "aerial") {
+        if (aerial && !aerial.checked) { aerial.checked = true; aerial.dispatchEvent(new Event("change", { bubbles: true })); }
+      } else {
+        if (aerial && aerial.checked) { aerial.checked = false; aerial.dispatchEvent(new Event("change", { bubbles: true })); }
+        applyTheme(v === "dark");
+      }
+    },
+  };
 
   function collapseInfoPanel() {
     infoPanelCollapsed = true;
@@ -728,9 +765,12 @@
       if (v == null) return "—";
       const ac = parseFloat(v);
       if (!ac) return "—";
+      const sqft = Math.round(ac * 43560).toLocaleString();
+      let units = null;
+      try { units = localStorage.getItem("pv-area-units"); } catch (_) {}
+      if (units === "sqft") return `${sqft} sq ft`;
       const acStr = ac.toFixed(2) + " ac";
       if (ac >= 1) return acStr;
-      const sqft = Math.round(ac * 43560).toLocaleString();
       return `${acStr} (${sqft} sq ft)`;
     };
 
@@ -835,8 +875,15 @@
         `</button></div>` +
       `<div class="parcel-info-desc">${dash(legalDesc)}</div>` +
 
-      // Parcel actions — handled by the .pv-ptool delegation in admin-menu.js
+      // Parcel actions — handled by the .pv-ptool / [data-bm-toggle] delegation in admin-menu.js
       `<div class="parcel-info-actions">` +
+        (() => {
+          const on = (window.PV_BOOKMARKS && p.id != null) ? window.PV_BOOKMARKS.has(p.id) : false;
+          return `<button type="button" class="pv-bm-toggle${on ? " is-on" : ""}" data-bm-toggle aria-pressed="${on}" title="${on ? "Remove bookmark" : "Bookmark this parcel"}">` +
+            `<span class="pv-bm-star" aria-hidden="true">★</span>` +
+            `<span class="pv-bm-label">${on ? "Bookmarked" : "Bookmark"}</span>` +
+          `</button>`;
+        })() +
         `<button class="pv-ptool" data-ptool="packet" data-pin="${pin}">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>` +
           `<span>Generate Parcel Packet</span>` +

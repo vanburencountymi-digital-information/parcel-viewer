@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from parcel_viewer.db import close_pool, health_check, open_pool
-from parcel_viewer.routers import parcels
+from parcel_viewer.routers import feedback, parcels
 
 ALLOWED_WMS_HOSTS = (
     "hazards.fema.gov",
@@ -35,6 +35,7 @@ app.add_middleware(
 )
 
 app.include_router(parcels.router, tags=["parcels"])
+app.include_router(feedback.router, tags=["feedback"])
 
 
 @app.get("/health")
