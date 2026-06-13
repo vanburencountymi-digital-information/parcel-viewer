@@ -211,8 +211,13 @@ body {
   border-bottom: none;
 }
 
-.parcel-search-result:hover {
+.parcel-search-result:hover,
+.parcel-search-result.active {
   background: #eff6ff;
+}
+/* Keyboard-active option (ARIA combobox, DIC-381) */
+.parcel-search-result.active {
+  box-shadow: inset 3px 0 0 var(--ui-interactive);
 }
 
 .parcel-search-result.selected {
@@ -3863,7 +3868,8 @@ body {
 [data-theme="dark"] .parcel-search-input::placeholder { color: #5a5048; }
 [data-theme="dark"] .parcel-search-results { background: #1a1210; border-color: rgba(255,255,255,0.10); }
 [data-theme="dark"] .parcel-search-result  { color: #c8b89a; border-bottom-color: rgba(255,255,255,0.05); }
-[data-theme="dark"] .parcel-search-result:hover { background: rgba(163,71,59,0.15); }
+[data-theme="dark"] .parcel-search-result:hover,
+[data-theme="dark"] .parcel-search-result.active { background: rgba(163,71,59,0.15); }
 [data-theme="dark"] .parcel-search-result.selected { background: rgba(181,141,74,0.15); border-color: rgba(181,141,74,0.30); }
 
 /* MCP body */

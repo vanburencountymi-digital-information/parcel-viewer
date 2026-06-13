@@ -24,8 +24,9 @@
           Search
         </button>
         <div id="parcel-search" class="parcel-search">
-          <input id="parcel-search-input" class="parcel-search-input" type="text" placeholder="Search parcel number, owner, or address…" aria-label="Search parcels by parcel number, owner, or address" autocomplete="off">
-          <div id="parcel-search-results" class="parcel-search-results" hidden></div>
+          <input id="parcel-search-input" class="parcel-search-input" type="text" placeholder="Search parcel number, owner, or address…" aria-label="Search parcels by parcel number, owner, or address" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="parcel-search-results" aria-autocomplete="list" aria-haspopup="listbox">
+          <div id="parcel-search-results" class="parcel-search-results" role="listbox" aria-label="Parcel search results" hidden></div>
+          <div id="parcel-search-status" class="pv-sr-only" role="status" aria-live="polite"></div>
           <!-- Close button: visible only in mobile overlay mode via CSS -->
           <button id="pv-search-close" class="pv-search-close" aria-label="Close search">✕</button>
         </div>
@@ -95,7 +96,7 @@
         Parcel Info
       </button>
 
-      <div id="parcel-info-panel" class="parcel-info-panel" hidden>
+      <div id="parcel-info-panel" class="parcel-info-panel" role="region" aria-labelledby="parcel-info-title" tabindex="-1" hidden>
         <div class="parcel-info-header">
           <span class="parcel-info-title" id="parcel-info-title" role="heading" aria-level="2">Parcel</span>
           <button class="parcel-info-close" title="Close">✕</button>
@@ -110,7 +111,7 @@
       </div>
 
       <!-- Status strip (selection / parcel summary) -->
-      <div id="parcel-context" class="pv-status-strip">Select a parcel on the map.</div>
+      <div id="parcel-context" class="pv-status-strip" role="status" aria-live="polite">Select a parcel on the map.</div>
 
       <!-- Live cursor coordinate readout (desktop only); click to change format -->
       <div id="pv-coords" class="pv-coords" hidden title="Click to change coordinate format" aria-label="Cursor coordinates"></div>

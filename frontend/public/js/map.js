@@ -365,6 +365,15 @@
       }
     }
     localStorage.setItem("pv-theme", dark ? "dark" : "light");
+
+    // Re-render an open parcel popup so theme-dependent SVG (AV chart) re-themes
+    // and keeps passing contrast in the new theme (DIC-385 follow-up).
+    if (infoPanel && !infoPanel.hidden && _lastParcelArgs) {
+      const wasFocus = _focusInfoPanelOnShow;
+      _focusInfoPanelOnShow = false;  // don't steal focus on a theme toggle
+      showParcelInfo(_lastParcelArgs.pin, _lastParcelArgs.p, _lastParcelArgs.geometry);
+      _focusInfoPanelOnShow = wasFocus;
+    }
   }
 
   function initTheme() {
@@ -556,6 +565,11 @@
   const infoReopenTab = document.getElementById("parcel-info-reopen-tab");
   let   infoPanelCollapsed = false;
 
+  // ── Focus management + theme re-render for the parcel region (DIC-385) ──
+  let _focusInfoPanelOnShow = false;   // set when opened via the keyboard search path
+  let _lastFocusBeforeInfo  = null;    // element to restore focus to on close
+  let _lastParcelArgs       = null;    // [pin, p, geometry] for re-render on theme toggle
+
   function collapseInfoPanel() {
     infoPanelCollapsed = true;
     if (infoPanel) infoPanel.hidden = true;
@@ -613,11 +627,19 @@
   }
 
   if (infoClose) {
-    infoClose.addEventListener("click", () => collapseInfoPanel());
+    infoClose.addEventListener("click", () => {
+      collapseInfoPanel();
+      // Move focus to the now-visible reopen tab so keyboard users keep their place.
+      if (infoReopenTab && !infoReopenTab.hidden) infoReopenTab.focus();
+      else if (_lastFocusBeforeInfo && document.contains(_lastFocusBeforeInfo)) _lastFocusBeforeInfo.focus();
+    });
   }
 
   if (infoReopenTab) {
-    infoReopenTab.addEventListener("click", () => expandInfoPanel());
+    infoReopenTab.addEventListener("click", () => {
+      expandInfoPanel();
+      if (infoPanel) infoPanel.focus();
+    });
   }
 
   // Drag
@@ -691,6 +713,7 @@
   // returned by GET /parcel/{id}.
   function showParcelInfo(pin, p, geometry) {
     if (!infoPanel || !infoBody) return;
+    _lastParcelArgs = { pin, p, geometry };   // for re-render on theme toggle
 
     // Representative interior point (lng/lat), formatted to the active readout
     // format (DD / DMS / State Plane).
@@ -833,6 +856,9 @@
         if (mcp) mcp.hidden = true;
       }
       if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
+      // When opened via the keyboard search path, move focus into the region so
+      // screen-reader users land on the new parcel content (DIC-385).
+      if (_focusInfoPanelOnShow) { infoPanel.focus(); _focusInfoPanelOnShow = false; }
     }
   }
 
@@ -993,9 +1019,48 @@
 
   const searchInput   = document.getElementById("parcel-search-input");
   const searchResults = document.getElementById("parcel-search-results");
+  const searchStatus  = document.getElementById("parcel-search-status");
 
-  function hideResults() { searchResults.hidden = true; }
-  function clearResults() { searchResults.hidden = true; searchResults.innerHTML = ""; }
+  // ── ARIA combobox state (DIC-381) ──
+  let _options = [];     // [{ el, parcelId }]
+  let _activeIdx = -1;
+
+  function setExpanded(open) { searchInput.setAttribute("aria-expanded", String(open)); }
+
+  function setActive(idx) {
+    if (_activeIdx >= 0 && _options[_activeIdx]) {
+      _options[_activeIdx].el.classList.remove("active");
+      _options[_activeIdx].el.setAttribute("aria-selected", "false");
+    }
+    _activeIdx = idx;
+    if (idx >= 0 && _options[idx]) {
+      const o = _options[idx].el;
+      o.classList.add("active");
+      o.setAttribute("aria-selected", "true");
+      searchInput.setAttribute("aria-activedescendant", o.id);
+      o.scrollIntoView({ block: "nearest" });
+    } else {
+      searchInput.removeAttribute("aria-activedescendant");
+    }
+  }
+
+  function selectOption(idx) {
+    const o = _options[idx];
+    if (!o) return;
+    // Direct focus into the parcel region once it renders (keyboard lifeline).
+    _focusInfoPanelOnShow = true;
+    _lastFocusBeforeInfo = searchInput;
+    window.PS_selectParcelById(o.parcelId);
+    hideResults();
+    closeMobileSearch();
+  }
+
+  function hideResults() { searchResults.hidden = true; setExpanded(false); setActive(-1); }
+  function clearResults() {
+    searchResults.hidden = true; searchResults.innerHTML = "";
+    _options = []; setExpanded(false); setActive(-1);
+    if (searchStatus) searchStatus.textContent = "";
+  }
 
   // Mobile search overlay helpers
   const _searchContainer = document.getElementById("parcel-search");
@@ -1006,6 +1071,7 @@
   function closeMobileSearch() {
     _searchContainer?.classList.remove("pv-search-open");
     searchResults.hidden = true;
+    setExpanded(false);
   }
   // Full reset — clears the query and results (used by Escape / explicit cancel).
   function resetMobileSearch() {
@@ -1059,39 +1125,70 @@
   function renderSearchResults(results) {
     searchResults.innerHTML = "";
     searchResults.hidden = false;
+    _options = [];
+    setActive(-1);
 
     if (!results.length) {
       searchResults.innerHTML = '<div class="parcel-search-no-results">No matches found</div>';
+      setExpanded(true);
+      if (searchStatus) searchStatus.textContent = "No matches found";
       return;
     }
 
     const container = document.createElement("div");
     container.className = "parcel-search-page";
 
-    results.forEach(r => {
+    results.forEach((r, i) => {
       const row = document.createElement("div");
       row.className = "parcel-search-result";
+      row.id = "psr-opt-" + i;
+      row.setAttribute("role", "option");
+      row.setAttribute("aria-selected", "false");
       row.innerHTML =
         `<div class="parcel-search-result-pin">${r.pin}${r.municipality ? " &middot; " + r.municipality : ""}</div>` +
         `<div class="parcel-search-result-owner">${r.owner_name || "—"}</div>` +
         (r.address ? `<div class="parcel-search-result-address">${r.address}</div>` : "");
-      row.addEventListener("click", () => {
-        window.PS_selectParcelById(r.id);
-        hideResults();
-        closeMobileSearch();
-      });
+      const idx = i;
+      row.addEventListener("click", () => selectOption(idx));
+      row.addEventListener("mousemove", () => { if (_activeIdx !== idx) setActive(idx); });
       container.appendChild(row);
+      _options.push({ el: row, parcelId: r.id });
     });
 
     searchResults.appendChild(container);
+    setExpanded(true);
+    if (searchStatus) {
+      searchStatus.textContent = results.length + (results.length === 1 ? " result" : " results") + " found, use up and down arrow keys to navigate";
+    }
   }
 
   searchInput.addEventListener("focus", () => {
-    if (searchResults.innerHTML) searchResults.hidden = false;
+    if (searchResults.innerHTML) { searchResults.hidden = false; if (_options.length) setExpanded(true); }
   });
 
   searchInput.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") resetMobileSearch();
+    const open = !searchResults.hidden && _options.length > 0;
+    switch (e.key) {
+      case "ArrowDown":
+        if (open) { e.preventDefault(); setActive((_activeIdx + 1) % _options.length); }
+        break;
+      case "ArrowUp":
+        if (open) { e.preventDefault(); setActive((_activeIdx - 1 + _options.length) % _options.length); }
+        break;
+      case "Home":
+        if (open) { e.preventDefault(); setActive(0); }
+        break;
+      case "End":
+        if (open) { e.preventDefault(); setActive(_options.length - 1); }
+        break;
+      case "Enter":
+        if (open && _activeIdx >= 0) { e.preventDefault(); selectOption(_activeIdx); }
+        break;
+      case "Escape":
+        if (!searchResults.hidden) { e.preventDefault(); hideResults(); }
+        else { resetMobileSearch(); }
+        break;
+    }
   });
 
   document.addEventListener("click", (e) => {
