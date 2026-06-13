@@ -637,7 +637,9 @@
       WS_URL: '%VITE_WS_URL%'.indexOf('%') === 0 ? '' : '%VITE_WS_URL%',
     };
     window.API_BASE = window.PS_CONFIG.API_BASE;
-  </script>
+</script>
+  <!-- County manifest — single source of truth for county-specific values. Load first. -->
+  <script src="/frontend/public/js/county-config.js"></script>
   <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
   <!-- proj4.js — coordinate projection (State Plane etc.) for Measurement tab -->
@@ -657,6 +659,6 @@
   <script src="/frontend/public/js/admin-menu.js"></script>
   <!-- Map Buddy AI assistant — remove these two lines to detach -->
   <script src="/map-buddy/js/map-buddy.js"></script>
-  <script>MapBuddy.mount({ apiBase: window.MAP_BUDDY_API || 'https://map-buddy-toaozre74a-uc.a.run.app' });</script>
+  <script>MapBuddy.mount({ apiBase: (window.COUNTY && COUNTY.endpoints && COUNTY.endpoints.mapBuddy) || window.MAP_BUDDY_API || 'https://map-buddy-toaozre74a-uc.a.run.app' });</script>
 </body>
 </html>

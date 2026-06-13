@@ -154,13 +154,16 @@
   }
 
   function openAbout() {
+    var cc = window.COUNTY || {};
+    var countyName = cc.name || "Van Buren County";
+    var place = countyName + (cc.state ? ", " + cc.state : "");
     openModal("About", [
-      '<p class="pv-modal-lead"><strong>Parcel Viewer</strong> — Van Buren County, Michigan</p>',
+      '<p class="pv-modal-lead"><strong>Parcel Viewer</strong> — ' + esc(place) + '</p>',
       '<div class="pv-about-grid">' +
         aboutRow("Version", "0.x (preview)") +
         aboutRow("Maintained by", "DICE Labs") +
         aboutRow("Basemap", "CARTO / OpenStreetMap contributors") +
-        aboutRow("Parcel data", "Van Buren County GIS") +
+        aboutRow("Parcel data", countyName + " GIS") +
       '</div>',
       '<p class="pv-modal-note">This is a preview build. Data shown is for informational purposes only and is not a legal record of survey. Placeholder content — final attributions and version to be confirmed.</p>'
     ].join(""));
@@ -308,7 +311,8 @@
     return "";
   }
 
-  var DATA_REQUEST_FORM_URL = "https://form.jotform.com/261544522974159";
+  var DATA_REQUEST_FORM_URL = (window.COUNTY && COUNTY.forms && COUNTY.forms.dataRequest) ||
+    "https://form.jotform.com/261544522974159";
 
   function openDataRequest() {
     // Embed the JotForm directly in a modal window. If the iframe is blocked

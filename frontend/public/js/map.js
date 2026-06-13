@@ -20,6 +20,14 @@
   const MARTIN_URL = (window.PS_CONFIG && window.PS_CONFIG.MARTIN_URL) || "/tiles";
   const SOURCE_LAYER = "parcels";
 
+  // Stamp the county name into the topbar from the manifest (county-config.js).
+  if (window.COUNTY && COUNTY.name) {
+    document.addEventListener("DOMContentLoaded", function () {
+      var el = document.querySelector(".pv-brand-county");
+      if (el) el.textContent = COUNTY.name;
+    });
+  }
+
   // ── Map instance ───────────────────────────────────────────────────────
   let map = null;
   let hoveredParcelId = null;
@@ -320,14 +328,14 @@
   // ── Map init ───────────────────────────────────────────────────────────
   async function initMap() {
     const style = await resolveStyle();
-    // Van Buren County, MI
-    const EXTENT = [[-86.33, 42.06], [-85.76, 42.43]];
+    const cmap = (window.COUNTY && COUNTY.map) || {};
+    const EXTENT = cmap.extent || [[-86.33, 42.06], [-85.76, 42.43]];
 
     map = new maplibregl.Map({
       container: "map",
       style: style,
-      center: [-86.03, 42.24],
-      zoom: 9,
+      center: cmap.center || [-86.03, 42.24],
+      zoom: cmap.zoom != null ? cmap.zoom : 9,
       preserveDrawingBuffer: true,
       boxZoom: false,  // we use our own box-select; default shift+drag zoom conflicts with shift-click
     });
@@ -601,46 +609,9 @@
   }
 
   // ── Info display ───────────────────────────────────────────────────────
-  // Michigan STC property classification codes → human label
-  const PROP_CLASS_LABELS = {
-    "001":"Commercial – Personal Property", "002":"Industrial – Personal Property",
-    "003":"Utility – Personal Property",    "004":"Agricultural – Personal Property",
-    "005":"Residential – Personal Property","006":"Exempt – Personal Property",
-    "007":"Other – Personal Property",
-    "101":"Agricultural",                   "102":"Agricultural – Leased Federal/State",
-    "110":"Agricultural – Other",           "111":"Agricultural – Timber Cutover",
-    "120":"Agricultural – Vacant Land",
-    "201":"Commercial",                     "202":"Commercial – Hotel / Motel",
-    "203":"Commercial – Office",            "210":"Commercial – Other",
-    "251":"Commercial – Rehabilitation",    "260":"Commercial – Special Acts",
-    "301":"Industrial",                     "302":"Industrial – Leased Land",
-    "310":"Industrial – Other",             "351":"Industrial – Rehabilitation",
-    "401":"Residential",                    "402":"Residential – Condominium",
-    "403":"Residential – Mobile Home",      "407":"Residential – Non-Homestead",
-    "408":"Residential – Industrial Rehab", "410":"Residential – Personal Property",
-    "501":"Timber-Cutover",                 "502":"Timber-Cutover – Leased",
-    "551":"Timber-Cutover – Other",
-    "601":"Developmental",
-    "700":"Exempt",         "701":"Exempt – Publicly Owned",
-    "702":"Exempt – Federal","703":"Exempt – State",
-    "704":"Exempt – County","705":"Exempt – Local Government",
-    "706":"Exempt – School","707":"Exempt – Church / Religious",
-    "708":"Exempt – Charitable / Educational","709":"Exempt – Cemetery",
-    "710":"Exempt – Hospital / Medical",
-  };
-
-  // Michigan school district codes → district name (Van Buren County + adjacent)
-  const SCHOOL_DIST_LABELS = {
-    "80010":"South Haven Public Schools",   "80020":"Bangor Public Schools",
-    "80040":"Covert Public Schools",        "80050":"Decatur Public Schools",
-    "80090":"Bloomingdale Public Schools",  "80110":"Gobles Public Schools",
-    "80120":"Hartford Public Schools",      "80130":"Lawrence Public Schools",
-    "80140":"Lawton Community Schools",     "80150":"Mattawan Consolidated Schools",
-    "80160":"Paw Paw Public Schools",       "80240":"Van Buren ISD",
-    "03020":"Allegan County District",
-    "11320":"Cass County District",         "11330":"Cass County District",
-    "14020":"Watervliet Public Schools",    "14050":"Berrien County District",
-  };
+  // County-specific label maps now live in county-config.js (window.COUNTY).
+  const PROP_CLASS_LABELS  = (window.COUNTY && COUNTY.labels && COUNTY.labels.propClass)  || {};
+  const SCHOOL_DIST_LABELS = (window.COUNTY && COUNTY.labels && COUNTY.labels.schoolDist) || {};
 
   // Field layout matches the geo.parcels / assessing.vbc_parcels payload
   // returned by GET /parcel/{id}.
