@@ -1512,23 +1512,6 @@ body {
   line-height: 1.55;
 }
 
-/* ── Selection badge ────────────────────────────────────────────────────── */
-.selection-badge {
-  position: absolute;
-  bottom: calc(12px + 80px + 8px); /* above map-control-panel */
-  right: 12px;
-  z-index: 10;
-  background: var(--ui-accent);
-  color: white;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 12px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-  pointer-events: none;
-  white-space: nowrap;
-}
-
 /* ── Selection tools pane ───────────────────────────────────────────────── */
 .sel-hint {
   font-size: 11px;
@@ -3754,49 +3737,39 @@ body {
    ─────────────────────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
 
-  /* Parcel info panel — full-width bottom sheet */
-  .parcel-info-panel {
-    width: calc(100vw - 16px) !important;
-    left: 8px !important;
-    right: 8px !important;
-    bottom: 36px !important;
-    top: auto !important;
-    max-height: 52vh;
-    min-width: unset !important;
-    resize: none !important;
-    border-radius: 10px 10px 6px 6px;
-  }
-
-  /* Map control panel — full-width bottom sheet, offset above parcel panel */
+  /* Parcel Info & Map Controls — drop-down sheets from the unified tab bar.
+     top: 82px = topbar(50) + tabbar(32). Capped to the upper area so they stay
+     clear of the Map Buddy bottom sheet. Opening one closes the other (JS). */
+  .parcel-info-panel,
   .map-control-panel {
     width: calc(100vw - 16px) !important;
     left: 8px !important;
     right: 8px !important;
-    bottom: 36px !important;
-    top: auto !important;
-    max-height: 52vh;
+    top: 82px !important;
+    bottom: auto !important;
+    max-height: 44vh !important;
     min-width: unset !important;
     resize: none !important;
-    border-radius: 10px 10px 6px 6px;
+    border-radius: 6px 6px 10px 10px;
   }
 
-  /* Reopen tabs — larger touch targets, nudge inward from edges */
+  /* Old side reopen tabs are replaced by the unified tab bar */
   .parcel-info-reopen-tab,
-  .mcp-reopen-tab {
-    padding: 18px 11px;
-    font-size: 12px;
+  .mcp-reopen-tab { display: none !important; }
+
+  /* Map Buddy split-screen: push the map into the top half so the map and its
+     floating panels stay visible above the Map Buddy bottom sheet. JS calls
+     map.resize() after the class toggles so MapLibre refits the canvas. */
+  body.mb-mobile-open #panel-map {
+    align-self: flex-start !important;
+    height: 50vh !important;
   }
 
-  /* Parcel info reopen tab — keep on left */
-  .parcel-info-reopen-tab {
-    left: 0;
-    border-radius: 0 8px 8px 0;
-  }
-
-  /* MCP reopen tab — keep on right */
-  .mcp-reopen-tab {
-    right: 0;
-    border-radius: 8px 0 0 8px;
+  /* When Map Buddy occupies the bottom half, cap the top dropdowns so they sit
+     fully above it (no overlap) — letting you read a parcel while chatting. */
+  body.mb-mobile-open .parcel-info-panel,
+  body.mb-mobile-open .map-control-panel {
+    max-height: calc(50vh - 98px) !important;
   }
 
   /* Tooltip: hide entirely on touch — hover doesn't exist */

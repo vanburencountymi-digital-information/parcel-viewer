@@ -125,33 +125,35 @@
     el.className = 'mb-panel mb-collapsed';
     el.innerHTML =
       '<div id="mb-resize-handle" class="mb-resize-handle"' +
-          ' role="separator" aria-label="Drag to resize Map Buddy panel"></div>' +
+          ' role="separator" aria-label="Drag to resize MapBuddy A.I. panel"></div>' +
       '<button id="mb-tab-btn" class="mb-tab-btn"' +
-          ' title="Open Map Buddy" aria-label="Open Map Buddy panel">' +
-        '<span aria-hidden="true">✨</span><span>Map Buddy</span>' +
+          ' title="Open MapBuddy A.I." aria-label="Open MapBuddy A.I. panel">' +
+        '<span aria-hidden="true">✨</span><span>MapBuddy A.I.</span>' +
       '</button>' +
       '<div class="mb-drawer-handle">' +
         '<div class="mb-drawer-pill"></div>' +
-        '<span class="mb-drawer-label">✨ Map Buddy</span>' +
+        '<span class="mb-drawer-label">✨ MapBuddy A.I.</span>' +
         '<div class="mb-drawer-pill"></div>' +
+        '<button id="mb-mobile-close" class="mb-mobile-close"' +
+            ' title="Close" aria-label="Close MapBuddy A.I.">✕</button>' +
       '</div>' +
       '<div class="mb-inner">' +
         '<div class="mb-header">' +
           '<span class="mb-header-icon" aria-hidden="true">✨</span>' +
-          '<span class="mb-header-title">Map Buddy</span>' +
+          '<span class="mb-header-title">MapBuddy A.I.</span>' +
           '<button id="mb-collapse-btn" class="mb-collapse-btn"' +
-              ' title="Collapse panel" aria-label="Collapse Map Buddy">❮</button>' +
+              ' title="Collapse panel" aria-label="Collapse MapBuddy A.I.">❮</button>' +
         '</div>' +
         '<div id="mb-context" class="mb-context mb-context-empty">' +
           '<span class="mb-context-dot"></span>' +
           '<span id="mb-context-text">No parcel selected</span>' +
         '</div>' +
         '<div id="mb-messages" class="mb-messages"' +
-            ' role="log" aria-live="polite" aria-label="Map Buddy conversation"></div>' +
+            ' role="log" aria-live="polite" aria-label="MapBuddy A.I. conversation"></div>' +
         '<div class="mb-input-area">' +
           '<textarea id="mb-input" class="mb-input" rows="1"' +
               ' placeholder="Ask about this parcel or search by owner…"' +
-              ' aria-label="Message Map Buddy"></textarea>' +
+              ' aria-label="Message MapBuddy A.I."></textarea>' +
           '<button id="mb-send-btn" class="mb-send-btn" aria-label="Send">' +
             '<svg width="13" height="13" viewBox="0 0 13 13"' +
                 ' fill="currentColor" aria-hidden="true">' +
@@ -186,7 +188,9 @@
       _panelWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, savedW));
     }
 
-    if (localStorage.getItem(STORAGE_COLLAPSED) === 'false') {
+    // On mobile, always start collapsed (the unified tab bar reopens it) so the
+    // viewer loads with all panels closed. Desktop restores the saved state.
+    if (!_isMobile() && localStorage.getItem(STORAGE_COLLAPSED) === 'false') {
       _openPanel(true);
     } else {
       _collapsePanel(true);
@@ -194,6 +198,11 @@
 
     var drawerHandle = _panel.querySelector('.mb-drawer-handle');
     if (drawerHandle) drawerHandle.addEventListener('click', _togglePanel);
+    var mobileClose = document.getElementById('mb-mobile-close');
+    if (mobileClose) mobileClose.addEventListener('click', function (e) {
+      e.stopPropagation();           // don't also trigger the drawer-handle toggle
+      _collapsePanel();
+    });
     _tabBtn.addEventListener('click', _openPanel);
     _collapseBtn.addEventListener('click', _collapsePanel);
 
@@ -258,7 +267,14 @@
     });
     _sendBtn.addEventListener('click', _send);
 
-    _onWinResize = function () { _applyWidth(); _nudgeMcpTab(); };
+    _onWinResize = function () {
+      _applyWidth();
+      _nudgeMcpTab();
+      // Keep the mobile split-screen push class consistent across breakpoint
+      // changes (e.g. rotate/resize): only mobile + open should push the map.
+      if (!_isMobile()) document.body.classList.remove('mb-mobile-open');
+      else document.body.classList.toggle('mb-mobile-open', !_isCollapsed);
+    };
     window.addEventListener('resize', _onWinResize);
 
     _renderEmptyState();
@@ -266,6 +282,8 @@
     root.PV_MAP_BUDDY = {
       open:     _openPanel,
       collapse: _collapsePanel,
+      toggle:   _togglePanel,
+      isOpen:   function () { return !_isCollapsed; },
       ask: function (q) {
         if (!_isCollapsed) { _inputEl.value = q; _send(); }
         else { _openPanel(); _inputEl.value = q; _send(); }
@@ -280,6 +298,7 @@
     if (!_isMobile()) _applyWidth();
     localStorage.setItem(STORAGE_COLLAPSED, 'false');
     _nudgeMcpTab();
+    _pushMap(true);
   }
 
   function _collapsePanel() {
@@ -288,6 +307,24 @@
     if (!_isMobile()) _panel.style.width = '';
     localStorage.setItem(STORAGE_COLLAPSED, 'true');
     _nudgeMcpTab();
+    _pushMap(false);
+  }
+
+  // Mobile split-screen: toggle the body class that shrinks #panel-map into the
+  // top half, then refit the MapLibre canvas to the new container size. No-op on
+  // desktop layout. Fires a few times because the map handle (PS_MAP) is only
+  // published after the map's 'load' event, which may lag a first open.
+  function _pushMap(open) {
+    document.body.classList.toggle('mb-mobile-open', open && _isMobile());
+    var fit = function () {
+      var map = root.PS_MAP;
+      if (map && typeof map.resize === 'function') map.resize();
+      else window.dispatchEvent(new Event('resize')); // fallback: MapLibre trackResize
+    };
+    fit();
+    setTimeout(fit, 80);
+    setTimeout(fit, 260);
+    if (root.PV_MOBILE_TABS && root.PV_MOBILE_TABS.refresh) root.PV_MOBILE_TABS.refresh();
   }
 
   function _togglePanel() {
@@ -357,7 +394,7 @@
     el.className = 'mb-msg-ai';
     var lbl  = document.createElement('div');
     lbl.className   = 'mb-msg-ai-label';
-    lbl.textContent = 'Map Buddy';
+    lbl.textContent = 'MapBuddy A.I.';
     var body = document.createElement('div');
     body.className   = 'mb-msg-ai-body';
     body.textContent = text;
@@ -510,9 +547,9 @@
     el.className = 'mb-empty-state';
     el.innerHTML =
       '<div class="mb-empty-icon">✨</div>' +
-      '<div class="mb-empty-title">Map Buddy</div>' +
-      '<div class="mb-empty-hint">Select a parcel and ask me anything about it, ' +
-        'or search for one by owner name or address.</div>' +
+      '<div class="mb-empty-title">MapBuddy A.I.</div>' +
+      '<div class="mb-empty-hint">Your A.I. assistant. Select a parcel and ask me anything ' +
+        'about it, or search for one by owner name or address.</div>' +
       '<div class="mb-quick-btns">' +
         '<button class="mb-quick-btn">What is Taxable Value vs. Assessed Value?</button>' +
         '<button class="mb-quick-btn">How does the Headlee Amendment work?</button>' +

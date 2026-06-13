@@ -152,15 +152,6 @@
     document.dispatchEvent(new CustomEvent("ps:selection-changed", {
       detail: { pins: [...selectedPins] },
     }));
-    const badge   = document.getElementById("selection-badge");
-    const countEl = document.getElementById("selection-count");
-    if (!badge) return;
-    if (selectedPins.length === 0) {
-      badge.hidden = true;
-    } else {
-      if (countEl) countEl.textContent = selectedPins.length;
-      badge.hidden = false;
-    }
     const selActions = document.getElementById("sel-actions");
     if (selActions) selActions.hidden = selectedPins.length === 0;
   }
@@ -489,12 +480,14 @@
     const navEl = document.getElementById("parcel-info-nav");
     if (navEl) navEl.hidden = true;
     if (infoReopenTab) infoReopenTab.hidden = false;
+    if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
   }
 
   function expandInfoPanel() {
     infoPanelCollapsed = false;
     if (infoReopenTab) infoReopenTab.hidden = true;
     if (infoPanel) infoPanel.hidden = false;
+    if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
   }
 
   function hideInfoPanel() {
@@ -503,6 +496,7 @@
     if (infoReopenTab) infoReopenTab.hidden = true;
     const navEl = document.getElementById("parcel-info-nav");
     if (navEl) navEl.hidden = true;
+    if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
   }
 
   // ── Field tooltip — single fixed-position div, avoids overflow-y:auto clipping ──
@@ -757,7 +751,16 @@
       `<div class="parcel-info-section-title">Tax Description <span class="parcel-info-caveat" data-tip="The Tax Description is an abbreviated version of the deeded legal description used for taxation purposes only. It should never be used on deeds, titles, mortgages, or other legal documents. Always refer to the recorded deed for the full legal description.">*</span></div>` +
       `<div class="parcel-info-desc">${dash(legalDesc)}</div>`;
 
-    if (!infoPanelCollapsed) infoPanel.hidden = false;
+    if (!infoPanelCollapsed) {
+      infoPanel.hidden = false;
+      // Mobile: Parcel Info and Map Controls are mutually exclusive top
+      // dropdowns — selecting a parcel closes Map Controls so they don't stack.
+      if (window.innerWidth <= 640) {
+        const mcp = document.getElementById("map-control-panel");
+        if (mcp) mcp.hidden = true;
+      }
+      if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
+    }
   }
 
   function updateInfoPanelNav() {
@@ -921,6 +924,44 @@
   function hideResults() { searchResults.hidden = true; }
   function clearResults() { searchResults.hidden = true; searchResults.innerHTML = ""; }
 
+  // Mobile search overlay helpers
+  const _searchContainer = document.getElementById("parcel-search");
+
+  // Close the overlay but KEEP the query + results, so reopening shows them
+  // again (matches desktop: picking the wrong parcel, you can come back and
+  // see the remaining matches without re-searching).
+  function closeMobileSearch() {
+    _searchContainer?.classList.remove("pv-search-open");
+    searchResults.hidden = true;
+  }
+  // Full reset — clears the query and results (used by Escape / explicit cancel).
+  function resetMobileSearch() {
+    closeMobileSearch();
+    searchInput.value = "";
+    clearResults();
+  }
+
+  // Search icon button (mobile) → open overlay, re-showing any lingering results.
+  // stopPropagation so this click doesn't reach the document "click-outside"
+  // handler below, which would immediately hide the results we just revealed.
+  document.getElementById("pv-search-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    _searchContainer.classList.add("pv-search-open");
+    if (searchResults.innerHTML) searchResults.hidden = false;
+    setTimeout(() => searchInput.focus(), 60);
+  });
+
+  // Close button inside overlay
+  document.getElementById("pv-search-close")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    closeMobileSearch();
+  });
+
+  // Tap backdrop (the overlay container itself, not the input or results)
+  _searchContainer?.addEventListener("click", (e) => {
+    if (e.target === _searchContainer) closeMobileSearch();
+  });
+
   let _searchTimer = null;
   let _searchController = null;
 
@@ -964,6 +1005,7 @@
       row.addEventListener("click", () => {
         window.PS_selectParcelById(r.id);
         hideResults();
+        closeMobileSearch();
       });
       container.appendChild(row);
     });
@@ -976,7 +1018,7 @@
   });
 
   searchInput.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") { searchInput.value = ""; clearResults(); }
+    if (e.key === "Escape") resetMobileSearch();
   });
 
   document.addEventListener("click", (e) => {
@@ -1035,6 +1077,7 @@
       mcpHeaderClose.addEventListener("click", () => {
         panel.hidden = true;
         if (mcpReopenTab) mcpReopenTab.hidden = false;
+        if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
       });
     }
 
@@ -1991,9 +2034,71 @@
     if (countEl) countEl.textContent = `${total} parcel${total !== 1 ? "s" : ""} in buffer`;
   }
 
+  // ── Unified mobile tab bar ─────────────────────────────────────────────
+  // One bar under the topbar with Parcel Info | Map Controls | Map Buddy.
+  // Parcel Info and Map Controls are mutually-exclusive top dropdowns; Map
+  // Buddy is an independent bottom drawer (so you can chat while viewing a
+  // parcel). All panels start closed on mobile.
+  function initMobileTabs() {
+    const bar = document.getElementById("pv-mobile-tabbar");
+    if (!bar) return;
+
+    const tabParcel   = document.getElementById("pv-mtab-parcel");
+    const tabControls = document.getElementById("pv-mtab-controls");
+    const tabBuddy    = document.getElementById("pv-mtab-buddy");
+    const mcpPanel    = document.getElementById("map-control-panel");
+    const infoPanelEl = document.getElementById("parcel-info-panel");
+
+    const isMobile     = () => window.innerWidth <= 640;
+    const controlsOpen = () => mcpPanel && !mcpPanel.hidden;
+    const parcelOpen   = () => infoPanelEl && !infoPanelEl.hidden;
+    const buddyOpen    = () => !!(window.PV_MAP_BUDDY && window.PV_MAP_BUDDY.isOpen && window.PV_MAP_BUDDY.isOpen());
+    const hasParcel    = () => selectedPins.length > 0;
+
+    function openControls() {
+      collapseInfoPanel();                 // mutual exclusion
+      mcpPanel.style.left = mcpPanel.style.top = mcpPanel.style.right = mcpPanel.style.bottom = "";
+      mcpPanel.hidden = false;
+      refresh();
+    }
+    function closeControls() { mcpPanel.hidden = true; refresh(); }
+
+    if (tabParcel) tabParcel.addEventListener("click", () => {
+      if (parcelOpen()) collapseInfoPanel();
+      else if (hasParcel()) { closeControls(); expandInfoPanel(); }
+      refresh();
+    });
+
+    if (tabControls) tabControls.addEventListener("click", () => {
+      if (controlsOpen()) closeControls();
+      else openControls();
+    });
+
+    if (tabBuddy) tabBuddy.addEventListener("click", () => {
+      if (window.PV_MAP_BUDDY && window.PV_MAP_BUDDY.toggle) window.PV_MAP_BUDDY.toggle();
+      refresh();
+    });
+
+    function refresh() {
+      if (tabParcel) {
+        tabParcel.classList.toggle("active", parcelOpen());
+        tabParcel.disabled = !hasParcel();
+      }
+      if (tabControls) tabControls.classList.toggle("active", controlsOpen());
+      if (tabBuddy)    tabBuddy.classList.toggle("active", buddyOpen());
+    }
+
+    window.PV_MOBILE_TABS = { refresh };
+
+    // Start with everything closed on mobile.
+    if (isMobile() && mcpPanel) mcpPanel.hidden = true;
+    refresh();
+  }
+
   // ── Bootstrap ──────────────────────────────────────────────────────────
   initTheme();
   initMap();
   initMapControlPanel();
   initSelectionTools();
+  initMobileTabs();
 })();

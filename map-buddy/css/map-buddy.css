@@ -321,71 +321,82 @@
 /* ── Mobile overrides (≤640px) ──────────────────────────────────────────── */
 @media (max-width: 640px) {
 
-  /* Map Buddy: fixed bottom drawer, takes itself out of the flex row */
+  /* Mobile: bottom drawer filling the lower half of the screen. The host pushes
+     the map into the top half (body.mb-mobile-open) so both stay visible. */
   #map-buddy-panel {
     position: fixed;
-    bottom: 0; left: 0; right: 0;
+    left: 0; right: 0; bottom: 0;
     width: 100% !important;
-    height: 44px;
+    height: 50vh;
     flex-direction: column;
     border-left: none;
     border-top: 2px solid var(--ui-interactive-bd);
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.18);
-    transition: height 0.25s ease;
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -6px 22px rgba(0,0,0,0.20);
     z-index: 25;
-  }
-  #map-buddy-panel.mb-collapsed {
-    background: linear-gradient(180deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.22);
-    border-top-color: rgba(163,71,59,0.30);
-  }
-  #map-buddy-panel:not(.mb-collapsed) {
-    height: 52vh;
+    transition: none;
   }
 
-  /* Hide desktop-only controls on mobile */
+  /* Collapsed: fully hidden — the unified tab bar's Map Buddy tab reopens it */
+  #map-buddy-panel.mb-collapsed { display: none !important; }
+
+  /* Header bar removed on mobile to reclaim vertical space — the drawer handle
+     doubles as the title and the tap-to-collapse control. */
+  .mb-header { display: none !important; }
+
+  /* Desktop-only controls hidden */
   .mb-resize-handle { display: none !important; }
   .mb-tab-btn       { display: none !important; }
 
-  /* Show inner content in all states on mobile */
-  #map-buddy-panel.mb-collapsed .mb-inner { display: flex; }
+  /* Inner content fills the drawer */
+  .mb-inner { display: flex; }
 
-  /* Mobile drawer handle bar */
+  /* Drawer handle: compact title bar + tap-to-collapse */
   .mb-drawer-handle {
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
     flex-shrink: 0;
-    padding: 0 12px;
-    height: 44px;
+    padding: 0 16px;
+    height: 36px;
     cursor: pointer;
     user-select: none;
+    background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+    border-radius: 14px 14px 0 0;
+    position: relative;
   }
+
+  /* Explicit close button (right side of the handle) — matches the ✕ on the
+     Parcel Info and Map Controls panels. */
+  .mb-mobile-close {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: rgba(255,255,255,0.75);
+    font-size: 15px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 4px 7px;
+  }
+  .mb-mobile-close:active { color: #ffffff; }
   .mb-drawer-pill {
-    width: 32px; height: 4px;
+    width: 26px; height: 4px;
     border-radius: 2px;
-    background: rgba(255,255,255,0.35);
+    background: rgba(255,255,255,0.40);
   }
   .mb-drawer-label {
     font-size: 12px;
     font-weight: 700;
-    color: rgba(255,255,255,0.88);
+    color: rgba(255,255,255,0.90);
     letter-spacing: 0.04em;
   }
-  #map-buddy-panel:not(.mb-collapsed) .mb-drawer-handle {
-    background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
-  }
-  #map-buddy-panel:not(.mb-collapsed) .mb-drawer-pill {
-    background: rgba(255,255,255,0.35);
-  }
-  #map-buddy-panel.mb-collapsed .mb-header { display: none; }
-  #map-buddy-panel.mb-collapsed .mb-context,
-  #map-buddy-panel.mb-collapsed .mb-messages,
-  #map-buddy-panel.mb-collapsed .mb-input-area { display: none; }
 
-  /* Lift status strip above the closed drawer handle */
-  .pv-status-strip { bottom: 44px; }
+  /* Status strip stays at the very bottom (drawer floats above it) */
+  .pv-status-strip { bottom: 0; }
 
 }
 

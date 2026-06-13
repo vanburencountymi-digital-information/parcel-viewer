@@ -17,7 +17,165 @@
 .pv-brand { font-weight: 700; color: #2d1613; }
 .pv-brand-county { font-weight: 500; color: #8B8278; margin-left: 4px; }
 
-/* search is now inside the topbar — no position override needed */
+/* ── Search icon button (mobile only, replaces inline input) ─────────────── */
+.pv-search-btn {
+  display: none; /* shown only on mobile via @media below */
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid rgba(0,0,0,0.12);
+  border-radius: 6px;
+  padding: 5px 10px;
+  cursor: pointer;
+  color: #6b7280;
+  font-size: 13px;
+  font-family: inherit;
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s;
+}
+.pv-search-btn:hover { color: var(--ui-interactive); border-color: var(--ui-interactive-bd); }
+
+/* Close button inside overlay — hidden on desktop, shown in overlay open state */
+.pv-search-close { display: none; }
+
+/* ── Unified mobile tab bar (mobile only) ─────────────────────────────────── */
+.pv-mobile-tabbar { display: none; }  /* desktop: hidden, panels use their own tabs */
+
+@media (max-width: 640px) {
+  .pv-mobile-tabbar {
+    display: flex;
+    position: fixed;
+    top: 50px; left: 0; right: 0;
+    height: 32px;
+    z-index: 15;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(229,231,235,0.7);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+  }
+  .pv-mtab {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    border-right: 1px solid rgba(229,231,235,0.7);
+    background: none;
+    color: #6b7280;
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    cursor: pointer;
+    padding: 0 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: background 0.12s, color 0.12s;
+  }
+  .pv-mtab:last-child { border-right: none; }
+  .pv-mtab.active {
+    background: var(--ui-interactive-bg);
+    color: var(--ui-interactive-dk);
+    box-shadow: inset 0 -2px 0 var(--ui-interactive);
+  }
+  .pv-mtab:disabled { color: #cbd5e1; cursor: default; }
+}
+
+[data-theme="dark"] .pv-mobile-tabbar {
+  background: rgba(18, 13, 12, 0.92);
+  border-bottom-color: rgba(255,255,255,0.07);
+}
+[data-theme="dark"] .pv-mtab        { color: #9e9087; border-right-color: rgba(255,255,255,0.07); }
+[data-theme="dark"] .pv-mtab.active { color: var(--ui-interactive); background: var(--ui-interactive-bg); }
+[data-theme="dark"] .pv-mtab:disabled { color: #4a423b; }
+
+/* ── Mobile overrides ─────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* Fixed topbar height so the reopen tabs can attach to its bottom edge.
+     z-index raised above the reopen tabs (z:30) so the search overlay —
+     which lives inside this stacking context — can render above them. */
+  .pv-topbar {
+    height: 50px;
+    z-index: 60;
+  }
+
+  /* Hide county subtitle so brand fits one line */
+  .pv-brand-county { display: none; }
+
+  /* Show search icon button, hide inline search container in topbar */
+  .pv-search-btn  { display: flex; }
+  .parcel-search  { display: none; }
+
+  /* Search overlay: open state triggered by .pv-search-open class via JS.
+     Starts BELOW the topbar (top:50px) so the topbar stays visible; the dark
+     scrim covers the reopen tabs and the map below it. */
+  .parcel-search.pv-search-open {
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 50px; left: 0; right: 0; bottom: 0;
+    /* Explicit height: a fixed element with top+bottom set was collapsing to
+       its padding height here, which starved the flex children of space (the
+       results dropdown rendered as a thin line). Forcing the height makes the
+       scrim fill the screen and lets the results flex-fill correctly. */
+    height: calc(100dvh - 50px);
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.60);
+    padding: 60px 16px 16px;
+    box-sizing: border-box;
+  }
+  .parcel-search.pv-search-open .parcel-search-input {
+    max-width: none;
+    width: 100%;
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
+    padding: 14px 16px 14px 44px;
+    border-radius: 8px;
+    box-shadow: 0 2px 20px rgba(0,0,0,0.30);
+    flex-shrink: 0;
+  }
+  /* Results: in-flow card below the input that flex-fills the remaining overlay
+     height and scrolls internally. This works now that the overlay has an
+     explicit height — min-height:0 lets the scroll container shrink properly. */
+  .parcel-search.pv-search-open .parcel-search-results {
+    position: relative;
+    top: auto; left: auto; right: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    margin-top: 8px;
+    overflow-y: auto;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+  }
+  /* Close button: top-right of the overlay (coords relative to overlay,
+     which starts at top:50px — so top:12px sits ~62px from viewport top) */
+  .pv-search-close {
+    display: flex;
+    position: absolute;
+    top: 12px; right: 16px;
+    width: 40px; height: 40px;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.22);
+    border: 1px solid rgba(255,255,255,0.30);
+    border-radius: 50%;
+    color: #ffffff;
+    font-size: 19px;
+    line-height: 1;
+    cursor: pointer;
+    z-index: 201;
+  }
+  .pv-search-close:active { background: rgba(255,255,255,0.36); }
+}
+
+/* ── Dark mode ────────────────────────────────────────────────────────────── */
+[data-theme="dark"] .pv-search-btn {
+  color: #9ca3af;
+  border-color: rgba(255,255,255,0.12);
+}
+[data-theme="dark"] .pv-search-btn:hover { color: var(--ui-interactive); }
 
 .pv-theme-toggle {
   flex-shrink: 0;
@@ -41,6 +199,11 @@
 }
 
 /* ── Dark mode ───────────────────────────────────────────────────────────── */
+/* Dark page background so any area behind fixed panels (e.g. the corners cut by
+   Map Buddy's rounded top on mobile) reads dark instead of flashing white. */
+[data-theme="dark"] body,
+[data-theme="dark"] #app { background-color: #120d0b; }
+
 [data-theme="dark"] .pv-topbar {
   background: rgba(18, 13, 12, 0.88);
   border-bottom-color: rgba(255,255,255,0.06);
