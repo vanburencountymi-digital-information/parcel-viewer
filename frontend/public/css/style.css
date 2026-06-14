@@ -34,7 +34,7 @@
   --glass-blur-3:  22px;  --glass-tint-3: rgba(255,254,252,0.86);
   /* Substrate model: a dramatically glassy frame holds near-solid content
      surfaces, so panels read as frosted glass while text stays fully legible. */
-  --glass-frame:       rgba(255,254,252,0.55);  --glass-frame-blur: 22px;
+  --glass-frame:       rgba(255,254,252,0.62);  --glass-frame-blur: 26px;
   --glass-substrate:   rgba(255,255,255,0.94);
   --glass-edge:    rgba(163,71,59,0.12);                 /* hairline ring (terracotta) */
   --glass-rim:     inset 0 1px 0 rgba(255,255,255,0.60); /* top refraction highlight */
@@ -47,7 +47,7 @@
   --glass-tint-1: rgba(28,22,18,0.82);
   --glass-tint-2: rgba(28,22,18,0.80);
   --glass-tint-3: rgba(28,22,18,0.86);
-  --glass-frame:     rgba(28,22,18,0.55);
+  --glass-frame:     rgba(28,22,18,0.60);
   --glass-substrate: rgba(30,22,19,0.95);
   --glass-edge:   rgba(255,255,255,0.10);
   --glass-rim:    inset 0 1px 0 rgba(255,255,255,0.08);
@@ -444,8 +444,6 @@ body {
     var(--glass-shadow-2),
     0 0 0 1px var(--glass-edge),
     var(--glass-rim);
-  padding: 7px;
-  gap: 7px;
   font-size: 12px;
   width: 280px;
   min-width: 210px;
@@ -466,7 +464,7 @@ body {
   padding: 8px 10px;
   background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
   border-bottom: none;
-  border-radius: 6px;
+  border-radius: 8px 8px 0 0;
   cursor: grab;
   flex-shrink: 0;
   user-select: none;
@@ -506,8 +504,6 @@ body {
   flex: 1;
   min-height: 0;
   user-select: text;
-  background: var(--glass-substrate);
-  border-radius: 6px;
 }
 
 .parcel-info-pin {
@@ -733,8 +729,6 @@ body {
     var(--glass-shadow-2),
     0 0 0 1px var(--glass-edge),
     var(--glass-rim);
-  padding: 7px;
-  gap: 7px;
   width: 220px;
   max-height: 60vh;
   min-height: 80px;
@@ -752,7 +746,7 @@ body {
   justify-content: space-between;
   padding: 8px 10px;
   background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
-  border-radius: 6px;
+  border-radius: 8px 8px 0 0;
   cursor: grab;
   flex-shrink: 0;
   user-select: none;
@@ -842,8 +836,6 @@ body {
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background: var(--glass-substrate);
-  border-radius: 6px;
 }
 
 .mcp-tabs {
@@ -1991,8 +1983,8 @@ input[type="checkbox"]:focus-visible {
   justify-content: space-between;
   padding: 4px 8px;
   border: none;
-  background: var(--glass-substrate);
-  border-radius: 6px;
+  border-bottom: 1px solid var(--glass-edge);
+  background: transparent;
   gap: 4px;
 }
 
