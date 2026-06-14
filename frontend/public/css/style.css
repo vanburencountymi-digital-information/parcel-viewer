@@ -302,8 +302,8 @@ body {
   z-index: 100;
   background: white;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-1), var(--glass-rim);
   max-height: 280px;
   overflow-y: auto;
 }

@@ -286,8 +286,8 @@
   min-width: 188px;
   background: #fff;
   border: 1px solid rgba(0,0,0,0.10);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.14);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-shadow-1), var(--glass-rim);
   padding: 5px;
   z-index: 70;
 }
@@ -318,7 +318,7 @@
 [data-theme="dark"] .pv-admin-menu {
   background: #1c1612;
   border-color: rgba(255,255,255,0.10);
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5), var(--glass-rim);
 }
 [data-theme="dark"] .pv-admin-item { color: #d6ccc0; }
 [data-theme="dark"] .pv-admin-item:hover { background: var(--ui-interactive-bg); color: var(--ui-interactive); }
@@ -340,8 +340,8 @@
   display: flex;
   flex-direction: column;
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--glass-shadow-2);
   overflow: hidden;
 }
 .pv-modal-header {
