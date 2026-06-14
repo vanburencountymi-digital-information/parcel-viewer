@@ -91,6 +91,47 @@
     }
   }
 
+  // Make a dialog draggable by its header and resizable from a corner handle.
+  // Desktop-only — on narrow screens the modal stays full-width/centered.
+  function makeModalMovable(modalEl, headerEl) {
+    if (!modalEl || !headerEl) return;
+    if (!window.matchMedia("(min-width: 641px)").matches) return;
+    // Pin the modal's current rendered size, then lift max-width so it can be
+    // resized larger than the default without changing how it first appears.
+    modalEl.style.width = modalEl.offsetWidth + "px";
+    modalEl.style.height = modalEl.offsetHeight + "px";
+    modalEl.style.maxWidth = "none";
+    var tx = 0, ty = 0;
+    headerEl.classList.add("pv-modal-header--drag");
+    headerEl.addEventListener("pointerdown", function (e) {
+      if (e.target.closest("button")) return;          // let the close button work
+      e.preventDefault();
+      var sx = e.clientX, sy = e.clientY, ox = tx, oy = ty;
+      headerEl.setPointerCapture(e.pointerId);
+      function mv(ev) { tx = ox + (ev.clientX - sx); ty = oy + (ev.clientY - sy); modalEl.style.transform = "translate(" + tx + "px," + ty + "px)"; }
+      function up() { try { headerEl.releasePointerCapture(e.pointerId); } catch (x) {} headerEl.removeEventListener("pointermove", mv); headerEl.removeEventListener("pointerup", up); }
+      headerEl.addEventListener("pointermove", mv);
+      headerEl.addEventListener("pointerup", up);
+    });
+    // Resize handle (bottom-right).
+    var rh = document.createElement("div");
+    rh.className = "pv-modal-resize";
+    rh.setAttribute("aria-hidden", "true");
+    modalEl.appendChild(rh);
+    rh.addEventListener("pointerdown", function (e) {
+      e.preventDefault(); e.stopPropagation();
+      var sx = e.clientX, sy = e.clientY, sw = modalEl.offsetWidth, sh = modalEl.offsetHeight;
+      rh.setPointerCapture(e.pointerId);
+      function mv(ev) {
+        modalEl.style.width  = Math.max(360, Math.min(window.innerWidth  - 40, sw + (ev.clientX - sx))) + "px";
+        modalEl.style.height = Math.max(280, Math.min(window.innerHeight - 40, sh + (ev.clientY - sy))) + "px";
+      }
+      function up() { try { rh.releasePointerCapture(e.pointerId); } catch (x) {} rh.removeEventListener("pointermove", mv); rh.removeEventListener("pointerup", up); }
+      rh.addEventListener("pointermove", mv);
+      rh.addEventListener("pointerup", up);
+    });
+  }
+
   function openModal(title, bodyHtml, onMount, opts) {
     opts = opts || {};
     closeModal();
@@ -115,6 +156,7 @@
 
     document.body.appendChild(back);
     _modal = back;
+    makeModalMovable(back.querySelector(".pv-modal"), back.querySelector(".pv-modal-header"));
     // Make the rest of the page inert + hidden from AT while the dialog is open.
     var app = document.getElementById("app");
     if (app) { app.setAttribute("inert", ""); app.setAttribute("aria-hidden", "true"); }
@@ -592,9 +634,28 @@
       '</div>' +
 
       '<div class="pp-formats"><span class="pp-formats-l">Available as</span>' +
-        chip("Interactive") + chip("PDF") + chip("Audio") + chip("Video") + chip("AI Q&A session") + '</div>' +
+        chip("Interactive") + chip("PDF") + chip("Audio") + chip("Video") + chip("AI Q&A session") +
+        '<button type="button" class="pp-share-btn" id="pp-share-btn" aria-expanded="false">🔗 Share / Embed</button>' +
+        '</div>' +
 
       '<div class="pp-body">' +
+
+        '<div class="pp-share" id="pp-share" hidden>' +
+          '<div class="pp-share-h"><span aria-hidden="true">🔗</span> Share this Packet <span class="pp-samp">paid add-on</span></div>' +
+          '<p class="pp-share-sub">Title companies and agents can hand a client a live Packet or embed it on a listing. Sharing is a metered add-on — billed per share or by monthly plan, with API limits and co-branding.</p>' +
+          '<label class="pp-share-field"><span class="pp-share-lbl">Shareable link</span>' +
+            '<span class="pp-share-row"><input class="pp-share-in" readonly value="https://packet.dicelabs.org/p/' + escAttr(pin) + '?s=ab12cd"> ' +
+            '<button type="button" class="pp-share-copy" data-copy="link">Copy</button></span></label>' +
+          '<label class="pp-share-field"><span class="pp-share-lbl">Embed snippet</span>' +
+            '<span class="pp-share-row"><textarea class="pp-share-in" readonly rows="2">&lt;iframe src="https://packet.dicelabs.org/embed/' + escAttr(pin) + '?k=YOUR_API_KEY" width="100%" height="640" style="border:0"&gt;&lt;/iframe&gt;</textarea> ' +
+            '<button type="button" class="pp-share-copy" data-copy="embed">Copy</button></span></label>' +
+          '<ul class="pp-share-terms">' +
+            '<li><b>Per-share fee</b> or monthly embed plan ' + samp() + '</li>' +
+            '<li><b>API rate limits</b> by tier — views/day &amp; allowed domains</li>' +
+            '<li><b>Co-branding</b> — your logo alongside “Powered by DICE Labs”</li>' +
+            '<li><b>Client view</b> hides internal/admin-only fields</li>' +
+          '</ul>' +
+        '</div>' +
 
         '<div class="pp-ai"><div class="pp-ai-h"><span aria-hidden="true">✨</span> A.I. Summary</div>' +
           '<p class="pp-ai-text">' + aiSummary + '</p></div>' +
@@ -667,6 +728,26 @@
     openModal("Parcel Packet", html, function (bodyEl) {
       var btn = bodyEl.querySelector("#pp-monitor-btn");
       if (btn) btn.addEventListener("click", function () { btn.textContent = "On the roadmap ✓"; btn.disabled = true; });
+
+      // Share / Embed panel toggle + copy buttons.
+      var shareBtn = bodyEl.querySelector("#pp-share-btn"), sharePanel = bodyEl.querySelector("#pp-share");
+      if (shareBtn && sharePanel) {
+        shareBtn.addEventListener("click", function () {
+          var open = !sharePanel.hidden;
+          sharePanel.hidden = open;
+          shareBtn.setAttribute("aria-expanded", String(!open));
+          shareBtn.classList.toggle("is-on", !open);
+          if (!open) sharePanel.scrollIntoView({ block: "nearest" });
+        });
+        [].forEach.call(sharePanel.querySelectorAll(".pp-share-copy"), function (c) {
+          c.addEventListener("click", function () {
+            var field = c.parentNode.querySelector(".pp-share-in");
+            try { if (field && navigator.clipboard) navigator.clipboard.writeText(field.value); } catch (x) {}
+            var prev = c.textContent; c.textContent = "Copied ✓";
+            setTimeout(function () { c.textContent = prev; }, 1400);
+          });
+        });
+      }
 
       // Wire the section-scoped "What this means" chat panels.
       [].forEach.call(bodyEl.querySelectorAll(".pp-explain[data-qa]"), function (block) {
