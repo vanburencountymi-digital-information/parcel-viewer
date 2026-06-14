@@ -412,6 +412,17 @@
 .pp-explain p { margin: 0; font-size: 12.5px; line-height: 1.6; color: #44403c; }
 .pp-explain b { color: #292524; font-weight: 600; }
 
+.pp-legal { display: flex; gap: 14px; align-items: flex-start; }
+.pp-legal-doc { flex: 1 1 auto; min-width: 0; font-family: "SF Mono","Consolas",monospace; font-size: 11.5px; line-height: 1.55; color: #374151; background: #f9fafb; border: 1px solid #eef0f2; border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word; }
+.pp-aliquot { flex: 0 0 auto; width: 132px; margin: 0; text-align: center; }
+.pp-aliquot-svg { width: 100%; height: auto; color: #6b7280; display: block; }
+.pp-aliquot-cap { font-size: 10.5px; color: #6b7280; margin-top: 4px; line-height: 1.35; }
+.pp-aliquot-cap b { color: var(--ui-accent); }
+@media (max-width: 640px) {
+  .pp-legal { flex-direction: column; }
+  .pp-aliquot { width: 150px; align-self: center; }
+}
+
 .pp-qa-thread { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .pp-qa-thread:empty { margin-top: 0; }
 .pp-qa-row { font-size: 12.5px; line-height: 1.55; padding: 7px 11px; border-radius: 9px; max-width: 92%; }
@@ -467,6 +478,9 @@
 [data-theme="dark"] .pp-footer, [data-theme="dark"] .pp-note { color: #b3a99d; }
 [data-theme="dark"] .pp-explain p { color: #d6ccc0; }
 [data-theme="dark"] .pp-explain b { color: #f0e6d8; }
+[data-theme="dark"] .pp-legal-doc { background: #241c17; border-color: rgba(255,255,255,0.07); color: #d6ccc0; }
+[data-theme="dark"] .pp-aliquot-svg { --pp-aliquot-bg: #241c17; color: #b3a99d; }
+[data-theme="dark"] .pp-aliquot-cap { color: #b3a99d; }
 [data-theme="dark"] .pp-qa-a { background: #1c1612; color: #d6ccc0; }
 [data-theme="dark"] .pp-qa-chip { background: #1c1612; color: #e8d8c4; }
 [data-theme="dark"] .pp-qa-chip:hover { background: #241c17; }

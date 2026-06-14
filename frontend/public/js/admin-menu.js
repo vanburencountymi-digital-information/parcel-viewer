@@ -453,7 +453,11 @@
         { q: "When was the house built?", a: "Comparing frames, the home first appears between the 1968 and 1981 imagery — pointing to construction in the 1970s, consistent with the 1971 parcel split. Assessor records would confirm the exact year. (Sample answer.)" },
         { q: "Was this land ever farmed?", a: "The earliest frames show cleared, row-cropped fields; tree cover and the driveway appear in later decades as the parcel shifted to residential use. (Sample answer.)" } ] },
       docs: { ph: "Ask about documents or boundaries…", qa: [
-        { q: "Where are the property corners?", a: "The County Surveyor's field notes for Section 1, T1S R13W record the monuments and measurements that fix the corners. The live Packet links the notes and can drop those corners onto the map. (Sample answer.)" } ] }
+        { q: "Where are the property corners?", a: "The County Surveyor's field notes for Section 1, T1S R13W record the monuments and measurements that fix the corners. The live Packet links the notes and can drop those corners onto the map. (Sample answer.)" } ] },
+      taxdesc: { ph: "Ask about the legal description…", qa: [
+        { q: "What does T1S R13W mean?", a: "Township 1 South, Range 13 West of the Michigan Meridian — a coordinate in the Public Land Survey grid. Townships are counted north/south from the baseline, ranges east/west from the meridian, so it pins the land to Almena Township's survey grid. (Sample answer.)" },
+        { q: "Where is this in the section?", a: "In the NW¼ of the NW¼ — the northwesternmost 40 acres of Section 1. The parcel is a 200 × 509.6 ft rectangle tucked into that corner, about 2.34 acres. (Sample answer.)" },
+        { q: "What does POB mean?", a: "“Point of Beginning” — the surveyed start of the boundary walk. A metes-and-bounds description leaves the POB, runs each bearing-and-distance call in turn, and must close back to it. (Sample answer.)" } ] }
     };
     // The interpretation layer — plain-language AI explanation, now interactive:
     // each panel carries suggested questions + an ask box scoped to its domain.
@@ -481,6 +485,28 @@
     var aerials = ["1955","1968","1981","1998","2012","2025"].map(function (y) {
       return '<div class="pp-aerial"><div class="pp-aerial-img"></div><span>' + y + '</span></div>';
     }).join("");
+
+    var legalDesc = "COM AT NW COR OF SEC 1, T1S R13W; TH S 89°34' E ALG N SEC LINE 200.0 FT; " +
+      "TH S 00°12' W 509.6 FT; TH N 89°34' W 200.0 FT; TH N 00°12' E 509.6 FT TO POB. " +
+      "PART OF NW 1/4 OF NW 1/4, SEC 1, T1S R13W, ALMENA TWP, VAN BUREN CO, MI. 2.34 AC M/L.";
+    // Aliquot diagram: the section, its quarters, and the NW¼-of-NW¼ where the parcel sits.
+    var aliquotSvg =
+      '<svg class="pp-aliquot-svg" viewBox="0 0 200 206" role="img" ' +
+        'aria-label="Section diagram: the parcel lies in the northwest quarter of the northwest quarter of Section 1">' +
+      '<rect x="18" y="18" width="160" height="160" fill="var(--pp-aliquot-bg,#f5f3f0)" stroke="#9ca3af" stroke-width="1.5"/>' +
+      '<rect x="18" y="18" width="80" height="80" fill="rgba(163,71,59,0.10)"/>' +
+      '<rect x="18" y="18" width="40" height="40" fill="rgba(163,71,59,0.30)"/>' +
+      '<g stroke="#cbd5e1" stroke-width="0.8"><line x1="58" y1="18" x2="58" y2="178"/>' +
+        '<line x1="138" y1="18" x2="138" y2="178"/><line x1="18" y1="58" x2="178" y2="58"/>' +
+        '<line x1="18" y1="138" x2="178" y2="138"/></g>' +
+      '<g stroke="#6b7280" stroke-width="1.4"><line x1="98" y1="18" x2="98" y2="178"/>' +
+        '<line x1="18" y1="98" x2="178" y2="98"/></g>' +
+      '<rect x="21" y="21" width="6.1" height="15.4" fill="var(--ui-accent)" stroke="#fff" stroke-width="0.5"/>' +
+      '<text x="186" y="14" font-size="11" font-weight="700" fill="currentColor">N</text>' +
+      '<line x1="183" y1="23" x2="183" y2="9" stroke="currentColor" stroke-width="1.2"/>' +
+      '<path d="M183 6 l-2.6 4.5 h5.2 z" fill="currentColor"/>' +
+      '<text x="98" y="196" text-anchor="middle" font-size="9.5" fill="currentColor">Sec 1 · 640 ac · quarters &amp; quarter-quarters</text>' +
+      '</svg>';
 
     var html =
     '<div class="pp">' +
@@ -523,6 +549,14 @@
           '<li><span class="pp-t-date">1971</span>Parcel created from a 40-acre split</li>' +
           '</ul><p class="pp-note">Full chain of title + recorded instruments. ' + samp() + '</p>' +
           explain('owner', 'The <b>chain of title</b> traces ownership in an unbroken line back to the original 1971 parcel split — no gaps, breaks, or competing claims appear in the record, which is exactly what a title company verifies before issuing title insurance. Each transfer shown is backed by a recorded <b>warranty deed</b>, the strongest form of conveyance, in which the seller guarantees clear ownership free of undisclosed liens.')) +
+
+        sec("Tax Description",
+          '<div class="pp-legal"><div class="pp-legal-doc">' + esc(legalDesc) + '</div>' +
+          '<figure class="pp-aliquot">' + aliquotSvg +
+            '<figcaption class="pp-aliquot-cap">Parcel sits in the <b>NW¼ of the NW¼</b></figcaption>' +
+          '</figure></div>' +
+          '<p class="pp-note">Verbatim legal description from the tax roll. ' + samp() + '</p>' +
+          explain('taxdesc', 'This is a <b>metes-and-bounds</b> description — it walks the boundary leg by leg. <b>T1S R13W</b> places the land in the Public Land Survey grid (Township 1 South, Range 13 West of the Michigan Meridian); <b>Sec 1</b> is one square mile — 640 acres — divided into quarters and quarter-quarters. <b>“COM AT NW COR”</b> starts at the section\'s northwest corner, and each <b>“TH”</b> (thence) gives a compass bearing and a distance in feet until the boundary closes back at the <b>“POB”</b> (point of beginning). Those calls enclose a 200 × 509.6 ft rectangle in the <b>NW¼ of the NW¼</b> — the northwest 40 acres of the section — about 2.34 acres. <b>M/L</b> means “more or less.”')) +
 
         sec("Environmental",
           '<div class="pp-pills">' +
