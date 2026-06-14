@@ -47,6 +47,8 @@
     0 0 0 1px rgba(255,255,255,0.16),
     inset 0 1px 0 rgba(255,255,255,0.62),
     inset 0 0 18px rgba(255,255,255,0.08);
+  /* Header bar — translucent, but more opaque than the body so it stays the anchor. */
+  --glass-header: linear-gradient(135deg, rgba(45,22,19,0.86) 0%, rgba(109,92,82,0.84) 100%);
   --glass-edge:    rgba(163,71,59,0.12);                 /* hairline ring (terracotta) */
   --glass-rim:     inset 0 1px 0 rgba(255,255,255,0.60); /* top refraction highlight */
   --glass-shadow-1: 0 8px 20px rgba(40,30,20,0.16);
@@ -145,6 +147,15 @@ html.pv-a11y-motion *, html.pv-a11y-motion *::before, html.pv-a11y-motion *::aft
 .pv-settings-h { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 16px 0 6px; border-top: 1px solid var(--ui-interactive-bd); padding-top: 12px; }
 .pv-range { width: 100%; accent-color: var(--ui-interactive); cursor: pointer; }
 .pv-range-hint { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+
+/* Semi-transparent scrollbars so the glass panels stay glassy */
+.parcel-info-body, .mcp-body, .pv-modal-body, .parcel-search-results { scrollbar-width: thin; scrollbar-color: rgba(181,141,74,0.45) transparent; }
+.parcel-info-body::-webkit-scrollbar, .mcp-body::-webkit-scrollbar, .pv-modal-body::-webkit-scrollbar, .parcel-search-results::-webkit-scrollbar { width: 10px; height: 10px; }
+.parcel-info-body::-webkit-scrollbar-track, .mcp-body::-webkit-scrollbar-track, .pv-modal-body::-webkit-scrollbar-track, .parcel-search-results::-webkit-scrollbar-track { background: transparent; }
+.parcel-info-body::-webkit-scrollbar-thumb, .mcp-body::-webkit-scrollbar-thumb, .pv-modal-body::-webkit-scrollbar-thumb, .parcel-search-results::-webkit-scrollbar-thumb { background: rgba(181,141,74,0.45); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+.parcel-info-body::-webkit-scrollbar-thumb:hover, .mcp-body::-webkit-scrollbar-thumb:hover, .pv-modal-body::-webkit-scrollbar-thumb:hover, .parcel-search-results::-webkit-scrollbar-thumb:hover { background: rgba(181,141,74,0.7); background-clip: padding-box; }
+[data-theme="dark"] .parcel-info-body, [data-theme="dark"] .mcp-body, [data-theme="dark"] .pv-modal-body, [data-theme="dark"] .parcel-search-results { scrollbar-color: rgba(212,168,98,0.42) transparent; }
+[data-theme="dark"] .parcel-info-body::-webkit-scrollbar-thumb, [data-theme="dark"] .mcp-body::-webkit-scrollbar-thumb, [data-theme="dark"] .pv-modal-body::-webkit-scrollbar-thumb, [data-theme="dark"] .parcel-search-results::-webkit-scrollbar-thumb { background: rgba(212,168,98,0.42); background-clip: padding-box; }
 .pv-a11y-list { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 14px; }
 .pv-a11y-row { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
 .pv-a11y-row:hover { background: var(--ui-interactive-bg); }
@@ -320,10 +331,12 @@ body {
   left: 0;
   right: 0;
   z-index: 100;
-  background: white;
-  border: 1px solid #d1d5db;
+  background: var(--glass-frame);
+  backdrop-filter: blur(var(--glass-frame-blur)) saturate(1.3);
+  -webkit-backdrop-filter: blur(var(--glass-frame-blur)) saturate(1.3);
+  border: 1px solid rgba(255,255,255,0.16);
   border-radius: var(--radius-md);
-  box-shadow: var(--glass-shadow-1), var(--glass-rim);
+  box-shadow: var(--glass-object-shadow);
   max-height: 280px;
   overflow-y: auto;
 }
@@ -617,7 +630,7 @@ body {
   font-size: 10px;
 }
 .parcel-info-table tbody tr:nth-child(even) td {
-  background: rgba(249, 250, 251, 0.45);
+  background: transparent;
 }
 
 .parcel-info-links {
@@ -753,7 +766,7 @@ body {
   align-items: center;
   justify-content: space-between;
   padding: 8px 10px;
-  background: linear-gradient(135deg, var(--ui-header-from) 0%, var(--ui-header-to) 100%);
+  background: var(--glass-header);
   border-radius: 8px 8px 0 0;
   cursor: grab;
   flex-shrink: 0;
@@ -852,7 +865,7 @@ body {
   align-items: center;
   width: 36px;
   flex-shrink: 0;
-  background: rgba(240, 235, 228, 0.70);
+  background: rgba(245, 240, 232, 0.42);
   border-right: 1px solid rgba(181, 141, 74, 0.18);
   border-radius: 0 0 0 8px;
   padding: 6px 3px 6px;
@@ -3986,7 +3999,7 @@ input[type="checkbox"]:focus-visible {
 [data-theme="dark"] .parcel-info-table td:not(:first-child),
 [data-theme="dark"] .parcel-info-table th:not(:first-child) { color: #e2d8ce; }
 [data-theme="dark"] .parcel-info-table tbody tr:nth-child(even) td {
-  background: rgba(255,255,255,0.04);
+  background: transparent;
 }
 
 /* Nav bar */
@@ -4016,7 +4029,7 @@ input[type="checkbox"]:focus-visible {
 
 /* MCP body */
 [data-theme="dark"] .mcp-body              { color: #c8b89a; }
-[data-theme="dark"] .mcp-tabs              { background: rgba(12,8,7,0.60); border-right-color: rgba(255,255,255,0.07); }
+[data-theme="dark"] .mcp-tabs              { background: rgba(12,8,7,0.40); border-right-color: rgba(255,255,255,0.07); }
 [data-theme="dark"] .mcp-tab              { color: #7a706a; }
 [data-theme="dark"] .mcp-tab:hover        { color: #c8b89a; }
 [data-theme="dark"] .mcp-tab.active       { color: var(--ui-interactive); }
