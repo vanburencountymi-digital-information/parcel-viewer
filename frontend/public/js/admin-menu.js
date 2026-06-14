@@ -457,7 +457,11 @@
       taxdesc: { ph: "Ask about the legal description…", qa: [
         { q: "What does T1S R13W mean?", a: "Township 1 South, Range 13 West of the Michigan Meridian — a coordinate in the Public Land Survey grid. Townships are counted north/south from the baseline, ranges east/west from the meridian, so it pins the land to Almena Township's survey grid. (Sample answer.)" },
         { q: "Where is this in the section?", a: "In the NW¼ of the NW¼ — the northwesternmost 40 acres of Section 1. The parcel is a 200 × 509.6 ft rectangle tucked into that corner, about 2.34 acres. (Sample answer.)" },
-        { q: "What does POB mean?", a: "“Point of Beginning” — the surveyed start of the boundary walk. A metes-and-bounds description leaves the POB, runs each bearing-and-distance call in turn, and must close back to it. (Sample answer.)" } ] }
+        { q: "What does POB mean?", a: "“Point of Beginning” — the surveyed start of the boundary walk. A metes-and-bounds description leaves the POB, runs each bearing-and-distance call in turn, and must close back to it. (Sample answer.)" } ] },
+      ledger: { ph: "Ask about any event…", qa: [
+        { q: "What happened in 2014?", a: "Two linked events: the property sold to Smith, John & Jane by warranty deed (Liber 1444 Pg 933), and that sale uncapped the taxable value — resetting it from $73,663 toward assessed value and raising the bill. (Sample answer.)" },
+        { q: "Why did the taxes jump?", a: "The 2014 sale uncapped the taxable value. Under Proposal A it stays capped while ownership is unchanged, then resets up to assessed value at transfer. (Sample answer.)" },
+        { q: "When was the house built?", a: "Around 1968 — the dwelling first appears between the 1955 and 1968 aerials. It's marked inferred (hollow dot) since no recorded permit predates our digital records. (Sample answer.)" } ] }
     };
     // The interpretation layer — plain-language AI explanation, now interactive:
     // each panel carries suggested questions + an ask box scoped to its domain.
@@ -508,6 +512,75 @@
       '<text x="98" y="196" text-anchor="middle" font-size="9.5" fill="currentColor">Sec 1 · 640 ac · quarters &amp; quarter-quarters</text>' +
       '</svg>';
 
+    // ── Parcel Ledger (the backbone) ──────────────────────────────────────
+    // Heterogeneous event stream; the rest of the Packet is a view onto this.
+    var LCATS = {
+      ownership:  { label: "Ownership",  color: "#a3473b" },
+      tax:        { label: "Tax",        color: "#b58d4a" },
+      land:       { label: "Land",       color: "#4d7c4d" },
+      survey:     { label: "Survey",     color: "#3b7a8a" },
+      regulatory: { label: "Permit",     color: "#7a5ea3" },
+      imagery:    { label: "Imagery",    color: "#8a8a8a" }
+    };
+    var LEDGER = [
+      { y:1871, cat:"imagery",    rec:true,  t:"Section first platted",            d:"Section 1 appears in the 1873 county plat book with its original owner of record — the earliest documented snapshot of this land.", src:"Plat book 1873" },
+      { y:1955, cat:"imagery",    rec:true,  t:"Aerial imagery captured",          d:"The earliest aerial frame shows the land in row-crop agriculture.", src:"Aerial 1955" },
+      { y:1968, cat:"land",       rec:false, t:"Dwelling constructed",             d:"The home first appears between the 1955 and 1968 aerials, so the build date is inferred from imagery — not a recorded permit.", src:"Aerial 1968" },
+      { y:1971, cat:"land",       rec:true,  t:"Parcel created from 40-acre split", d:"Carved from the NW¼ of the NW¼. A split creates a new PIN and legal description; records before this date describe the parent parcel.", src:"Split record" },
+      { y:1994, cat:"survey",     rec:true,  t:"Boundary survey — corners monumented", d:"A licensed survey set physical monuments at the corners and recorded the measurements — the authoritative basis for the boundary on the ground.", src:"Surveyor field notes" },
+      { y:2003, cat:"ownership",  rec:true,  t:"Conveyed to prior owner",          d:"Warranty deed — the strongest form of conveyance, guaranteeing clear title.", src:"Deed 2003" },
+      { y:2008, cat:"tax",        rec:true,  t:"Drain assessment levied (Smith Drain)", d:"A charge by the County Drain Commissioner to fund an established drain serving this land; it rides on the tax bill until paid off.", src:"Assessment roll" },
+      { y:2014, cat:"ownership",  rec:true,  t:"Conveyed to Smith, John & Jane",   d:"Warranty deed — Liber 1444, Page 933.", src:"Deed 2014" },
+      { y:2014, cat:"tax",        rec:true,  t:"Taxable value uncapped at sale",   d:"The sale reset taxable value from the capped $73,663 toward assessed value, raising the next owner's tax bill.", src:"Assessment record" },
+      { y:2016, cat:"regulatory", rec:true,  t:"Building permit — pole barn",      d:"An accessory structure was permitted, fixing its size, height, and setbacks under township zoning.", src:"Permit 2016" },
+      { y:2025, cat:"imagery",    rec:true,  t:"Aerial imagery captured",          d:"The most recent aerial shows current site conditions.", src:"Aerial 2025" }
+    ];
+    var L_Y0 = 1871, L_Y1 = 2026;
+    function lx(y) { return (16 + (y - L_Y0) / (L_Y1 - L_Y0) * 648).toFixed(1); }
+
+    var ribbonTicks = LEDGER.map(function (e, i) {
+      var x = lx(e.y), col = LCATS[e.cat].color;
+      var dot = e.rec
+        ? '<circle cx="' + x + '" cy="20" r="3.2" fill="' + col + '"/>'
+        : '<circle cx="' + x + '" cy="20" r="3" fill="var(--pp-ribbon-bg,#fff)" stroke="' + col + '" stroke-width="1.4"/>';
+      return '<g class="pp-ltick" data-li="' + i + '">' +
+        '<line x1="' + x + '" y1="24" x2="' + x + '" y2="42" stroke="' + col + '" stroke-width="1.4"/>' + dot +
+        '<rect x="' + (x - 7) + '" y="6" width="14" height="40" fill="transparent"/></g>';
+    }).join("");
+    var ribbon =
+      '<svg class="pp-ribbon-svg" viewBox="0 0 680 70" role="img" aria-label="Timeline of recorded events for this parcel, 1871 to present">' +
+      '<rect x="' + lx(1871) + '" y="46" width="' + (lx(1969) - lx(1871)).toFixed(1) + '" height="9" fill="rgba(77,124,77,0.12)"/>' +
+      '<rect x="' + lx(1971) + '" y="46" width="' + (lx(2026) - lx(1971)).toFixed(1) + '" height="9" fill="rgba(163,71,59,0.10)"/>' +
+      '<text x="' + lx(1915) + '" y="52.6" text-anchor="middle" font-size="7.5" fill="#6b7280">Agricultural</text>' +
+      '<text x="' + lx(2000) + '" y="52.6" text-anchor="middle" font-size="7.5" fill="#6b7280">Residential</text>' +
+      '<line x1="16" y1="42" x2="664" y2="42" stroke="#e5e7eb" stroke-width="1"/>' + ribbonTicks +
+      [1900,1950,2000].map(function (yr) { return '<text x="' + lx(yr) + '" y="65" text-anchor="middle" font-size="8" fill="#9ca3af">' + yr + '</text>'; }).join("") +
+      '</svg>';
+
+    var lFilters = '<div class="pp-lfilters"><button type="button" class="pp-lchip" data-cat="all">All</button>' +
+      Object.keys(LCATS).map(function (k) { return '<button type="button" class="pp-lchip" data-cat="' + k + '" style="--c:' + LCATS[k].color + '">' + esc(LCATS[k].label) + '</button>'; }).join("") + '</div>';
+    var lLegend = '<div class="pp-llegend"><span class="pp-ldot" style="--c:#6b7280"></span>recorded' +
+      '<span class="pp-ldot pp-ldot--inf" style="--c:#6b7280;margin-left:10px"></span>inferred from imagery</div>';
+    var lOrder = LEDGER.map(function (e, i) { return i; }).sort(function (a, b) { return LEDGER[b].y - LEDGER[a].y; });
+    var lRows = lOrder.map(function (i) {
+      var e = LEDGER[i], col = LCATS[e.cat].color;
+      return '<li class="pp-levent" data-li="' + i + '" data-cat="' + e.cat + '">' +
+        '<button type="button" class="pp-levent-head" aria-expanded="false">' +
+        '<span class="pp-ldot' + (e.rec ? '' : ' pp-ldot--inf') + '" style="--c:' + col + '"></span>' +
+        '<span class="pp-lyear">' + e.y + '</span>' +
+        '<span class="pp-lcat" style="color:' + col + '">' + esc(LCATS[e.cat].label) + '</span>' +
+        '<span class="pp-ltitle">' + esc(e.t) + '</span></button>' +
+        '<div class="pp-lexplain" hidden><p>' + esc(e.d) + '</p>' +
+        '<a class="pp-lsrc" href="#" onclick="return false">' + esc(e.src) + ' ↗</a></div></li>';
+    }).join("");
+    var lInset = '<figure class="pp-linset"><div class="pp-linset-img"></div>' +
+      '<figcaption class="pp-linset-cap">Select an event to see the parcel at that time. ' + samp() + '</figcaption></figure>';
+    var ledgerInner =
+      '<p class="pp-note">Every event the county has recorded for this parcel — the backbone the rest of the Packet explains. ' + samp() + '</p>' +
+      '<div class="pp-ledger-ribbon">' + ribbon + '</div>' + lFilters + lLegend +
+      '<div class="pp-lbody"><ul class="pp-llist">' + lRows + '</ul>' + lInset + '</div>' +
+      explain('ledger', 'This is the parcel\'s complete event history — deeds, splits, surveys, assessments, permits, and imagery, newest first. <b>Solid dots</b> are recorded in an official document; <b>hollow dots</b> are inferred from aerial imagery and aren\'t authoritative. Expand any row for the plain-language story, click a point on the ribbon to jump to it, or ask about a moment below.');
+
     var html =
     '<div class="pp">' +
       '<div class="pp-hero">' +
@@ -533,6 +606,8 @@
           fact("Taxable Value", "$73,663", true) +
           fact("PRE", "100%", true) +
           fact("School", "Gobles Public", true) + '</div>' +
+
+        sec("Parcel Ledger", ledgerInner) +
 
         sec("Assessment & Tax",
           '<table class="pp-table"><thead><tr><th></th><th>Current</th><th>Prior</th></tr></thead><tbody>' +
@@ -620,6 +695,55 @@
         });
         if (form) form.addEventListener("submit", function (e) { e.preventDefault(); var v = input.value; input.value = ""; ask(v); });
       });
+
+      // Wire the Parcel Ledger (ribbon + filterable list + synced inset).
+      (function () {
+        var insetCap = bodyEl.querySelector(".pp-linset-cap");
+        var insetImg = bodyEl.querySelector(".pp-linset-img");
+        if (!insetImg) return;
+        function rows() { return bodyEl.querySelectorAll(".pp-levent"); }
+        function selectEvent(i) {
+          [].forEach.call(rows(), function (r) { r.classList.toggle("is-sel", r.getAttribute("data-li") === String(i)); });
+          [].forEach.call(bodyEl.querySelectorAll(".pp-ltick"), function (t) { t.classList.toggle("is-sel", t.getAttribute("data-li") === String(i)); });
+          var e = LEDGER[i];
+          insetCap.innerHTML = 'Parcel as of <b>' + e.y + '</b> — ' + esc(e.t) + '. <span class="pp-samp">preview</span>';
+          insetImg.style.background = e.y < 1971 ? "linear-gradient(135deg,#d8d2c4,#bcae8e)" : "linear-gradient(135deg,#cfd6c8,#9fb08f)";
+        }
+        [].forEach.call(bodyEl.querySelectorAll(".pp-levent-head"), function (h) {
+          h.addEventListener("click", function () {
+            var li = h.parentNode, exp = li.querySelector(".pp-lexplain"), open = h.getAttribute("aria-expanded") === "true";
+            h.setAttribute("aria-expanded", String(!open));
+            if (exp) exp.hidden = open;
+            selectEvent(parseInt(li.getAttribute("data-li"), 10));
+          });
+        });
+        [].forEach.call(bodyEl.querySelectorAll(".pp-ltick"), function (t) {
+          t.addEventListener("click", function () {
+            var i = parseInt(t.getAttribute("data-li"), 10);
+            selectEvent(i);
+            var row = bodyEl.querySelector('.pp-levent[data-li="' + i + '"]');
+            if (row) row.scrollIntoView({ block: "nearest" });
+          });
+        });
+        var active = {}; Object.keys(LCATS).forEach(function (k) { active[k] = true; });
+        function applyFilter() {
+          [].forEach.call(rows(), function (r) { r.style.display = active[r.getAttribute("data-cat")] ? "" : "none"; });
+          [].forEach.call(bodyEl.querySelectorAll(".pp-ltick"), function (t) { t.style.opacity = active[LEDGER[t.getAttribute("data-li")].cat] ? "1" : "0.15"; });
+          [].forEach.call(bodyEl.querySelectorAll(".pp-lchip"), function (c) {
+            var k = c.getAttribute("data-cat");
+            if (k === "all") c.classList.toggle("is-off", Object.keys(active).every(function (x) { return !active[x]; }));
+            else c.classList.toggle("is-off", !active[k]);
+          });
+        }
+        [].forEach.call(bodyEl.querySelectorAll(".pp-lchip"), function (chip) {
+          chip.addEventListener("click", function () {
+            var cat = chip.getAttribute("data-cat");
+            if (cat === "all") { var allOn = Object.keys(active).every(function (k) { return active[k]; }); Object.keys(active).forEach(function (k) { active[k] = !allOn; }); }
+            else active[cat] = !active[cat];
+            applyFilter();
+          });
+        });
+      })();
     }, { wide: true, flush: true });
   }
   function openCompare() {
