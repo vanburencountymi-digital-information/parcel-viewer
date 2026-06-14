@@ -718,11 +718,11 @@ body {
   background: rgba(255, 253, 251, 0.88);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   box-shadow:
-    0 20px 48px rgba(0, 0, 0, 0.28),
-    0 6px 16px rgba(0, 0, 0, 0.18),
-    0 0 0 1px rgba(181, 141, 74, 0.15);
+    var(--glass-shadow-2),
+    0 0 0 1px var(--glass-edge),
+    var(--glass-rim);
   width: 220px;
   max-height: 60vh;
   min-height: 80px;
