@@ -32,11 +32,12 @@
    -reduced-transparency). The expressive theme is the default; these dial it
    toward maximum legibility. */
 
-/* Header entry point */
-.pv-a11y-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 0; color: inherit; cursor: pointer; padding: 6px 9px; border-radius: 6px; font: inherit; font-size: 13px; }
-.pv-a11y-btn:hover { background: rgba(128,128,128,0.18); }
+/* Header entry point — matches .pv-theme-toggle / .pv-admin-btn */
+.pv-a11y-btn { flex-shrink: 0; background: none; border: 1px solid rgba(0,0,0,0.12); border-radius: 6px; padding: 5px 7px; cursor: pointer; color: #6b7280; display: flex; align-items: center; transition: color 0.15s, border-color 0.15s; }
+.pv-a11y-btn:hover { color: var(--ui-interactive); border-color: var(--ui-interactive-bd); }
 .pv-a11y-btn:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: 2px; }
-@media (max-width: 700px) { .pv-a11y-btn-label { display: none; } }
+[data-theme="dark"] .pv-a11y-btn { color: #9ca3af; border-color: rgba(255,255,255,0.12); }
+[data-theme="dark"] .pv-a11y-btn:hover { color: var(--ui-interactive); }
 
 /* Larger text: zoom content surfaces (not the topbar or the map canvas) */
 html.pv-a11y-large .map-control-panel,
@@ -44,6 +45,7 @@ html.pv-a11y-large .pv-modal,
 html.pv-a11y-large .pv-admin-menu,
 html.pv-a11y-large .legend-panel,
 html.pv-a11y-large .parcel-search-results,
+html.pv-a11y-large #parcel-info-panel,
 html.pv-a11y-large .maplibregl-popup-content { zoom: var(--pv-ts, 1.15); }
 
 /* Legible typeface */
@@ -51,15 +53,19 @@ html.pv-a11y-font body,
 html.pv-a11y-font input,
 html.pv-a11y-font button,
 html.pv-a11y-font select,
-html.pv-a11y-font textarea { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; }
+html.pv-a11y-font textarea,
+html.pv-a11y-font #parcel-info-panel,
+html.pv-a11y-font #parcel-info-panel * { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; }
 
 /* High contrast: darker text, stronger borders + focus */
 html.pv-a11y-contrast { --text-muted: #1f2330; --ui-interactive-bd: rgba(110,82,36,0.75); }
 html.pv-a11y-contrast .pv-modal-body,
+html.pv-a11y-contrast #parcel-info-panel,
 html.pv-a11y-contrast .maplibregl-popup-content,
 html.pv-a11y-contrast .pv-a11y-lbl { color: #14110d; }
 html.pv-a11y-contrast :focus-visible { outline: 3px solid var(--ui-interactive) !important; outline-offset: 2px; }
 [data-theme="dark"] html.pv-a11y-contrast .pv-modal-body,
+[data-theme="dark"] html.pv-a11y-contrast #parcel-info-panel,
 [data-theme="dark"] html.pv-a11y-contrast .maplibregl-popup-content { color: #fdf6ec; }
 
 /* Reduce transparency: solid surfaces */
@@ -67,11 +73,13 @@ html.pv-a11y-solid .map-control-panel,
 html.pv-a11y-solid .pv-admin-menu,
 html.pv-a11y-solid .parcel-search-results,
 html.pv-a11y-solid .legend-panel,
+html.pv-a11y-solid #parcel-info-panel,
 html.pv-a11y-solid .maplibregl-popup-content { background: #ffffff !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
 [data-theme="dark"] html.pv-a11y-solid .map-control-panel,
 [data-theme="dark"] html.pv-a11y-solid .pv-admin-menu,
 [data-theme="dark"] html.pv-a11y-solid .parcel-search-results,
 [data-theme="dark"] html.pv-a11y-solid .legend-panel,
+[data-theme="dark"] html.pv-a11y-solid #parcel-info-panel,
 [data-theme="dark"] html.pv-a11y-solid .maplibregl-popup-content { background: #1c1612 !important; }
 
 /* Reduce motion */
