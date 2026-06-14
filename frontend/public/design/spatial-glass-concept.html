@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en" class="theme-parcels">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spatial Glass — concept</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --surface: 255,255,255;
+    --text:#2b2620; --text-muted:#615a51;
+    --accent:#a3473b; --accent2:#b58d4a;
+    --map1:#ece6da; --map2:#d8cebb;
+    --parcel-line: rgba(83,63,43,.22); --road: rgba(255,255,255,.7); --water:#9fbac6;
+    --rim: rgba(255,255,255,.55); --edge: rgba(255,255,255,.45); --ts:1;
+    --e0-blur:3px;  --e0-tint:.40; --e0-shadow:0 1px 2px rgba(0,0,0,.10);
+    --e1-blur:7px;  --e1-tint:.50; --e1-shadow:0 8px 20px rgba(40,30,20,.16);
+    --e2-blur:12px; --e2-tint:.58; --e2-shadow:0 14px 32px rgba(40,30,20,.22);
+    --e3-blur:20px; --e3-tint:.68; --e3-shadow:0 28px 64px rgba(30,20,12,.34);
+  }
+  :root.theme-911       { --accent:#c0392b; --accent2:#e07a36; }
+  :root.theme-valuation { --accent:#2f7d52; --accent2:#7fae4f; }
+  :root.dark {
+    --surface: 34,26,21;
+    --text:#efe6d9; --text-muted:#b3a99d;
+    --map1:#2a2018; --map2:#171009;
+    --parcel-line: rgba(255,255,255,.12); --road: rgba(255,255,255,.34); --water:#3c5662;
+    --rim: rgba(255,255,255,.14); --edge: rgba(255,255,255,.10);
+  }
+  :root.lite {
+    --e0-blur:0; --e1-blur:0; --e2-blur:0; --e3-blur:0;
+    --e0-tint:.94; --e1-tint:.95; --e2-tint:.96; --e3-tint:.97;
+  }
+  :root.a11y {
+    --e0-blur:0; --e1-blur:0; --e2-blur:0; --e3-blur:0;
+    --e0-tint:1; --e1-tint:1; --e2-tint:1; --e3-tint:1;
+    --text:#15110d; --text-muted:#3c362e;
+    --edge: rgba(40,30,18,.4); --rim: rgba(0,0,0,0);
+    --road: rgba(120,95,60,.6);
+  }
+  :root.a11y.dark {
+    --text:#fdf8f0; --text-muted:#d4cabb; --edge: rgba(255,255,255,.42);
+  }
+  html.a11y body { font-family:"Atkinson Hyperlegible","Segoe UI",system-ui,sans-serif; }
+  :root.a11y .glass { border-width:2px; }
+  :root.a11y .substrate { border:1.5px solid var(--edge); }
+  :root.a11y .btn, :root.a11y .tgl, :root.a11y .seg button { min-height:44px; padding:11px 16px; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  :root.a11y :focus-visible { outline-width:3px; outline-offset:3px; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body { font-family:system-ui,-apple-system,"Segoe UI",sans-serif; color:var(--text); overflow:hidden; }
+  .map { position:fixed; inset:0; background:linear-gradient(135deg,var(--map1),var(--map2)); z-index:0; }
+  .map svg { width:100%; height:100%; display:block; }
+  .pcl { fill:none; stroke:var(--parcel-line); }
+  .road { stroke:var(--road); stroke-linecap:round; fill:none; }
+  .water { stroke:var(--water); fill:none; stroke-linecap:round; }
+  .sel { fill:var(--accent); fill-opacity:.55; stroke:var(--accent); stroke-width:2.5; }
+  .stage { position:relative; z-index:1; height:100%; overflow:auto; padding:22px clamp(16px,4vw,40px) 40px; }
+
+  .glass { position:relative; border-radius:16px; border:1px solid var(--edge);
+    background:rgba(var(--surface),var(--tint)); box-shadow:var(--shadow);
+    -webkit-backdrop-filter:blur(var(--blur)) saturate(1.3); backdrop-filter:blur(var(--blur)) saturate(1.3); }
+  .glass::before { content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    box-shadow:inset 0 1px 0 var(--rim); }
+  .e0 { --blur:var(--e0-blur); --tint:var(--e0-tint); --shadow:var(--e0-shadow); }
+  .e1 { --blur:var(--e1-blur); --tint:var(--e1-tint); --shadow:var(--e1-shadow); }
+  .e2 { --blur:var(--e2-blur); --tint:var(--e2-tint); --shadow:var(--e2-shadow); }
+  .e3 { --blur:var(--e3-blur); --tint:var(--e3-tint); --shadow:var(--e3-shadow); }
+
+  .bar { display:flex; align-items:center; gap:14px; flex-wrap:wrap; padding:12px 16px; margin-bottom:22px; }
+  .brand { font-size:calc(16px*var(--ts)); font-weight:600; letter-spacing:.01em; }
+  .brand small { display:block; font-size:calc(11.5px*var(--ts)); font-weight:400; color:var(--text-muted); letter-spacing:0; }
+  .spacer { flex:1 1 auto; }
+  .seg { display:inline-flex; background:rgba(var(--surface),.5); border:1px solid var(--edge); border-radius:999px; padding:3px; gap:2px; }
+  .seg button { border:0; background:none; color:var(--text-muted); font:inherit; font-size:calc(12.5px*var(--ts)); padding:5px 12px; border-radius:999px; cursor:pointer; }
+  .seg button.on { background:var(--accent); color:#fff; }
+  .tgl { border:1px solid var(--edge); background:rgba(var(--surface),.5); color:var(--text); font:inherit; font-size:calc(12.5px*var(--ts)); padding:7px 13px; border-radius:999px; cursor:pointer; }
+  .tgl.on { background:var(--accent); color:#fff; border-color:transparent; }
+  .size { display:inline-flex; align-items:center; gap:4px; background:rgba(var(--surface),.5); border:1px solid var(--edge); border-radius:999px; padding:3px; }
+  .size button { border:0; background:none; color:var(--text); font:inherit; font-weight:600; font-size:calc(13px*var(--ts)); width:30px; height:30px; border-radius:999px; cursor:pointer; }
+  .size button:hover { background:rgba(var(--surface),.7); }
+  .size #tsz { font-size:calc(11.5px*var(--ts)); color:var(--text-muted); min-width:40px; text-align:center; }
+  .tgl-a11y.on { background:#0f6e2e; }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:18px; align-items:start; max-width:1080px; }
+  .card { padding:16px; }
+  .lvl { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .tag { font-family:ui-monospace,Consolas,monospace; font-size:calc(11px*var(--ts)); font-weight:600; color:#fff; background:var(--accent); padding:2px 8px; border-radius:6px; }
+  .role { font-size:calc(11px*var(--ts)); text-transform:uppercase; letter-spacing:.06em; color:var(--text-muted); }
+  .card h3 { margin:0 0 9px; font-size:calc(15px*var(--ts)); font-weight:600; }
+  .substrate { background:rgba(var(--surface),.95); border-radius:10px; padding:10px 12px; }
+  .substrate p { margin:0; font-size:calc(12.5px*var(--ts)); line-height:1.55; color:var(--text-muted); }
+  .row { display:flex; gap:8px; margin-top:12px; }
+  .btn { border:0; border-radius:8px; padding:7px 13px; font:inherit; font-size:calc(12.5px*var(--ts)); font-weight:600; cursor:pointer; }
+  .btn-p { background:var(--accent); color:#fff; }
+  .btn-s { background:rgba(var(--surface),.6); color:var(--text); border:1px solid var(--edge); }
+
+  .wide { max-width:1080px; margin-top:22px; padding:18px 20px; }
+  .wide .lvl { margin-bottom:12px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .chip { font-size:calc(11.5px*var(--ts)); padding:3px 10px; border-radius:999px; background:rgba(var(--surface),.6); border:1px solid var(--edge); color:var(--text); }
+  .chip.ac { background:var(--accent); color:#fff; border-color:transparent; }
+  .note { max-width:1080px; margin-top:22px; padding:13px 16px; font-size:calc(12.5px*var(--ts)); line-height:1.6; color:var(--text-muted); }
+  .note b { color:var(--text); font-weight:600; }
+  .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }
+</style>
+</head>
+<body>
+<h1 class="sr-only">Spatial glass design concept: four elevation levels and a swappable theme palette over a map.</h1>
+<div class="map" aria-hidden="true">
+  <svg viewBox="0 0 1200 800" preserveAspectRatio="xMidYMid slice">
+    <rect width="1200" height="800" fill="none"></rect>
+    <g class="pcl" stroke-width="1.4">
+      <path d="M0 130 H1200 M0 270 H1200 M0 410 H1200 M0 550 H1200 M0 690 H1200"></path>
+      <path d="M120 0 V800 M300 0 V800 M480 0 V800 M660 0 V800 M840 0 V800 M1020 0 V800"></path>
+      <path d="M210 0 V800 M390 0 V800 M570 0 V800 M750 0 V800 M930 0 V800 M1110 0 V800" stroke-width="0.9"></path>
+    </g>
+    <path class="road" stroke-width="11" d="M0 410 H1200"></path>
+    <path class="road" stroke-width="9" d="M480 0 V800"></path>
+    <path class="water" stroke-width="13" d="M-20 600 C 220 540, 360 700, 620 600 S 1000 560, 1230 660"></path>
+    <rect class="sel" x="300" y="270" width="180" height="140" rx="2"></rect>
+  </svg>
+</div>
+
+<div class="stage">
+  <div class="bar glass e1">
+    <div class="brand">Intelligent Spatial Viewer <small>spatial-glass concept · not real data</small></div>
+    <div class="spacer"></div>
+    <div class="seg" id="theme">
+      <button data-t="parcels" class="on">Parcels</button>
+      <button data-t="911">9-1-1</button>
+      <button data-t="valuation">Valuation</button>
+    </div>
+    <div class="size">
+      <button id="tdec" aria-label="Decrease text size">A&minus;</button>
+      <span id="tsz" aria-live="polite">100%</span>
+      <button id="tinc" aria-label="Increase text size">A+</button>
+    </div>
+    <button class="tgl" id="dark">Dark</button>
+    <button class="tgl" id="lite">Lite mode</button>
+    <button class="tgl tgl-a11y" id="a11y">Accessible profile</button>
+  </div>
+
+  <div class="grid">
+    <div class="glass e0 card">
+      <div class="lvl"><span class="tag">glass-0</span><span class="role">base chrome</span></div>
+      <h3>Legend &amp; status</h3>
+      <div class="substrate"><p>Lowest lift — sits almost flat on the map. Light blur, faint tint, no shadow.</p></div>
+    </div>
+    <div class="glass e1 card">
+      <div class="lvl"><span class="tag">glass-1</span><span class="role">side panels</span></div>
+      <h3>Map layers</h3>
+      <div class="substrate"><p>Resting panels. More blur and a soft lift separate them from the map below.</p></div>
+      <div class="row"><button class="btn btn-p">Apply</button><button class="btn btn-s">Reset</button></div>
+    </div>
+    <div class="glass e2 card">
+      <div class="lvl"><span class="tag">glass-2</span><span class="role">popups</span></div>
+      <h3>Parcel popup</h3>
+      <div class="substrate"><p>Floating. Stronger blur and a deeper shadow read as “above” the panels.</p></div>
+      <div class="row"><button class="btn btn-p">Open packet</button></div>
+    </div>
+    <div class="glass e3 card">
+      <div class="lvl"><span class="tag">glass-3</span><span class="role">modal</span></div>
+      <h3>Parcel Packet</h3>
+      <div class="substrate"><p>Top of the stack. Heaviest blur + dramatic lift command full focus.</p></div>
+      <div class="row"><button class="btn btn-p">Share</button><button class="btn btn-s">Close</button></div>
+    </div>
+  </div>
+
+  <div class="glass e3 wide">
+    <div class="lvl"><span class="tag">glass-3 · themed</span><span class="role">same structure, palette swap</span></div>
+    <div class="chips">
+      <span class="chip ac">Interactive</span><span class="chip">PDF</span><span class="chip">Audio</span>
+      <span class="chip">Video</span><span class="chip">AI Q&amp;A</span><span class="chip ac">Monitor</span>
+    </div>
+  </div>
+
+  <div class="glass e0 note">
+    <b>Accessible profile</b> is the base layer, not a separate mode: solid surfaces, max contrast, a legibility-tuned font (Atkinson Hyperlegible), larger hit targets, and thicker focus rings — the expressive themes are deltas layered on top. <b>A− / A+</b> rescales every label live (works in any mode). <b>The legibility rule:</b> text always sits on a near-solid substrate — the glass lives in the frame, edges, and shadow, never behind the words — so contrast stays WCAG&nbsp;AA over any map.
+  </div>
+</div>
+
+<script>
+  var root = document.documentElement;
+  document.getElementById("theme").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    root.classList.remove("theme-parcels","theme-911","theme-valuation");
+    root.classList.add("theme-" + b.getAttribute("data-t"));
+    [].forEach.call(this.children, function (c) { c.classList.toggle("on", c === b); });
+  });
+  document.getElementById("dark").addEventListener("click", function () { root.classList.toggle("dark"); this.classList.toggle("on"); });
+  document.getElementById("lite").addEventListener("click", function () { root.classList.toggle("lite"); this.classList.toggle("on"); });
+  document.getElementById("a11y").addEventListener("click", function () { var on = root.classList.toggle("a11y"); this.classList.toggle("on"); setTs(on ? 1.2 : 1.0); });
+
+  var ts = 1, out = document.getElementById("tsz");
+  function setTs(v) { ts = Math.max(0.9, Math.min(1.5, Math.round(v * 100) / 100)); root.style.setProperty("--ts", ts); out.textContent = Math.round(ts * 100) + "%"; }
+  document.getElementById("tdec").addEventListener("click", function () { setTs(ts - 0.1); });
+  document.getElementById("tinc").addEventListener("click", function () { setTs(ts + 0.1); });
+</script>
+</body>
+</html>
