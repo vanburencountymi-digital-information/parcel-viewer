@@ -23,7 +23,69 @@
      clear 4.5:1 even at the worst-case effective background of the translucent
      "glass" panels over a dark basemap (min panel luminance ≈ rgb(220,220,220)). */
   --text-muted:        #4b5563;          /* muted/secondary/hint text (light theme) */
+  --pv-ts:             1;                /* UI text-scale multiplier (accessibility) */
 }
+
+/* ── Accessibility profile (DIC-421 / DIC-376) ───────────────────────────────
+   User-selectable preferences applied as classes on <html>, persisted on the
+   device, and pre-seeded from the OS (prefers-reduced-motion / -contrast /
+   -reduced-transparency). The expressive theme is the default; these dial it
+   toward maximum legibility. */
+
+/* Header entry point */
+.pv-a11y-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 0; color: inherit; cursor: pointer; padding: 6px 9px; border-radius: 6px; font: inherit; font-size: 13px; }
+.pv-a11y-btn:hover { background: rgba(128,128,128,0.18); }
+.pv-a11y-btn:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: 2px; }
+@media (max-width: 700px) { .pv-a11y-btn-label { display: none; } }
+
+/* Larger text: zoom content surfaces (not the topbar or the map canvas) */
+html.pv-a11y-large .map-control-panel,
+html.pv-a11y-large .pv-modal,
+html.pv-a11y-large .pv-admin-menu,
+html.pv-a11y-large .legend-panel,
+html.pv-a11y-large .parcel-search-results,
+html.pv-a11y-large .maplibregl-popup-content { zoom: var(--pv-ts, 1.15); }
+
+/* Legible typeface */
+html.pv-a11y-font body,
+html.pv-a11y-font input,
+html.pv-a11y-font button,
+html.pv-a11y-font select,
+html.pv-a11y-font textarea { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; }
+
+/* High contrast: darker text, stronger borders + focus */
+html.pv-a11y-contrast { --text-muted: #1f2330; --ui-interactive-bd: rgba(110,82,36,0.75); }
+html.pv-a11y-contrast .pv-modal-body,
+html.pv-a11y-contrast .maplibregl-popup-content,
+html.pv-a11y-contrast .pv-a11y-lbl { color: #14110d; }
+html.pv-a11y-contrast :focus-visible { outline: 3px solid var(--ui-interactive) !important; outline-offset: 2px; }
+[data-theme="dark"] html.pv-a11y-contrast .pv-modal-body,
+[data-theme="dark"] html.pv-a11y-contrast .maplibregl-popup-content { color: #fdf6ec; }
+
+/* Reduce transparency: solid surfaces */
+html.pv-a11y-solid .map-control-panel,
+html.pv-a11y-solid .pv-admin-menu,
+html.pv-a11y-solid .parcel-search-results,
+html.pv-a11y-solid .legend-panel,
+html.pv-a11y-solid .maplibregl-popup-content { background: #ffffff !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
+[data-theme="dark"] html.pv-a11y-solid .map-control-panel,
+[data-theme="dark"] html.pv-a11y-solid .pv-admin-menu,
+[data-theme="dark"] html.pv-a11y-solid .parcel-search-results,
+[data-theme="dark"] html.pv-a11y-solid .legend-panel,
+[data-theme="dark"] html.pv-a11y-solid .maplibregl-popup-content { background: #1c1612 !important; }
+
+/* Reduce motion */
+html.pv-a11y-motion *, html.pv-a11y-motion *::before, html.pv-a11y-motion *::after {
+  transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+
+/* Accessibility panel rows */
+.pv-a11y-list { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 14px; }
+.pv-a11y-row { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+.pv-a11y-row:hover { background: var(--ui-interactive-bg); }
+.pv-a11y-row input { margin-top: 2px; width: 18px; height: 18px; flex: 0 0 auto; accent-color: var(--ui-interactive); cursor: pointer; }
+.pv-a11y-lbl { display: block; font-weight: 600; font-size: 13.5px; color: #374151; }
+.pv-a11y-desc { display: block; font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+[data-theme="dark"] .pv-a11y-lbl { color: #e8d8c4; }
 
 * {
   box-sizing: border-box;

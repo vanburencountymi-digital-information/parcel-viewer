@@ -457,6 +457,61 @@
     });
   }
 
+  // ── Accessibility preferences (DIC-421 / DIC-376) ────────────────────────────
+  // Device-local prefs applied as <html> classes; OS-seeded on first run.
+  var A11Y = (function () {
+    var CLS = { large: "pv-a11y-large", contrast: "pv-a11y-contrast", solid: "pv-a11y-solid", font: "pv-a11y-font", motion: "pv-a11y-motion" };
+    function lsGet(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
+    function getFlag(n) { return lsGet("pv-a11y-" + n) === "1"; }
+    function setFlag(n, on) { lsSet("pv-a11y-" + n, on ? "1" : "0"); document.documentElement.classList.toggle(CLS[n], !!on); }
+    function getTs() { var v = parseFloat(lsGet("pv-a11y-ts")); return (v && v > 0) ? v : 1; }
+    function setTs(v) { v = parseFloat(v) || 1; lsSet("pv-a11y-ts", String(v)); document.documentElement.style.setProperty("--pv-ts", v); document.documentElement.classList.toggle(CLS.large, v > 1); }
+    function applyAll() { ["contrast", "solid", "font", "motion"].forEach(function (n) { document.documentElement.classList.toggle(CLS[n], getFlag(n)); }); setTs(getTs()); }
+    function init() {
+      try {
+        if (lsGet("pv-a11y-seeded") !== "1") {
+          if (matchMedia("(prefers-reduced-motion: reduce)").matches) lsSet("pv-a11y-motion", "1");
+          if (matchMedia("(prefers-contrast: more)").matches) lsSet("pv-a11y-contrast", "1");
+          if (matchMedia("(prefers-reduced-transparency: reduce)").matches) lsSet("pv-a11y-solid", "1");
+          lsSet("pv-a11y-seeded", "1");
+        }
+      } catch (_) {}
+      applyAll();
+    }
+    return { getFlag: getFlag, setFlag: setFlag, getTs: getTs, setTs: setTs, init: init };
+  })();
+  A11Y.init();
+  (function () { var b = document.getElementById("pv-a11y-btn"); if (b) b.addEventListener("click", openAccessibility); })();
+
+  function openAccessibility() {
+    function chk(name, label, desc) {
+      return '<label class="pv-a11y-row"><input type="checkbox" class="pv-a11y-chk" data-a="' + name + '"' + (A11Y.getFlag(name) ? " checked" : "") + '>' +
+        '<span><span class="pv-a11y-lbl">' + esc(label) + '</span><span class="pv-a11y-desc">' + esc(desc) + '</span></span></label>';
+    }
+    var ts = A11Y.getTs();
+    function tsOpt(v, l) { return '<option value="' + v + '"' + (Math.abs(ts - v) < 0.001 ? " selected" : "") + '>' + l + '</option>'; }
+    var body = [
+      '<p class="pv-modal-lead">Adjust how the viewer looks and moves. Saved on this device.</p>',
+      field("Text size", '<select class="pv-input" id="pv-a11y-ts">' + tsOpt(1, "Default") + tsOpt(1.15, "Large") + tsOpt(1.3, "Larger") + '</select>'),
+      '<div class="pv-a11y-list">' +
+        chk("contrast", "High contrast", "Darker text and stronger outlines.") +
+        chk("solid", "Reduce transparency", "Make panels solid instead of glass.") +
+        chk("font", "Legible font", "Switch to a high-legibility typeface (Atkinson Hyperlegible).") +
+        chk("motion", "Reduce motion", "Turn off animations and transitions.") +
+      '</div>',
+      field("Language", '<select class="pv-input" id="pv-a11y-lang"><option value="en" selected>English</option><option value="es" disabled>Español — coming soon</option></select>'),
+      '<p class="pv-modal-note">Map Buddy already answers in your language. Full interface translation is on the way.</p>'
+    ].join("");
+    openModal("Accessibility", body, function (bodyEl) {
+      [].forEach.call(bodyEl.querySelectorAll(".pv-a11y-chk"), function (c) {
+        c.addEventListener("change", function () { A11Y.setFlag(c.getAttribute("data-a"), c.checked); });
+      });
+      var tsSel = bodyEl.querySelector("#pv-a11y-ts");
+      if (tsSel) tsSel.addEventListener("change", function () { A11Y.setTs(tsSel.value); });
+    });
+  }
+
   // ── Parcel tools (placeholders, surfaced in the Layers panel) ────────────────
   function openPacket() {
     var pc = window.PS_STATE && window.PS_STATE.parcel;
