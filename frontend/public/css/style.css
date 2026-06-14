@@ -29,9 +29,9 @@
      Surfaces declare an elevation; each level bundles blur + tint + shadow +
      rim. Parcel (earth) palette for now; future themes swap the palette only.
      The reduce-transparency a11y profile overrides these to solid. */
-  --glass-blur-1:  8px;   --glass-tint-1: rgba(255,255,255,0.80);
-  --glass-blur-2:  10px;  --glass-tint-2: rgba(255,255,255,0.72);
-  --glass-blur-3:  16px;  --glass-tint-3: rgba(255,255,255,0.85);
+  --glass-blur-1:  8px;   --glass-tint-1: rgba(255,254,252,0.88);
+  --glass-blur-2:  12px;  --glass-tint-2: rgba(255,254,252,0.88);  /* shared panel tint — ≥0.86 keeps text AA over any basemap */
+  --glass-blur-3:  16px;  --glass-tint-3: rgba(255,254,252,0.92);
   --glass-edge:    rgba(163,71,59,0.12);                 /* hairline ring (terracotta) */
   --glass-rim:     inset 0 1px 0 rgba(255,255,255,0.60); /* top refraction highlight */
   --glass-shadow-1: 0 8px 20px rgba(40,30,20,0.16);
@@ -40,9 +40,9 @@
 }
 
 [data-theme="dark"] {
-  --glass-tint-1: rgba(28,22,18,0.82);
-  --glass-tint-2: rgba(28,22,18,0.74);
-  --glass-tint-3: rgba(28,22,18,0.88);
+  --glass-tint-1: rgba(28,22,18,0.88);
+  --glass-tint-2: rgba(28,22,18,0.88);
+  --glass-tint-3: rgba(28,22,18,0.92);
   --glass-edge:   rgba(255,255,255,0.10);
   --glass-rim:    inset 0 1px 0 rgba(255,255,255,0.08);
 }
@@ -715,9 +715,9 @@ body {
   z-index: 10;
   display: flex;
   flex-direction: column;
-  background: rgba(255, 253, 251, 0.88);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  background: var(--glass-tint-2);
+  backdrop-filter: blur(var(--glass-blur-2));
+  -webkit-backdrop-filter: blur(var(--glass-blur-2));
   border-radius: var(--radius-md);
   box-shadow:
     var(--glass-shadow-2),
