@@ -417,11 +417,176 @@
 
   // ── Parcel tools (placeholders, surfaced in the Layers panel) ────────────────
   function openPacket() {
-    openModal("Generate Parcel Packet", [
-      '<p class="pv-modal-lead">A comprehensive, professionally formatted report for a parcel.</p>',
-      '<p>The packet compiles assessment data, environmental conditions, spatial analysis, proximity metrics, and historical aerial imagery into a single document.</p>',
-      placeholderTag("Flagship feature in development.")
-    ].join(""));
+    var pc = window.PS_STATE && window.PS_STATE.parcel;
+    if (!pc) {
+      openModal("Parcel Packet", '<p class="pv-modal-lead">Select a parcel first, then open its Packet.</p>');
+      return;
+    }
+    var pin   = pc.pin || "—";
+    var owner = pc.owner_name || "Owner on record";
+    var addr  = pc.site_address || "Address on file";
+    var muni  = pc.municipality || "Van Buren County";
+    var acres = pc.acres != null ? pc.acres.toFixed(2) : "—";
+    var months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+    var d = new Date();
+    var dateStr = months[d.getMonth()] + " " + d.getDate() + ", " + d.getFullYear();
+
+    function chip(t)  { return '<span class="pp-chip">' + esc(t) + '</span>'; }
+    function samp()   { return '<span class="pp-samp">sample</span>'; }
+    function fact(l, v, s) { return '<div class="pp-fact"><div class="pp-fact-v">' + esc(v) + (s ? samp() : '') + '</div><div class="pp-fact-l">' + esc(l) + '</div></div>'; }
+    function sec(t, inner) { return '<section class="pp-section"><h3 class="pp-section-h">' + esc(t) + '</h3>' + inner + '</section>'; }
+    // Per-section Q&A bank powering the interactive "What this means" panels.
+    // In production these answers stream live from the Knowledge Base; here a few
+    // canned exchanges per section demonstrate the section-scoped chat experience.
+    var PACKET_QA = {
+      assess: { ph: "Ask about assessment, taxes, or exemptions…", qa: [
+        { q: "Why is taxable value lower than assessed?", a: "Because of Michigan's Proposal A cap. Taxable Value can rise no more than 5% or the rate of inflation per year, even when market value climbs faster — so over time it drifts below the Assessed Value (about half of market). The gap here reflects years of capped growth. (Sample answer.)" },
+        { q: "What would taxes be if I bought today?", a: "At sale the Taxable Value “uncaps” and resets up to the Assessed Value (~$131,100), so a new buyer's bill is figured on roughly that number instead of the current $73,663 — often a noticeable jump. The exact dollars depend on this district's millage rate. (Sample answer.)" } ] },
+      owner: { ph: "Ask about ownership, deeds, or liens…", qa: [
+        { q: "Are there any liens on the property?", a: "The recorded chain shows clean warranty-deed transfers with no liens or encumbrances in the index. The live Packet flags recorded mortgages, tax liens, and easements; a full title search confirms anything unrecorded. (Sample answer.)" },
+        { q: "When did the current owner buy it?", a: "2014, by warranty deed — Liber 1444, Page 933. (Sample answer.)" } ] },
+      env: { ph: "Ask about soils, septic, or flood risk…", qa: [
+        { q: "Can I build a pole barn here?", a: "Physically, yes — the gentle 0–6% slope and well-drained Oshtemo sandy loam make an accessory building straightforward, with minimal grading. What actually governs it is zoning: Almena Township's accessory-structure rules set the maximum size, height, and setbacks. The live Packet reads this parcel's zoning district and quotes those limits. (Sample answer.)" },
+        { q: "Is this a good septic site?", a: "Likely yes. Oshtemo sandy loam percolates quickly, which is what a conventional drain field needs, and the parcel sits outside mapped wetlands and floodplain. Final approval comes from a Van Buren County Health Department perc test. (Sample answer.)" },
+        { q: "What's the flood risk?", a: "Low. No part of the parcel lies in a FEMA Special Flood Hazard Area, so flood insurance isn't federally required and floodplain building limits don't apply. The nearest mapped flood zone follows the river corridor, well off this parcel. (Sample answer.)" } ] },
+      aerial: { ph: "Ask about the parcel's history…", qa: [
+        { q: "When was the house built?", a: "Comparing frames, the home first appears between the 1968 and 1981 imagery — pointing to construction in the 1970s, consistent with the 1971 parcel split. Assessor records would confirm the exact year. (Sample answer.)" },
+        { q: "Was this land ever farmed?", a: "The earliest frames show cleared, row-cropped fields; tree cover and the driveway appear in later decades as the parcel shifted to residential use. (Sample answer.)" } ] },
+      docs: { ph: "Ask about documents or boundaries…", qa: [
+        { q: "Where are the property corners?", a: "The County Surveyor's field notes for Section 1, T1S R13W record the monuments and measurements that fix the corners. The live Packet links the notes and can drop those corners onto the map. (Sample answer.)" } ] }
+    };
+    // The interpretation layer — plain-language AI explanation, now interactive:
+    // each panel carries suggested questions + an ask box scoped to its domain.
+    function explain(key, html) {
+      var cfg = PACKET_QA[key] || { ph: "Ask a question…", qa: [] };
+      var chips = cfg.qa.map(function (x) { return '<button type="button" class="pp-qa-chip">' + esc(x.q) + '</button>'; }).join("");
+      return '<div class="pp-explain" data-qa="' + escAttr(key) + '">' +
+        '<div class="pp-explain-h"><span aria-hidden="true">✨</span> What this means</div>' +
+        '<p>' + html + '</p>' +
+        '<div class="pp-qa-thread" aria-live="polite"></div>' +
+        (chips ? '<div class="pp-qa-chips">' + chips + '</div>' : '') +
+        '<form class="pp-qa-form"><input type="text" class="pp-qa-input" autocomplete="off" ' +
+          'aria-label="Ask a question about this section" placeholder="' + escAttr(cfg.ph) + '">' +
+          '<button type="submit" class="pp-qa-send">Ask</button></form>' +
+        '</div>';
+    }
+
+    var aiSummary =
+      'This ' + esc(acres) + '-acre parcel in ' + esc(muni) + ', held by ' + esc(owner) +
+      ', is located at ' + esc(addr) + '. Assessed and taxable values have trended steadily over the past ' +
+      'five years, and a principal-residence exemption is on file. The property carries no FEMA flood designation ' +
+      'and no mapped wetlands within 200&nbsp;ft; soils are well-drained sandy loam. Two parcels border it to the ' +
+      'north and west. <em>(Illustrative — the live Packet writes this on demand from the Knowledge Base.)</em>';
+
+    var aerials = ["1955","1968","1981","1998","2012","2025"].map(function (y) {
+      return '<div class="pp-aerial"><div class="pp-aerial-img"></div><span>' + y + '</span></div>';
+    }).join("");
+
+    var html =
+    '<div class="pp">' +
+      '<div class="pp-hero">' +
+        '<div class="pp-hero-row"><span class="pp-eyebrow">PARCEL PACKET</span>' +
+          '<span class="pp-preview-badge">Sample preview</span></div>' +
+        '<div class="pp-hero-addr">' + esc(addr) + '</div>' +
+        '<div class="pp-hero-sub">' + esc(pin) + ' &middot; ' + esc(muni) + ' &middot; ' + esc(owner) + '</div>' +
+        '<div class="pp-hero-meta">Comprehensive property intelligence &middot; generated ' + esc(dateStr) + '</div>' +
+      '</div>' +
+
+      '<div class="pp-formats"><span class="pp-formats-l">Available as</span>' +
+        chip("Interactive") + chip("PDF") + chip("Audio") + chip("Video") + chip("AI Q&A session") + '</div>' +
+
+      '<div class="pp-body">' +
+
+        '<div class="pp-ai"><div class="pp-ai-h"><span aria-hidden="true">✨</span> A.I. Summary</div>' +
+          '<p class="pp-ai-text">' + aiSummary + '</p></div>' +
+
+        '<div class="pp-facts">' +
+          fact("Acreage", acres + " ac", false) +
+          fact("Class", "401 — Residential", true) +
+          fact("Assessed Value", "$131,100", true) +
+          fact("Taxable Value", "$73,663", true) +
+          fact("PRE", "100%", true) +
+          fact("School", "Gobles Public", true) + '</div>' +
+
+        sec("Assessment & Tax",
+          '<table class="pp-table"><thead><tr><th></th><th>Current</th><th>Prior</th></tr></thead><tbody>' +
+          '<tr><td>Assessed Value</td><td>$131,100</td><td>$124,800</td></tr>' +
+          '<tr><td>Taxable Value</td><td>$73,663</td><td>$71,940</td></tr>' +
+          '<tr><td>Est. Market Value</td><td>$262,200</td><td>$249,600</td></tr>' +
+          '</tbody></table><p class="pp-note">Includes a 5-year assessed-value history. ' + samp() + '</p>' +
+          explain('assess', 'In Michigan the <b>Assessed Value</b> is set at about half of market value, while the <b>Taxable Value</b> — the figure your bill is actually calculated on — can rise no faster than inflation or 5% a year under Proposal A. That cap is why the taxable value sits well below the assessed value here, and why a long-time owner often pays less than a recent buyer would on an identical home. The <b>100% Principal Residence Exemption</b> confirms this is the owner\'s primary home, exempting it from the 18-mill local school operating tax and noticeably lowering the bill.')) +
+
+        sec("Ownership",
+          '<ul class="pp-timeline">' +
+          '<li><span class="pp-t-date">2014</span>Conveyed to ' + esc(owner) + ' (warranty deed)</li>' +
+          '<li><span class="pp-t-date">2003</span>Conveyed to prior owner</li>' +
+          '<li><span class="pp-t-date">1971</span>Parcel created from a 40-acre split</li>' +
+          '</ul><p class="pp-note">Full chain of title + recorded instruments. ' + samp() + '</p>' +
+          explain('owner', 'The <b>chain of title</b> traces ownership in an unbroken line back to the original 1971 parcel split — no gaps, breaks, or competing claims appear in the record, which is exactly what a title company verifies before issuing title insurance. Each transfer shown is backed by a recorded <b>warranty deed</b>, the strongest form of conveyance, in which the seller guarantees clear ownership free of undisclosed liens.')) +
+
+        sec("Environmental",
+          '<div class="pp-pills">' +
+          '<span class="pp-pill pp-ok">No FEMA flood zone</span>' +
+          '<span class="pp-pill pp-ok">No NWI wetlands within 200 ft</span>' +
+          '<span class="pp-pill">Soils: Oshtemo sandy loam</span>' +
+          '<span class="pp-pill">Slope: 0–6%</span></div>' +
+          explain('env', '<b>Oshtemo sandy loam</b> is a deep, well-drained soil — water moves through it quickly, so the parcel sheds rain well and is generally favorable for a conventional septic field and stable building foundations. The trade-off is that sandy soils hold less water and fewer nutrients, so lawns, gardens, or crops may need irrigation in a dry summer. The gentle <b>0–6% slope</b> means little grading is needed to build and erosion risk is low. Because no part of the parcel lies in a <b>FEMA flood zone</b> or a <b>mapped wetland</b>, it avoids the building setbacks, state permits, and mandatory flood insurance those designations would otherwise trigger.')) +
+
+        sec("70-Year Aerial History",
+          '<div class="pp-aerials">' + aerials + '</div>' +
+          '<p class="pp-note">Swipe through decades of imagery in the live Packet. ' + samp() + '</p>' +
+          explain('aerial', 'Stacking aerial imagery across seven decades turns a single snapshot into a story: you can see roughly when the home and outbuildings were built, how the tree line and driveway shifted, and whether the land was ever farmed, cleared, or filled. That history is often invisible in today\'s records but matters for drainage, buried structures, and questions about prior land use.')) +
+
+        sec("Documents & Survey Notes",
+          '<ul class="pp-docs">' +
+          '<li>📄 Warranty Deed (2014) — Liber 1444, Page 933</li>' +
+          '<li>📄 Tax statement (current year)</li>' +
+          '<li>📐 County Surveyor field notes — Section 1, T1S R13W</li>' +
+          '</ul><p class="pp-note">Linked from the County Knowledge Base — searchable and AI-readable. ' + samp() + '</p>' +
+          explain('docs', 'These records are the primary sources behind everything above — the <b>deed</b> establishes ownership, the <b>tax statement</b> itemizes the bill, and the <b>County Surveyor\'s field notes</b> document the actual monuments and measurements that fix this parcel\'s boundaries on the ground. In the live Packet each is linked, full-text searchable, and readable by the A.I. so you can simply ask a question instead of digging through filings.')) +
+
+        '<div class="pp-monitor"><div class="pp-monitor-h">🔔 Monitor this parcel</div>' +
+          '<p>Get alerted when assessment, ownership, boundaries, or permits change. A monitoring subscription keeps this Packet live.</p>' +
+          '<button type="button" class="pv-btn-primary" id="pp-monitor-btn">Subscribe to monitoring</button></div>' +
+
+        '<p class="pp-footer">DICE Labs &middot; Parcel Packet (preview). Illustrative sample for demonstration — not a legal record of survey. ' +
+          'The live Packet is generated on demand from the County Knowledge Base.</p>' +
+
+      '</div>' +
+    '</div>';
+
+    openModal("Parcel Packet", html, function (bodyEl) {
+      var btn = bodyEl.querySelector("#pp-monitor-btn");
+      if (btn) btn.addEventListener("click", function () { btn.textContent = "On the roadmap ✓"; btn.disabled = true; });
+
+      // Wire the section-scoped "What this means" chat panels.
+      [].forEach.call(bodyEl.querySelectorAll(".pp-explain[data-qa]"), function (block) {
+        var cfg = PACKET_QA[block.getAttribute("data-qa")] || { qa: [] };
+        var thread = block.querySelector(".pp-qa-thread");
+        var form = block.querySelector(".pp-qa-form");
+        var input = block.querySelector(".pp-qa-input");
+        function answerFor(q) {
+          var n = q.toLowerCase().trim();
+          var hit = cfg.qa.filter(function (x) { return x.q.toLowerCase() === n; })[0];
+          return hit ? hit.a
+            : "That's exactly what the live Packet answers — it would read this parcel's records from the County Knowledge Base and reply right here in plain language. This preview ships with a few sample questions; the production Packet answers anything. (Sample preview.)";
+        }
+        function ask(q) {
+          q = (q || "").trim();
+          if (!q) return;
+          var qRow = document.createElement("div"); qRow.className = "pp-qa-row pp-qa-q"; qRow.textContent = q;
+          var aRow = document.createElement("div"); aRow.className = "pp-qa-row pp-qa-a";
+          aRow.innerHTML = '<span class="pp-qa-dots" aria-label="Thinking">•••</span>';
+          thread.appendChild(qRow); thread.appendChild(aRow);
+          var ans = answerFor(q);
+          setTimeout(function () { aRow.textContent = ans; thread.scrollIntoView({ block: "nearest" }); }, 550);
+        }
+        [].forEach.call(block.querySelectorAll(".pp-qa-chip"), function (chip) {
+          chip.addEventListener("click", function () { ask(chip.textContent); });
+        });
+        if (form) form.addEventListener("submit", function (e) { e.preventDefault(); var v = input.value; input.value = ""; ask(v); });
+      });
+    }, { wide: true, flush: true });
   }
   function openCompare() {
     openModal("Compare Parcels", [
