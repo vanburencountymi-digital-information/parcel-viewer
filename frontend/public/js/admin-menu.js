@@ -446,7 +446,9 @@
           '<select class="pv-input" id="pv-set-basemap">' +
             opt("light", "Light", basemap) + opt("dark", "Dark", basemap) + opt("aerial", "Aerial imagery", basemap) + '</select>') +
       '</div>',
-      '<p class="pv-modal-note">Changes apply immediately and are saved on this device.</p>'
+      '<p class="pv-settings-h">Accessibility</p>',
+      a11yControlsHtml(),
+      '<p class="pv-modal-note">Changes apply immediately and are saved on this device. The header button toggles all of these at once.</p>'
     ].join(""), function (bodyEl) {
       var a = bodyEl.querySelector("#pv-set-area");
       var c = bodyEl.querySelector("#pv-set-coord");
@@ -454,6 +456,7 @@
       if (a) a.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setAreaUnits(a.value); });
       if (c) c.addEventListener("change", function () { window.PV_COORDS && window.PV_COORDS.setFormat(c.value); });
       if (b) b.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setBasemap(b.value); });
+      wireA11yControls(bodyEl);
     });
   }
 
@@ -482,34 +485,55 @@
     return { getFlag: getFlag, setFlag: setFlag, getTs: getTs, setTs: setTs, init: init };
   })();
   A11Y.init();
-  (function () { var b = document.getElementById("pv-a11y-btn"); if (b) b.addEventListener("click", openAccessibility); })();
+  // Header button = one-tap "maximum accessibility" toggle; fine-tuning lives
+  // in Settings. A toast points the user there.
+  (function () {
+    var b = document.getElementById("pv-a11y-btn");
+    if (!b) return;
+    syncA11yButton();
+    b.addEventListener("click", function () {
+      var on = !maxA11yOn();
+      setMaxA11y(on);
+      syncA11yButton();
+      toast(on ? "Maximum accessibility on — fine-tune under Settings." : "Accessibility reset to default.");
+    });
+  })();
 
-  function openAccessibility() {
+  function maxA11yOn() { return A11Y.getFlag("contrast") && A11Y.getFlag("solid") && A11Y.getFlag("font") && A11Y.getFlag("motion") && A11Y.getTs() > 1; }
+  function setMaxA11y(on) { ["contrast", "solid", "font", "motion"].forEach(function (n) { A11Y.setFlag(n, on); }); A11Y.setTs(on ? 1.3 : 1); }
+  function syncA11yButton() { var b = document.getElementById("pv-a11y-btn"); if (!b) return; var on = maxA11yOn(); b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", String(on)); }
+
+  function toast(msg) {
+    var t = document.createElement("div");
+    t.className = "pv-toast"; t.setAttribute("role", "status"); t.textContent = msg;
+    document.body.appendChild(t);
+    requestAnimationFrame(function () { t.classList.add("pv-toast--show"); });
+    setTimeout(function () { t.classList.remove("pv-toast--show"); setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 320); }, 3400);
+  }
+
+  // Accessibility controls, surfaced inside the Settings dialog.
+  function a11yControlsHtml() {
     function chk(name, label, desc) {
       return '<label class="pv-a11y-row"><input type="checkbox" class="pv-a11y-chk" data-a="' + name + '"' + (A11Y.getFlag(name) ? " checked" : "") + '>' +
         '<span><span class="pv-a11y-lbl">' + esc(label) + '</span><span class="pv-a11y-desc">' + esc(desc) + '</span></span></label>';
     }
     var ts = A11Y.getTs();
     function tsOpt(v, l) { return '<option value="' + v + '"' + (Math.abs(ts - v) < 0.001 ? " selected" : "") + '>' + l + '</option>'; }
-    var body = [
-      '<p class="pv-modal-lead">Adjust how the viewer looks and moves. Saved on this device.</p>',
-      field("Text size", '<select class="pv-input" id="pv-a11y-ts">' + tsOpt(1, "Default") + tsOpt(1.15, "Large") + tsOpt(1.3, "Larger") + '</select>'),
+    return field("Text size", '<select class="pv-input" id="pv-a11y-ts">' + tsOpt(1, "Default") + tsOpt(1.15, "Large") + tsOpt(1.3, "Larger") + '</select>') +
       '<div class="pv-a11y-list">' +
         chk("contrast", "High contrast", "Darker text and stronger outlines.") +
         chk("solid", "Reduce transparency", "Make panels solid instead of glass.") +
         chk("font", "Legible font", "Switch to a high-legibility typeface (Atkinson Hyperlegible).") +
         chk("motion", "Reduce motion", "Turn off animations and transitions.") +
-      '</div>',
-      field("Language", '<select class="pv-input" id="pv-a11y-lang"><option value="en" selected>English</option><option value="es" disabled>Español — coming soon</option></select>'),
-      '<p class="pv-modal-note">Map Buddy already answers in your language. Full interface translation is on the way.</p>'
-    ].join("");
-    openModal("Accessibility", body, function (bodyEl) {
-      [].forEach.call(bodyEl.querySelectorAll(".pv-a11y-chk"), function (c) {
-        c.addEventListener("change", function () { A11Y.setFlag(c.getAttribute("data-a"), c.checked); });
-      });
-      var tsSel = bodyEl.querySelector("#pv-a11y-ts");
-      if (tsSel) tsSel.addEventListener("change", function () { A11Y.setTs(tsSel.value); });
+      '</div>' +
+      field("Language", '<select class="pv-input" id="pv-a11y-lang"><option value="en" selected>English</option><option value="es" disabled>Español — coming soon</option></select>');
+  }
+  function wireA11yControls(bodyEl) {
+    [].forEach.call(bodyEl.querySelectorAll(".pv-a11y-chk"), function (c) {
+      c.addEventListener("change", function () { A11Y.setFlag(c.getAttribute("data-a"), c.checked); syncA11yButton(); });
     });
+    var tsSel = bodyEl.querySelector("#pv-a11y-ts");
+    if (tsSel) tsSel.addEventListener("change", function () { A11Y.setTs(tsSel.value); syncA11yButton(); });
   }
 
   // ── Parcel tools (placeholders, surfaced in the Layers panel) ────────────────

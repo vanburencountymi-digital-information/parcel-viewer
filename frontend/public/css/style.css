@@ -67,6 +67,7 @@ html.pv-a11y-large .pv-admin-menu,
 html.pv-a11y-large .legend-panel,
 html.pv-a11y-large .parcel-search-results,
 html.pv-a11y-large #parcel-info-panel,
+html.pv-a11y-large #map-buddy-panel,
 html.pv-a11y-large .maplibregl-popup-content { zoom: var(--pv-ts, 1.15); }
 
 /* Legible typeface */
@@ -76,18 +77,25 @@ html.pv-a11y-font button,
 html.pv-a11y-font select,
 html.pv-a11y-font textarea,
 html.pv-a11y-font #parcel-info-panel,
-html.pv-a11y-font #parcel-info-panel * { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; }
+html.pv-a11y-font #parcel-info-panel *,
+html.pv-a11y-font #map-buddy-panel,
+html.pv-a11y-font #map-buddy-panel * { font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif; }
 
-/* High contrast: darker text, stronger borders + focus */
+/* High contrast: theme-aware — darken text in light mode, lighten in dark */
 html.pv-a11y-contrast { --text-muted: #1f2330; --ui-interactive-bd: rgba(110,82,36,0.75); }
 html.pv-a11y-contrast .pv-modal-body,
 html.pv-a11y-contrast #parcel-info-panel,
+html.pv-a11y-contrast #map-buddy-panel,
 html.pv-a11y-contrast .maplibregl-popup-content,
 html.pv-a11y-contrast .pv-a11y-lbl { color: #14110d; }
 html.pv-a11y-contrast :focus-visible { outline: 3px solid var(--ui-interactive) !important; outline-offset: 2px; }
-[data-theme="dark"] html.pv-a11y-contrast .pv-modal-body,
-[data-theme="dark"] html.pv-a11y-contrast #parcel-info-panel,
-[data-theme="dark"] html.pv-a11y-contrast .maplibregl-popup-content { color: #fdf6ec; }
+html[data-theme="dark"].pv-a11y-contrast { --text-muted: #efe7db; --ui-interactive-bd: rgba(214,178,90,0.7); }
+html[data-theme="dark"].pv-a11y-contrast .pv-modal-body,
+html[data-theme="dark"].pv-a11y-contrast #parcel-info-panel,
+html[data-theme="dark"].pv-a11y-contrast #map-buddy-panel,
+html[data-theme="dark"].pv-a11y-contrast #map-buddy-panel *,
+html[data-theme="dark"].pv-a11y-contrast .maplibregl-popup-content,
+html[data-theme="dark"].pv-a11y-contrast .pv-a11y-lbl { color: #fdf6ec; }
 
 /* Reduce transparency: solid surfaces */
 html.pv-a11y-solid .map-control-panel,
@@ -95,19 +103,28 @@ html.pv-a11y-solid .pv-admin-menu,
 html.pv-a11y-solid .parcel-search-results,
 html.pv-a11y-solid .legend-panel,
 html.pv-a11y-solid #parcel-info-panel,
+html.pv-a11y-solid #map-buddy-panel,
 html.pv-a11y-solid .maplibregl-popup-content { background: #ffffff !important; backdrop-filter: none !important; -webkit-backdrop-filter: none !important; }
-[data-theme="dark"] html.pv-a11y-solid .map-control-panel,
-[data-theme="dark"] html.pv-a11y-solid .pv-admin-menu,
-[data-theme="dark"] html.pv-a11y-solid .parcel-search-results,
-[data-theme="dark"] html.pv-a11y-solid .legend-panel,
-[data-theme="dark"] html.pv-a11y-solid #parcel-info-panel,
-[data-theme="dark"] html.pv-a11y-solid .maplibregl-popup-content { background: #1c1612 !important; }
+html[data-theme="dark"].pv-a11y-solid .map-control-panel,
+html[data-theme="dark"].pv-a11y-solid .pv-admin-menu,
+html[data-theme="dark"].pv-a11y-solid .parcel-search-results,
+html[data-theme="dark"].pv-a11y-solid .legend-panel,
+html[data-theme="dark"].pv-a11y-solid #parcel-info-panel,
+html[data-theme="dark"].pv-a11y-solid #map-buddy-panel,
+html[data-theme="dark"].pv-a11y-solid .maplibregl-popup-content { background: #1c1612 !important; }
+
+/* Header toggle active state + confirmation toast */
+.pv-a11y-btn.is-on { background: var(--ui-interactive); border-color: var(--ui-interactive); color: #fff; }
+[data-theme="dark"] .pv-a11y-btn.is-on { color: #1c1612; }
+.pv-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(10px); background: #1f2937; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); z-index: 10000; opacity: 0; transition: opacity 0.25s, transform 0.25s; max-width: 90vw; text-align: center; }
+.pv-toast--show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 /* Reduce motion */
 html.pv-a11y-motion *, html.pv-a11y-motion *::before, html.pv-a11y-motion *::after {
   transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 
 /* Accessibility panel rows */
+.pv-settings-h { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin: 16px 0 6px; border-top: 1px solid var(--ui-interactive-bd); padding-top: 12px; }
 .pv-a11y-list { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 14px; }
 .pv-a11y-row { display: flex; gap: 10px; align-items: flex-start; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
 .pv-a11y-row:hover { background: var(--ui-interactive-bg); }
@@ -171,7 +188,7 @@ body {
 /* ── Panel collapse / fullscreen ────────────────────────────────────────── */
 
 /* Right panels need overflow:hidden so content doesn't spill when width→0 */
-#panel-chat,
+#map-buddy-panel,
 #panel-ordinance {
   overflow: hidden;
 }
@@ -231,7 +248,7 @@ body {
 .map-fullscreen-btn:hover { background: #eff6ff; color: #1d4ed8; }
 .map-fullscreen-btn.active { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
 
-/* Right-panel collapse button inside #panel-chat header */
+/* Right-panel collapse button inside #map-buddy-panel header */
 .right-collapse-btn {
   background: none;
   border: none;
@@ -1028,7 +1045,7 @@ input[type="checkbox"]:focus-visible {
 }
 
 /* Chat panel */
-#panel-chat {
+#map-buddy-panel {
   background: #fafafa;
   min-height: 0;
 }
