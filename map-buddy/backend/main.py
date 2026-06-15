@@ -54,10 +54,19 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class MapState(BaseModel):
+    center: list | None = None
+    zoom: float | None = None
+    bearing: float | None = None
+    pitch: float | None = None
+    visible_layers: list | None = None
+
+
 class ChatRequest(BaseModel):
     message: str
     conversation_history: list[ChatMessage] = []
     parcel_context: ParcelContext | None = None
+    map_state: MapState | None = None
 
 
 @app.get("/health")
@@ -71,7 +80,7 @@ async def config():
 
 
 @app.post("/chat")
-@limiter.limit("15/minute")
+@limiter.limit(os.getenv("MAP_BUDDY_RATE_LIMIT", "120/minute"))
 async def chat(request: Request, body: ChatRequest):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return StreamingResponse(
@@ -80,7 +89,8 @@ async def chat(request: Request, body: ChatRequest):
         )
 
     def stream():
-        for event in run_chat_stream(body.message, body.conversation_history, body.parcel_context):
+        ms = body.map_state.model_dump() if body.map_state else None
+        for event in run_chat_stream(body.message, body.conversation_history, body.parcel_context, ms):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
