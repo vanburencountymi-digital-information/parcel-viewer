@@ -532,6 +532,21 @@
   function setMaxA11y(on) { ["contrast", "solid", "font", "motion"].forEach(function (n) { A11Y.setFlag(n, on); }); A11Y.setTs(on ? 1.3 : 1); }
   function syncA11yButton() { var b = document.getElementById("pv-a11y-btn"); if (!b) return; var on = maxA11yOn(); b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", String(on)); }
 
+  // Programmatic accessibility + panel-glass control (MapBuddy AI, etc.).
+  window.PV_A11Y = {
+    setFlag: A11Y.setFlag, getFlag: A11Y.getFlag,
+    setTextScale: A11Y.setTs, getTextScale: A11Y.getTs,
+    setMax: function (on) { setMaxA11y(on); syncA11yButton(); },
+  };
+  window.PV_GLASS = {
+    set: function (alpha) {
+      var a = Math.max(0.4, Math.min(1, parseFloat(alpha) || 0.62));
+      document.documentElement.style.setProperty("--glass-alpha", a);
+      try { localStorage.setItem("pv-glass-alpha", String(a)); } catch (_) {}
+      return a;
+    },
+  };
+
   function toast(msg) {
     var t = document.createElement("div");
     t.className = "pv-toast"; t.setAttribute("role", "status"); t.textContent = msg;

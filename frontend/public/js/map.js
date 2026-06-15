@@ -386,6 +386,12 @@
     }
   }
 
+  // Programmatic theme control (MapBuddy AI and other callers).
+  window.PV_THEME = {
+    set: function (dark) { applyTheme(!!dark); },
+    get: function () { return document.documentElement.getAttribute("data-theme") === "dark"; },
+  };
+
   // ── Map init ───────────────────────────────────────────────────────────
   async function initMap() {
     const style = await resolveStyle();

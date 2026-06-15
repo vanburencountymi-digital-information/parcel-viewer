@@ -1,6 +1,7 @@
 """Map Buddy agent — Anthropic-backed chat with map command tool use."""
 
 import json
+import math
 import os
 import urllib.parse
 import urllib.request
@@ -43,7 +44,11 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps the use
 - Measurement: measure_parcel, measure_area, measure_distance (results are shown to the user automatically).
 - Built-in viewer tools: set_parcel_labels (label every parcel by owner/PIN/address/value), dimension_parcel (surveyor-style side dimensions), activate_draw_tool (hand the user a draw tool), undo, redo.
 - Open viewer windows: open_tool — the Parcel Packet report ('packet'), Compare, Street View, the tax/assessment explainers, print/share/bookmark/settings, etc. "Show me the parcel packet" → select the parcel if needed, then open_tool 'packet'.
-- Data lookups (results come back to you): search_parcels finds parcels across the whole county by owner/address/PIN; get_parcel_info pulls a full record by id. For "find X and do Y": call search_parcels, then select_parcel with the best match's `id`, then act (you have the tool results, so do it all). If several plausible matches, ask which one.
+- Data lookups (results come back to you): search_parcels finds parcels across the whole county by owner/address/PIN; get_parcel_info pulls a full record by id; get_environmental_info returns the REAL flood zone / wetlands / soil at a point. For "find X and do Y": call search_parcels, then select_parcel with the best match's `id`, then act (you have the tool results, so do it all). If several plausible matches, ask which one.
+- Interface: set_theme (dark/light), set_basemap (light/dark/aerial), set_base_layer (aerial/parcels), set_accessibility (large text, contrast, readable font, reduced motion/transparency, or max), set_panel_transparency, open_panel, set_area_units, set_coordinate_format, bookmark_current. Honor direct requests like "switch to dark mode", "turn on satellite", "make the text bigger".
+
+# Answering environmental / risk questions
+For "is this in a floodplain / are there wetlands / what's the soil / is it buildable", call get_environmental_info with the selected parcel's centroid and answer from the REAL result — never guess. It's good to ALSO turn on the matching overlay (flood/wetlands/soils) so the user sees it.
 - Showcase: map_tour for a guided fly-through of several stops.
 
 # Style
@@ -130,6 +135,30 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}},
     {"name": "get_parcel_info", "description": "Fetch the full record for a parcel by its DB `id` (owner, address, acreage, assessed/taxable/market values, class, zoning). Use after search_parcels when you need details to answer a question.",
      "input_schema": {"type": "object", "properties": {"id": {"type": ["integer", "string"]}}, "required": ["id"]}},
+    {"name": "get_environmental_info", "description": "Look up REAL environmental constraints at a point (use the selected parcel's centroid): FEMA flood zone, USFWS wetlands, and USDA soil type. Use this to ANSWER 'is this in a floodplain / are there wetlands / what's the soil / is it buildable' — don't guess. Optionally also turn on the matching overlay so the user sees it.",
+     "input_schema": {"type": "object", "properties": {"lng": _LNG, "lat": _LAT}, "required": ["lng", "lat"]}},
+
+    # ── Interface / appearance ────────────────────────────────────────────────
+    {"name": "set_theme", "description": "Switch the viewer between dark and light mode.",
+     "input_schema": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["dark", "light"]}}, "required": ["mode"]}},
+    {"name": "set_basemap", "description": "Set the basemap: 'light' or 'dark' street map, or 'aerial' satellite imagery (aerial also dims the parcel fills).",
+     "input_schema": {"type": "object", "properties": {"basemap": {"type": "string", "enum": ["light", "dark", "aerial"]}}, "required": ["basemap"]}},
+    {"name": "set_base_layer", "description": "Toggle the aerial-imagery layer and/or the parcels layer on or off independently.",
+     "input_schema": {"type": "object", "properties": {"aerial": {"type": "boolean"}, "parcels": {"type": "boolean"}}, "required": []}},
+    {"name": "set_accessibility", "description": "Adjust accessibility settings: large_text, high_contrast, readable_font (Atkinson Hyperlegible), reduce_motion, reduce_transparency (solid panels). Or max=true for maximum accessibility, max=false to reset.",
+     "input_schema": {"type": "object", "properties": {
+         "max": {"type": "boolean"}, "large_text": {"type": "boolean"}, "high_contrast": {"type": "boolean"},
+         "readable_font": {"type": "boolean"}, "reduce_motion": {"type": "boolean"}, "reduce_transparency": {"type": "boolean"}}, "required": []}},
+    {"name": "set_panel_transparency", "description": "Set how see-through the glass panels are. alpha 0.4 = very transparent, 1.0 = solid.",
+     "input_schema": {"type": "object", "properties": {"alpha": {"type": "number"}}, "required": ["alpha"]}},
+    {"name": "open_panel", "description": "Open the map control panel to a tab (layers, select, draw, measure).",
+     "input_schema": {"type": "object", "properties": {"panel": {"type": "string"}, "tab": {"type": "string", "enum": ["layers", "select", "draw", "measure"]}}, "required": []}},
+    {"name": "set_area_units", "description": "Set area units to acres or square feet.",
+     "input_schema": {"type": "object", "properties": {"units": {"type": "string", "enum": ["acres", "sqft"]}}, "required": ["units"]}},
+    {"name": "set_coordinate_format", "description": "Set the cursor coordinate readout format: dd (decimal degrees), dms, or spc (State Plane).",
+     "input_schema": {"type": "object", "properties": {"format": {"type": "string", "enum": ["dd", "dms", "spc"]}}, "required": ["format"]}},
+    {"name": "bookmark_current", "description": "Bookmark the currently selected parcel (saved on this device).",
+     "input_schema": {"type": "object", "properties": {}, "required": []}},
 
     # ── Built-in map tools (the viewer's own tooling) ─────────────────────────
     {"name": "set_parcel_labels", "description": "Turn on on-map parcel labels and choose what they show across the whole map. Use for 'label parcels with owner names', 'show PINs', 'label by assessed value', etc.",
@@ -213,7 +242,74 @@ def _build_user_message(
 # then act on it. PARCEL_API_BASE is the in-cluster API (http://api:8000) locally
 # and the deployed API URL in prod.
 PARCEL_API_BASE = os.getenv("PARCEL_API_BASE", "http://api:8000").rstrip("/")
-DATA_TOOLS = {"search_parcels", "get_parcel_info"}
+DATA_TOOLS = {"search_parcels", "get_parcel_info", "get_environmental_info"}
+
+# Public federal services — queried directly server-side (no CORS proxy needed)
+# to ANSWER environmental questions, mirroring frontend/public/js/wms-feature-info.js.
+_FEMA_NFHL = "https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query"
+_NWI_WETLANDS = "https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0/query"
+_SSURGO_WMS = "https://sdmdataaccess.nrcs.usda.gov/Spatial/SDM.wms"
+
+
+def _arcgis_point_query(base: str, lng: float, lat: float):
+    qs = urllib.parse.urlencode({
+        "geometry": f"{lng},{lat}", "geometryType": "esriGeometryPoint",
+        "inSR": "4326", "spatialRel": "esriSpatialRelIntersects",
+        "outFields": "*", "returnGeometry": "false", "f": "json",
+    })
+    with urllib.request.urlopen(base + "?" + qs, timeout=12) as r:
+        data = json.loads(r.read().decode())
+    feats = data.get("features") or []
+    if not feats:
+        return None
+    attrs = feats[0].get("attributes", {})
+    return {k.split(".")[-1]: v for k, v in attrs.items()}  # strip "Table." prefixes
+
+
+def _query_soils(lng: float, lat: float):
+    R = 6378137.0
+    mx = lng * math.pi * R / 180.0
+    my = math.log(math.tan(math.pi / 4 + lat * math.pi / 360.0)) * R
+    half = 150.0  # ~150 m box, query the centre pixel
+    qs = urllib.parse.urlencode({
+        "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetFeatureInfo",
+        "LAYERS": "MapunitPolyExtended", "QUERY_LAYERS": "MapunitPolyExtended",
+        "BBOX": f"{mx-half},{my-half},{mx+half},{my+half}",
+        "WIDTH": "256", "HEIGHT": "256", "X": "128", "Y": "128",
+        "SRS": "EPSG:3857", "INFO_FORMAT": "text/plain", "FEATURE_COUNT": "3",
+    })
+    with urllib.request.urlopen(_SSURGO_WMS + "?" + qs, timeout=12) as r:
+        text = r.read().decode("utf-8", "replace")
+    props = {}
+    for line in text.splitlines():
+        if "=" in line:
+            k, _, v = line.partition("=")
+            k = k.strip().lower(); v = v.strip().strip("'\"")
+            if k in ("muname", "musym") and v and k not in props:
+                props[k] = v
+    return {"name": props.get("muname"), "symbol": props.get("musym")} if props else None
+
+
+def _query_environment(lng: float, lat: float) -> dict:
+    out = {}
+    try:
+        a = _arcgis_point_query(_FEMA_NFHL, lng, lat)
+        out["flood"] = ({"zone": a.get("FLD_ZONE"), "subtype": a.get("ZONE_SUBTY"),
+                         "in_special_flood_hazard_area": a.get("SFHA_TF"), "base_flood_elev_ft": a.get("STATIC_BFE")}
+                        if a else {"zone": "X", "note": "no FEMA flood hazard mapped at this point"})
+    except Exception as e:
+        out["flood"] = {"error": str(e)}
+    try:
+        a = _arcgis_point_query(_NWI_WETLANDS, lng, lat)
+        out["wetlands"] = ({"present": True, "type": a.get("WETLAND_TYPE"), "acres": a.get("ACRES")}
+                           if a else {"present": False})
+    except Exception as e:
+        out["wetlands"] = {"error": str(e)}
+    try:
+        out["soil"] = _query_soils(lng, lat) or {"note": "no soil map unit returned"}
+    except Exception as e:
+        out["soil"] = {"error": str(e)}
+    return out
 
 
 def _http_get_json(path: str):
@@ -243,6 +339,11 @@ def _exec_data_tool(name: str, inp: dict) -> str:
                 return "Provide a parcel id (from search_parcels)."
             data = _http_get_json("/parcel/" + urllib.parse.quote(str(pid)))
             return json.dumps(data.get("properties", data))
+        if name == "get_environmental_info":
+            lng, lat = inp.get("lng"), inp.get("lat")
+            if lng is None or lat is None:
+                return "Provide the point as lng + lat (use the selected parcel's centroid)."
+            return json.dumps(_query_environment(float(lng), float(lat)))
     except Exception as e:
         return f"Lookup failed: {e}"
     return "Unknown data tool."

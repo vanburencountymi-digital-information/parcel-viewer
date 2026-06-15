@@ -805,6 +805,69 @@
       return '🪟 Opened ' + (LABEL[canon] || canon);
     },
 
+    // ── Interface / appearance ────────────────────────────────────────────────
+    set_theme: function (p) {
+      var dark = p.dark != null ? !!p.dark : /dark|night/i.test(p.mode || p.theme || '');
+      if (root.PV_THEME && root.PV_THEME.set) { root.PV_THEME.set(dark); return dark ? '🌙 Dark mode' : '☀️ Light mode'; }
+      return null;
+    },
+    set_basemap: function (p) {
+      var b = String(p.basemap || '').toLowerCase();
+      if (['light', 'dark', 'aerial'].indexOf(b) < 0) return null;
+      if (root.PV_PREFS && root.PV_PREFS.setBasemap) { root.PV_PREFS.setBasemap(b); return '🗺️ ' + b.charAt(0).toUpperCase() + b.slice(1) + ' basemap'; }
+      return null;
+    },
+    set_base_layer: function (p) {
+      var L = root.PS_MAP_PANEL && root.PS_MAP_PANEL.layers; if (!L) return null;
+      var did = [];
+      if (typeof p.aerial === 'boolean' && L.setAerial) { L.setAerial(p.aerial); did.push('aerial ' + (p.aerial ? 'on' : 'off')); }
+      if (typeof p.parcels === 'boolean' && L.setZoning) { L.setZoning(p.parcels); did.push('parcels ' + (p.parcels ? 'on' : 'off')); }
+      return did.length ? '🗺️ ' + did.join(', ') : null;
+    },
+    set_accessibility: function (p) {
+      var A = root.PV_A11Y; if (!A) return null;
+      if (p.max != null && A.setMax) { A.setMax(!!p.max); return p.max ? '♿ Max accessibility on' : '♿ Accessibility reset'; }
+      var did = [];
+      if (p.large_text != null && A.setTextScale) { A.setTextScale(p.large_text ? 1.3 : 1); did.push('text ' + (p.large_text ? 'large' : 'normal')); }
+      if (p.text_scale != null && A.setTextScale) { A.setTextScale(p.text_scale); did.push('text ' + p.text_scale + '×'); }
+      if (p.high_contrast != null && A.setFlag) { A.setFlag('contrast', !!p.high_contrast); did.push('contrast ' + (p.high_contrast ? 'on' : 'off')); }
+      if (p.readable_font != null && A.setFlag) { A.setFlag('font', !!p.readable_font); did.push('readable font ' + (p.readable_font ? 'on' : 'off')); }
+      if (p.reduce_motion != null && A.setFlag) { A.setFlag('motion', !!p.reduce_motion); did.push('reduced motion ' + (p.reduce_motion ? 'on' : 'off')); }
+      if (p.reduce_transparency != null && A.setFlag) { A.setFlag('solid', !!p.reduce_transparency); did.push('solid panels ' + (p.reduce_transparency ? 'on' : 'off')); }
+      return did.length ? '♿ ' + did.join(', ') : null;
+    },
+    set_panel_transparency: function (p) {
+      if (root.PV_GLASS && p.alpha != null) { var a = root.PV_GLASS.set(p.alpha); return '🪟 Panels ' + Math.round(a * 100) + '% opaque'; }
+      return null;
+    },
+    open_panel: function (p) {
+      var which = String(p.panel || '').toLowerCase();
+      if (/buddy|assistant|chat/.test(which)) return '💬 MapBuddy';
+      if (root.PS_MAP_PANEL) {
+        if (p.tab && root.PS_MAP_PANEL.setTab) root.PS_MAP_PANEL.setTab(p.tab);
+        var el = document.getElementById('map-control-panel'); if (el) el.hidden = false;
+        if (root.PV_MOBILE_TABS && root.PV_MOBILE_TABS.refresh) root.PV_MOBILE_TABS.refresh();
+        return '📋 Opened ' + (p.tab || 'controls') + ' panel';
+      }
+      return null;
+    },
+    set_area_units: function (p) {
+      var u = /sq|ft|feet/i.test(p.units || '') ? 'sqft' : 'acres';
+      if (root.PV_PREFS && root.PV_PREFS.setAreaUnits) { root.PV_PREFS.setAreaUnits(u); return '📏 ' + (u === 'sqft' ? 'Square feet' : 'Acres'); }
+      return null;
+    },
+    set_coordinate_format: function (p) {
+      var m = { dd: 'dd', decimal: 'dd', dms: 'dms', spc: 'spc', 'state plane': 'spc', stateplane: 'spc' };
+      var fmt = m[String(p.format || '').toLowerCase()];
+      if (fmt && root.PV_COORDS && root.PV_COORDS.setFormat) { root.PV_COORDS.setFormat(fmt); return '🧭 ' + fmt.toUpperCase() + ' coordinates'; }
+      return null;
+    },
+    bookmark_current: function () {
+      var p = _currentParcel;
+      if (p && p.id != null && root.PV_BOOKMARKS && root.PV_BOOKMARKS.add) { root.PV_BOOKMARKS.add(p); return '⭐ Bookmarked ' + (p.pin || ''); }
+      return null;
+    },
+
     // ── Measurement (append an info bubble — model can't see the result) ───────
     measure_parcel: function (p) {
       var a = _api(), f = _resolveParcel(p.pin); if (!a || !f) return null;
