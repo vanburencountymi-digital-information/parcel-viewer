@@ -575,9 +575,16 @@
 
   // Resolve a parcel GeoJSON feature by PIN, defaulting to the selected parcel.
   function _resolveParcel(pin) {
-    var idx  = root.PS_PARCEL_INDEX || [];
     var want = pin || (_currentParcel && _currentParcel.pin) || root.PS_SELECTED_PIN;
     if (!want) return null;
+    // Prefer the selected parcel's full record — it carries geometry and is
+    // independent of which tiles are loaded into PS_PARCEL_INDEX, so "this
+    // parcel" resolves even after the user has panned/zoomed away.
+    if (_currentParcel && _currentParcel.geometry &&
+        (!pin || String(_currentParcel.pin) === String(want))) {
+      return { type: 'Feature', properties: { pin: _currentParcel.pin }, geometry: _currentParcel.geometry };
+    }
+    var idx = root.PS_PARCEL_INDEX || [];
     for (var i = 0; i < idx.length; i++) {
       var pr = idx[i].properties || {};
       if (String(pr.pin || pr.PIN) === String(want)) return idx[i];
