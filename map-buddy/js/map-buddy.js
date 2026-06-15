@@ -709,7 +709,13 @@
     fit_to_annotations: function () { _camIntent().fitAnnotations = true; return '🖼️ Fit drawings'; },
 
     // ── Selection ─────────────────────────────────────────────────────────────
-    select_parcel:        function (p) { if (p.pin && root.PS_selectParcel) { root.PS_selectParcel(p.pin); return '📍 Selected ' + p.pin; } return null; },
+    select_parcel: function (p) {
+      // Prefer DB id (from a backend search) — works even for parcels not in the
+      // currently loaded tiles; fall back to PIN lookup within the loaded index.
+      if (p.id != null && root.PS_selectParcelById) { root.PS_selectParcelById(p.id); return '📍 Selected ' + (p.pin || p.id); }
+      if (p.pin && root.PS_selectParcel) { root.PS_selectParcel(p.pin); return '📍 Selected ' + p.pin; }
+      return null;
+    },
     select_parcel_on_map: function (p) { return _CMDS.select_parcel(p); },
     highlight_parcel:     function (p) { if (p.pin && root.PS_highlightParcel) { root.PS_highlightParcel(p.pin); _pulse(p.pin); return '✨ Highlighted ' + p.pin; } return null; },
 
@@ -749,6 +755,35 @@
       return '🏠 ' + p.width_ft + '×' + p.depth_ft + ' ft footprint';
     },
     clear_annotations: function () { var a = _api(); if (a) a.clearAnnotations(); return '🧹 Cleared drawings'; },
+
+    // ── Built-in map tools (the viewer's own tooling) ─────────────────────────
+    set_parcel_labels: function (p) {
+      var L = root.PS_PARCEL_LABELS; if (!L) return null;
+      var visible = p.visible !== false;
+      if (p.field && L.setField) L.setField(p.field);
+      if (p.size && L.setSize) L.setSize(p.size);
+      if (visible) { if (L.activate) L.activate(); } else { if (L.deactivate) L.deactivate(); return '🏷️ Labels off'; }
+      var nice = { owner:'Owner', pin:'PIN', address:'Address', av:'Assessed value', sev:'SEV',
+                   tv:'Taxable value', tmv:'Market value', tmv_acre:'$/acre', zoning:'Zoning', class:'Class' };
+      return '🏷️ ' + (nice[p.field] || 'Parcel') + ' labels on';
+    },
+    dimension_parcel: function (p) {
+      var f = _resolveParcel(p.pin);
+      if (!f || !root.PS_MEASURE_TOOL || !root.PS_MEASURE_TOOL.dimensionParcel) return null;
+      root.PS_MEASURE_TOOL.dimensionParcel(f);
+      return '📐 Dimensioned the parcel';
+    },
+    activate_draw_tool: function (p) {
+      var D = root.PS_DRAWING_TOOLS; if (!D || !p.tool || !D.setActiveDrawTool) return null;
+      if (D.setStyle && (p.color || p.fill_color)) {
+        var st = {}; if (p.color) st.strokeColor = p.color; if (p.fill_color) st.fillColor = p.fill_color;
+        D.setStyle(st);
+      }
+      D.setActiveDrawTool(p.tool);
+      return '✏️ ' + p.tool + ' tool — draw on the map';
+    },
+    undo: function () { if (root.PS_UNDO_REDO && root.PS_UNDO_REDO.undo) { root.PS_UNDO_REDO.undo(); return '↩️ Undo'; } return null; },
+    redo: function () { if (root.PS_UNDO_REDO && root.PS_UNDO_REDO.redo) { root.PS_UNDO_REDO.redo(); return '↪️ Redo'; } return null; },
 
     // ── Measurement (append an info bubble — model can't see the result) ───────
     measure_parcel: function (p) {

@@ -1874,6 +1874,10 @@
     isActive:                function () { return _activeTool !== null; },
     getActiveTool:           function () { return _activeTool; },
     deactivate:              deactivateTool,
+    /** Programmatically auto-dimension every side of a parcel (used by MapBuddy
+     *  and any other caller). Uses the same boundary analysis as the interactive
+     *  Auto-Dimension tool, with default options when the panel isn't open. */
+    dimensionParcel:         function (parcel) { if (parcel) runAutoDim(parcel); },
     /** Exposed constant so it can be imported by tests or other modules. */
     COLLINEARITY_THRESHOLD_DEG: COLLINEARITY_THRESHOLD_DEG,
   };

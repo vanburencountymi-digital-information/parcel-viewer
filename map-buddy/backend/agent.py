@@ -2,6 +2,8 @@
 
 import json
 import os
+import urllib.parse
+import urllib.request
 import anthropic
 
 _client = None
@@ -39,7 +41,8 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps the use
 - Layers: set_layer_visibility (flood, wetlands, soils, hillshade, contours).
 - Drawing: draw_point, draw_line, draw_polygon, draw_circle, label_point, label_parcel_centroid, draw_parcel_buffer (inward = setback), place_structure_in_parcel, clear_annotations.
 - Measurement: measure_parcel, measure_area, measure_distance (results are shown to the user automatically).
-- Search: search_parcels (by PIN, owner, or address). A single match is auto-selected and flown to, so for "find X and do Y" you may emit search_parcels followed by actions on the selected parcel (drop the `pin` arg — they apply to the new selection) in the SAME reply.
+- Built-in viewer tools: set_parcel_labels (label every parcel by owner/PIN/address/value), dimension_parcel (surveyor-style side dimensions), activate_draw_tool (hand the user a draw tool), undo, redo.
+- Data lookups (results come back to you): search_parcels finds parcels across the whole county by owner/address/PIN; get_parcel_info pulls a full record by id. For "find X and do Y": call search_parcels, then select_parcel with the best match's `id`, then act (you have the tool results, so do it all). If several plausible matches, ask which one.
 - Showcase: map_tour for a guided fly-through of several stops.
 
 # Style
@@ -81,8 +84,8 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {}, "required": []}},
 
     # ── Selection ─────────────────────────────────────────────────────────────
-    {"name": "select_parcel", "description": "Select a parcel by PIN, loading it into the info panel and making it the active context.",
-     "input_schema": {"type": "object", "properties": {"pin": {"type": "string"}}, "required": ["pin"]}},
+    {"name": "select_parcel", "description": "Select a parcel, loading it into the info panel and making it the active context. Prefer the `id` from a search result (works for any parcel in the county); a bare PIN only resolves parcels currently on screen.",
+     "input_schema": {"type": "object", "properties": {"id": {"type": ["integer", "string"], "description": "Parcel DB id from a search_parcels result"}, "pin": {"type": "string"}}, "required": []}},
     {"name": "highlight_parcel", "description": "Flash and highlight a parcel by PIN without changing the selection.",
      "input_schema": {"type": "object", "properties": {"pin": {"type": "string"}}, "required": ["pin"]}},
 
@@ -121,9 +124,27 @@ TOOLS = [
     {"name": "measure_distance", "description": "Measure the total distance along a path.",
      "input_schema": {"type": "object", "properties": {"coordinates": _COORDS}, "required": ["coordinates"]}},
 
-    # ── Search ────────────────────────────────────────────────────────────────
-    {"name": "search_parcels", "description": "Search parcels by PIN, owner name, or address. Auto-selects and flies to a single match; lists clickable results for several.",
-     "input_schema": {"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]}},
+    # ── Data lookups (resolved server-side; results return to you) ────────────
+    {"name": "search_parcels", "description": "Search the FULL county parcel database by PIN, owner name, or address. Returns matching parcels with their id, pin, owner, address, and acres. This is how you find a parcel the user names that isn't on screen — then pass a result's `id` to select_parcel to act on it.",
+     "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}},
+    {"name": "get_parcel_info", "description": "Fetch the full record for a parcel by its DB `id` (owner, address, acreage, assessed/taxable/market values, class, zoning). Use after search_parcels when you need details to answer a question.",
+     "input_schema": {"type": "object", "properties": {"id": {"type": ["integer", "string"]}}, "required": ["id"]}},
+
+    # ── Built-in map tools (the viewer's own tooling) ─────────────────────────
+    {"name": "set_parcel_labels", "description": "Turn on on-map parcel labels and choose what they show across the whole map. Use for 'label parcels with owner names', 'show PINs', 'label by assessed value', etc.",
+     "input_schema": {"type": "object", "properties": {
+         "field": {"type": "string", "enum": ["owner", "pin", "address", "av", "sev", "tv", "tmv", "tmv_acre", "zoning", "class"],
+                   "description": "owner = owner name; av/sev/tv/tmv = assessed/SEV/taxable/market value; tmv_acre = market value per acre"},
+         "visible": {"type": "boolean", "description": "true to show (default), false to hide labels"},
+         "size": {"type": "string", "enum": ["small", "medium", "large"]}}, "required": ["field"]}},
+    {"name": "dimension_parcel", "description": "Auto-label every side of a parcel with its length and bearing, surveyor-style (uses the viewer's Auto-Dimension tool). Defaults to the selected parcel.",
+     "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []}},
+    {"name": "activate_draw_tool", "description": "Hand the user an interactive drawing tool so THEY can sketch on the map (use when the user wants to draw something themselves, then you can measure it). Optional color.",
+     "input_schema": {"type": "object", "properties": {
+         "tool": {"type": "string", "enum": ["point", "polyline", "polygon", "circle", "freehand", "text", "callout", "select"]},
+         "color": {"type": "string"}, "fill_color": {"type": "string"}}, "required": ["tool"]}},
+    {"name": "undo", "description": "Undo the last drawing/annotation action.", "input_schema": {"type": "object", "properties": {}, "required": []}},
+    {"name": "redo", "description": "Redo the last undone drawing/annotation action.", "input_schema": {"type": "object", "properties": {}, "required": []}},
 
     # ── Showcase ──────────────────────────────────────────────────────────────
     {"name": "map_tour", "description": "Run a guided fly-through of several stops, pausing at each. Each stop is a parcel PIN or a coordinate, with an optional note.",
@@ -183,6 +204,47 @@ def _build_user_message(
 # results. We hand the model a short synthetic acknowledgement per tool so it can
 # continue the turn — string several actions together, then write a summary and
 # offer next steps — rather than stopping after the first batch of tool calls.
+# A couple of tools resolve real data instead of driving the map. We run these
+# server-side against the main Parcel Viewer API and feed the result back into
+# the loop, so the model can find a parcel the user names (even off-screen) and
+# then act on it. PARCEL_API_BASE is the in-cluster API (http://api:8000) locally
+# and the deployed API URL in prod.
+PARCEL_API_BASE = os.getenv("PARCEL_API_BASE", "http://api:8000").rstrip("/")
+DATA_TOOLS = {"search_parcels", "get_parcel_info"}
+
+
+def _http_get_json(path: str):
+    req = urllib.request.Request(PARCEL_API_BASE + path, headers={"Accept": "application/json"})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        return json.loads(r.read().decode())
+
+
+def _exec_data_tool(name: str, inp: dict) -> str:
+    try:
+        if name == "search_parcels":
+            q = (inp.get("query") or "").strip()
+            if len(q) < 2:
+                return "Query too short — need at least 2 characters."
+            limit = min(int(inp.get("limit") or 8), 25)
+            data = _http_get_json("/search?q=" + urllib.parse.quote(q) + "&limit=" + str(limit))
+            results = data.get("results", [])
+            if not results:
+                return f"No parcels matched '{q}'."
+            slim = [{"id": r.get("id"), "pin": r.get("pin"), "owner": r.get("owner_name"),
+                     "address": r.get("address"), "municipality": r.get("municipality"),
+                     "acres": r.get("acres")} for r in results]
+            return json.dumps({"matches": slim})
+        if name == "get_parcel_info":
+            pid = inp.get("id") if inp.get("id") is not None else inp.get("parcel_id")
+            if pid is None:
+                return "Provide a parcel id (from search_parcels)."
+            data = _http_get_json("/parcel/" + urllib.parse.quote(str(pid)))
+            return json.dumps(data.get("properties", data))
+    except Exception as e:
+        return f"Lookup failed: {e}"
+    return "Unknown data tool."
+
+
 def _tool_ack(name: str) -> str:
     if name in ("measure_parcel", "measure_area", "measure_distance"):
         return "Measurement computed and shown to the user."
@@ -226,13 +288,20 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
                 if block.type == "text":
                     response_text += block.text
                 elif block.type == "tool_use":
-                    # Tool names map 1:1 to frontend command types; forward the
-                    # input verbatim as the command payload.
-                    commands.append({"type": block.name, "payload": dict(block.input or {})})
+                    inp = dict(block.input or {})
+                    if block.name in DATA_TOOLS:
+                        # Resolved server-side; the real data goes back to the
+                        # model, not to the browser.
+                        result = _exec_data_tool(block.name, inp)
+                    else:
+                        # Tool name maps 1:1 to a frontend command type; forward
+                        # the input verbatim as the command payload.
+                        commands.append({"type": block.name, "payload": inp})
+                        result = _tool_ack(block.name)
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": _tool_ack(block.name),
+                        "content": result,
                     })
 
             if response.stop_reason != "tool_use" or not tool_results:
