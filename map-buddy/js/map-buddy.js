@@ -785,6 +785,26 @@
     undo: function () { if (root.PS_UNDO_REDO && root.PS_UNDO_REDO.undo) { root.PS_UNDO_REDO.undo(); return '↩️ Undo'; } return null; },
     redo: function () { if (root.PS_UNDO_REDO && root.PS_UNDO_REDO.redo) { root.PS_UNDO_REDO.redo(); return '↪️ Redo'; } return null; },
 
+    // Open one of the viewer's own tools/windows (Parcel Packet, Compare, Street
+    // View, tax/assessment explainers, print, share, bookmark, settings, …).
+    open_tool: function (p) {
+      var T = root.PV_TOOLS; if (!T || !T.open) return null;
+      var name = String(p.tool || p.name || '').toLowerCase().replace(/_/g, '-').trim();
+      var ALIAS = {
+        'parcel-packet': 'packet', 'report': 'packet',
+        'compare-parcels': 'compare', 'street-view': 'streetview',
+        'tax-description': 'tax', 'taxes': 'tax', 'assessment': 'assess',
+        'bookmarks': 'bookmark',
+      };
+      var canon = ALIAS[name] || name;
+      T.open(canon);
+      var LABEL = { packet: 'Parcel Packet', compare: 'Compare Parcels', streetview: 'Street View',
+        tax: 'Tax Explainer', assess: 'Assessment Explainer', print: 'Print', share: 'Share',
+        bookmark: 'Bookmarks', 'data-request': 'Data Request', 'report-error': 'Report Error',
+        help: 'Help', 'whats-new': "What's New", about: 'About', settings: 'Settings' };
+      return '🪟 Opened ' + (LABEL[canon] || canon);
+    },
+
     // ── Measurement (append an info bubble — model can't see the result) ───────
     measure_parcel: function (p) {
       var a = _api(), f = _resolveParcel(p.pin); if (!a || !f) return null;

@@ -42,6 +42,7 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps the use
 - Drawing: draw_point, draw_line, draw_polygon, draw_circle, label_point, label_parcel_centroid, draw_parcel_buffer (inward = setback), place_structure_in_parcel, clear_annotations.
 - Measurement: measure_parcel, measure_area, measure_distance (results are shown to the user automatically).
 - Built-in viewer tools: set_parcel_labels (label every parcel by owner/PIN/address/value), dimension_parcel (surveyor-style side dimensions), activate_draw_tool (hand the user a draw tool), undo, redo.
+- Open viewer windows: open_tool — the Parcel Packet report ('packet'), Compare, Street View, the tax/assessment explainers, print/share/bookmark/settings, etc. "Show me the parcel packet" → select the parcel if needed, then open_tool 'packet'.
 - Data lookups (results come back to you): search_parcels finds parcels across the whole county by owner/address/PIN; get_parcel_info pulls a full record by id. For "find X and do Y": call search_parcels, then select_parcel with the best match's `id`, then act (you have the tool results, so do it all). If several plausible matches, ask which one.
 - Showcase: map_tour for a guided fly-through of several stops.
 
@@ -145,6 +146,8 @@ TOOLS = [
          "color": {"type": "string"}, "fill_color": {"type": "string"}}, "required": ["tool"]}},
     {"name": "undo", "description": "Undo the last drawing/annotation action.", "input_schema": {"type": "object", "properties": {}, "required": []}},
     {"name": "redo", "description": "Redo the last undone drawing/annotation action.", "input_schema": {"type": "object", "properties": {}, "required": []}},
+    {"name": "open_tool", "description": "Open one of the viewer's built-in tools/windows for the user. Parcel tools (a parcel must be selected first): 'packet' = the full Parcel Packet report, 'compare' = compare parcels, 'streetview' = Street View. Explainer windows: 'tax' = tax-description breakdown, 'assess' = assessment & tax breakdown. App tools: 'print', 'share', 'bookmark', 'data-request', 'report-error', 'help', 'whats-new', 'about', 'settings'. For 'show me the parcel packet', select the parcel if needed then open 'packet'.",
+     "input_schema": {"type": "object", "properties": {"tool": {"type": "string", "enum": ["packet", "compare", "streetview", "tax", "assess", "print", "share", "bookmark", "data-request", "report-error", "help", "whats-new", "about", "settings"]}}, "required": ["tool"]}},
 
     # ── Showcase ──────────────────────────────────────────────────────────────
     {"name": "map_tour", "description": "Run a guided fly-through of several stops, pausing at each. Each stop is a parcel PIN or a coordinate, with an optional note.",

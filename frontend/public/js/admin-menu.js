@@ -237,6 +237,25 @@
     }
   }
 
+  // Programmatic access to the viewer's tools/windows (used by MapBuddy AI and
+  // any other caller). Names match the data-ptool / data-info / menu ids. Each
+  // opener handles the "select a parcel first" case on its own.
+  var _PARCEL_TOOLS = { packet: 1, compare: 1, streetview: 1 };
+  var _INFO_WINDOWS = { tax: 1, assess: 1 };
+  var _MENU_TOOLS = { print: 1, share: 1, bookmark: 1, "data-request": 1,
+    "report-error": 1, help: 1, "whats-new": 1, about: 1, settings: 1 };
+  window.PV_TOOLS = {
+    open: function (name) {
+      if (_PARCEL_TOOLS[name]) return openParcelTool(name);
+      if (_INFO_WINDOWS[name]) return openInfoWindow(name);
+      if (_MENU_TOOLS[name])   return openTool(name);
+      console.warn("[PV_TOOLS] unknown tool:", name);
+    },
+    list: function () {
+      return Object.keys(_PARCEL_TOOLS).concat(Object.keys(_INFO_WINDOWS), Object.keys(_MENU_TOOLS));
+    },
+  };
+
   function openHelp() {
     openModal("Help", [
       '<p class="pv-modal-lead">Quick reference for using the Parcel Viewer. Full documentation is coming soon.</p>',
