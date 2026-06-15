@@ -381,6 +381,47 @@
   }
 
   // ── Message rendering ─────────────────────────────────────────────────────
+
+  // Minimal, safe Markdown → HTML for AI replies. The model returns Markdown
+  // (bold, bullet/numbered lists, paragraphs), which we were dumping verbatim
+  // via textContent — so it showed literal "**" and "-" with no structure.
+  // We escape HTML first, then apply a limited formatting set; no raw-HTML
+  // passthrough, since LLM output is untrusted.
+  function _escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+  function _inlineMd(s) {
+    return s
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+      .replace(/\b_([^_\n]+)_\b/g, '<em>$1</em>');
+  }
+  function _renderMarkdown(text) {
+    var esc = _escHtml(text).replace(/\r\n/g, '\n').trim();
+    if (!esc) return '<p></p>';
+    var blocks = esc.split(/\n{2,}/), html = '';
+    for (var b = 0; b < blocks.length; b++) {
+      var lines = blocks[b].split('\n');
+      var allBullet = lines.every(function (l) { return /^\s*[-*]\s+/.test(l); });
+      var allNumber = lines.every(function (l) { return /^\s*\d+\.\s+/.test(l); });
+      if (allBullet) {
+        html += '<ul>' + lines.map(function (l) {
+          return '<li>' + _inlineMd(l.replace(/^\s*[-*]\s+/, '')) + '</li>';
+        }).join('') + '</ul>';
+      } else if (allNumber) {
+        html += '<ol>' + lines.map(function (l) {
+          return '<li>' + _inlineMd(l.replace(/^\s*\d+\.\s+/, '')) + '</li>';
+        }).join('') + '</ol>';
+      } else {
+        html += '<p>' + _inlineMd(blocks[b].replace(/\n/g, '<br>')) + '</p>';
+      }
+    }
+    return html;
+  }
+
   function _appendUserMsg(text) {
     var el = document.createElement('div');
     el.className   = 'mb-msg-user';
@@ -397,7 +438,7 @@
     lbl.textContent = 'MapBuddy A.I.';
     var body = document.createElement('div');
     body.className   = 'mb-msg-ai-body';
-    body.textContent = text;
+    body.innerHTML   = _renderMarkdown(text);
     el.appendChild(lbl);
     el.appendChild(body);
     _messagesEl.appendChild(el);
