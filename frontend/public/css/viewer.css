@@ -805,3 +805,20 @@ textarea.pv-input { resize: vertical; min-height: 70px; }
   }
   .pv-input { font-size: 16px; }  /* prevents iOS zoom-on-focus */
 }
+
+/* ── Focus-visible sweep — WCAG 2.4.7 (DIC-396) ──────────────────────────────
+   Viewer-shell controls; consistent gold ring per --ui-interactive. */
+.pv-ptool:focus-visible,
+.pv-bm-toggle:focus-visible,
+.pv-search-close:focus-visible,
+.pv-theme-toggle:focus-visible,
+.pv-modal-close:focus-visible {
+  outline: 2px solid var(--ui-interactive);
+  outline-offset: 2px;
+}
+/* Full-width segmented mobile tabs sit flush in a bar — inset the ring so it
+   stays visible inside the tab rather than clipping against neighbours. */
+.pv-mtab:focus-visible {
+  outline: 2px solid var(--ui-interactive);
+  outline-offset: -2px;
+}
