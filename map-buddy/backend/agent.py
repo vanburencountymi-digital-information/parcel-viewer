@@ -15,8 +15,15 @@ def _get_client():
 
 DEFAULT_SYSTEM = """You are Map Buddy, a sharp, friendly AI assistant embedded in an interactive MapLibre parcel viewer for Van Buren County, Michigan. You help people understand parcels and you *drive the map for them* — navigating, drawing, measuring, and toggling layers so they can see the answer, not just read it.
 
-# Be proactive with the map
-When a request has a spatial answer, SHOW it — don't just describe it. "Where is this parcel?" → zoom to it. "Is it in a floodplain?" → turn on the flood layer and zoom in. "How big is the back yard setback?" → draw the setback ring. You can call MULTIPLE tools in a single reply to compose an action (e.g. select a parcel, zoom to it, AND draw a buffer). Prefer doing over explaining.
+# Be proactive — do the whole job, then offer the next one
+When a request has a spatial answer, SHOW it — don't just describe it. "Where is this parcel?" → zoom to it. "Is it in a floodplain?" → turn on the flood layer and zoom in. You can (and should) call MULTIPLE tools in a single reply to compose a complete action.
+
+Treat broad asks as WORKFLOWS and run the whole thing in one reply, don't make the user ask step by step:
+- "Tell me about / analyze / what's the rundown on this parcel" → fly to it, turn on flood + wetlands, measure it, and give a 2-3 sentence summary of size, risk, and ownership.
+- "Is it buildable / what can I build" → draw the setback ring, place a sample footprint, and summarize the buildable area.
+- "What's the risk here" → turn on flood + wetlands (and soils if relevant), zoom in, and summarize what you see.
+
+After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps the user might want, phrased as taps (e.g. "Show the 100-year floodplain", "Compare to the parcel next door", "Drop a 40×30 house"). This is how the user discovers what you can do — never leave them at a dead end.
 
 # Context you receive
 - The currently selected parcel (PIN, owner, address, acreage, municipality) plus its **centroid [lng, lat]** and **bbox**. Use the centroid as the anchor point for circles, buffers, structures, and labels on that parcel.
@@ -122,6 +129,10 @@ TOOLS = [
     {"name": "map_tour", "description": "Run a guided fly-through of several stops, pausing at each. Each stop is a parcel PIN or a coordinate, with an optional note.",
      "input_schema": {"type": "object", "properties": {"stops": {"type": "array", "items": {"type": "object", "properties": {
          "pin": {"type": "string"}, "lng": _LNG, "lat": _LAT, "zoom": {"type": "number"}, "note": {"type": "string"}}}}}, "required": ["stops"]}},
+
+    # ── Proactive offers ──────────────────────────────────────────────────────
+    {"name": "suggest_actions", "description": "Offer the user 2-4 helpful next steps as tappable suggestions so they don't have to know what to ask. Each is a short, natural first-person-imperative phrase the user could tap (e.g. 'Show flood & wetlands risk', 'Draw a 30 ft setback', 'Compare to the neighboring parcel'). Call this at the END of almost every reply, tailored to the current parcel/context.",
+     "input_schema": {"type": "object", "properties": {"suggestions": {"type": "array", "items": {"type": "string"}, "maxItems": 4}}, "required": ["suggestions"]}},
 ]
 
 
@@ -168,40 +179,71 @@ def _build_user_message(
     return messages
 
 
+# Map-control tools execute in the BROWSER, so the backend can't return real
+# results. We hand the model a short synthetic acknowledgement per tool so it can
+# continue the turn — string several actions together, then write a summary and
+# offer next steps — rather than stopping after the first batch of tool calls.
+def _tool_ack(name: str) -> str:
+    if name in ("measure_parcel", "measure_area", "measure_distance"):
+        return "Measurement computed and shown to the user."
+    if name == "search_parcels":
+        return "Search ran; results are shown to the user, and a single match is auto-selected and centered."
+    if name == "suggest_actions":
+        return "Suggestions shown to the user."
+    return "Done — the map was updated."
+
+
 def run_chat_stream(message: str, history: list, parcel_context, map_state=None):
-    """Generator yielding SSE-compatible event dicts."""
+    """Generator yielding SSE-compatible event dicts.
+
+    Runs a multi-turn agent loop: the model calls tools, we feed back synthetic
+    acknowledgements (the browser does the real work), and it keeps going until
+    it produces a final text turn — so a single user request can fan out into a
+    whole workflow plus a summary and suggested next steps.
+    """
     yield {"type": "status", "message": "Thinking…"}
 
     ctx = parcel_context.model_dump() if parcel_context else None
     hist = [{"role": m.role, "content": m.content} for m in history]
     messages = _build_user_message(message, ctx, map_state, hist)
 
+    model = os.getenv("MAP_BUDDY_MODEL", "claude-sonnet-4-6")
+    max_tokens = int(os.getenv("MAP_BUDDY_MAX_TOKENS", "2048"))
+    max_iters = int(os.getenv("MAP_BUDDY_MAX_ITERS", "6"))
+
+    response_text = ""
+    commands = []
     try:
-        response = _get_client().messages.create(
-            model=os.getenv("MAP_BUDDY_MODEL", "claude-sonnet-4-6"),
-            max_tokens=int(os.getenv("MAP_BUDDY_MAX_TOKENS", "2048")),
-            system=SYSTEM_PROMPT,
-            tools=TOOLS,
-            messages=messages,
-        )
+        for _ in range(max_iters):
+            response = _get_client().messages.create(
+                model=model, max_tokens=max_tokens,
+                system=SYSTEM_PROMPT, tools=TOOLS, messages=messages,
+            )
+            messages.append({"role": "assistant", "content": response.content})
+
+            tool_results = []
+            for block in response.content:
+                if block.type == "text":
+                    response_text += block.text
+                elif block.type == "tool_use":
+                    # Tool names map 1:1 to frontend command types; forward the
+                    # input verbatim as the command payload.
+                    commands.append({"type": block.name, "payload": dict(block.input or {})})
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": _tool_ack(block.name),
+                    })
+
+            if response.stop_reason != "tool_use" or not tool_results:
+                break  # model produced a final (text) turn — done
+
+            messages.append({"role": "user", "content": tool_results})
+            yield {"type": "status", "message": "Working on it…"}
     except Exception as e:
         yield {"type": "error", "message": str(e)}
         return
 
-    # Collect text and tool-use blocks. Tool names map 1:1 to frontend command
-    # types, so we forward the tool input verbatim as the command payload — the
-    # browser resolves geometry and drives the map.
-    response_text = ""
-    commands = []
-    for block in response.content:
-        if block.type == "text":
-            response_text += block.text
-        elif block.type == "tool_use":
-            commands.append({"type": block.name, "payload": dict(block.input or {})})
-
-    # The model often replies with tool calls and no prose. Give the user a short
-    # acknowledgement so the chat bubble isn't empty (the action chips below it
-    # describe exactly what changed).
     if commands and not response_text.strip():
         response_text = "Done — updated the map."
 

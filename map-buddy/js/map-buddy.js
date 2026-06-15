@@ -256,6 +256,7 @@
       if (_prevOnSelect) _prevOnSelect(parcel);
       _currentParcel = parcel;
       _refreshContext();
+      _refreshEmptyState();   // freshly-selected parcel → parcel-specific ideas
     };
 
     _onPsChanged = function () {
@@ -799,6 +800,9 @@
       return '🔎 ' + hits.length + ' matches';
     },
 
+    // ── Proactive offers — render tappable "next step" suggestions ────────────
+    suggest_actions: function (p) { _appendSuggestions(p.suggestions || p.actions || []); return null; },
+
     // ── Showcase: a guided fly-through tour ───────────────────────────────────
     map_tour: function (p) {
       var stops = p.stops || [], m = _map(); if (!m || !stops.length) return null;
@@ -870,6 +874,29 @@
     });
     _scrollBottom();
   }
+  // AI-offered next steps — tappable; clicking sends the prompt to the AI so it
+  // acts. Items may be plain strings or {label, prompt}. This is how MapBuddy
+  // "offers to do things" instead of requiring the user to know the commands.
+  function _appendSuggestions(list) {
+    var items = (list || []).map(function (s) {
+      if (typeof s === 'string') return s.trim() ? { label: s, prompt: s } : null;
+      if (s && s.label) return { label: s.label, prompt: s.prompt || s.label };
+      return null;
+    }).filter(Boolean).slice(0, 4);
+    if (!items.length) return;
+    var row = document.createElement('div');
+    row.className = 'mb-suggest-row';
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.className = 'mb-suggest-chip';
+      b.textContent = it.label;
+      b.addEventListener('click', function () { _inputEl.value = it.prompt; _send(); });
+      row.appendChild(b);
+    });
+    _messagesEl.appendChild(row);
+    _scrollBottom();
+  }
+
   // Row of chips under an AI message summarising what it did to the map.
   function _appendActionChips(aiEl, chips) {
     if (!aiEl || !chips.length) return;
@@ -886,30 +913,52 @@
   }
 
   // ── Welcome / empty state ─────────────────────────────────────────────────
+  // Context-aware starter ideas. With a parcel selected we offer parcel
+  // workflows; otherwise navigation/search. Tapping one sends it as a message.
+  function _starterSuggestions() {
+    if (_currentParcel && _currentParcel.pin) {
+      var pin = _currentParcel.pin;
+      return [
+        'Give me the rundown on this parcel',
+        'Is ' + pin + ' at risk of flooding or wetlands?',
+        'Draw a 30 ft setback and show the buildable area',
+        'How big is it, with dimensions?',
+      ];
+    }
+    return [
+      'Find a parcel by owner name or address',
+      'Tilt the map to 3-D with terrain shading',
+      'What can you do?',
+    ];
+  }
+
   function _renderEmptyState() {
     var el = document.createElement('div');
     el.className = 'mb-empty-state';
+    var hint = (_currentParcel && _currentParcel.pin)
+      ? 'Parcel <strong>' + _escHtml(_currentParcel.pin) + '</strong> is selected — want me to dig in? Tap an idea, or ask anything.'
+      : 'Your A.I. assistant — I can drive the map for you. Select a parcel and tap an idea below, or just ask.';
     el.innerHTML =
       '<div class="mb-empty-icon">✨</div>' +
       '<div class="mb-empty-title">MapBuddy A.I.</div>' +
-      '<div class="mb-empty-hint">Your A.I. assistant. Select a parcel and ask me anything ' +
-        'about it, or search for one by owner name or address.</div>' +
-      '<div class="mb-quick-btns">' +
-        '<button class="mb-quick-btn">Zoom to this parcel and draw a 30 ft setback</button>' +
-        '<button class="mb-quick-btn">Tilt to 3-D and turn on terrain hillshade</button>' +
-        '<button class="mb-quick-btn">Show flood hazard and wetlands here</button>' +
-      '</div>';
-
-    var btns = el.querySelectorAll('.mb-quick-btn');
-    for (var i = 0; i < btns.length; i++) {
-      (function (btn) {
-        btn.addEventListener('click', function () {
-          _inputEl.value = btn.textContent;
-          _send();
-        });
-      })(btns[i]);
-    }
+      '<div class="mb-empty-hint">' + hint + '</div>' +
+      '<div class="mb-quick-btns"></div>';
+    var wrap = el.querySelector('.mb-quick-btns');
+    _starterSuggestions().forEach(function (text) {
+      var btn = document.createElement('button');
+      btn.className = 'mb-quick-btn';
+      btn.textContent = text;
+      btn.addEventListener('click', function () { _inputEl.value = text; _send(); });
+      wrap.appendChild(btn);
+    });
     _messagesEl.appendChild(el);
+  }
+
+  // Re-render the welcome screen if it's still showing — e.g. when a parcel is
+  // selected, so the starter ideas become parcel-specific. No-op mid-chat.
+  function _refreshEmptyState() {
+    var es = _messagesEl && _messagesEl.querySelector('.mb-empty-state');
+    if (es) { es.remove(); _renderEmptyState(); }
   }
 
   // ── Public API ────────────────────────────────────────────────────────────
