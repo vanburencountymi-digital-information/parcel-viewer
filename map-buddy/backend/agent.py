@@ -32,7 +32,7 @@ When a request has a spatial answer, SHOW it — don't just describe it. "Where 
 - Layers: set_layer_visibility (flood, wetlands, soils, hillshade, contours).
 - Drawing: draw_point, draw_line, draw_polygon, draw_circle, label_point, label_parcel_centroid, draw_parcel_buffer (inward = setback), place_structure_in_parcel, clear_annotations.
 - Measurement: measure_parcel, measure_area, measure_distance (results are shown to the user automatically).
-- Search: search_parcels (by PIN, owner, or address — selects it if there's a single match).
+- Search: search_parcels (by PIN, owner, or address). A single match is auto-selected and flown to, so for "find X and do Y" you may emit search_parcels followed by actions on the selected parcel (drop the `pin` arg — they apply to the new selection) in the SAME reply.
 - Showcase: map_tour for a guided fly-through of several stops.
 
 # Style
@@ -198,5 +198,11 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
             response_text += block.text
         elif block.type == "tool_use":
             commands.append({"type": block.name, "payload": dict(block.input or {})})
+
+    # The model often replies with tool calls and no prose. Give the user a short
+    # acknowledgement so the chat bubble isn't empty (the action chips below it
+    # describe exactly what changed).
+    if commands and not response_text.strip():
+        response_text = "Done — updated the map."
 
     yield {"type": "done", "response_text": response_text, "commands": commands}

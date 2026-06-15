@@ -662,6 +662,18 @@
   <script src="/frontend/public/js/admin-menu.js"></script>
   <!-- Map Buddy AI assistant — remove these two lines to detach -->
   <script src="/map-buddy/js/map-buddy.js"></script>
-  <script>MapBuddy.mount({ apiBase: (window.COUNTY && COUNTY.endpoints && COUNTY.endpoints.mapBuddy) || window.MAP_BUDDY_API || 'https://map-buddy-toaozre74a-uc.a.run.app' });</script>
+  <script>
+    // On localhost, talk to the local Map Buddy backend (docker compose service,
+    // proxied at /map-buddy-api) so AI map control can be demoed end-to-end.
+    // Anywhere else, use the configured per-county endpoint or the Cloud Run URL.
+    (function () {
+      var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+      var apiBase = (isLocal && '/map-buddy-api')
+        || (window.COUNTY && COUNTY.endpoints && COUNTY.endpoints.mapBuddy)
+        || window.MAP_BUDDY_API
+        || 'https://map-buddy-toaozre74a-uc.a.run.app';
+      MapBuddy.mount({ apiBase: apiBase });
+    })();
+  </script>
 </body>
 </html>
