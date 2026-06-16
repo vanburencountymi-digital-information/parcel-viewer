@@ -160,20 +160,20 @@
               <rect x="1" y="11.5" width="14" height="2.5" rx="1"/>
             </svg>
           </button>
-          <button class="mcp-tab" data-tab="select" title="Selection Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-select">
+          <button class="mcp-tab" data-tab="select" data-advanced="true" title="Selection Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-select">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <rect x="2" y="2" width="9" height="9" rx="1" stroke-dasharray="2.5 1.5"/>
               <line x1="11" y1="11" x2="14.5" y2="14.5" stroke-linecap="round" stroke-width="2"/>
             </svg>
           </button>
-          <button class="mcp-tab" data-tab="draw" title="Drawing Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-draw">
+          <button class="mcp-tab" data-tab="draw" data-advanced="true" title="Drawing Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-draw">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2.5 13L5 14.5l7.5-9.5-2-1.5L2.5 13z"/>
               <path d="M2.5 13l-1.5 2.5 2.5-1"/>
               <line x1="10.5" y1="3" x2="12.5" y2="4.5"/>
             </svg>
           </button>
-          <button class="mcp-tab" data-tab="measure" title="Measurement Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-measure">
+          <button class="mcp-tab" data-tab="measure" data-advanced="true" title="Measurement Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-measure">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
               <line x1="1" y1="8" x2="15" y2="8"/>
               <line x1="1" y1="5" x2="1" y2="11"/>
@@ -181,6 +181,12 @@
               <line x1="5" y1="6.5" x2="5" y2="9.5"/>
               <line x1="8" y1="6" x2="8" y2="10"/>
               <line x1="11" y1="6.5" x2="11" y2="9.5"/>
+            </svg>
+          </button>
+          <button class="mcp-adv-toggle" id="mcp-advanced-toggle" type="button" title="Advanced tools" aria-pressed="false" aria-label="Show advanced tools">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+              <line x1="2" y1="5" x2="14" y2="5"/><line x1="2" y1="11" x2="14" y2="11"/>
+              <circle cx="6" cy="5" r="1.7" fill="currentColor" stroke="none"/><circle cx="10" cy="11" r="1.7" fill="currentColor" stroke="none"/>
             </svg>
           </button>
         </nav>
