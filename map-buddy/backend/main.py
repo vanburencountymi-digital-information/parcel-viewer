@@ -15,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from agent import run_chat_stream
+from agent import run_chat_stream, WORKFLOWS, _expand_workflow
 
 ALLOWED_ORIGINS = [
     o.strip()
@@ -69,6 +69,13 @@ class ChatRequest(BaseModel):
     map_state: MapState | None = None
 
 
+class WorkflowRequest(BaseModel):
+    workflow: str
+    pin: str | None = None
+    params: dict = {}
+    parcel_context: ParcelContext | None = None
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -98,3 +105,25 @@ async def chat(request: Request, body: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/workflows")
+async def workflows():
+    """Catalog of available macros for the Automations palette (DIC-432). Driven
+    by the macro registry, so a new macro appears here automatically. No model."""
+    return {"workflows": [
+        {"id": k, "description": v["description"], "params": v.get("params", {})}
+        for k, v in WORKFLOWS.items()
+    ]}
+
+
+@app.post("/workflow")
+@limiter.limit(os.getenv("MAP_BUDDY_RATE_LIMIT", "120/minute"))
+async def run_workflow(request: Request, body: WorkflowRequest):
+    """Deterministically expand a macro into map commands — one tap, no model
+    round-trip. Returns the same {commands} the chat's run_workflow would."""
+    inp = dict(body.params or {})
+    inp["pin"] = body.pin
+    ctx = body.parcel_context.model_dump() if body.parcel_context else None
+    note, commands = _expand_workflow(body.workflow, inp, ctx)
+    return {"commands": commands, "note": note}
