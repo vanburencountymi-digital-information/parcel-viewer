@@ -465,6 +465,21 @@
     var glassPct  = 62; try { var _ga = parseFloat(localStorage.getItem("pv-glass-alpha")); if (_ga > 0) glassPct = Math.round(_ga * 100); } catch (_) {}
     var orbitOn   = !(window.PV_PREFS && window.PV_PREFS.getCinematicOrbit) || window.PV_PREFS.getCinematicOrbit();
     function opt(v, label, cur) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + label + '</option>'; }
+    var scheme = (window.PV_SCHEME && window.PV_SCHEME.get && window.PV_SCHEME.get()) || "terracotta";
+    var SCHEME_META = [
+      { id: "terracotta", label: "Terracotta", sw: "#A3473B" },
+      { id: "forest",     label: "Forest",     sw: "#2F6B4F" },
+      { id: "ocean",      label: "Ocean",      sw: "#1F5E80" },
+      { id: "slate",      label: "Slate",      sw: "#475569" },
+      { id: "plum",       label: "Plum",       sw: "#7A3B6B" },
+      { id: "crimson",    label: "Crimson",    sw: "#B11E2F" }
+    ];
+    function schemeSwatches() {
+      return '<div class="pv-scheme-row" role="group" aria-label="Color scheme">' + SCHEME_META.map(function (s) {
+        return '<button type="button" class="pv-scheme-swatch" data-scheme="' + s.id + '" style="--sw:' + s.sw + '"'
+          + ' title="' + s.label + '" aria-label="' + s.label + ' color scheme" aria-pressed="' + (s.id === scheme) + '"></button>';
+      }).join("") + '</div>';
+    }
     openModal("Settings", [
       '<p class="pv-modal-lead">Display preferences for this device.</p>',
       '<div class="pv-form">' +
@@ -479,6 +494,7 @@
           '<select class="pv-input" id="pv-set-basemap">' +
             opt("light", "Light", basemap) + opt("dark", "Dark", basemap) + opt("aerial", "Aerial imagery", basemap) + '</select>') +
         field("Panel glass", '<input type="range" class="pv-range" id="pv-set-glass" min="40" max="100" step="2" value="' + glassPct + '" aria-label="Panel transparency, lower is more see-through"><span class="pv-range-hint">Lower = more see-through</span>') +
+        field("Color scheme", schemeSwatches()) +
         field("Search arrival",
           '<label class="pv-a11y-row" style="margin:0"><input type="checkbox" id="pv-set-orbit"' + (orbitOn ? " checked" : "") + '>' +
           '<span><span class="pv-a11y-lbl">Spin around parcel</span>' +
@@ -498,6 +514,14 @@
       if (orb) orb.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setCinematicOrbit && window.PV_PREFS.setCinematicOrbit(orb.checked); });
       var g = bodyEl.querySelector("#pv-set-glass");
       if (g) g.addEventListener("input", function () { var a = Math.max(0.4, Math.min(1, g.value / 100)); document.documentElement.style.setProperty("--glass-alpha", a); try { localStorage.setItem("pv-glass-alpha", String(a)); } catch (_) {} });
+      [].forEach.call(bodyEl.querySelectorAll(".pv-scheme-swatch"), function (sw) {
+        sw.addEventListener("click", function () {
+          if (window.PV_SCHEME) window.PV_SCHEME.set(sw.getAttribute("data-scheme"));
+          [].forEach.call(bodyEl.querySelectorAll(".pv-scheme-swatch"), function (x) {
+            x.setAttribute("aria-pressed", x === sw ? "true" : "false");
+          });
+        });
+      });
       wireA11yControls(bodyEl);
     });
   }
@@ -528,10 +552,30 @@
   })();
   A11Y.init();
   applyGlassPref();
+  applyScheme(getScheme());
   // Device-local panel-glass transparency (a design pref, adjustable in Settings).
   function applyGlassPref() {
     try { var v = parseFloat(localStorage.getItem("pv-glass-alpha")); if (v > 0) document.documentElement.style.setProperty("--glass-alpha", v); } catch (_) {}
   }
+
+  // Device-local color scheme (accent palette), applied as <html data-scheme>.
+  // "terracotta" is the default (no attribute → :root tokens). See style.css.
+  var PV_SCHEMES = ["terracotta", "forest", "ocean", "slate", "plum", "crimson"];
+  function getScheme() {
+    try { var s = localStorage.getItem("pv-color-scheme"); return PV_SCHEMES.indexOf(s) !== -1 ? s : "terracotta"; }
+    catch (_) { return "terracotta"; }
+  }
+  function applyScheme(s) {
+    if (s && s !== "terracotta") document.documentElement.setAttribute("data-scheme", s);
+    else document.documentElement.removeAttribute("data-scheme");
+  }
+  function setScheme(s) {
+    if (PV_SCHEMES.indexOf(s) === -1) s = "terracotta";
+    try { localStorage.setItem("pv-color-scheme", s); } catch (_) {}
+    applyScheme(s);
+  }
+  // Programmatic control (Settings UI, and available to MapBuddy AI later).
+  window.PV_SCHEME = { get: getScheme, set: setScheme, list: PV_SCHEMES.slice() };
 
   // Header button = one-tap "maximum accessibility" toggle; fine-tuning lives
   // in Settings. A toast points the user there.
