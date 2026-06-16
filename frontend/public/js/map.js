@@ -1071,8 +1071,19 @@
   // Cinematic arrival: tilt into 3-D, fly in, orbit a full 360° around the
   // parcel, then settle back to flat north-up. Cancels on user interaction and
   // honors reduced-motion. Used by parcel search and MapBuddy's "fly to".
-  let _cineRAF = null;
-  function _cancelCine() { if (_cineRAF) { cancelAnimationFrame(_cineRAF); _cineRAF = null; } }
+  let _cineRAF = null, _cineTimers = [];
+  function _cancelCine() {
+    if (_cineRAF) { cancelAnimationFrame(_cineRAF); _cineRAF = null; }
+    _cineTimers.forEach(clearTimeout); _cineTimers = [];
+  }
+  // Initial compass bearing from one [lng,lat] to another.
+  function _bearingBetween(from, to) {
+    const rad = Math.PI / 180;
+    const lat1 = from[1] * rad, lat2 = to[1] * rad, dLon = (to[0] - from[0]) * rad;
+    const y = Math.sin(dLon) * Math.cos(lat2);
+    const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLon);
+    return (Math.atan2(y, x) / rad + 360) % 360;
+  }
   window.PS_cinematicFlyTo = function (geometry, zoom) {
     if (!map || !geometry) return;
     const [lng, lat] = computeCentroid(geometry);
@@ -1087,30 +1098,47 @@
     _cancelCine();
     if (reduced) { map.easeTo({ center, zoom: z, pitch: 0, bearing: 0, duration: 1000 }); return; }
 
+    // Heading from where we are now toward the parcel, so the flight approaches
+    // it head-on from the very first frame.
+    const start = map.getCenter();
+    const heading = _bearingBetween([start.lng, start.lat], center);
+
     const userEvents = ["mousedown", "touchstart", "wheel"];
     function cleanup() { userEvents.forEach((ev) => map.off(ev, onInteract)); }
     function onInteract() { _cancelCine(); cleanup(); }
     userEvents.forEach((ev) => map.on(ev, onInteract));
 
+    const TURN_MS = 800, ORBIT_MS = 9000;
     let started = false;
-    map.flyTo({ center, zoom: z, pitch: 60, bearing: 0, speed: 0.85, curve: 1.5, essential: true });
+
+    // Phase 1 — turn to face the parcel before moving.
+    map.easeTo({ bearing: heading, duration: TURN_MS, essential: true });
+
+    // Phase 2 — fly toward it, keeping that heading and tilting into 3-D.
+    function flyIn() {
+      map.flyTo({ center, zoom: z, pitch: 60, bearing: heading, speed: 0.85, curve: 1.5, essential: true });
+      map.once("moveend", orbit);
+      _cineTimers.push(setTimeout(orbit, 6000));  // safety
+    }
+
+    // Phase 3 — orbit a full 360° from the approach heading, then settle north-up.
     function orbit() {
       if (started) return; started = true;
-      const ORBIT_MS = 9000; let t0 = null;
+      let t0 = null;
       function frame(ts) {
         if (t0 === null) t0 = ts;
         const k = Math.min((ts - t0) / ORBIT_MS, 1);
         const eased = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-        map.setBearing(360 * eased);
+        map.setBearing(heading + 360 * eased);
         map.setCenter(center);
-        map.setPitch(60);  // hold full tilt through the orbit (fly may not have finished tilting)
+        map.setPitch(60);
         if (k < 1) { _cineRAF = requestAnimationFrame(frame); }
         else { _cineRAF = null; cleanup(); map.easeTo({ bearing: 0, pitch: 0, duration: 2600 }); }
       }
       _cineRAF = requestAnimationFrame(frame);
     }
-    map.once("moveend", orbit);
-    setTimeout(orbit, 5000);  // safety if moveend never fires (e.g. already in place)
+
+    _cineTimers.push(setTimeout(flyIn, TURN_MS + 60));
   };
 
   // Legacy pin-based selection (viewport index lookup) — kept for
