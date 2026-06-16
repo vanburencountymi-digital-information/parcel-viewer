@@ -26,7 +26,9 @@ Treat broad asks as WORKFLOWS and run the whole thing in one reply, don't make t
 - "Is it buildable / what can I build" → draw the setback ring, place a sample footprint, and summarize the buildable area.
 - "What's the risk here" → turn on flood + wetlands (and soils if relevant), zoom in, and summarize what you see.
 
-After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps the user might want, phrased as taps (e.g. "Show the 100-year floodplain", "Compare to the parcel next door", "Drop a 40×30 house"). This is how the user discovers what you can do — never leave them at a dead end.
+Prefer the **run_workflow** tool for these common combos (analyze_parcel, check_buildability, risk_overview): it runs the whole fixed sequence in one deterministic call and hands you the environmental data to summarize — faster and more reliable than chaining the steps yourself. Use individual tools only for custom requests.
+
+After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps the user might want, phrased as taps (e.g. "Show the 100-year floodplain", "Compare to the parcel next door", "Drop a 40 by 30 house"). This is how the user discovers what you can do — never leave them at a dead end.
 
 # Context you receive
 - The currently selected parcel (PIN, owner, address, acreage, municipality) plus its **centroid [lng, lat]** and **bbox**. Use the centroid as the anchor point for circles, buffers, structures, and labels on that parcel.
@@ -52,7 +54,7 @@ For "is this in a floodplain / are there wetlands / what's the soil / is it buil
 - Showcase: map_tour for a guided fly-through of several stops.
 
 # Style
-Be concise and conversational — this is a side panel, not a report. Use light Markdown (bold, short bullet lists). After you act on the map, a row of chips shows the user what you did, so you don't need to narrate every step — a one-line summary is plenty. If a request needs a parcel but none is selected and you can't find one, say so briefly."""
+Be concise and conversational — this is a side panel, not a report. Do NOT use emojis, emoticons, or decorative icons anywhere in replies or suggestions. Keep Markdown simple and consistent so it renders cleanly: short paragraphs separated by a blank line, "-" for bullets, **bold** for a key term or a short label line. Don't use tables or nested lists. After you act on the map, a row of chips shows what you did — a one-line summary is plenty. If a request needs a parcel but none is selected and you can't find one, say so briefly."""
 
 SYSTEM_PROMPT = os.getenv("MAP_BUDDY_SYSTEM_PROMPT", DEFAULT_SYSTEM)
 
@@ -182,6 +184,10 @@ TOOLS = [
     {"name": "map_tour", "description": "Run a guided fly-through of several stops, pausing at each. Each stop is a parcel PIN or a coordinate, with an optional note.",
      "input_schema": {"type": "object", "properties": {"stops": {"type": "array", "items": {"type": "object", "properties": {
          "pin": {"type": "string"}, "lng": _LNG, "lat": _LAT, "zoom": {"type": "number"}, "note": {"type": "string"}}}}}, "required": ["stops"]}},
+
+    # ── Workflows (one deterministic call instead of chaining tools) ──────────
+    {"name": "run_workflow", "description": "Run a common multi-step workflow in ONE call instead of chaining tools yourself — faster, cheaper, deterministic. 'analyze_parcel' = select + zoom, flood/wetlands layers, measure, and environmental data. 'check_buildability' = dimensions + a 30 ft setback + environmental constraints. 'risk_overview' = flood/wetlands/soils layers + environmental data. The environmental results come back to you — summarize them for the user.",
+     "input_schema": {"type": "object", "properties": {"workflow": {"type": "string", "enum": ["analyze_parcel", "check_buildability", "risk_overview"]}, "pin": _PIN}, "required": ["workflow"]}},
 
     # ── Proactive offers ──────────────────────────────────────────────────────
     {"name": "suggest_actions", "description": "Offer the user 2-4 helpful next steps as tappable suggestions so they don't have to know what to ask. Each is a short, natural first-person-imperative phrase the user could tap (e.g. 'Show flood & wetlands risk', 'Draw a 30 ft setback', 'Compare to the neighboring parcel'). Call this at the END of almost every reply, tailored to the current parcel/context.",
@@ -349,6 +355,50 @@ def _exec_data_tool(name: str, inp: dict) -> str:
     return "Unknown data tool."
 
 
+# Deterministic macros: a single run_workflow call expands here into a fixed
+# sequence of frontend commands (+ a server-side environmental lookup), so the
+# model spends one tool call instead of re-deciding the same chain every time.
+def _expand_workflow(name: str, inp: dict, ctx: dict | None):
+    pin = inp.get("pin")
+    pin_payload = {"pin": pin} if pin else {}
+    centroid = (ctx or {}).get("centroid")
+    cmds = []
+
+    def sel_fly():
+        if pin:
+            cmds.append({"type": "select_parcel", "payload": {"pin": pin}})
+        cmds.append({"type": "fly_to_parcel", "payload": dict(pin_payload)})
+
+    def layers(*ids):
+        for lid in ids:
+            cmds.append({"type": "set_layer_visibility", "payload": {"layer_id": lid, "visible": True}})
+
+    env = None
+    if name == "analyze_parcel":
+        sel_fly(); layers("flood", "wetlands")
+        cmds.append({"type": "measure_parcel", "payload": dict(pin_payload)})
+    elif name == "check_buildability":
+        sel_fly()
+        cmds.append({"type": "dimension_parcel", "payload": dict(pin_payload)})
+        cmds.append({"type": "draw_parcel_buffer", "payload": {"distance_ft": 30, "inward": True, "label": "30 ft setback"}})
+    elif name == "risk_overview":
+        sel_fly(); layers("flood", "wetlands", "soils")
+    else:
+        return ("Unknown workflow '%s'." % name, [])
+
+    if centroid and len(centroid) >= 2:
+        try:
+            env = _query_environment(float(centroid[0]), float(centroid[1]))
+        except Exception as e:
+            env = {"error": str(e)}
+
+    note = "Ran workflow '%s' (%d map actions)." % (name, len(cmds))
+    if env is not None:
+        note += " Environmental data: " + json.dumps(env)
+    note += " Now give the user a short, clean summary."
+    return (note, cmds)
+
+
 def _tool_ack(name: str) -> str:
     if name in ("measure_parcel", "measure_area", "measure_distance"):
         return "Measurement computed and shown to the user."
@@ -393,7 +443,12 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
                     response_text += block.text
                 elif block.type == "tool_use":
                     inp = dict(block.input or {})
-                    if block.name in DATA_TOOLS:
+                    if block.name == "run_workflow":
+                        # Deterministic macro: expand into a fixed command chain
+                        # (+ server-side env data) so the model spends one call.
+                        result, wf_cmds = _expand_workflow(inp.get("workflow"), inp, ctx)
+                        commands.extend(wf_cmds)
+                    elif block.name in DATA_TOOLS:
                         # Resolved server-side; the real data goes back to the
                         # model, not to the browser.
                         result = _exec_data_tool(block.name, inp)

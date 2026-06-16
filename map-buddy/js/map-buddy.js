@@ -137,18 +137,17 @@
           ' role="separator" aria-label="Drag to resize MapBuddy A.I. panel"></div>' +
       '<button id="mb-tab-btn" class="mb-tab-btn"' +
           ' title="Open MapBuddy A.I." aria-label="Open MapBuddy A.I. panel">' +
-        '<span aria-hidden="true">✨</span><span>MapBuddy A.I.</span>' +
+        '<span>MapBuddy A.I.</span>' +
       '</button>' +
       '<div class="mb-drawer-handle">' +
         '<div class="mb-drawer-pill"></div>' +
-        '<span class="mb-drawer-label">✨ MapBuddy A.I.</span>' +
+        '<span class="mb-drawer-label">MapBuddy A.I.</span>' +
         '<div class="mb-drawer-pill"></div>' +
         '<button id="mb-mobile-close" class="mb-mobile-close"' +
             ' title="Close" aria-label="Close MapBuddy A.I.">✕</button>' +
       '</div>' +
       '<div class="mb-inner">' +
         '<div class="mb-header">' +
-          '<span class="mb-header-icon" aria-hidden="true">✨</span>' +
           '<span class="mb-header-title">MapBuddy A.I.</span>' +
           '<button id="mb-collapse-btn" class="mb-collapse-btn"' +
               ' title="Collapse panel" aria-label="Collapse MapBuddy A.I.">❮</button>' +
@@ -402,6 +401,9 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
+  // Strip a leading icon/emoji (and its trailing space) — the chat reads cleaner
+  // and less cartoonish without them.
+  function _deIcon(s) { return String(s == null ? '' : s).replace(/^[^\w]+/, '').trim(); }
   function _inlineMd(s) {
     return s
       .replace(/`([^`]+)`/g, '<code>$1</code>')
@@ -409,26 +411,39 @@
       .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
       .replace(/\b_([^_\n]+)_\b/g, '<em>$1</em>');
   }
+  // Line-based so it's robust to the model's inconsistent blank-line usage:
+  // headings (#, or a line that's just a bold label) become subheads, bullet /
+  // numbered runs become lists, and consecutive plain lines merge into one
+  // paragraph. Everything is escaped first; no raw-HTML passthrough.
   function _renderMarkdown(text) {
-    var esc = _escHtml(text).replace(/\r\n/g, '\n').trim();
-    if (!esc) return '<p></p>';
-    var blocks = esc.split(/\n{2,}/), html = '';
-    for (var b = 0; b < blocks.length; b++) {
-      var lines = blocks[b].split('\n');
-      var allBullet = lines.every(function (l) { return /^\s*[-*]\s+/.test(l); });
-      var allNumber = lines.every(function (l) { return /^\s*\d+\.\s+/.test(l); });
-      if (allBullet) {
-        html += '<ul>' + lines.map(function (l) {
-          return '<li>' + _inlineMd(l.replace(/^\s*[-*]\s+/, '')) + '</li>';
-        }).join('') + '</ul>';
-      } else if (allNumber) {
-        html += '<ol>' + lines.map(function (l) {
-          return '<li>' + _inlineMd(l.replace(/^\s*\d+\.\s+/, '')) + '</li>';
-        }).join('') + '</ol>';
+    var src = _escHtml(text).replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+    if (!src) return '';
+    var lines = src.split('\n'), html = '', list = null;
+    function closeList() { if (list) { html += '</' + list + '>'; list = null; } }
+    var isBreak = function (s) { return !s || /^(#{1,6}\s|[-*]\s|\d+\.\s)/.test(s) || /^\*\*[^*]+\*\*:?$/.test(s); };
+    for (var i = 0; i < lines.length; i++) {
+      var raw = lines[i].trim();
+      if (!raw) { closeList(); continue; }
+      var mH = raw.match(/^#{1,6}\s+(.*)$/);
+      var mUL = raw.match(/^[-*]\s+(.*)$/);
+      var mOL = raw.match(/^\d+\.\s+(.*)$/);
+      if (mH || /^\*\*[^*]+\*\*:?$/.test(raw)) {
+        closeList();
+        html += '<div class="mb-h">' + _inlineMd((mH ? mH[1] : raw).replace(/:$/, '')) + '</div>';
+      } else if (mUL) {
+        if (list !== 'ul') { closeList(); html += '<ul>'; list = 'ul'; }
+        html += '<li>' + _inlineMd(mUL[1]) + '</li>';
+      } else if (mOL) {
+        if (list !== 'ol') { closeList(); html += '<ol>'; list = 'ol'; }
+        html += '<li>' + _inlineMd(mOL[1]) + '</li>';
       } else {
-        html += '<p>' + _inlineMd(blocks[b].replace(/\n/g, '<br>')) + '</p>';
+        closeList();
+        var para = [_inlineMd(raw)];
+        while (i + 1 < lines.length && !isBreak(lines[i + 1].trim())) { para.push(_inlineMd(lines[++i].trim())); }
+        html += '<p>' + para.join('<br>') + '</p>';
       }
     }
+    closeList();
     return html;
   }
 
@@ -872,7 +887,7 @@
     measure_parcel: function (p) {
       var a = _api(), f = _resolveParcel(p.pin); if (!a || !f) return null;
       var pin = f.properties.pin || f.properties.PIN, info = a.quickParcelInfo(pin);
-      _appendInfoBubble('📐 <strong>Parcel ' + _escHtml(pin) + '</strong><br>' +
+      _appendInfoBubble('<strong>Parcel ' + _escHtml(pin) + '</strong><br>' +
         info.acres + ' ac · ' + info.sqft.toLocaleString() + ' ft²<br>' +
         'Perimeter ' + info.perimFt.toLocaleString() + ' ft · ~' + info.estDimLong + '×' + info.estDimShort + ' ft');
       return '📐 Measured ' + pin;
@@ -881,14 +896,14 @@
       var a = _api(), cs = (p.coordinates || []).map(_coordsOf).filter(Boolean);
       if (!a || cs.length < 3) return null;
       var r = a.measureArea(cs);
-      _appendInfoBubble('📐 <strong>Area</strong><br>' + r.acres + ' ac · ' + r.sqft.toLocaleString() + ' ft²<br>Perimeter ' + r.perimFt.toLocaleString() + ' ft');
+      _appendInfoBubble('<strong>Area</strong><br>' + r.acres + ' ac · ' + r.sqft.toLocaleString() + ' ft²<br>Perimeter ' + r.perimFt.toLocaleString() + ' ft');
       return '📐 Measured area';
     },
     measure_distance: function (p) {
       var a = _api(), cs = (p.coordinates || []).map(_coordsOf).filter(Boolean);
       if (!a || cs.length < 2) return null;
       var r = a.measureDistance(cs);
-      _appendInfoBubble('📐 <strong>Distance</strong><br>' + r.totalFt.toLocaleString() + ' ft (' + (r.totalFt / 5280).toFixed(2) + ' mi)');
+      _appendInfoBubble('<strong>Distance</strong><br>' + r.totalFt.toLocaleString() + ' ft (' + (r.totalFt / 5280).toFixed(2) + ' mi)');
       return '📐 Measured distance';
     },
 
@@ -901,14 +916,14 @@
         var hay = [pr.pin || pr.PIN, pr.owner_name || pr.OWNER_NAME, pr.site_address || pr.SITE_ADDRESS].join(' ').toLowerCase();
         if (hay.indexOf(q) !== -1) hits.push(idx[i]);
       }
-      if (!hits.length) { _appendInfoBubble('🔎 No parcels matched “' + _escHtml(p.query) + '”.'); return '🔎 No matches'; }
+      if (!hits.length) { _appendInfoBubble('No parcels matched “' + _escHtml(p.query) + '”.'); return 'No matches'; }
       if (hits.length === 1) {
         var pin = hits[0].properties.pin || hits[0].properties.PIN;
         if (root.PS_selectParcel) root.PS_selectParcel(pin);
         _CMDS.fly_to_parcel({ pin: pin });
         return '🔎 Found ' + pin;
       }
-      var html = '🔎 <strong>' + hits.length + ' matches</strong> for “' + _escHtml(p.query) + '”:<ul class="mb-result-list">';
+      var html = '<strong>' + hits.length + ' matches</strong> for “' + _escHtml(p.query) + '”:<ul class="mb-result-list">';
       for (var j = 0; j < hits.length; j++) {
         var pr2 = hits[j].properties, pin2 = pr2.pin || pr2.PIN;
         html += '<li><button class="mb-result-btn" data-pin="' + _escHtml(pin2) + '">' +
@@ -929,7 +944,7 @@
         if (i >= stops.length) return;
         var s = stops[i++], c = _coordsOf(s) || _parcelCentroid(_resolveParcel(s.pin));
         if (c) m.flyTo({ center: c, zoom: s.zoom || 16, speed: 0.8, curve: 1.4, essential: true });
-        if (s.note) _appendInfoBubble('🎬 ' + _escHtml(s.note));
+        if (s.note) _appendInfoBubble(_escHtml(s.note));
         setTimeout(step, 2600);
       })();
       return '🎬 Tour · ' + stops.length + ' stops';
@@ -1007,7 +1022,7 @@
     items.forEach(function (it) {
       var b = document.createElement('button');
       b.className = 'mb-suggest-chip';
-      b.textContent = it.label;
+      b.textContent = _deIcon(it.label);
       b.addEventListener('click', function () { _inputEl.value = it.prompt; _send(); });
       row.appendChild(b);
     });
@@ -1023,7 +1038,7 @@
     for (var i = 0; i < chips.length; i++) {
       var c = document.createElement('span');
       c.className = 'mb-action-chip';
-      c.textContent = chips[i];
+      c.textContent = _deIcon(chips[i]);
       row.appendChild(c);
     }
     aiEl.appendChild(row);
@@ -1057,7 +1072,6 @@
       ? 'Parcel <strong>' + _escHtml(_currentParcel.pin) + '</strong> is selected — want me to dig in? Tap an idea, or ask anything.'
       : 'Your A.I. assistant — I can drive the map for you. Select a parcel and tap an idea below, or just ask.';
     el.innerHTML =
-      '<div class="mb-empty-icon">✨</div>' +
       '<div class="mb-empty-title">MapBuddy A.I.</div>' +
       '<div class="mb-empty-hint">' + hint + '</div>' +
       '<div class="mb-quick-btns"></div>';
