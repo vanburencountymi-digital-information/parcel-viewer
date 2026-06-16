@@ -611,6 +611,14 @@
         applyTheme(v === "dark");
       }
     },
+    // Cinematic "orbit" after a search arrival. Default on; power users can
+    // disable the 360° spin (kept fly-in) in Settings. See PS_cinematicFlyTo.
+    getCinematicOrbit: function () {
+      try { return localStorage.getItem("pv-cinematic-orbit") !== "0"; } catch (_) { return true; }
+    },
+    setCinematicOrbit: function (on) {
+      try { localStorage.setItem("pv-cinematic-orbit", on ? "1" : "0"); } catch (_) {}
+    },
   };
 
   function collapseInfoPanel() {
@@ -1086,6 +1094,12 @@
     try { reduced = document.documentElement.classList.contains("pv-a11y-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
     _cancelCine();
     if (reduced) { map.easeTo({ center, zoom: z, pitch: 0, bearing: 0, duration: 1000 }); return; }
+
+    // Power users can disable the 360° orbit (Settings): keep a quick fly-in,
+    // settle north-up and flat, skip the spin entirely.
+    let orbitOn = true;
+    try { if (window.PV_PREFS && window.PV_PREFS.getCinematicOrbit) orbitOn = window.PV_PREFS.getCinematicOrbit(); } catch (e) {}
+    if (!orbitOn) { map.flyTo({ center, zoom: z, pitch: 0, bearing: 0, speed: 1.2, curve: 1.4, essential: true }); return; }
 
     const userEvents = ["mousedown", "touchstart", "wheel"];
     function cleanup() { userEvents.forEach((ev) => map.off(ev, onInteract)); }
