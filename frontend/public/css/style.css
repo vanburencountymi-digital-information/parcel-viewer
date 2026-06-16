@@ -12,6 +12,9 @@
   /* UI role aliases */
   --ui-header-from:    #2d1613;          /* near-black warm — header gradient start */
   --ui-header-to:      #6D5C52;          /* warm brown — header gradient end */
+  --ui-header-from-rgb: 45,22,19;        /* header gradient as rgb (scheme-swappable) */
+  --ui-header-to-rgb:  109,92,82;
+  --ui-on-interactive: #2d1613;          /* text on --ui-interactive buttons (AA per scheme) */
   /* Accent/interactive as rgb triplets so tints derive from one source and a
      color scheme (DIC-434) only has to swap these two values. */
   --ui-accent-rgb:     163,71,59;        /* terracotta */
@@ -52,7 +55,7 @@
     inset 0 1px 0 rgba(255,255,255,0.62),
     inset 0 0 18px rgba(255,255,255,0.08);
   /* Header bar — translucent, but more opaque than the body so it stays the anchor. */
-  --glass-header: linear-gradient(135deg, rgba(45,22,19,0.86) 0%, rgba(109,92,82,0.84) 100%);
+  --glass-header: linear-gradient(135deg, rgba(var(--ui-header-from-rgb),0.86) 0%, rgba(var(--ui-header-to-rgb),0.84) 100%);
   --glass-edge:    rgba(var(--ui-accent-rgb),0.12);      /* hairline ring (accent) */
   --glass-rim:     inset 0 1px 0 rgba(255,255,255,0.60); /* top refraction highlight */
   --glass-shadow-1: 0 8px 20px rgba(40,30,20,0.16);
@@ -81,27 +84,42 @@
 html[data-scheme="forest"] {
   --ui-accent-rgb: 47,107,79;  --ui-interactive-rgb: 78,154,107;
   --ui-accent: #2F6B4F; --ui-interactive: #4E9A6B; --ui-interactive-dk: #3d7853;
-  --vbc-primary: #2F6B4F; --vbc-secondary: #4E9A6B;
+  --ui-header-from: #0f241a; --ui-header-to: #2a6047;
+  --ui-header-from-rgb: 15,36,26; --ui-header-to-rgb: 42,96,71;
+  --vbc-primary: #2F6B4F; --vbc-secondary: #4E9A6B; --vbc-brown: #2f6a4e;
+  --ui-on-interactive: #1e1814;
 }
 html[data-scheme="ocean"] {
-  --ui-accent-rgb: 31,94,128;  --ui-interactive-rgb: 62,134,181;
-  --ui-accent: #1F5E80; --ui-interactive: #3E86B5; --ui-interactive-dk: #30698d;
-  --vbc-primary: #1F5E80; --vbc-secondary: #3E86B5;
+  --ui-accent-rgb: 31,94,128;  --ui-interactive-rgb: 46,118,166;
+  --ui-accent: #1F5E80; --ui-interactive: #2E76A6; --ui-interactive-dk: #245c81;
+  --ui-header-from: #081f2b; --ui-header-to: #1f506b;
+  --ui-header-from-rgb: 8,31,43; --ui-header-to-rgb: 31,80,107;
+  --vbc-primary: #1F5E80; --vbc-secondary: #2E76A6; --vbc-brown: #265873;
+  --ui-on-interactive: #ffffff;
 }
 html[data-scheme="slate"] {
   --ui-accent-rgb: 71,85,105;  --ui-interactive-rgb: 100,116,139;
   --ui-accent: #475569; --ui-interactive: #64748B; --ui-interactive-dk: #4e5a6c;
-  --vbc-primary: #475569; --vbc-secondary: #64748B;
+  --ui-header-from: #14191f; --ui-header-to: #384352;
+  --ui-header-from-rgb: 20,25,31; --ui-header-to-rgb: 56,67,82;
+  --vbc-primary: #475569; --vbc-secondary: #64748B; --vbc-brown: #3e4a5b;
+  --ui-on-interactive: #ffffff;
 }
 html[data-scheme="plum"] {
   --ui-accent-rgb: 122,59,107;  --ui-interactive-rgb: 157,90,140;
   --ui-accent: #7A3B6B; --ui-interactive: #9D5A8C; --ui-interactive-dk: #7a466d;
-  --vbc-primary: #7A3B6B; --vbc-secondary: #9D5A8C;
+  --ui-header-from: #23101f; --ui-header-to: #5d2d51;
+  --ui-header-from-rgb: 35,16,31; --ui-header-to-rgb: 93,45,81;
+  --vbc-primary: #7A3B6B; --vbc-secondary: #9D5A8C; --vbc-brown: #67325a;
+  --ui-on-interactive: #ffffff;
 }
 html[data-scheme="crimson"] {
-  --ui-accent-rgb: 177,30,47;  --ui-interactive-rgb: 212,69,58;
-  --ui-accent: #B11E2F; --ui-interactive: #D4453A; --ui-interactive-dk: #a5362d;
-  --vbc-primary: #B11E2F; --vbc-secondary: #D4453A;
+  --ui-accent-rgb: 177,30,47;  --ui-interactive-rgb: 192,57,44;
+  --ui-accent: #B11E2F; --ui-interactive: #C0392C; --ui-interactive-dk: #962c22;
+  --ui-header-from: #2b080c; --ui-header-to: #6b1f28;
+  --ui-header-from-rgb: 43,8,12; --ui-header-to-rgb: 107,31,40;
+  --vbc-primary: #B11E2F; --vbc-secondary: #C0392C; --vbc-brown: #73262f;
+  --ui-on-interactive: #ffffff;
 }
 
 /* Settings swatch picker for the schemes above. */
@@ -1646,7 +1664,7 @@ input[type="checkbox"]:focus-visible {
   width: 100%;
   padding: 7px 12px;
   background: var(--ui-interactive);
-  color: #2d1613;            /* dark warm text on gold — 4.9:1 (DIC-379) */
+  color: var(--ui-on-interactive);  /* AA per scheme (DIC-379/434) */
   border: none;
   border-radius: 6px;
   font-size: 12px;
@@ -1809,7 +1827,7 @@ input[type="checkbox"]:focus-visible {
   font-weight: 500;
   cursor: pointer;
   background: var(--ui-interactive);
-  color: #2d1613;            /* dark warm text on gold — 4.9:1 (DIC-379) */
+  color: var(--ui-on-interactive);  /* AA per scheme (DIC-379/434) */
   transition: background 0.12s;
 }
 
@@ -1927,7 +1945,7 @@ input[type="checkbox"]:focus-visible {
 
 .buffer-btn-add {
   background: var(--ui-interactive);
-  color: #2d1613;            /* dark warm text on gold — 4.9:1 (DIC-379) */
+  color: var(--ui-on-interactive);  /* AA per scheme (DIC-379/434) */
 }
 
 .buffer-btn-add:hover {

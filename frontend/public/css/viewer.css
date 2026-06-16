@@ -736,7 +736,7 @@
 textarea.pv-input { resize: vertical; min-height: 70px; }
 .pv-form-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
 .pv-btn-primary {
-  background: var(--ui-interactive); color: #2d1613;   /* dark warm text on gold — 4.9:1 (DIC-379) */
+  background: var(--ui-interactive); color: var(--ui-on-interactive);   /* AA per scheme (DIC-379/434) */
   border: none; border-radius: 6px; padding: 8px 16px;
   font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
   transition: filter 0.12s;
