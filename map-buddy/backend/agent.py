@@ -28,7 +28,7 @@ Treat broad asks as WORKFLOWS and run the whole thing in one reply, don't make t
 
 Prefer the **run_workflow** tool for these common combos (analyze_parcel, check_buildability, risk_overview): it runs the whole fixed sequence in one deterministic call and hands you the environmental data to summarize — faster and more reliable than chaining the steps yourself. Use individual tools only for custom requests.
 
-After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps the user might want, phrased as taps (e.g. "Show the 100-year floodplain", "Compare to the parcel next door", "Drop a 40 by 30 house"). This is how the user discovers what you can do — never leave them at a dead end.
+After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor suggestions that trigger a rich multi-step action — a workflow (analyze_parcel / check_buildability / risk_overview), a cinematic fly-around, the Parcel Packet — over trivial single steps, so each tap does something substantial. Phrase them as taps (e.g. "Take a cinematic tour of this parcel", "Check buildability", "Compare to the parcel next door"). This is how the user discovers what you can do — never leave them at a dead end.
 
 # Context you receive
 - The currently selected parcel (PIN, owner, address, acreage, municipality) plus its **centroid [lng, lat]** and **bbox**. Use the centroid as the anchor point for circles, buffers, structures, and labels on that parcel.
@@ -39,7 +39,7 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps the use
 - ONLY use coordinates you were given (parcel centroid/bbox, map center) or that the user provides. NEVER invent coordinates for a named place you don't have coordinates for — instead use search_parcels, or ask. Distances and dimensions are in FEET.
 
 # Tools at your disposal
-- Camera: fly_to_parcel, fly_to_coordinates, zoom_to, zoom_by, set_pitch (3-D tilt 0-85°), set_bearing (rotate), reset_north, fit_map_to_parcel, fit_to_annotations.
+- Camera: fly_to_parcel (quick frame), cinematic_fly_to_parcel (tilt-fly-orbit-return — use for "show me / fly to / take me to a parcel"), fly_to_coordinates, zoom_to, zoom_by, set_pitch (3-D tilt 0-85°), set_bearing (rotate), reset_north, fit_map_to_parcel, fit_to_annotations.
 - Selection: select_parcel, highlight_parcel.
 - Layers: set_layer_visibility (flood, wetlands, soils, hillshade, contours).
 - Drawing: draw_point, draw_line, draw_polygon, draw_circle, label_point, label_parcel_centroid, draw_parcel_buffer (inward = setback), place_structure_in_parcel, clear_annotations.
@@ -72,7 +72,9 @@ _COORDS = {
 
 TOOLS = [
     # ── Camera ────────────────────────────────────────────────────────────────
-    {"name": "fly_to_parcel", "description": "Smoothly zoom and pan the map to frame a parcel. Defaults to the selected parcel.",
+    {"name": "fly_to_parcel", "description": "Quickly zoom and pan the map to frame a parcel (no flourish). Defaults to the selected parcel. For 'show me / fly to', prefer cinematic_fly_to_parcel.",
+     "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []}},
+    {"name": "cinematic_fly_to_parcel", "description": "Cinematic fly-to a parcel: tilt into 3-D, fly in, orbit a full 360° around it, then settle back to a flat north-up view. Use this whenever the user wants to SEE or be shown a parcel — 'fly to / show me / take me to / give me a look at / tour this parcel'.",
      "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []}},
     {"name": "fly_to_coordinates", "description": "Fly the map to a specific point. Use the map center or a parcel centroid you were given — never an invented location.",
      "input_schema": {"type": "object", "properties": {"lng": _LNG, "lat": _LAT, "zoom": {"type": "number", "description": "Optional target zoom (10-19)"}}, "required": ["lng", "lat"]}},

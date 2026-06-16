@@ -683,6 +683,35 @@
   // _flushCamera() resolves one combined animation after the batch runs.
   var _cam = null;
   function _camIntent() { _cam = _cam || {}; return _cam; }
+
+  // Cinematic fly-around: tilt into 3-D, fly to the parcel, orbit a full 360°,
+  // then settle back to a flat north-up view. Honors reduced-motion.
+  var _cineRAF = null;
+  function _cancelCinematic() { if (_cineRAF) { cancelAnimationFrame(_cineRAF); _cineRAF = null; } }
+  function _runCinematic(m, center, zoom) {
+    var reduced = false;
+    try { reduced = document.documentElement.classList.contains('pv-a11y-motion') || window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) {}
+    if (reduced) { m.easeTo({ center: center, zoom: zoom, pitch: 0, bearing: 0, duration: 1200, essential: true }); return; }
+    _cancelCinematic();
+    var ORBIT_MS = 9000, started = false;
+    m.flyTo({ center: center, zoom: zoom, pitch: 60, bearing: 0, speed: 0.85, curve: 1.5, essential: true });
+    function orbit() {
+      if (started) return; started = true;
+      var t0 = null;
+      function frame(ts) {
+        if (t0 === null) t0 = ts;
+        var k = Math.min((ts - t0) / ORBIT_MS, 1);
+        var eased = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;  // ease in-out
+        m.setBearing(360 * eased);
+        m.setCenter(center);
+        if (k < 1) { _cineRAF = requestAnimationFrame(frame); }
+        else { _cineRAF = null; m.easeTo({ bearing: 0, pitch: 0, duration: 2600, essential: true }); }
+      }
+      _cineRAF = requestAnimationFrame(frame);
+    }
+    m.once('moveend', orbit);
+    setTimeout(orbit, 2600);  // fallback if moveend doesn't fire (already in place)
+  }
   function _flushCamera() {
     var m = _map(), cam = _cam; _cam = null;
     if (!m || !cam) return;
@@ -716,6 +745,16 @@
     fly_to_coordinates: function (p) { var c = _coordsOf(p); if (!c) return null; var k = _camIntent(); k.center = c; if (p.zoom != null) k.zoom = p.zoom; else if (k.zoom == null) k.zoom = Math.max(_map() ? _map().getZoom() : 16, 16); return '🛰️ Flew to location'; },
     fly_to_parcel: function (p) { var f = _resolveParcel(p.pin); _camIntent().fitParcel = f ? (f.properties.pin || f.properties.PIN) : (p.pin || null); return '🛰️ Zoomed to parcel' + (f ? ' ' + (f.properties.pin || f.properties.PIN) : ''); },
     fit_map_to_parcel: function () { _camIntent().fitParcel = null; return '🛰️ Fit parcel in view'; },
+    cinematic_fly_to_parcel: function (p) {
+      var m = _map(), f = _resolveParcel(p.pin), t = _turf();
+      if (!m || !f || !t) { _camIntent().fitParcel = (p.pin || null); return '🎬 Flying to parcel'; }
+      var bb = t.bbox(f), center = _parcelCentroid(f) || [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
+      var zoom = 17;
+      if (m.cameraForBounds) { var cfb = m.cameraForBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 140, maxZoom: 18 }); if (cfb) zoom = Math.min(cfb.zoom - 0.4, 18); }
+      _cam = null;  // the cinematic sequence owns the camera
+      _runCinematic(m, center, zoom);
+      return '🎬 Cinematic fly-around of ' + (f.properties.pin || f.properties.PIN);
+    },
     zoom_to:  function (p) { if (p.zoom == null) return null; _camIntent().zoom = p.zoom; return '🔍 Zoom ' + Math.round(p.zoom); },
     zoom_by:  function (p) { if (p.delta == null) return null; _camIntent().zoomDelta = p.delta; return p.delta >= 0 ? '🔍 Zoomed in' : '🔍 Zoomed out'; },
     set_pitch: function (p) { if (p.pitch == null) return null; _camIntent().pitch = p.pitch; return '🧭 Tilt ' + Math.round(p.pitch) + '°'; },
@@ -954,6 +993,7 @@
   function _runCommands(cmds) {
     var chips = [];
     _cam = null;
+    _cancelCinematic();  // a new request stops any in-flight fly-around
     for (var i = 0; i < cmds.length; i++) {
       var cmd = cmds[i]; if (!cmd || !cmd.type) continue;
       var fn = _CMDS[cmd.type];
