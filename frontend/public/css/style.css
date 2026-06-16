@@ -12,12 +12,16 @@
   /* UI role aliases */
   --ui-header-from:    #2d1613;          /* near-black warm — header gradient start */
   --ui-header-to:      #6D5C52;          /* warm brown — header gradient end */
+  /* Accent/interactive as rgb triplets so tints derive from one source and a
+     color scheme (DIC-434) only has to swap these two values. */
+  --ui-accent-rgb:     163,71,59;        /* terracotta */
+  --ui-interactive-rgb: 181,141,74;      /* gold */
   --ui-accent:         #A3473B;          /* terracotta accent stripe */
-  --ui-accent-bg:      rgba(163,71,59,0.05);   /* barely-there warm wash */
+  --ui-accent-bg:      rgba(var(--ui-accent-rgb),0.05);   /* barely-there warm wash */
   --ui-interactive:    #B58D4A;          /* gold — buttons, focus, active */
   --ui-interactive-dk: #8B6535;          /* darker gold — hover */
-  --ui-interactive-bg: rgba(181,141,74,0.10);  /* gold tint — selected/hover bg */
-  --ui-interactive-bd: rgba(181,141,74,0.35);  /* gold tint — borders */
+  --ui-interactive-bg: rgba(var(--ui-interactive-rgb),0.10);  /* gold tint — selected/hover bg */
+  --ui-interactive-bd: rgba(var(--ui-interactive-rgb),0.35);  /* gold tint — borders */
 
   /* Accessible text tokens (WCAG 2.1 AA, DIC-376). --text-muted is dark enough to
      clear 4.5:1 even at the worst-case effective background of the translucent
@@ -49,7 +53,7 @@
     inset 0 0 18px rgba(255,255,255,0.08);
   /* Header bar — translucent, but more opaque than the body so it stays the anchor. */
   --glass-header: linear-gradient(135deg, rgba(45,22,19,0.86) 0%, rgba(109,92,82,0.84) 100%);
-  --glass-edge:    rgba(163,71,59,0.12);                 /* hairline ring (terracotta) */
+  --glass-edge:    rgba(var(--ui-accent-rgb),0.12);      /* hairline ring (accent) */
   --glass-rim:     inset 0 1px 0 rgba(255,255,255,0.60); /* top refraction highlight */
   --glass-shadow-1: 0 8px 20px rgba(40,30,20,0.16);
   --glass-shadow-2: 0 20px 48px rgba(0,0,0,0.28), 0 6px 16px rgba(0,0,0,0.18);
@@ -66,6 +70,49 @@
   --glass-edge:   rgba(255,255,255,0.10);
   --glass-rim:    inset 0 1px 0 rgba(255,255,255,0.08);
 }
+
+/* ── Color scheme presets (DIC-434) ──────────────────────────────────────────
+   User-selectable accent palettes, chosen in Settings and applied as a
+   `data-scheme` attribute on <html> (persisted in localStorage). A scheme is a
+   palette swap on the same structure — it overrides only the accent/interactive
+   role tokens; "terracotta" is the default (:root), so it has no block here.
+   Accent (used as text for PINs/section marks) is AA-verified against the
+   worst-case light-glass background; each preset meets or beats the default. */
+html[data-scheme="forest"] {
+  --ui-accent-rgb: 47,107,79;  --ui-interactive-rgb: 78,154,107;
+  --ui-accent: #2F6B4F; --ui-interactive: #4E9A6B; --ui-interactive-dk: #3d7853;
+  --vbc-primary: #2F6B4F; --vbc-secondary: #4E9A6B;
+}
+html[data-scheme="ocean"] {
+  --ui-accent-rgb: 31,94,128;  --ui-interactive-rgb: 62,134,181;
+  --ui-accent: #1F5E80; --ui-interactive: #3E86B5; --ui-interactive-dk: #30698d;
+  --vbc-primary: #1F5E80; --vbc-secondary: #3E86B5;
+}
+html[data-scheme="slate"] {
+  --ui-accent-rgb: 71,85,105;  --ui-interactive-rgb: 100,116,139;
+  --ui-accent: #475569; --ui-interactive: #64748B; --ui-interactive-dk: #4e5a6c;
+  --vbc-primary: #475569; --vbc-secondary: #64748B;
+}
+html[data-scheme="plum"] {
+  --ui-accent-rgb: 122,59,107;  --ui-interactive-rgb: 157,90,140;
+  --ui-accent: #7A3B6B; --ui-interactive: #9D5A8C; --ui-interactive-dk: #7a466d;
+  --vbc-primary: #7A3B6B; --vbc-secondary: #9D5A8C;
+}
+html[data-scheme="crimson"] {
+  --ui-accent-rgb: 177,30,47;  --ui-interactive-rgb: 212,69,58;
+  --ui-accent: #B11E2F; --ui-interactive: #D4453A; --ui-interactive-dk: #a5362d;
+  --vbc-primary: #B11E2F; --vbc-secondary: #D4453A;
+}
+
+/* Settings swatch picker for the schemes above. */
+.pv-scheme-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.pv-scheme-swatch {
+  width: 28px; height: 28px; border-radius: 50%; padding: 0; cursor: pointer;
+  background: var(--sw); border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18);
+}
+.pv-scheme-swatch[aria-pressed="true"] { border-color: var(--ui-interactive); box-shadow: 0 0 0 2px var(--ui-interactive); }
+.pv-scheme-swatch:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: 2px; }
 
 /* ── Accessibility profile (DIC-421 / DIC-376) ───────────────────────────────
    User-selectable preferences applied as classes on <html>, persisted on the
@@ -149,11 +196,11 @@ html.pv-a11y-motion *, html.pv-a11y-motion *::before, html.pv-a11y-motion *::aft
 .pv-range-hint { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; }
 
 /* Semi-transparent scrollbars so the glass panels stay glassy */
-.parcel-info-body, .mcp-body, .pv-modal-body, .parcel-search-results { scrollbar-width: thin; scrollbar-color: rgba(181,141,74,0.45) transparent; }
+.parcel-info-body, .mcp-body, .pv-modal-body, .parcel-search-results { scrollbar-width: thin; scrollbar-color: rgba(var(--ui-interactive-rgb),0.45) transparent; }
 .parcel-info-body::-webkit-scrollbar, .mcp-body::-webkit-scrollbar, .pv-modal-body::-webkit-scrollbar, .parcel-search-results::-webkit-scrollbar { width: 10px; height: 10px; }
 .parcel-info-body::-webkit-scrollbar-track, .mcp-body::-webkit-scrollbar-track, .pv-modal-body::-webkit-scrollbar-track, .parcel-search-results::-webkit-scrollbar-track { background: transparent; }
-.parcel-info-body::-webkit-scrollbar-thumb, .mcp-body::-webkit-scrollbar-thumb, .pv-modal-body::-webkit-scrollbar-thumb, .parcel-search-results::-webkit-scrollbar-thumb { background: rgba(181,141,74,0.45); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
-.parcel-info-body::-webkit-scrollbar-thumb:hover, .mcp-body::-webkit-scrollbar-thumb:hover, .pv-modal-body::-webkit-scrollbar-thumb:hover, .parcel-search-results::-webkit-scrollbar-thumb:hover { background: rgba(181,141,74,0.7); background-clip: padding-box; }
+.parcel-info-body::-webkit-scrollbar-thumb, .mcp-body::-webkit-scrollbar-thumb, .pv-modal-body::-webkit-scrollbar-thumb, .parcel-search-results::-webkit-scrollbar-thumb { background: rgba(var(--ui-interactive-rgb),0.45); border-radius: 5px; border: 2px solid transparent; background-clip: padding-box; }
+.parcel-info-body::-webkit-scrollbar-thumb:hover, .mcp-body::-webkit-scrollbar-thumb:hover, .pv-modal-body::-webkit-scrollbar-thumb:hover, .parcel-search-results::-webkit-scrollbar-thumb:hover { background: rgba(var(--ui-interactive-rgb),0.7); background-clip: padding-box; }
 [data-theme="dark"] .parcel-info-body, [data-theme="dark"] .mcp-body, [data-theme="dark"] .pv-modal-body, [data-theme="dark"] .parcel-search-results { scrollbar-color: rgba(212,168,98,0.42) transparent; }
 [data-theme="dark"] .parcel-info-body::-webkit-scrollbar-thumb, [data-theme="dark"] .mcp-body::-webkit-scrollbar-thumb, [data-theme="dark"] .pv-modal-body::-webkit-scrollbar-thumb, [data-theme="dark"] .parcel-search-results::-webkit-scrollbar-thumb { background: rgba(212,168,98,0.42); background-clip: padding-box; }
 .pv-a11y-list { display: flex; flex-direction: column; gap: 2px; margin: 6px 0 14px; }
@@ -583,7 +630,7 @@ body {
   margin-right: -10px;
   padding: 3px 10px 3px 8px;
   border-left: 3px solid var(--ui-accent);
-  background: linear-gradient(90deg, rgba(163,71,59,0.13) 0%, rgba(163,71,59,0.02) 100%);
+  background: linear-gradient(90deg, rgba(var(--ui-accent-rgb),0.13) 0%, rgba(var(--ui-accent-rgb),0.02) 100%);
   flex-shrink: 0;
 }
 
@@ -650,7 +697,7 @@ body {
   white-space: nowrap;
 }
 .parcel-info-link:hover {
-  background: rgba(181,141,74,0.18);
+  background: rgba(var(--ui-interactive-rgb),0.18);
   color: var(--ui-interactive-dk);
 }
 
@@ -675,7 +722,7 @@ body {
   transition: background 0.15s, color 0.15s;
 }
 .parcel-quick-action-btn:hover {
-  background: rgba(181,141,74,0.18);
+  background: rgba(var(--ui-interactive-rgb),0.18);
   color: var(--ui-interactive-dk);
   border-color: var(--ui-interactive);
 }
@@ -866,7 +913,7 @@ body {
   width: 36px;
   flex-shrink: 0;
   background: rgba(245, 240, 232, 0.42);
-  border-right: 1px solid rgba(181, 141, 74, 0.18);
+  border-right: 1px solid rgba(var(--ui-interactive-rgb), 0.18);
   border-radius: 0 0 0 8px;
   padding: 6px 3px 6px;
   gap: 2px;
@@ -3948,7 +3995,7 @@ input[type="checkbox"]:focus-visible {
     min-width: unset !important;
     overflow-x: auto;
     border-right: none !important;
-    border-bottom: 1px solid rgba(181,141,74,0.18);
+    border-bottom: 1px solid rgba(var(--ui-interactive-rgb),0.18);
     border-radius: 0 !important;
   }
   .mcp-tab {
@@ -3974,7 +4021,7 @@ input[type="checkbox"]:focus-visible {
 [data-theme="dark"] .parcel-info-panel,
 [data-theme="dark"] .map-control-panel {
   background: rgba(20, 15, 13, 0.88);
-  box-shadow: 0 20px 48px rgba(0,0,0,0.55), 0 6px 16px rgba(0,0,0,0.40), 0 0 0 1px rgba(163,71,59,0.18);
+  box-shadow: 0 20px 48px rgba(0,0,0,0.55), 0 6px 16px rgba(0,0,0,0.40), 0 0 0 1px rgba(var(--ui-accent-rgb),0.18);
 }
 
 /* Panel body text */
@@ -3990,7 +4037,7 @@ input[type="checkbox"]:focus-visible {
 /* Section titles */
 [data-theme="dark"] .parcel-info-section-title {
   color: #c8b89a;
-  background: linear-gradient(90deg, rgba(163,71,59,0.20) 0%, rgba(163,71,59,0.03) 100%);
+  background: linear-gradient(90deg, rgba(var(--ui-accent-rgb),0.20) 0%, rgba(var(--ui-accent-rgb),0.03) 100%);
 }
 
 /* AV table */
@@ -4024,8 +4071,8 @@ input[type="checkbox"]:focus-visible {
 [data-theme="dark"] .parcel-search-result-address { color: #b3a89c; }   /* ~8:1  */
 [data-theme="dark"] .parcel-search-no-results     { color: #b3a89c; }
 [data-theme="dark"] .parcel-search-result:hover,
-[data-theme="dark"] .parcel-search-result.active { background: rgba(163,71,59,0.15); }
-[data-theme="dark"] .parcel-search-result.selected { background: rgba(181,141,74,0.15); border-color: rgba(181,141,74,0.30); }
+[data-theme="dark"] .parcel-search-result.active { background: rgba(var(--ui-accent-rgb),0.15); }
+[data-theme="dark"] .parcel-search-result.selected { background: rgba(var(--ui-interactive-rgb),0.15); border-color: rgba(var(--ui-interactive-rgb),0.30); }
 
 /* MCP body */
 [data-theme="dark"] .mcp-body              { color: #c8b89a; }
@@ -4040,8 +4087,8 @@ input[type="checkbox"]:focus-visible {
 
 /* Quick action buttons */
 [data-theme="dark"] .parcel-quick-action-btn {
-  background: rgba(181,141,74,0.10);
-  border-color: rgba(181,141,74,0.25);
+  background: rgba(var(--ui-interactive-rgb),0.10);
+  border-color: rgba(var(--ui-interactive-rgb),0.25);
   color: var(--ui-interactive);
 }
 
