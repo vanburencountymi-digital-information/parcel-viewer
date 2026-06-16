@@ -117,6 +117,29 @@ WORKFLOWS = {
     },
 }
 
+
+def _validate_workflows(table):
+    """Fail loudly at import if a macro is malformed, rather than silently skipping."""
+    for name, wf in table.items():
+        if not isinstance(wf.get("description"), str) or not wf["description"]:
+            raise ValueError("Macro %r must have a non-empty 'description'." % name)
+        steps = wf.get("steps")
+        if not isinstance(steps, list) or not steps:
+            raise ValueError("Macro %r must have a non-empty 'steps' list." % name)
+        for i, step in enumerate(steps):
+            if not isinstance(step.get("type"), str) or not step["type"]:
+                raise ValueError("Macro %r step %d is missing a string 'type'." % (name, i))
+            spec = step.get("payload")
+            if not (spec in ("pin", "pin_required") or isinstance(spec, dict)):
+                raise ValueError(
+                    "Macro %r step %d (%r) has an invalid payload %r — expected "
+                    "'pin', 'pin_required', or a literal dict." % (name, i, step["type"], spec)
+                )
+    return table
+
+
+_validate_workflows(WORKFLOWS)
+
 # Tool description is generated from the registry so a new macro needs no edits here.
 _WF_DESC = (
     "Run a common multi-step workflow in ONE call instead of chaining tools "
