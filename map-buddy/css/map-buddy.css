@@ -200,6 +200,12 @@
 }
 
 /* Rendered Markdown inside an AI reply (see _renderMarkdown in map-buddy.js). */
+.mb-msg-ai-body .mb-h {
+  font-weight: 700; font-size: 12px; margin: 10px 0 3px;
+  color: var(--vbc-brown, #6b4f2a); letter-spacing: 0.01em;
+}
+.mb-msg-ai-body .mb-h:first-child { margin-top: 0; }
+[data-theme="dark"] .mb-msg-ai-body .mb-h { color: #e8d8c4; }
 .mb-msg-ai-body p { margin: 0 0 8px; }
 .mb-msg-ai-body p:last-child { margin-bottom: 0; }
 .mb-msg-ai-body ul,
@@ -218,6 +224,69 @@
   border-radius: 4px;
 }
 [data-theme="dark"] .mb-msg-ai-body code { background: rgba(255,255,255,0.12); }
+
+/* Action chips — what the AI just did to the map (see _appendActionChips). */
+.mb-action-chips {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed rgba(0,0,0,0.10);
+}
+.mb-action-chip {
+  font-size: 10.5px; font-weight: 600; line-height: 1.4;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--ui-interactive-bg, rgba(181,141,74,0.12));
+  color: var(--ui-interactive-dk, #8a6a2f);
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.30));
+  white-space: nowrap;
+}
+[data-theme="dark"] .mb-action-chips { border-top-color: rgba(255,255,255,0.12); }
+[data-theme="dark"] .mb-action-chip {
+  background: rgba(181,141,74,0.18); color: #e8d8c4; border-color: rgba(181,141,74,0.42);
+}
+
+/* Secondary info / result bubbles (measurements, search, tour notes). */
+.mb-msg-info { background: #f7f5f2; border: 1px dashed #e0d8cc; }
+[data-theme="dark"] .mb-msg-info { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.14); }
+.mb-result-list { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.mb-result-btn {
+  width: 100%; text-align: left; font: inherit; font-size: 11.5px;
+  padding: 6px 9px; border-radius: 7px; cursor: pointer;
+  background: #fff; border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.30));
+  color: #374151; transition: background 0.12s, border-color 0.12s;
+}
+.mb-result-btn:hover { background: var(--ui-interactive-bg, rgba(181,141,74,0.12)); border-color: var(--ui-interactive, #b58d4a); }
+.mb-result-btn:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: 1px; }
+[data-theme="dark"] .mb-result-btn { background: #1c1612; color: #d6ccc0; }
+
+/* Proactive "next step" suggestions the AI offers — tappable, distinct from the
+   static gold action chips. Clicking sends the prompt back to MapBuddy. */
+.mb-suggest-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 4px; }
+.mb-suggest-chip {
+  font: inherit; font-size: 11.5px; font-weight: 600; line-height: 1.3;
+  padding: 6px 11px; border-radius: 999px; cursor: pointer; text-align: left;
+  background: #fff;
+  color: var(--ui-interactive-dk, #8a6a2f);
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.4));
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+}
+.mb-suggest-chip:hover { background: var(--ui-interactive-bg, rgba(181,141,74,0.12)); border-color: var(--ui-interactive, #b58d4a); }
+.mb-suggest-chip:active { transform: translateY(1px); }
+.mb-suggest-chip:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: 2px; }
+[data-theme="dark"] .mb-suggest-chip { background: #1c1612; color: #e8d8c4; border-color: rgba(181,141,74,0.5); }
+
+/* Flashy pulse ring dropped at a parcel centroid on AI highlight. */
+.mb-pulse {
+  width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(181,141,74,0.55);
+  box-shadow: 0 0 0 0 rgba(181,141,74,0.55);
+  animation: mb-pulse-ring 1.6s ease-out 1;
+  pointer-events: none;
+}
+@keyframes mb-pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(181,141,74,0.55); opacity: 1; }
+  100% { box-shadow: 0 0 0 46px rgba(181,141,74,0); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .mb-pulse { animation-duration: 0.01ms; } }
 
 /* Thinking / streaming indicator */
 .mb-thinking {

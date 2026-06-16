@@ -249,6 +249,25 @@
     }
   }
 
+  // Programmatic access to the viewer's tools/windows (used by MapBuddy AI and
+  // any other caller). Names match the data-ptool / data-info / menu ids. Each
+  // opener handles the "select a parcel first" case on its own.
+  var _PARCEL_TOOLS = { packet: 1, compare: 1, streetview: 1 };
+  var _INFO_WINDOWS = { tax: 1, assess: 1 };
+  var _MENU_TOOLS = { print: 1, share: 1, bookmark: 1, "data-request": 1,
+    "report-error": 1, help: 1, "whats-new": 1, about: 1, settings: 1 };
+  window.PV_TOOLS = {
+    open: function (name) {
+      if (_PARCEL_TOOLS[name]) return openParcelTool(name);
+      if (_INFO_WINDOWS[name]) return openInfoWindow(name);
+      if (_MENU_TOOLS[name])   return openTool(name);
+      console.warn("[PV_TOOLS] unknown tool:", name);
+    },
+    list: function () {
+      return Object.keys(_PARCEL_TOOLS).concat(Object.keys(_INFO_WINDOWS), Object.keys(_MENU_TOOLS));
+    },
+  };
+
   function openHelp() {
     openModal("Help", [
       '<p class="pv-modal-lead">Quick reference for using the Parcel Viewer. Full documentation is coming soon.</p>',
@@ -524,6 +543,21 @@
   function maxA11yOn() { return A11Y.getFlag("contrast") && A11Y.getFlag("solid") && A11Y.getFlag("font") && A11Y.getFlag("motion") && A11Y.getTs() > 1; }
   function setMaxA11y(on) { ["contrast", "solid", "font", "motion"].forEach(function (n) { A11Y.setFlag(n, on); }); A11Y.setTs(on ? 1.3 : 1); }
   function syncA11yButton() { var b = document.getElementById("pv-a11y-btn"); if (!b) return; var on = maxA11yOn(); b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", String(on)); }
+
+  // Programmatic accessibility + panel-glass control (MapBuddy AI, etc.).
+  window.PV_A11Y = {
+    setFlag: A11Y.setFlag, getFlag: A11Y.getFlag,
+    setTextScale: A11Y.setTs, getTextScale: A11Y.getTs,
+    setMax: function (on) { setMaxA11y(on); syncA11yButton(); },
+  };
+  window.PV_GLASS = {
+    set: function (alpha) {
+      var a = Math.max(0.4, Math.min(1, parseFloat(alpha) || 0.62));
+      document.documentElement.style.setProperty("--glass-alpha", a);
+      try { localStorage.setItem("pv-glass-alpha", String(a)); } catch (_) {}
+      return a;
+    },
+  };
 
   function toast(msg) {
     var t = document.createElement("div");

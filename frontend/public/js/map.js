@@ -386,6 +386,12 @@
     }
   }
 
+  // Programmatic theme control (MapBuddy AI and other callers).
+  window.PV_THEME = {
+    set: function (dark) { applyTheme(!!dark); },
+    get: function () { return document.documentElement.getAttribute("data-theme") === "dark"; },
+  };
+
   // ── Map init ───────────────────────────────────────────────────────────
   async function initMap() {
     const style = await resolveStyle();
@@ -1035,8 +1041,9 @@
   // Programmatic parcel selection by DB id: fetches the full record, replaces
   // the current selection, and zooms to the parcel. Used by omni-search and
   // the Parcel Edits workflows.
-  window.PS_selectParcelById = function (id) {
+  window.PS_selectParcelById = function (id, opts) {
     if (!map || id == null) return Promise.resolve(null);
+    opts = opts || {};
     return fetchParcel(id).then((feature) => {
       const pin = feature.properties.pin || feature.properties.parcel_no;
       for (const p of selectedPins) {
@@ -1050,9 +1057,60 @@
       addToSelection(pin, feature.properties, feature.geometry);
       updateSelectionBadge();
       showParcelAtIndex(0);
-      map.fitBounds(computeBounds(feature.geometry), { padding: 80, duration: 800, maxZoom: 17 });
+      // The search box opts into a cinematic arrival; other callers (MapBuddy
+      // workflows, etc.) get the quick fit so they aren't slowed down.
+      if (opts.cinematic) {
+        window.PS_cinematicFlyTo(feature.geometry);
+      } else {
+        map.fitBounds(computeBounds(feature.geometry), { padding: 80, duration: 800, maxZoom: 17 });
+      }
       return feature;
     });
+  };
+
+  // Cinematic arrival: tilt into 3-D, fly in, orbit a full 360° around the
+  // parcel, then settle back to flat north-up. Cancels on user interaction and
+  // honors reduced-motion. Used by parcel search and MapBuddy's "fly to".
+  let _cineRAF = null;
+  function _cancelCine() { if (_cineRAF) { cancelAnimationFrame(_cineRAF); _cineRAF = null; } }
+  window.PS_cinematicFlyTo = function (geometry, zoom) {
+    if (!map || !geometry) return;
+    const [lng, lat] = computeCentroid(geometry);
+    const center = [lng, lat];
+    let z = zoom;
+    if (z == null) {
+      const cfb = map.cameraForBounds && map.cameraForBounds(computeBounds(geometry), { padding: 140, maxZoom: 18 });
+      z = cfb ? Math.min(cfb.zoom - 0.4, 18) : 17;
+    }
+    let reduced = false;
+    try { reduced = document.documentElement.classList.contains("pv-a11y-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+    _cancelCine();
+    if (reduced) { map.easeTo({ center, zoom: z, pitch: 0, bearing: 0, duration: 1000 }); return; }
+
+    const userEvents = ["mousedown", "touchstart", "wheel"];
+    function cleanup() { userEvents.forEach((ev) => map.off(ev, onInteract)); }
+    function onInteract() { _cancelCine(); cleanup(); }
+    userEvents.forEach((ev) => map.on(ev, onInteract));
+
+    let started = false;
+    map.flyTo({ center, zoom: z, pitch: 60, bearing: 0, speed: 0.85, curve: 1.5, essential: true });
+    function orbit() {
+      if (started) return; started = true;
+      const ORBIT_MS = 9000; let t0 = null;
+      function frame(ts) {
+        if (t0 === null) t0 = ts;
+        const k = Math.min((ts - t0) / ORBIT_MS, 1);
+        const eased = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+        map.setBearing(360 * eased);
+        map.setCenter(center);
+        map.setPitch(60);  // hold full tilt through the orbit (fly may not have finished tilting)
+        if (k < 1) { _cineRAF = requestAnimationFrame(frame); }
+        else { _cineRAF = null; cleanup(); map.easeTo({ bearing: 0, pitch: 0, duration: 2600 }); }
+      }
+      _cineRAF = requestAnimationFrame(frame);
+    }
+    map.once("moveend", orbit);
+    setTimeout(orbit, 5000);  // safety if moveend never fires (e.g. already in place)
   };
 
   // Legacy pin-based selection (viewport index lookup) — kept for
@@ -1101,7 +1159,7 @@
     // Direct focus into the parcel region once it renders (keyboard lifeline).
     _focusInfoPanelOnShow = true;
     _lastFocusBeforeInfo = searchInput;
-    window.PS_selectParcelById(o.parcelId);
+    window.PS_selectParcelById(o.parcelId, { cinematic: true });
     hideResults();
     closeMobileSearch();
   }
