@@ -81,6 +81,7 @@
     }
 
     _init();
+    _loadAutomations();
 
     // Programmatic surface: lets the host (or the AI command path) drive the map
     // and inspect view state. unmount() tears this down.
@@ -156,6 +157,7 @@
           '<span class="mb-context-dot"></span>' +
           '<span id="mb-context-text">No parcel selected</span>' +
         '</div>' +
+        '<div id="mb-automations" class="mb-automations" hidden></div>' +
         '<div id="mb-messages" class="mb-messages"' +
             ' role="log" aria-live="polite" aria-label="MapBuddy A.I. conversation"></div>' +
         '<div class="mb-input-area">' +
@@ -575,6 +577,92 @@
       centroid:     p.centroid,
       bbox:         p.bbox,
     };
+  }
+
+  // ── Automations palette (DIC-432) ─────────────────────────────────────────
+  // A visible, one-tap list of the backend macro registry. Tapping a macro hits
+  // /workflow (deterministic, no model round-trip) and runs the returned commands.
+  // The catalog is fetched from /workflows, so adding a macro server-side surfaces
+  // it here automatically. If the backend lacks the endpoint (e.g. not yet
+  // redeployed), the palette simply doesn't render — no error.
+  function _humanize(id) {
+    var s = String(id || '').replace(/_/g, ' ');
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+
+  function _loadAutomations() {
+    var host = document.getElementById('mb-automations');
+    if (!host) return;
+    fetch(_apiBase + '/workflows')
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        var list = data && data.workflows;
+        if (list && list.length) _renderAutomations(host, list);
+      })
+      .catch(function () { /* endpoint absent → no palette, no error */ });
+  }
+
+  function _renderAutomations(host, list) {
+    var rows = list.map(function (wf) {
+      var params = wf.params || {};
+      var inputs = Object.keys(params).map(function (k) {
+        var p = params[k] || {};
+        var dv = (p.default !== undefined && p.default !== null) ? p.default : '';
+        return '<label class="mb-auto-param">' + _escHtml(_humanize(k)) +
+          ' <input type="number" class="mb-auto-input" data-param="' + _escHtml(k) +
+          '" value="' + _escHtml(dv) + '" aria-label="' + _escHtml(_humanize(k) + ' for ' + _humanize(wf.id)) + '"></label>';
+      }).join('');
+      return '<div class="mb-auto-row" data-wf="' + _escHtml(wf.id) + '">' +
+        '<button type="button" class="mb-auto-run" data-wf="' + _escHtml(wf.id) + '"' +
+          ' title="' + _escHtml(wf.description) + '">' + _escHtml(_humanize(wf.id)) + '</button>' +
+        (inputs ? '<span class="mb-auto-params">' + inputs + '</span>' : '') +
+        '<span class="mb-auto-desc">' + _escHtml(wf.description) + '</span>' +
+      '</div>';
+    }).join('');
+    host.innerHTML =
+      '<button type="button" id="mb-auto-toggle" class="mb-auto-toggle"' +
+        ' aria-expanded="false" aria-controls="mb-auto-body">' +
+        '<span class="mb-auto-caret">▸</span><span>Automations</span></button>' +
+      '<div id="mb-auto-body" class="mb-auto-body" hidden>' + rows + '</div>';
+    host.hidden = false;
+    var toggle = document.getElementById('mb-auto-toggle');
+    var body   = document.getElementById('mb-auto-body');
+    toggle.addEventListener('click', function () {
+      var open = body.hidden;
+      body.hidden = !open;
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.querySelector('.mb-auto-caret').textContent = open ? '▾' : '▸';
+    });
+    [].forEach.call(host.querySelectorAll('.mb-auto-run'), function (btn) {
+      btn.addEventListener('click', function () {
+        _runAutomation(btn.getAttribute('data-wf'), btn.closest('.mb-auto-row'));
+      });
+    });
+  }
+
+  function _runAutomation(wfId, rowEl) {
+    if (!_currentParcel || !_currentParcel.pin) {
+      _appendAiMsg('Select a parcel first, then I can run that on it.');
+      return;
+    }
+    var params = {};
+    if (rowEl) [].forEach.call(rowEl.querySelectorAll('.mb-auto-input'), function (inp) {
+      var v = parseFloat(inp.value);
+      if (!isNaN(v)) params[inp.getAttribute('data-param')] = v;
+    });
+    fetch(_apiBase + '/workflow', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ workflow: wfId, pin: _currentParcel.pin, params: params, parcel_context: _buildContext() }),
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) {
+        if (!data || !Array.isArray(data.commands)) { _appendAiMsg('Couldn’t run that automation.'); return; }
+        var chips = _runCommands(data.commands);
+        var el = _appendAiMsg('Ran ' + _humanize(wfId) + '.');
+        if (el) _appendActionChips(el, chips);
+      })
+      .catch(function () { _appendAiMsg('Couldn’t reach the server for that automation.'); });
   }
 
   // ── Map command dispatch ──────────────────────────────────────────────────

@@ -556,3 +556,32 @@
   outline: 2px solid var(--ui-interactive);
   outline-offset: 2px;
 }
+
+/* ── Automations palette (DIC-432) ──────────────────────────────────────────
+   Inherits the host's --ui-* tokens, so it recolors with the color scheme. */
+.mb-automations { margin: 0 10px 4px; flex: 0 0 auto; }
+.mb-auto-toggle {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: var(--ui-interactive-bg); border: 1px solid var(--ui-interactive-bd);
+  color: var(--vbc-brown); font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em;
+  padding: 5px 8px; border-radius: 6px; cursor: pointer; text-align: left;
+}
+.mb-auto-toggle:hover { background: var(--ui-interactive-bd); }
+.mb-auto-caret { font-size: 9px; opacity: 0.8; }
+.mb-auto-body { display: flex; flex-direction: column; gap: 6px; padding: 8px 2px 2px; }
+.mb-auto-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.mb-auto-run {
+  background: var(--ui-interactive); color: var(--ui-on-interactive, #2d1613);
+  border: none; border-radius: 6px; padding: 4px 10px; font-size: 11.5px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.mb-auto-run:hover { background: var(--ui-interactive-dk); }
+.mb-auto-run:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: 2px; }
+.mb-auto-params { display: inline-flex; gap: 6px; }
+.mb-auto-param { font-size: 10.5px; color: var(--vbc-brown); display: inline-flex; align-items: center; gap: 3px; }
+.mb-auto-input {
+  width: 48px; font-size: 11px; padding: 2px 4px;
+  border: 1px solid var(--ui-interactive-bd); border-radius: 4px;
+}
+.mb-auto-input:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: 1px; }
+.mb-auto-desc { flex: 1 1 100%; font-size: 10px; color: var(--text-muted, #4b5563); line-height: 1.35; }
