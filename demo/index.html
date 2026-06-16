@@ -663,14 +663,15 @@
   <!-- Map Buddy AI assistant — remove these two lines to detach -->
   <script src="/map-buddy/js/map-buddy.js"></script>
   <script>
-    // On localhost, talk to the local Map Buddy backend (docker compose service,
-    // proxied at /map-buddy-api) so AI map control can be demoed end-to-end.
-    // Anywhere else, use the configured per-county endpoint or the Cloud Run URL.
+    // Map Buddy runs as a standalone Cloud Run service — the frontend just points
+    // apiBase at it (one key, one rate-limiter, one place to update). Prefer the
+    // configured per-county endpoint everywhere, including localhost. The local
+    // /map-buddy-api proxy is only a fallback if no endpoint is configured.
     (function () {
       var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-      var apiBase = (isLocal && '/map-buddy-api')
-        || (window.COUNTY && COUNTY.endpoints && COUNTY.endpoints.mapBuddy)
+      var apiBase = (window.COUNTY && COUNTY.endpoints && COUNTY.endpoints.mapBuddy)
         || window.MAP_BUDDY_API
+        || (isLocal && '/map-buddy-api')
         || 'https://map-buddy-toaozre74a-uc.a.run.app';
       MapBuddy.mount({ apiBase: apiBase });
     })();
