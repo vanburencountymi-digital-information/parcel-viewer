@@ -354,18 +354,31 @@
 
   // ── Map-action tools (placeholders) ─────────────────────────────────────────
   function openPrint() {
-    openModal("Print", [
-      '<p class="pv-modal-lead">Print or export the current map and parcel details.</p>',
-      '<p>A full <strong>map + parcel data sheet PDF</strong> export is on the way. For now you can print the current browser view.</p>',
-      '<div class="pv-form-actions">' +
+    var parcel = (window.PS_STATE && window.PS_STATE.parcel) || null;
+    var hasDoc = !!(window.PV_DOC && parcel && parcel.pin);
+    var body = ['<p class="pv-modal-lead">Print or export the current map and parcel details.</p>'];
+    if (hasDoc) {
+      body.push('<p>Export a one-page <strong>parcel summary</strong> for <strong>' + esc(parcel.pin) +
+        '</strong> — a snapshot of the current map plus the key facts — as a print/PDF or a standalone HTML file.</p>');
+      body.push('<div class="pv-form-actions">' +
+        '<button type="button" class="pv-btn-ghost" data-close>Close</button>' +
+        '<button type="button" class="pv-btn-ghost" id="pv-dl-summary">Download HTML</button>' +
+        '<button type="button" class="pv-btn-primary" id="pv-print-summary">Print parcel summary</button>' +
+        '</div>');
+      body.push('<p class="pv-modal-note">Tip: frame the parcel on the map first — the current map view is captured into the document.</p>');
+    } else {
+      body.push('<p>Select a parcel to export a formatted parcel summary. For now you can print the current browser view.</p>');
+      body.push('<div class="pv-form-actions">' +
         '<button type="button" class="pv-btn-ghost" data-close>Close</button>' +
         '<button type="button" class="pv-btn-primary" id="pv-print-now">Print current view</button>' +
-      '</div>',
-      placeholderTag("Full PDF export with a formatted parcel sheet is planned.")
-    ].join(""), function (bodyEl) {
+        '</div>');
+    }
+    openModal("Print", body.join(""), function (bodyEl) {
       bodyEl.addEventListener("click", function (e) {
         if (e.target.closest("[data-close]")) return closeModal();
         if (e.target.closest("#pv-print-now")) { closeModal(); window.print(); }
+        if (e.target.closest("#pv-print-summary")) { closeModal(); window.PV_DOC.printParcelSummary(parcel); }
+        if (e.target.closest("#pv-dl-summary")) { closeModal(); window.PV_DOC.downloadParcelSummary(parcel); }
       });
     });
   }
