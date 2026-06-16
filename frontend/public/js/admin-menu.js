@@ -96,16 +96,27 @@
   function makeModalMovable(modalEl, headerEl) {
     if (!modalEl || !headerEl) return;
     if (!window.matchMedia("(min-width: 641px)").matches) return;
-    // Pin the modal's current rendered size, then lift max-width so it can be
-    // resized larger than the default without changing how it first appears.
-    modalEl.style.width = modalEl.offsetWidth + "px";
-    modalEl.style.height = modalEl.offsetHeight + "px";
-    modalEl.style.maxWidth = "none";
-    var tx = 0, ty = 0;
+    var tx = 0, ty = 0, pinned = false;
+    // Lift the size constraints to the modal's CURRENT rendered size — but only
+    // once a drag/resize actually begins. Pinning up front ran before the body
+    // content was mounted (Bookmarks builds its list in onMount; What's New
+    // fetches its changelog async), so the modal locked to its tiny empty-state
+    // height: content then overflowed and the first resize snapped from that
+    // stale size. Pinning lazily lets the modal open at its natural content size
+    // and makes resizing start from what's actually on screen.
+    function pinSize() {
+      if (pinned) return;
+      modalEl.style.width = modalEl.offsetWidth + "px";
+      modalEl.style.height = modalEl.offsetHeight + "px";
+      modalEl.style.maxWidth = "none";
+      modalEl.style.maxHeight = "none";
+      pinned = true;
+    }
     headerEl.classList.add("pv-modal-header--drag");
     headerEl.addEventListener("pointerdown", function (e) {
       if (e.target.closest("button")) return;          // let the close button work
       e.preventDefault();
+      pinSize();
       var sx = e.clientX, sy = e.clientY, ox = tx, oy = ty;
       headerEl.setPointerCapture(e.pointerId);
       function mv(ev) { tx = ox + (ev.clientX - sx); ty = oy + (ev.clientY - sy); modalEl.style.transform = "translate(" + tx + "px," + ty + "px)"; }
@@ -120,6 +131,7 @@
     modalEl.appendChild(rh);
     rh.addEventListener("pointerdown", function (e) {
       e.preventDefault(); e.stopPropagation();
+      pinSize();
       var sx = e.clientX, sy = e.clientY, sw = modalEl.offsetWidth, sh = modalEl.offsetHeight;
       rh.setPointerCapture(e.pointerId);
       function mv(ev) {
