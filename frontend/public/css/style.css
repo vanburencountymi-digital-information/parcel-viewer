@@ -4096,3 +4096,51 @@ input[type="checkbox"]:focus-visible {
 [data-theme="dark"] .mcp-body::-webkit-scrollbar-thumb:hover {
   background: rgba(255,255,255,0.22);
 }
+
+/* ── Focus-visible sweep — WCAG 2.4.7 Focus Visible (DIC-396) ────────────────
+   axe-core can't detect a missing focus ring (it's a visual judgment), so the
+   automated audit (DIC-376) under-covered 2.4.7. The custom-styled controls
+   below were keyboard-operable but showed no focus indicator. One consistent
+   gold ring (--ui-interactive), visible on both light and dark panels, matching
+   the checkbox fix in 64158cd. Kept at end-of-file so it wins source-order over
+   the earlier `:focus { outline:none }` rules on the text inputs.
+   Tool / icon / disclosure / close / clear / swatch / tab / slider controls: */
+.sel-tool-btn:focus-visible,
+.drw-tool-btn:focus-visible,
+.drw-icon-btn:focus-visible,
+.msr-tool-btn:focus-visible,
+.msr-toggle:focus-visible,
+.plbl-size-btn:focus-visible,
+.mcp-tab:focus-visible,
+.lyr-chevron:focus-visible,
+.parcel-nav-btn:focus-visible,
+.parcel-info-close:focus-visible,
+.mcp-header-close:focus-visible,
+.sel-clear-btn:focus-visible,
+.drw-clear-btn:focus-visible,
+.cogo-close-btn:focus-visible,
+.cogo-import-close:focus-visible,
+.msr-hud-close:focus-visible,
+.msr-hud-clear:focus-visible,
+.env-result-clear:focus-visible,
+.drw-swatch:focus-visible,
+.lyr-hillshade-swatch:focus-visible,
+.pv-range:focus-visible {
+  outline: 2px solid var(--ui-interactive);
+  outline-offset: 2px;
+}
+
+/* Text inputs / selects that previously relied on a 1px gray→blue border shift
+   only — not a reliable focus indicator (2.4.7). Give them the same ring. */
+.parcel-search-input:focus-visible,
+#chat-input:focus-visible,
+.filter-input:focus-visible,
+.buffer-input:focus-visible,
+.buffer-select:focus-visible,
+.cogo-coord-input:focus-visible,
+.cogo-input:focus-visible,
+.cogo-dir-sel:focus-visible,
+.cogo-dms-inp:focus-visible {
+  outline: 2px solid var(--ui-interactive);
+  outline-offset: 1px;
+}

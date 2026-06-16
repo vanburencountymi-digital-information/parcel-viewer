@@ -453,3 +453,17 @@
   box-shadow: 0 0 0 2px rgba(181,141,74,0.15);
 }
 [data-theme="dark"] .mb-resize-handle:hover  { background: rgba(181,141,74,0.35); }
+
+/* ── Focus-visible sweep — WCAG 2.4.7 (DIC-396) ──────────────────────────────
+   Map Buddy chat controls had no keyboard focus indicator. Same gold ring as
+   the rest of the viewer. End-of-file so it wins over `.mb-input:focus`'s
+   `outline:none`. */
+.mb-tab-btn:focus-visible,
+.mb-collapse-btn:focus-visible,
+.mb-quick-btn:focus-visible,
+.mb-send-btn:focus-visible,
+.mb-mobile-close:focus-visible,
+.mb-input:focus-visible {
+  outline: 2px solid var(--ui-interactive);
+  outline-offset: 2px;
+}
