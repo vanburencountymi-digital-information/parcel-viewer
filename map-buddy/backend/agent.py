@@ -82,6 +82,53 @@ _COORDS = {
 #   {...}          → a literal payload, used verbatim
 # env_lookup: run the server-side environmental query at the parcel centroid and
 # hand the result back to the model to summarize.
+_PARAM_TYPES = ("number", "string", "boolean")     # macro param types
+_COND_OPS = ("==", "!=", "in", "not_in", "truthy", "falsy")  # branching operators
+
+
+def _interp(value, params):
+    """Substitute $param tokens in a step payload. A value that is exactly "$name"
+    becomes the raw (typed) param value; otherwise "$name" is string-substituted."""
+    if isinstance(value, str):
+        if value.startswith("$") and value[1:] in params:
+            return params[value[1:]]
+        out = value
+        for k in sorted(params, key=len, reverse=True):  # longest names first
+            out = out.replace("$" + k, str(params[k]))
+        return out
+    if isinstance(value, dict):
+        return {k: _interp(v, params) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_interp(v, params) for v in value]
+    return value
+
+
+def _cond_passes(when, env):
+    """Evaluate a step's 'when' condition against the environmental result. Tiny,
+    safe operator set — no code eval. Unknown/absent env → condition fails."""
+    if not when:
+        return True
+    op = when.get("op")
+    # Resolve a dotted field path (e.g. "flood.in_special_flood_hazard_area") into env.
+    cur = env
+    for part in when["field"].split("."):
+        cur = cur.get(part) if isinstance(cur, dict) else None
+    val = when.get("value")
+    if op == "==":
+        return cur == val
+    if op == "!=":
+        return cur != val
+    if op == "in":
+        return cur in (val or [])
+    if op == "not_in":
+        return cur not in (val or [])
+    if op == "truthy":
+        return bool(cur)
+    if op == "falsy":
+        return not bool(cur)
+    return False
+
+
 WORKFLOWS = {
     "analyze_parcel": {
         "description": "select + zoom, flood/wetlands layers, measure, and environmental data",
@@ -95,12 +142,20 @@ WORKFLOWS = {
         "env_lookup": True,
     },
     "check_buildability": {
-        "description": "dimensions + a 30 ft setback + environmental constraints",
+        "description": "dimensions + a configurable setback ring (default 30 ft); also turns on the flood overlay if the parcel is in a flood hazard area",
+        "params": {
+            "setback_ft": {"type": "number", "default": 30,
+                           "description": "Setback distance in feet for the buildable-area ring (default 30)."},
+        },
         "steps": [
             {"type": "select_parcel", "payload": "pin_required"},
             {"type": "fly_to_parcel", "payload": "pin"},
             {"type": "dimension_parcel", "payload": "pin"},
-            {"type": "draw_parcel_buffer", "payload": {"distance_ft": 30, "inward": True, "label": "30 ft setback"}},
+            {"type": "draw_parcel_buffer", "payload": {"distance_ft": "$setback_ft", "inward": True, "label": "$setback_ft ft setback"}},
+            # Branching: only add the flood overlay when the parcel is actually in a
+            # special flood hazard area (evaluated server-side against the env lookup).
+            {"type": "set_layer_visibility", "payload": {"layer_id": "flood", "visible": True},
+             "when": {"field": "flood.in_special_flood_hazard_area", "op": "==", "value": "T"}},
         ],
         "env_lookup": True,
     },
@@ -123,6 +178,12 @@ def _validate_workflows(table):
     for name, wf in table.items():
         if not isinstance(wf.get("description"), str) or not wf["description"]:
             raise ValueError("Macro %r must have a non-empty 'description'." % name)
+        params = wf.get("params") or {}
+        if not isinstance(params, dict):
+            raise ValueError("Macro %r 'params' must be a dict." % name)
+        for pname, pdef in params.items():
+            if not isinstance(pdef, dict) or pdef.get("type") not in _PARAM_TYPES:
+                raise ValueError("Macro %r param %r needs a 'type' of %s." % (name, pname, "/".join(_PARAM_TYPES)))
         steps = wf.get("steps")
         if not isinstance(steps, list) or not steps:
             raise ValueError("Macro %r must have a non-empty 'steps' list." % name)
@@ -135,6 +196,12 @@ def _validate_workflows(table):
                     "Macro %r step %d (%r) has an invalid payload %r — expected "
                     "'pin', 'pin_required', or a literal dict." % (name, i, step["type"], spec)
                 )
+            when = step.get("when")
+            if when is not None:
+                if not isinstance(when, dict) or not isinstance(when.get("field"), str):
+                    raise ValueError("Macro %r step %d 'when' needs a string 'field'." % (name, i))
+                if when.get("op") not in _COND_OPS:
+                    raise ValueError("Macro %r step %d 'when' has an invalid 'op' %r." % (name, i, when.get("op")))
     return table
 
 
@@ -147,6 +214,16 @@ _WF_DESC = (
     + " ".join("'%s' = %s." % (k, v["description"]) for k, v in WORKFLOWS.items())
     + " The environmental results come back to you — summarize them for the user."
 )
+
+
+def _wf_params_schema():
+    """Union of every macro's params, exposed as optional run_workflow properties
+    so the model can fill a slot (e.g. setback_ft) from natural language."""
+    props = {}
+    for wf in WORKFLOWS.values():
+        for pname, pdef in (wf.get("params") or {}).items():
+            props[pname] = {"type": pdef["type"], "description": pdef.get("description", "")}
+    return props
 
 
 TOOLS = [
@@ -268,7 +345,9 @@ TOOLS = [
 
     # ── Workflows (one deterministic call instead of chaining tools) ──────────
     {"name": "run_workflow", "description": _WF_DESC,
-     "input_schema": {"type": "object", "properties": {"workflow": {"type": "string", "enum": list(WORKFLOWS.keys())}, "pin": _PIN}, "required": ["workflow"]}},
+     "input_schema": {"type": "object",
+                      "properties": dict({"workflow": {"type": "string", "enum": list(WORKFLOWS.keys())}, "pin": _PIN}, **_wf_params_schema()),
+                      "required": ["workflow"]}},
 
     # ── Proactive offers ──────────────────────────────────────────────────────
     {"name": "suggest_actions", "description": "Offer the user 2-4 helpful next steps as tappable suggestions so they don't have to know what to ask. Each is a short, natural first-person-imperative phrase the user could tap (e.g. 'Show flood & wetlands risk', 'Draw a 30 ft setback', 'Compare to the neighboring parcel'). Call this at the END of almost every reply, tailored to the current parcel/context.",
@@ -445,9 +524,35 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
     if not wf:
         return ("Unknown workflow '%s'." % name, [])
 
+    # Resolve + validate params (model-supplied slot values, else the default).
+    params = {}
+    for pname, pdef in (wf.get("params") or {}).items():
+        val = inp.get(pname)
+        if val is None:
+            val = pdef.get("default")
+        elif pdef["type"] == "number" and not isinstance(val, (int, float)):
+            return ("Can't run '%s': %r must be a number." % (name, pname), [])
+        elif pdef["type"] == "string" and not isinstance(val, str):
+            return ("Can't run '%s': %r must be text." % (name, pname), [])
+        elif pdef["type"] == "boolean" and not isinstance(val, bool):
+            return ("Can't run '%s': %r must be true or false." % (name, pname), [])
+        params[pname] = val
+
+    # Environmental lookup first — needed for branching (`when`) and the summary.
+    env = None
+    if wf.get("env_lookup") or any("when" in s for s in wf["steps"]):
+        centroid = (ctx or {}).get("centroid")
+        if centroid and len(centroid) >= 2:
+            try:
+                env = _query_environment(float(centroid[0]), float(centroid[1]))
+            except Exception as e:
+                env = {"error": str(e)}
+
     pin = inp.get("pin")
     cmds = []
     for step in wf["steps"]:
+        if "when" in step and not _cond_passes(step["when"], env):
+            continue
         spec = step.get("payload")
         if spec == "pin_required":
             if not pin:
@@ -456,19 +561,10 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
         elif spec == "pin":
             payload = {"pin": pin} if pin else {}
         elif isinstance(spec, dict):
-            payload = dict(spec)
+            payload = _interp(dict(spec), params)
         else:
             payload = {}
         cmds.append({"type": step["type"], "payload": payload})
-
-    env = None
-    if wf.get("env_lookup"):
-        centroid = (ctx or {}).get("centroid")
-        if centroid and len(centroid) >= 2:
-            try:
-                env = _query_environment(float(centroid[0]), float(centroid[1]))
-            except Exception as e:
-                env = {"error": str(e)}
 
     note = "Ran workflow '%s' (%d map actions)." % (name, len(cmds))
     if env is not None:
