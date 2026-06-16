@@ -463,6 +463,7 @@
     var areaUnits = (window.PV_PREFS && window.PV_PREFS.getAreaUnits && window.PV_PREFS.getAreaUnits()) || "acres";
     var basemap   = (window.PV_PREFS && window.PV_PREFS.getBasemap && window.PV_PREFS.getBasemap()) || "light";
     var glassPct  = 62; try { var _ga = parseFloat(localStorage.getItem("pv-glass-alpha")); if (_ga > 0) glassPct = Math.round(_ga * 100); } catch (_) {}
+    var orbitOn   = !(window.PV_PREFS && window.PV_PREFS.getCinematicOrbit) || window.PV_PREFS.getCinematicOrbit();
     function opt(v, label, cur) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + label + '</option>'; }
     openModal("Settings", [
       '<p class="pv-modal-lead">Display preferences for this device.</p>',
@@ -478,6 +479,10 @@
           '<select class="pv-input" id="pv-set-basemap">' +
             opt("light", "Light", basemap) + opt("dark", "Dark", basemap) + opt("aerial", "Aerial imagery", basemap) + '</select>') +
         field("Panel glass", '<input type="range" class="pv-range" id="pv-set-glass" min="40" max="100" step="2" value="' + glassPct + '" aria-label="Panel transparency, lower is more see-through"><span class="pv-range-hint">Lower = more see-through</span>') +
+        field("Search arrival",
+          '<label class="pv-a11y-row" style="margin:0"><input type="checkbox" id="pv-set-orbit"' + (orbitOn ? " checked" : "") + '>' +
+          '<span><span class="pv-a11y-lbl">Spin around parcel</span>' +
+          '<span class="pv-a11y-desc">After a search, orbit the parcel once. Turn off for a quick fly-in.</span></span></label>') +
       '</div>',
       '<p class="pv-settings-h">Accessibility</p>',
       a11yControlsHtml(),
@@ -489,6 +494,8 @@
       if (a) a.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setAreaUnits(a.value); });
       if (c) c.addEventListener("change", function () { window.PV_COORDS && window.PV_COORDS.setFormat(c.value); });
       if (b) b.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setBasemap(b.value); });
+      var orb = bodyEl.querySelector("#pv-set-orbit");
+      if (orb) orb.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setCinematicOrbit && window.PV_PREFS.setCinematicOrbit(orb.checked); });
       var g = bodyEl.querySelector("#pv-set-glass");
       if (g) g.addEventListener("input", function () { var a = Math.max(0.4, Math.min(1, g.value / 100)); document.documentElement.style.setProperty("--glass-alpha", a); try { localStorage.setItem("pv-glass-alpha", String(a)); } catch (_) {} });
       wireA11yControls(bodyEl);
