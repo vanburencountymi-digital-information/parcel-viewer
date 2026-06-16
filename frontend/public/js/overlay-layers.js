@@ -35,7 +35,10 @@
 
   // ── WMS URL construction ─────────────────────────────────────────────────
 
-  function _buildWmsUrl(base, version, layerName) {
+  // opts: { format, transparent } — default image/png + transparent (regulatory
+  // overlays). Full-coverage imagery (aerial) passes image/jpeg + transparent:false.
+  function _buildWmsUrl(base, version, layerName, opts) {
+    opts = opts || {};
     var srsParam = version === '1.3.0' ? 'CRS' : 'SRS';
     var sep = base.indexOf('?') === -1 ? '?' : '&';
     return base + sep + [
@@ -44,8 +47,8 @@
       'REQUEST=GetMap',
       'LAYERS=' + encodeURIComponent(layerName),
       'STYLES=',
-      'FORMAT=image/png',
-      'TRANSPARENT=TRUE',
+      'FORMAT=' + (opts.format || 'image/png'),
+      'TRANSPARENT=' + (opts.transparent === false ? 'FALSE' : 'TRUE'),
       srsParam + '=EPSG:3857',
       'WIDTH=256',
       'HEIGHT=256',
@@ -139,6 +142,21 @@
       opacity:     0.8,
       minzoom:     15,
       attribution: _dep3Attr
+    },
+    {
+      // County-hosted QGIS Server aerial (evaluation — DIC-438). Full-coverage
+      // imagery, so jpeg + no transparency. Sits above the basemap/mi-aerial,
+      // below parcels. NOTE: QGIS Server must send CORS headers for MapLibre to
+      // render these tiles (raster tiles upload to WebGL as crossOrigin images).
+      id:          'overlay-vbc-aerial-2023',
+      label:       'VBC Aerial 2023 (12in) — county WMS',
+      url:         _buildWmsUrl(
+                     'https://wms.vanburencountymi.gov/cgi-bin/qgis_mapserv.fcgi.exe?map=VBCWMS1.qgz',
+                     '1.3.0', 'AP_2023_12in', { format: 'image/jpeg', transparent: false }
+                   ),
+      opacity:     1.0,
+      minzoom:     0,
+      attribution: '<a href="https://www.vanburencountymi.gov" target="_blank" rel="noopener">Van Buren County GIS</a>'
     }
   ];
 
