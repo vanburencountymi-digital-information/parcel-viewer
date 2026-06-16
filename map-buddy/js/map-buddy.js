@@ -748,6 +748,8 @@
     cinematic_fly_to_parcel: function (p) {
       var m = _map(), f = _resolveParcel(p.pin), t = _turf();
       if (!m || !f || !t) { _camIntent().fitParcel = (p.pin || null); return '🎬 Flying to parcel'; }
+      // Prefer the viewer's shared cinematic (interaction-cancel, reduced-motion).
+      if (root.PS_cinematicFlyTo && f.geometry) { _cam = null; root.PS_cinematicFlyTo(f.geometry); return '🎬 Cinematic fly-around of ' + (f.properties.pin || f.properties.PIN); }
       var bb = t.bbox(f), center = _parcelCentroid(f) || [(bb[0] + bb[2]) / 2, (bb[1] + bb[3]) / 2];
       var zoom = 17;
       if (m.cameraForBounds) { var cfb = m.cameraForBounds([[bb[0], bb[1]], [bb[2], bb[3]]], { padding: 140, maxZoom: 18 }); if (cfb) zoom = Math.min(cfb.zoom - 0.4, 18); }
@@ -959,7 +961,7 @@
       if (hits.length === 1) {
         var pin = hits[0].properties.pin || hits[0].properties.PIN;
         if (root.PS_selectParcel) root.PS_selectParcel(pin);
-        _CMDS.fly_to_parcel({ pin: pin });
+        _CMDS.cinematic_fly_to_parcel({ pin: pin });
         return '🔎 Found ' + pin;
       }
       var html = '<strong>' + hits.length + ' matches</strong> for “' + _escHtml(p.query) + '”:<ul class="mb-result-list">';
@@ -1042,7 +1044,7 @@
       b.addEventListener('click', function () {
         var pin = b.getAttribute('data-pin');
         if (root.PS_selectParcel) root.PS_selectParcel(pin);
-        _CMDS.fly_to_parcel({ pin: pin });
+        _CMDS.cinematic_fly_to_parcel({ pin: pin });
       });
     });
     _scrollBottom();
