@@ -70,6 +70,62 @@ _COORDS = {
     "items": {"type": "array", "items": {"type": "number"}, "minItems": 2, "maxItems": 2},
 }
 
+# ── Macro registry (DIC-430) ──────────────────────────────────────────────────
+# Declarative definition of the multi-step "workflows" that run_workflow expands.
+# Adding a macro here is the ONLY change needed — the run_workflow tool's enum and
+# description (below) and the _expand_workflow interpreter both read from this table.
+#
+# Each macro: {description, steps[], env_lookup}. A step is {type, payload} where
+# `type` is a frontend command and `payload` is one of:
+#   "pin"          → {"pin": pin} when a parcel is selected, else {} (current parcel)
+#   "pin_required" → include the step only when a pin is set (payload {"pin": pin})
+#   {...}          → a literal payload, used verbatim
+# env_lookup: run the server-side environmental query at the parcel centroid and
+# hand the result back to the model to summarize.
+WORKFLOWS = {
+    "analyze_parcel": {
+        "description": "select + zoom, flood/wetlands layers, measure, and environmental data",
+        "steps": [
+            {"type": "select_parcel", "payload": "pin_required"},
+            {"type": "fly_to_parcel", "payload": "pin"},
+            {"type": "set_layer_visibility", "payload": {"layer_id": "flood", "visible": True}},
+            {"type": "set_layer_visibility", "payload": {"layer_id": "wetlands", "visible": True}},
+            {"type": "measure_parcel", "payload": "pin"},
+        ],
+        "env_lookup": True,
+    },
+    "check_buildability": {
+        "description": "dimensions + a 30 ft setback + environmental constraints",
+        "steps": [
+            {"type": "select_parcel", "payload": "pin_required"},
+            {"type": "fly_to_parcel", "payload": "pin"},
+            {"type": "dimension_parcel", "payload": "pin"},
+            {"type": "draw_parcel_buffer", "payload": {"distance_ft": 30, "inward": True, "label": "30 ft setback"}},
+        ],
+        "env_lookup": True,
+    },
+    "risk_overview": {
+        "description": "flood/wetlands/soils layers + environmental data",
+        "steps": [
+            {"type": "select_parcel", "payload": "pin_required"},
+            {"type": "fly_to_parcel", "payload": "pin"},
+            {"type": "set_layer_visibility", "payload": {"layer_id": "flood", "visible": True}},
+            {"type": "set_layer_visibility", "payload": {"layer_id": "wetlands", "visible": True}},
+            {"type": "set_layer_visibility", "payload": {"layer_id": "soils", "visible": True}},
+        ],
+        "env_lookup": True,
+    },
+}
+
+# Tool description is generated from the registry so a new macro needs no edits here.
+_WF_DESC = (
+    "Run a common multi-step workflow in ONE call instead of chaining tools "
+    "yourself — faster, cheaper, deterministic. "
+    + " ".join("'%s' = %s." % (k, v["description"]) for k, v in WORKFLOWS.items())
+    + " The environmental results come back to you — summarize them for the user."
+)
+
+
 TOOLS = [
     # ── Camera ────────────────────────────────────────────────────────────────
     {"name": "fly_to_parcel", "description": "Quickly zoom and pan the map to frame a parcel (no flourish). Defaults to the selected parcel. For 'show me / fly to', prefer cinematic_fly_to_parcel.",
@@ -188,8 +244,8 @@ TOOLS = [
          "pin": {"type": "string"}, "lng": _LNG, "lat": _LAT, "zoom": {"type": "number"}, "note": {"type": "string"}}}}}, "required": ["stops"]}},
 
     # ── Workflows (one deterministic call instead of chaining tools) ──────────
-    {"name": "run_workflow", "description": "Run a common multi-step workflow in ONE call instead of chaining tools yourself — faster, cheaper, deterministic. 'analyze_parcel' = select + zoom, flood/wetlands layers, measure, and environmental data. 'check_buildability' = dimensions + a 30 ft setback + environmental constraints. 'risk_overview' = flood/wetlands/soils layers + environmental data. The environmental results come back to you — summarize them for the user.",
-     "input_schema": {"type": "object", "properties": {"workflow": {"type": "string", "enum": ["analyze_parcel", "check_buildability", "risk_overview"]}, "pin": _PIN}, "required": ["workflow"]}},
+    {"name": "run_workflow", "description": _WF_DESC,
+     "input_schema": {"type": "object", "properties": {"workflow": {"type": "string", "enum": list(WORKFLOWS.keys())}, "pin": _PIN}, "required": ["workflow"]}},
 
     # ── Proactive offers ──────────────────────────────────────────────────────
     {"name": "suggest_actions", "description": "Offer the user 2-4 helpful next steps as tappable suggestions so they don't have to know what to ask. Each is a short, natural first-person-imperative phrase the user could tap (e.g. 'Show flood & wetlands risk', 'Draw a 30 ft setback', 'Compare to the neighboring parcel'). Call this at the END of almost every reply, tailored to the current parcel/context.",
@@ -357,42 +413,39 @@ def _exec_data_tool(name: str, inp: dict) -> str:
     return "Unknown data tool."
 
 
-# Deterministic macros: a single run_workflow call expands here into a fixed
-# sequence of frontend commands (+ a server-side environmental lookup), so the
-# model spends one tool call instead of re-deciding the same chain every time.
+# Deterministic macros: a single run_workflow call expands a WORKFLOWS entry into
+# a fixed sequence of frontend commands (+ a server-side environmental lookup), so
+# the model spends one tool call instead of re-deciding the same chain every time.
+# The macro definitions live in WORKFLOWS (above); this just interprets them.
 def _expand_workflow(name: str, inp: dict, ctx: dict | None):
-    pin = inp.get("pin")
-    pin_payload = {"pin": pin} if pin else {}
-    centroid = (ctx or {}).get("centroid")
-    cmds = []
-
-    def sel_fly():
-        if pin:
-            cmds.append({"type": "select_parcel", "payload": {"pin": pin}})
-        cmds.append({"type": "fly_to_parcel", "payload": dict(pin_payload)})
-
-    def layers(*ids):
-        for lid in ids:
-            cmds.append({"type": "set_layer_visibility", "payload": {"layer_id": lid, "visible": True}})
-
-    env = None
-    if name == "analyze_parcel":
-        sel_fly(); layers("flood", "wetlands")
-        cmds.append({"type": "measure_parcel", "payload": dict(pin_payload)})
-    elif name == "check_buildability":
-        sel_fly()
-        cmds.append({"type": "dimension_parcel", "payload": dict(pin_payload)})
-        cmds.append({"type": "draw_parcel_buffer", "payload": {"distance_ft": 30, "inward": True, "label": "30 ft setback"}})
-    elif name == "risk_overview":
-        sel_fly(); layers("flood", "wetlands", "soils")
-    else:
+    wf = WORKFLOWS.get(name)
+    if not wf:
         return ("Unknown workflow '%s'." % name, [])
 
-    if centroid and len(centroid) >= 2:
-        try:
-            env = _query_environment(float(centroid[0]), float(centroid[1]))
-        except Exception as e:
-            env = {"error": str(e)}
+    pin = inp.get("pin")
+    cmds = []
+    for step in wf["steps"]:
+        spec = step.get("payload")
+        if spec == "pin_required":
+            if not pin:
+                continue
+            payload = {"pin": pin}
+        elif spec == "pin":
+            payload = {"pin": pin} if pin else {}
+        elif isinstance(spec, dict):
+            payload = dict(spec)
+        else:
+            payload = {}
+        cmds.append({"type": step["type"], "payload": payload})
+
+    env = None
+    if wf.get("env_lookup"):
+        centroid = (ctx or {}).get("centroid")
+        if centroid and len(centroid) >= 2:
+            try:
+                env = _query_environment(float(centroid[0]), float(centroid[1]))
+            except Exception as e:
+                env = {"error": str(e)}
 
     note = "Ran workflow '%s' (%d map actions)." % (name, len(cmds))
     if env is not None:
