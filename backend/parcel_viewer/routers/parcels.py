@@ -178,6 +178,28 @@ async def search(q: str = Query(..., min_length=2), limit: int = Query(10, le=50
         like = f"%{t}%"
         params.extend([like, like, like, like])
 
+    # Relevance ranking. The WHERE above matches each token as a substring
+    # anywhere (good recall), but on its own that loses word order and the
+    # house-number boundary — so "219 E Paw Paw" ranks behind "34219 ..." because
+    # the "219" substring hides inside "34219". Score rows so the address that
+    # actually starts with the typed phrase wins, and a numeric first token only
+    # counts when it stands alone (not buried in a longer number).
+    qnorm = " ".join(tokens)
+    rank_when = [
+        ("a.prop_street ILIKE %s", qnorm + "%"),
+        ("(COALESCE(a.prop_street, '') || ' ' || COALESCE(a.prop_city, '')) ILIKE %s", qnorm + "%"),
+        ("a.prop_street ILIKE %s", "%" + qnorm + "%"),
+    ]
+    if tokens[0].isdigit():
+        # Word boundary on the house number: matches "219 ..." but not "34219 ...".
+        rank_when.append(("a.prop_street ~* %s", r"(^|\D)" + tokens[0] + r"(\D|$)"))
+    rank_case = (
+        "CASE "
+        + " ".join(f"WHEN {cond} THEN {i}" for i, (cond, _) in enumerate(rank_when))
+        + f" ELSE {len(rank_when)} END"
+    )
+    rank_params = [p for _, p in rank_when]
+
     sql = f"""
         SELECT pg.id, pg.parcel_no, pg.municipality, pg.acres,
                a.owner_name, a.prop_street, a.prop_city,
@@ -187,9 +209,10 @@ async def search(q: str = Query(..., min_length=2), limit: int = Query(10, le=50
         LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
         CROSS JOIN LATERAL (SELECT ST_Transform(pg.geom, 4326)::box2d::geometry AS b) bb
         WHERE pg.archived_at IS NULL AND {' AND '.join(clauses)}
-        ORDER BY pg.parcel_no
+        ORDER BY {rank_case}, pg.parcel_no
         LIMIT %s
     """
+    params.extend(rank_params)
     params.append(limit)
     with pool.connection() as conn:
         rows = conn.execute(sql, params).fetchall()
