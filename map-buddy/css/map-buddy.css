@@ -199,6 +199,26 @@
   margin-bottom: 4px;
 }
 
+/* Rendered Markdown inside an AI reply (see _renderMarkdown in map-buddy.js). */
+.mb-msg-ai-body p { margin: 0 0 8px; }
+.mb-msg-ai-body p:last-child { margin-bottom: 0; }
+.mb-msg-ai-body ul,
+.mb-msg-ai-body ol { margin: 4px 0 8px; padding-left: 20px; }
+.mb-msg-ai-body ul:last-child,
+.mb-msg-ai-body ol:last-child { margin-bottom: 0; }
+.mb-msg-ai-body li { margin: 2px 0; }
+.mb-msg-ai-body li::marker { color: var(--vbc-brown); }
+.mb-msg-ai-body strong { font-weight: 700; }
+.mb-msg-ai-body em { font-style: italic; }
+.mb-msg-ai-body code {
+  font-family: "SF Mono", "Consolas", monospace;
+  font-size: 11px;
+  background: rgba(0,0,0,0.06);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+[data-theme="dark"] .mb-msg-ai-body code { background: rgba(255,255,255,0.12); }
+
 /* Thinking / streaming indicator */
 .mb-thinking {
   align-self: flex-start;
