@@ -1360,6 +1360,42 @@
 
     tabs.forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 
+    // ── Progressive disclosure: basic default + Advanced Tools (DIC-402) ──
+    // Layers is basic; Select/Draw/Measure are advanced (marked data-advanced,
+    // overridable per viewer via COUNTY.tools.advanced). Advanced tabs are hidden
+    // until the user opts in via the tab-strip toggle; the choice persists.
+    (function () {
+      const advToggle = document.getElementById("mcp-advanced-toggle");
+      const advCfg = (window.COUNTY && COUNTY.tools && Array.isArray(COUNTY.tools.advanced))
+        ? COUNTY.tools.advanced : null;
+      if (advCfg) {
+        tabs.forEach(t => t.toggleAttribute("data-advanced", advCfg.indexOf(t.dataset.tab) !== -1));
+      }
+      function isAdvancedTab(id) {
+        const t = panel.querySelector('.mcp-tab[data-tab="' + id + '"]');
+        return !!(t && t.hasAttribute("data-advanced"));
+      }
+      function setAdvanced(on) {
+        panel.classList.toggle("mcp-show-advanced", on);
+        if (advToggle) {
+          advToggle.setAttribute("aria-pressed", String(on));
+          advToggle.title = on ? "Hide advanced tools" : "Advanced tools";
+        }
+        try { localStorage.setItem("pv-advanced-tools", on ? "1" : "0"); } catch (e) {}
+        // If advanced tools were just hidden while one was active, fall back to Layers.
+        if (!on) {
+          const active = window.PS_MAP_PANEL ? window.PS_MAP_PANEL._activeTab : "layers";
+          if (isAdvancedTab(active)) switchTab("layers");
+        }
+      }
+      let startOn = false;
+      try { startOn = localStorage.getItem("pv-advanced-tools") === "1"; } catch (e) {}
+      setAdvanced(startOn);
+      if (advToggle) advToggle.addEventListener("click", () =>
+        setAdvanced(advToggle.getAttribute("aria-pressed") !== "true"));
+      if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.setAdvancedTools = setAdvanced;  // programmatic (MapBuddy)
+    })();
+
     // ── Header drag (same pattern as parcel info panel) ──
     const mcpHeader = document.getElementById("mcp-header");
     const mcpHeaderClose = document.getElementById("mcp-header-close");

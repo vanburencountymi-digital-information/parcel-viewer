@@ -963,6 +963,19 @@ body {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+/* Progressive disclosure — basic default + Advanced Tools toggle (DIC-402) */
+#map-control-panel:not(.mcp-show-advanced) .mcp-tab[data-advanced] { display: none; }
+.mcp-adv-toggle {
+  width: 30px; height: 30px; border: none; background: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: #9ca3af; border-radius: 6px;
+  margin-top: 6px; padding-top: 6px;
+  border-top: 1px solid rgba(var(--ui-interactive-rgb), 0.18);
+}
+.mcp-adv-toggle:hover { background: #e5e7eb; color: #374151; }
+.mcp-adv-toggle[aria-pressed="true"] { color: var(--ui-interactive); background: var(--ui-interactive-bg); }
+.mcp-adv-toggle:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: -2px; }
+
 .mcp-body {
   flex: 1;
   min-width: 0;
@@ -4020,6 +4033,14 @@ input[type="checkbox"]:focus-visible {
     writing-mode: horizontal-tb !important;
     padding: 8px 12px !important;
   }
+  .mcp-adv-toggle {
+    border-top: none;
+    border-left: 1px solid rgba(var(--ui-interactive-rgb), 0.18);
+    margin: 0 0 0 4px;
+    padding: 8px 12px;
+    width: auto;
+    height: auto;
+  }
   .mcp-main {
     flex-direction: column !important;
   }
@@ -4096,6 +4117,8 @@ input[type="checkbox"]:focus-visible {
 [data-theme="dark"] .mcp-body              { color: #c8b89a; }
 [data-theme="dark"] .mcp-tabs              { background: rgba(12,8,7,0.40); border-right-color: rgba(255,255,255,0.07); }
 [data-theme="dark"] .mcp-tab              { color: #7a706a; }
+[data-theme="dark"] .mcp-adv-toggle       { color: #7a706a; }
+[data-theme="dark"] .mcp-adv-toggle:hover { background: rgba(255,255,255,0.08); color: #e8d8c4; }
 [data-theme="dark"] .mcp-tab:hover        { color: #c8b89a; }
 [data-theme="dark"] .mcp-tab.active       { color: var(--ui-interactive); }
 [data-theme="dark"] .mcp-section-title    { color: #7a706a; border-bottom-color: rgba(255,255,255,0.07); }
