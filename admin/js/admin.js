@@ -78,6 +78,27 @@
     }
     o[parts[parts.length - 1]] = value;
   }
+  function getPath(obj, path) {
+    var parts = path.split('.'), o = obj;
+    for (var i = 0; i < parts.length; i++) { if (o == null) return undefined; o = o[parts[i]]; }
+    return o;
+  }
+
+  // Templates for "Add row" on editable arrays, keyed by their config path.
+  var ADD_TEMPLATES = {
+    'layers.overlays': { id: '', label: 'New PostGIS layer', type: 'vector', source: '', minZoom: 0, default: false },
+    'layers.dataSources': { id: '', label: '', source: '' },
+  };
+  function arrayAt(path) {
+    var arr = getPath(STATE.draft, path);
+    if (!Array.isArray(arr)) { setPath(STATE.draft, path, []); arr = getPath(STATE.draft, path); }
+    return arr;
+  }
+  function arrayAdd(path) { arrayAt(path).push(clone(ADD_TEMPLATES[path] || {})); }
+  function arrayRemove(path, idx) {
+    var arr = getPath(STATE.draft, path);
+    if (Array.isArray(arr) && idx >= 0 && idx < arr.length) arr.splice(idx, 1);
+  }
 
   // ── County Configuration module (DIC-458 view · DIC-464/466 editing) ────────
   function renderCounty(host) {
@@ -199,6 +220,7 @@
       if (!inp || !STATE.editing) return;
       var path = inp.getAttribute('data-path'), type = inp.getAttribute('data-type'), raw = inp.value, val;
       if (type === 'num') { if (raw === '') { val = null; } else { val = Number(raw); if (isNaN(val)) return; } }
+      else if (type === 'bool') { val = inp.checked; }
       else if (type === 'json') { try { val = JSON.parse(raw); inp.classList.remove('ac-input-err'); } catch (_) { inp.classList.add('ac-input-err'); return; } }
       else { val = raw; }
       setPath(STATE.draft, path, val);
@@ -210,6 +232,10 @@
       if (rb) return doRollback(host, parseInt(rb.getAttribute('data-rollback'), 10), activeRenderer());
       var pick = e.target.closest('[data-scheme-pick]');
       if (pick && STATE.editing) { setPath(STATE.draft, 'styling.colorScheme', pick.getAttribute('data-scheme-pick')); return activeRenderer()(host); }
+      var add = e.target.closest('[data-add]');
+      if (add && STATE.editing) { arrayAdd(add.getAttribute('data-add')); return activeRenderer()(host); }
+      var rem = e.target.closest('[data-remove]');
+      if (rem && STATE.editing) { arrayRemove(rem.getAttribute('data-remove'), parseInt(rem.getAttribute('data-index'), 10)); return activeRenderer()(host); }
       var lk = e.target.closest('[data-lookup]');
       if (lk) return toggleLookup(host, lk);
     });
@@ -415,31 +441,121 @@
     return '<ul class="ac-plan">' + items.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>';
   }
 
-  // ── Data & Layers module (DIC-461, read-only) ───────────────────────────────
+  // ── Data & Layers module (DIC-461 — read + edit) ────────────────────────────
+  // PostGIS (vector) layers are the editable focus; the legacy WMS/raster
+  // overlays are shown read-only as they're being phased out.
+  function _isPgLayer(o) { var t = String(o && o.type || '').toLowerCase(); return t === 'vector' || t === 'postgis' || t === 'mvt'; }
   function renderData(host) {
-    var L = (STATE.config && STATE.config.layers) || {};
+    var editing = STATE.editing;
+    var C = editing ? (STATE.draft || {}) : (STATE.config || {});
+    var L = C.layers || {};
     var ts = L.tileServer || {};
-    var baseRows = (L.baseLayers || []).map(function (b) {
-      return '<tr><td>' + esc(b.label) + '</td><td>' + esc(b.source) + '</td><td>' + (b.default ? 'default' : '') + '</td></tr>';
+    var overlays = L.overlays || [];
+    var sources = L.dataSources || [];
+
+    // Partition overlays, keeping each one's real index into L.overlays so edits
+    // and removals target the right array slot regardless of display grouping.
+    var pg = [], ext = [];
+    overlays.forEach(function (o, i) { (_isPgLayer(o) ? pg : ext).push({ o: o, i: i }); });
+
+    function txt(path, val, ph) {
+      return '<input class="ac-input ac-input-sm" data-path="' + path + '" data-type="str" value="' +
+        esc(val == null ? '' : val) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>';
+    }
+    function num(path, val) {
+      return '<input type="number" class="ac-input ac-input-sm" data-path="' + path + '" data-type="num" value="' +
+        esc(val == null ? '' : val) + '" style="max-width:78px">';
+    }
+    function bool(path, val) {
+      return '<input type="checkbox" data-path="' + path + '" data-type="bool"' + (val ? ' checked' : '') + '>';
+    }
+
+    var toolbar = editing
+      ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
+        '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="cancel">Cancel</button>'
+      : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit layers</button>' +
+        '<button class="ac-btn" data-act="history">Version history</button>';
+    var banner = editing
+      ? '<div class="ac-banner ac-banner-edit"><span>✎</span><div><b>Editing a draft.</b> ' +
+        'Edit the PostGIS (vector) layers, tile server, and data sources, then <b>Publish</b> to make it the live layer config. ' +
+        'Legacy WMS/raster overlays are read-only — they’re being phased out.</div></div>'
+      : '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() +
+        ' PostGIS (vector) layers served via the tile server are the editable focus; WMS/raster overlays are being phased out.</div></div>';
+
+    // Tile server (Martin) — the source of every PostGIS vector tile.
+    var tileCard =
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Tile server</h2>' +
+        '<span class="ac-card-note">serves the PostGIS vector tiles</span></div><dl class="ac-grid">' +
+        '<dt>Provider</dt><dd>' + (editing ? txt('layers.tileServer.provider', ts.provider, 'Martin') : esc(ts.provider || '—')) + '</dd>' +
+        '<dt>URL</dt><dd>' + (editing ? txt('layers.tileServer.url', ts.url, '/tiles') : '<code>' + esc(ts.url || '—') + '</code>') + '</dd></dl></div>';
+
+    // PostGIS (vector) layers — the editable registry.
+    var pgRows = pg.map(function (r) {
+      var p = 'layers.overlays.' + r.i;
+      if (editing) {
+        return '<tr><td>' + txt(p + '.label', r.o.label) + '</td>' +
+          '<td>' + txt(p + '.source', r.o.source, 'PostGIS table / Martin source') + '</td>' +
+          '<td>' + num(p + '.minZoom', r.o.minZoom) + '</td>' +
+          '<td style="text-align:center">' + bool(p + '.default', r.o.default) + '</td>' +
+          '<td><button class="ac-btn ac-btn-sm" data-remove="layers.overlays" data-index="' + r.i + '">Remove</button></td></tr>';
+      }
+      return '<tr><td>' + esc(r.o.label) + '</td><td><code>' + esc(r.o.source || '—') + '</code></td>' +
+        '<td>' + (r.o.minZoom ? ('z' + r.o.minZoom + '+') : 'all') + '</td>' +
+        '<td>' + (r.o.default ? 'on' : '') + '</td>' + (editing ? '<td></td>' : '') + '</tr>';
     }).join('');
-    var ovRows = (L.overlays || []).map(function (o) {
-      return '<tr><td>' + esc(o.label) + '</td><td>' + esc(o.type) + '</td><td>' + esc(o.source) + '</td><td>' + (o.minZoom ? ('z' + o.minZoom + '+') : 'all') + '</td></tr>';
-    }).join('');
-    var dsRows = (L.dataSources || []).map(function (d) {
+    if (!pgRows) {
+      pgRows = '<tr><td colspan="' + (editing ? 5 : 4) + '" class="ac-readonly">No PostGIS layers yet' +
+        (editing ? ' — add one below.' : '.') + '</td></tr>';
+    }
+    var pgCard =
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">PostGIS layers</h2>' +
+        '<span class="ac-card-note">' + pg.length + ' vector layer(s)</span></div>' +
+        '<table class="ac-table"><thead><tr><th>Layer</th><th>Source</th><th>Min zoom</th><th>Default on</th>' +
+          (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + pgRows + '</tbody></table>' +
+        (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="layers.overlays">+ Add PostGIS layer</button></div>' : '') +
+      '</div>';
+
+    // Legacy external overlays (WMS / raster) — read-only, phasing out.
+    var extCard = ext.length
+      ? '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">External overlays</h2>' +
+          '<span class="ac-card-note">WMS / raster — being phased out</span></div>' +
+          '<table class="ac-table"><thead><tr><th>Overlay</th><th>Type</th><th>Source</th><th>Min zoom</th></tr></thead><tbody>' +
+          ext.map(function (r) {
+            return '<tr><td>' + esc(r.o.label) + '</td><td>' + esc(r.o.type) + '</td><td>' + esc(r.o.source) + '</td>' +
+              '<td>' + (r.o.minZoom ? ('z' + r.o.minZoom + '+') : 'all') + '</td></tr>';
+          }).join('') + '</tbody></table></div>'
+      : '';
+
+    // Data sources (PostGIS tables behind the layers).
+    var dsRows = sources.map(function (d, i) {
+      var p = 'layers.dataSources.' + i;
+      if (editing) {
+        return '<tr><td>' + txt(p + '.label', d.label) + '</td>' +
+          '<td>' + txt(p + '.source', d.source, 'schema.table') + '</td>' +
+          '<td><button class="ac-btn ac-btn-sm" data-remove="layers.dataSources" data-index="' + i + '">Remove</button></td></tr>';
+      }
       return '<tr><td>' + esc(d.label) + '</td><td><code>' + esc(d.source) + '</code></td></tr>';
     }).join('');
+    if (!dsRows) dsRows = '<tr><td colspan="' + (editing ? 3 : 2) + '" class="ac-readonly">No data sources defined.</td></tr>';
+    var dsCard =
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Data sources</h2>' +
+        '<span class="ac-card-note">PostGIS tables</span></div>' +
+        '<table class="ac-table"><thead><tr><th>Dataset</th><th>Source</th>' + (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + dsRows + '</tbody></table>' +
+        (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="layers.dataSources">+ Add data source</button></div>'
+                 : '<p class="ac-readonly" style="margin-top:8px">Self-serve ingestion (upload → field-map → validate → publish, versioned) is the planned DIC-461 loader.</p>') +
+      '</div>';
+
     host.innerHTML =
-      pageHead('Data & Layers', 'Base layers, the tile server, the overlay registry, and the underlying data sources for this county. Read-only.') +
-      '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() + ' The overlay registry is modeled from the viewer’s current layers; self-serve ingestion / field-mapping / versioning is the bigger DIC-461 build.</div></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Tile server</h2></div><dl class="ac-grid">' +
-        '<dt>Provider</dt><dd>' + esc(ts.provider || '—') + '</dd><dt>URL</dt><dd><code>' + esc(ts.url || '—') + '</code></dd></dl></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Base layers</h2></div>' +
-        '<table class="ac-table"><thead><tr><th>Layer</th><th>Source</th><th></th></tr></thead><tbody>' + baseRows + '</tbody></table></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Overlay registry</h2><span class="ac-card-note">' + (L.overlays || []).length + ' overlays</span></div>' +
-        '<table class="ac-table"><thead><tr><th>Overlay</th><th>Type</th><th>Source</th><th>Visible</th></tr></thead><tbody>' + ovRows + '</tbody></table></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Data sources</h2></div>' +
-        '<table class="ac-table"><thead><tr><th>Dataset</th><th>Source</th></tr></thead><tbody>' + dsRows + '</tbody></table>' +
-        '<p class="ac-readonly" style="margin-top:8px">Self-serve ingestion (upload → field-map → validate → publish, versioned, with a job runner) is the planned DIC-461 loader.</p></div>';
+      '<div class="ac-page-head ac-page-head-row"><div>' +
+        '<h1 class="ac-page-title">Data &amp; Layers</h1>' +
+        '<p class="ac-page-sub">PostGIS layers, the tile server, and the data sources behind them.</p></div>' +
+        '<div class="ac-toolbar">' + toolbar + '</div></div>' +
+      '<div id="ac-flash"></div>' + banner +
+      tileCard + pgCard + extCard + dsCard +
+      '<div id="ac-history"></div>';
+
+    wireEditHost(host);
   }
 
   // ── Access & Ops module (DIC-462, read-only) ────────────────────────────────
