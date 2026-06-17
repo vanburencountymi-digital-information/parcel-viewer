@@ -118,6 +118,98 @@
     return { type: 'unknown', label: null, note: '' };
   }
 
+  // ── Deterministic per-call parser (DIC-369 Phase 2; NO AI) ──────────────────
+  // Extracts structured calls from the verbatim text. Geometry is NOT computed
+  // (the traverse is never walked/closed — that's Phase 3). This is the verified
+  // "truth" the AI narrates; the model must not recompute or alter these numbers.
+  function _normDesc(t) {
+    return String(t || '').toUpperCase()
+      .replace(/[°º]/g, ' DEG ')
+      .replace(/[‘’`]/g, "'").replace(/[“”]/g, '"')
+      .replace(/\s+/g, ' ').trim();
+  }
+
+  // Quadrant bearing → azimuth (deg clockwise from north) + 16-point compass.
+  var _COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  function _azimuth(ns, deg, min, sec, ew) {
+    var a = deg + (min || 0) / 60 + (sec || 0) / 3600;
+    if (ns === 'N' && ew === 'E') return a;
+    if (ns === 'S' && ew === 'E') return 180 - a;
+    if (ns === 'S' && ew === 'W') return 180 + a;
+    if (ns === 'N' && ew === 'W') return 360 - a;
+    return null;
+  }
+  function _compass(az) { return az == null ? null : _COMPASS[Math.round(az / 22.5) % 16]; }
+
+  var _UNIT_FT = { FT: 1, "'": 1, CH: 66, CHS: 66, RD: 16.5, RDS: 16.5, LK: 0.66, LKS: 0.66 };
+  var _UNIT_NAME = { FT: 'feet', "'": 'feet', CH: 'chains', CHS: 'chains', RD: 'rods', RDS: 'rods', LK: 'links', LKS: 'links' };
+
+  function _parseBearing(s) {
+    var m = s.match(/\b([NS])\s*(\d+(?:\.\d+)?)\s*(?:DEG)?\s*(?:(\d+)\s*')?\s*(?:(\d+)\s*")?\s*([EW])\b/);
+    if (!m) return null;
+    var ns = m[1], deg = parseFloat(m[2]), min = m[3] ? parseInt(m[3], 10) : 0, sec = m[4] ? parseInt(m[4], 10) : 0, ew = m[5];
+    var az = _azimuth(ns, deg, min, sec, ew);
+    var text = ns + ' ' + deg + '°' + (min ? (' ' + min + "'") : '') + (sec ? (' ' + sec + '"') : '') + ' ' + ew;
+    return { ns: ns, deg: deg, min: min, sec: sec, ew: ew, azimuth: az == null ? null : Math.round(az * 100) / 100, compass: _compass(az), text: text, raw: m[0] };
+  }
+  function _parseDistance(s) {
+    var m = s.match(/(\d+(?:\.\d+)?)\s*(FT|CHS?|RDS?|LKS?|')\b/);
+    if (!m) return null;
+    var v = parseFloat(m[1]), u = m[2];
+    return { value: v, unit: u, unit_name: _UNIT_NAME[u] || u, feet: Math.round(v * (_UNIT_FT[u] || 1) * 100) / 100, raw: m[0] };
+  }
+
+  function parseMetesAndBounds(text) {
+    var t = _normDesc(text);
+    var parts = t.split(/\bTH(?:ENCE)?\b/);
+    var commencement = parts.shift().trim();
+    var courses = parts.map(function (seg, i) {
+      seg = seg.trim();
+      var bearing = _parseBearing(seg), dist = _parseDistance(seg);
+      var note = seg;
+      if (bearing) note = note.replace(bearing.raw, ' ');
+      if (dist) note = note.replace(dist.raw, ' ');
+      note = note
+        .replace(/\bTO\s+P\.?\s?O\.?\s?B\b.*$/, '')   // closings shown separately
+        .replace(/\bTO\s+BEG\b.*$/, '')
+        .replace(/\bEXC(?:EPT)?\b.*$/, '')
+        .replace(/\bDEG\b/g, '').replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
+      return { index: i + 1, bearing: bearing, distance: dist, note: note };
+    }).filter(function (c) { return c.bearing || c.distance; });
+    var closings = [];
+    if (/TO\s+P\.?\s?O\.?\s?B|TO\s+BEG|POINT\s+OF\s+BEG/.test(t)) closings.push('Returns to the Point of Beginning');
+    var exc = t.match(/\bEXC(?:EPT)?\b([^.]*)/);
+    if (exc && exc[1].trim()) closings.push('Except: ' + exc[1].trim());
+    return { kind: 'metes_bounds', commencement: commencement, courses: courses, closings: closings };
+  }
+  function parseAliquot(text) {
+    var t = _normDesc(text);
+    var sec = (t.match(/\bSEC\s*(\d+)/) || [])[1];
+    var tw = t.match(/\bT\s*(\d+)\s*([NS])\b/), rg = t.match(/\bR\s*(\d+)\s*([EW])\b/);
+    var quarters = (t.match(/\b(NW|NE|SW|SE|N|S|E|W)\s*1\/[24]/g) || []).map(function (q) { return q.replace(/\s+/g, ' '); });
+    return {
+      kind: 'aliquot_plss', section: sec || null,
+      town: tw ? (tw[1] + ' ' + (tw[2] === 'N' ? 'North' : 'South')) : null,
+      range: rg ? (rg[1] + ' ' + (rg[2] === 'E' ? 'East' : 'West')) : null,
+      quarters: quarters,
+    };
+  }
+  function parsePlatted(text) {
+    var t = _normDesc(text);
+    return {
+      kind: 'platted_lot',
+      lot: (t.match(/\bLOT\s*(\d+)/) || [])[1] || null,
+      block: (t.match(/\bBL(?:OC)?K\s*(\d+)/) || [])[1] || null,
+    };
+  }
+  function parseDescription(text, type) {
+    if (!text) return null;
+    if (type === 'metes_bounds') return parseMetesAndBounds(text);
+    if (type === 'aliquot_plss') return parseAliquot(text);
+    if (type === 'platted_lot') return parsePlatted(text);
+    return null;
+  }
+
   // Truth layer for the tax description (DIC-369). The verbatim text + detected
   // type ARE the verified input; the model explains only this, never geometry.
   function assembleTaxDescriptionFacts(parcel) {
@@ -136,6 +228,7 @@
           description_type: cls.type,
           type_label: cls.label,
           type_note: cls.note,
+          parsed: parseDescription(text, cls.type),   // structured calls (Phase 2)
         };
       });
   }
@@ -221,6 +314,7 @@
         '{{#description_text}}<div class="pv-xp-desc">{{description_text}}</div>{{/description_text}}' +
         '{{^description_text}}<div class="pv-xp-desc pv-xp-desc-empty">No tax description is on record for this parcel.</div>{{/description_text}}' +
         '{{#type_label}}<div class="pv-xp-desc-type"><span class="pv-badge">{{type_label}}</span>{{#type_note}} {{type_note}}{{/type_note}}</div>{{/type_label}}' +
+        '{{{breakdown_html}}}' +
       '</div>{{/is_taxdesc}}' +
 
       '{{#has_ai}}' +
@@ -269,12 +363,57 @@
       history_years: (facts.assessed_value_by_year || []).length,
     };
   }
+  // Render the deterministic parse as a call-by-call breakdown (Phase 2).
+  function _mbBreakdown(p) {
+    if (!p.courses || !p.courses.length) return '';
+    var rows = p.courses.map(function (c) {
+      var dir = c.bearing
+        ? esc(c.bearing.text) + (c.bearing.compass ? ' <span class="pv-xp-course-az">(' + esc(c.bearing.compass) + ')</span>' : '')
+        : '—';
+      var dist = c.distance
+        ? esc(c.distance.value + ' ' + c.distance.unit_name) +
+          (c.distance.unit !== 'FT' && c.distance.unit !== "'" ? ' <span class="pv-xp-course-az">(' + esc(c.distance.feet) + ' ft)</span>' : '')
+        : '—';
+      return '<tr><td>' + c.index + '</td><td>' + dir + '</td><td>' + dist + '</td><td>' + esc(c.note || '') + '</td></tr>';
+    }).join('');
+    var comm = p.commencement ? '<p class="pv-xp-course-lead">Commences at <span>' + esc(p.commencement) + '</span></p>' : '';
+    var close = (p.closings && p.closings.length)
+      ? '<ul class="pv-xp-closings">' + p.closings.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '';
+    return '<div class="pv-xp-breakdown">' +
+      '<div class="pv-xp-hist-cap">Structured breakdown — ' + p.courses.length + ' course' + (p.courses.length === 1 ? '' : 's') + ' (parsed from the text, not a survey)</div>' +
+      comm +
+      '<table class="pv-xp-table pv-xp-courses"><thead><tr><th>#</th><th>Direction</th><th>Distance</th><th>Notes</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+      close + '</div>';
+  }
+  function _kvBreakdown(rows, caption) {
+    rows = rows.filter(function (r) { return r[1] != null && r[1] !== '' && !(Array.isArray(r[1]) && !r[1].length); });
+    if (!rows.length) return '';
+    var trs = rows.map(function (r) {
+      var v = Array.isArray(r[1]) ? r[1].join(' of ') : r[1];
+      return '<tr><th>' + esc(r[0]) + '</th><td>' + esc(v) + '</td></tr>';
+    }).join('');
+    return '<div class="pv-xp-breakdown"><div class="pv-xp-hist-cap">' + esc(caption) + '</div>' +
+      '<table class="pv-xp-table pv-xp-kv">' + trs + '</table></div>';
+  }
+  function breakdownHtml(parsed) {
+    if (!parsed) return '';
+    if (parsed.kind === 'metes_bounds') return _mbBreakdown(parsed);
+    if (parsed.kind === 'aliquot_plss') {
+      return _kvBreakdown([['Aliquot parts', parsed.quarters], ['Section', parsed.section], ['Town(ship)', parsed.town], ['Range', parsed.range]], 'Structured breakdown (PLSS)');
+    }
+    if (parsed.kind === 'platted_lot') {
+      return _kvBreakdown([['Lot', parsed.lot], ['Block', parsed.block]], 'Structured breakdown (platted lot)');
+    }
+    return '';
+  }
+
   function taxDescHeader(facts) {
     return {
       is_taxdesc: true,
       description_text: facts.description_text || '',
       type_label: facts.type_label || '',
       type_note: facts.type_note || '',
+      breakdown_html: breakdownHtml(facts.parsed),
     };
   }
 
@@ -345,7 +484,7 @@
     '{{#is_assessment}}<table>{{#figures}}<tr><th>{{label}}</th><td>{{value}}</td></tr>{{/figures}}</table>' +
     '{{#history_svg}}<div style="margin:4px 0 12px">{{{history_svg}}}</div>{{/history_svg}}{{/is_assessment}}' +
     '{{#is_taxdesc}}{{#description_text}}<div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;margin-bottom:10px;font-size:13px;white-space:pre-wrap">{{description_text}}</div>{{/description_text}}' +
-      '{{#type_label}}<p class="cite">Detected type: {{type_label}}{{#type_note}} — {{type_note}}{{/type_note}}</p>{{/type_label}}{{/is_taxdesc}}' +
+      '{{#type_label}}<p class="cite">Detected type: {{type_label}}{{#type_note}} — {{type_note}}{{/type_note}}</p>{{/type_label}}{{{breakdown_html}}}{{/is_taxdesc}}' +
     '{{#has_ai}}{{#summary_text}}<p>{{summary_text}}</p>{{/summary_text}}' +
     '{{#sections}}<h3>{{heading}}</h3><div>{{{body_html}}}</div>{{/sections}}' +
     '{{#has_statutes}}<h3>Michigan law</h3>{{#statutes}}<p><strong>{{name}}</strong> <span class="cite">{{citation}}</span><br>{{plain}}</p>{{/statutes}}{{/has_statutes}}' +
@@ -429,6 +568,7 @@
     assembleAssessmentFacts: assembleAssessmentFacts,
     assembleTaxDescriptionFacts: assembleTaxDescriptionFacts,
     classifyDescription: classifyDescription,
+    parseDescription: parseDescription,
     fetchExplanation: fetchExplanation,
     renderHtml: renderHtml,
     docHtml: docHtml,

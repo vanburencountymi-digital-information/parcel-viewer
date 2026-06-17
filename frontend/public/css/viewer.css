@@ -867,6 +867,21 @@ textarea.pv-input { resize: vertical; min-height: 70px; }
 .pv-xp-desc-type { margin-top: 7px; font-size: 12px; color: var(--text-muted); }
 [data-theme="dark"] .pv-xp-desc { color: #e8d8c4; background: rgba(0,0,0,0.22); }
 
+/* Per-call structured breakdown (DIC-369 Phase 2) */
+.pv-xp-breakdown { margin-top: 12px; }
+.pv-xp-course-lead { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
+.pv-xp-course-lead span { color: #374151; }
+.pv-xp-courses th, .pv-xp-courses td { text-align: left; padding: 5px 8px; font-size: 12.5px; white-space: normal; font-weight: 400; color: #374151; }
+.pv-xp-courses thead th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); border-bottom: 1px solid var(--ui-interactive-bd); }
+.pv-xp-courses td:first-child, .pv-xp-courses th:first-child { width: 28px; color: var(--text-muted); }
+.pv-xp-course-az { color: var(--text-muted); font-size: 11px; }
+.pv-xp-closings { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: #4b5563; }
+.pv-xp-closings li { margin-bottom: 2px; }
+.pv-xp-kv th { text-align: left; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
+.pv-xp-kv td { text-align: left; font-weight: 600; color: #1f2937; }
+[data-theme="dark"] .pv-xp-course-lead span, [data-theme="dark"] .pv-xp-courses td, [data-theme="dark"] .pv-xp-kv td { color: #e8d8c4; }
+[data-theme="dark"] .pv-xp-closings { color: #b3a99d; }
+
 .pv-xp-summary {
   font-size: 14px; color: #1f2937; margin: 0 0 14px;
   padding-left: 12px; border-left: 3px solid var(--ui-accent);
