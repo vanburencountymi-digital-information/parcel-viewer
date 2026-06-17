@@ -349,16 +349,19 @@
       const src = map.getSource("carto-positron");
       if (src) src.setTiles(dark ? CARTO_DARK : CARTO_LIGHT);
 
-      // Parcel layer colors
+      // Parcel layer colors — from the county styling config (DIC-460) with the
+      // prior hardcoded values as fallbacks.
+      const _cp = (window.COUNTY && COUNTY.styling && COUNTY.styling.parcels) || {};
+      const _cl = _cp.light || {}, _cd = _cp.dark || {};
       if (dark) {
-        map.setPaintProperty("parcels-fill",   "fill-color",  "#1e1a14");
-        map.setPaintProperty("parcels-line",   "line-color",  "#b8a97a");
+        map.setPaintProperty("parcels-fill",   "fill-color",  _cd.fill   || "#1e1a14");
+        map.setPaintProperty("parcels-line",   "line-color",  _cd.stroke || "#b8a97a");
         map.setPaintProperty("parcels-hover",  "line-color",  "#e2d8ce");
         map.setPaintProperty("parcels-labels", "text-color",  "#c8b89a");
         map.setPaintProperty("parcels-labels", "text-halo-color", "#111009");
       } else {
-        map.setPaintProperty("parcels-fill",   "fill-color",  "#FDF6E3");
-        map.setPaintProperty("parcels-line",   "line-color",  "#8a7a55");
+        map.setPaintProperty("parcels-fill",   "fill-color",  _cl.fill   || "#FDF6E3");
+        map.setPaintProperty("parcels-line",   "line-color",  _cl.stroke || "#8a7a55");
         map.setPaintProperty("parcels-hover",  "line-color",  "#111827");
         map.setPaintProperty("parcels-labels", "text-color",  "#1f2937");
         map.setPaintProperty("parcels-labels", "text-halo-color", "#ffffff");
@@ -371,10 +374,19 @@
     rerenderOpenParcel();
   }
 
+  // County default theme (COUNTY.styling.theme, DIC-460): 'light'/'dark' force it,
+  // anything else (or unset) → the OS preference.
+  function countyThemeDefault(prefersDark) {
+    const t = window.COUNTY && COUNTY.styling && COUNTY.styling.theme;
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return prefersDark;
+  }
+
   function initTheme() {
     const saved = localStorage.getItem("pv-theme");
     const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-    const dark = saved ? saved === "dark" : prefersDark;
+    const dark = saved ? saved === "dark" : countyThemeDefault(prefersDark);
     applyTheme(dark);
 
     const btn = document.getElementById("theme-toggle");
@@ -419,7 +431,7 @@
       // Re-apply theme now that map sources are available
       const savedTheme = localStorage.getItem("pv-theme");
       const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      applyTheme(savedTheme ? savedTheme === "dark" : prefersDark);
+      applyTheme(savedTheme ? savedTheme === "dark" : countyThemeDefault(prefersDark));
 
       // Expose map instance for drawing modules and MapControlAPI
       window.PS_MAP = map;
