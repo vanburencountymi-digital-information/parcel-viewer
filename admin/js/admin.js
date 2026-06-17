@@ -24,7 +24,12 @@
   // Config source: the runtime /config API (DIC-465) when reachable, else the
   // baked window.COUNTY fallback (county-config.js).
   var API_BASE = window.ADMIN_API || '/api';
-  var STATE = { config: window.COUNTY || {}, source: 'fallback' };
+  var COUNTY_KEY = window.PV_COUNTY_KEY || 'vanburen';
+  var STATE = {
+    config: window.COUNTY || {}, source: 'fallback',
+    editing: false, draft: null,
+    token: window.PV_ADMIN_TOKEN || '',   // interim write auth (DIC-463 replaces it)
+  };
   function loadConfig() {
     return fetch(API_BASE + '/config', { cache: 'no-cache' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
@@ -32,72 +37,218 @@
       .catch(function () { /* keep the baked fallback */ });
   }
 
-  // ── County Configuration module (DIC-458) ──────────────────────────────────
+  function clone(o) { return JSON.parse(JSON.stringify(o || {})); }
+
+  // Write call with the interim admin token. Resolves {ok, status, body} and never
+  // rejects, so the UI can show a clean message (incl. 503 "not provisioned").
+  function apiWrite(method, path, body) {
+    return fetch(API_BASE + path, {
+      method: method,
+      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': STATE.token || '' },
+      body: body ? JSON.stringify(body) : undefined,
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
+    }).catch(function (e) { return { ok: false, status: 0, body: { detail: String(e && e.message || e) } }; });
+  }
+
+  function flash(host, kind, msg) {
+    var box = host.querySelector('#ac-flash');
+    if (box) box.innerHTML = '<div class="ac-flash ac-flash-' + kind + '">' + esc(msg) + '</div>';
+  }
+  function writeErr(res) {
+    if (res.status === 503) return 'Editing is built but not yet provisioned in this environment (writable store — DIC-464 / DIC-400). Save will work once the store is live.';
+    if (res.status === 401) return 'Admin token required/invalid (interim auth until DIC-463). Set window.PV_ADMIN_TOKEN.';
+    return (res.body && res.body.detail) || ('Request failed (HTTP ' + res.status + ').');
+  }
+
+  function setPath(obj, path, value) {
+    var parts = path.split('.'), o = obj;
+    for (var i = 0; i < parts.length - 1; i++) {
+      if (o[parts[i]] == null || typeof o[parts[i]] !== 'object') o[parts[i]] = {};
+      o = o[parts[i]];
+    }
+    o[parts[parts.length - 1]] = value;
+  }
+
+  // ── County Configuration module (DIC-458 view · DIC-464/466 editing) ────────
   function renderCounty(host) {
-    var C = STATE.config || {};
-    var srcNote = STATE.source === 'api'
-      ? 'Loaded live from the runtime <code>/config</code> API (<b>DIC-465</b>).'
-      : 'Runtime <code>/config</code> API (<b>DIC-465</b>) not reachable — showing the baked <code>county-config.js</code> fallback.';
+    var editing = STATE.editing;
+    var C = editing ? (STATE.draft || {}) : (STATE.config || {});
     var m = C.map || {}, ep = C.endpoints || {}, forms = C.forms || {};
     var propClass = (C.labels && C.labels.propClass) || {};
     var schoolDist = (C.labels && C.labels.schoolDist) || {};
 
-    function row(label, value) {
-      return '<dt>' + esc(label) + '</dt><dd>' + value + ' ' + locked() + '</dd>';
-    }
+    var srcNote = STATE.source === 'api'
+      ? 'Loaded live from the runtime <code>/config</code> API (<b>DIC-465</b>).'
+      : 'Runtime <code>/config</code> API (<b>DIC-465</b>) not reachable — showing the baked <code>county-config.js</code> fallback.';
+
     function code(v) { return '<code>' + esc(v) + '</code>'; }
+    function display(val, type) {
+      if (val == null || val === '') return '—';
+      return type === 'json' ? code(JSON.stringify(val)) : esc(val);
+    }
+    // A field renders as static text (view) or a bound input (edit).
+    function field(label, path, val, type) {
+      var cell;
+      if (editing) {
+        var iv = type === 'json' ? JSON.stringify(val) : (val == null ? '' : val);
+        cell = '<input class="ac-input" data-path="' + path + '" data-type="' + (type || 'str') + '" value="' + esc(iv) + '">';
+      } else {
+        cell = display(val, type);
+      }
+      return '<dt>' + esc(label) + '</dt><dd>' + cell + '</dd>';
+    }
+
+    var toolbar = editing
+      ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
+        '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="cancel">Cancel</button>'
+      : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit configuration</button>' +
+        '<button class="ac-btn" data-act="history">Version history</button>';
+
+    var banner = editing
+      ? '<div class="ac-banner ac-banner-edit"><span>✎</span><div><b>Editing a draft.</b> ' +
+        '<b>Save draft</b> stores your changes; <b>Publish</b> makes the draft the live config as a new version. ' + srcNote + '</div></div>'
+      : '<div class="ac-banner"><span>ⓘ</span><div>' + srcNote +
+        ' Editing writes to the config store (<b>DIC-464</b>); real auth is <b>DIC-463</b>.</div></div>';
 
     var html =
-      pageHead('County Configuration',
-        'The identity, map defaults, endpoints, and reference lookups that define this county. Replaces county-config.js once the runtime config API lands.') +
-      '<div class="ac-banner"><span>ⓘ</span><div><b>Read-only preview.</b> ' +
-        'Editing &amp; publish need the writable config store (<b>DIC-464</b>, blocked by Drake’s <b>DIC-400</b>). ' +
-        srcNote + '</div></div>' +
+      '<div class="ac-page-head ac-page-head-row"><div>' +
+        '<h1 class="ac-page-title">County Configuration</h1>' +
+        '<p class="ac-page-sub">Identity, map defaults, endpoints, and reference lookups for this county.</p></div>' +
+        '<div class="ac-toolbar">' + toolbar + '</div></div>' +
+      '<div id="ac-flash"></div>' + banner +
 
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Identity</h2></div>' +
         '<dl class="ac-grid">' +
-          row('Name', esc(C.name || '—')) +
-          row('State', esc(C.state || '—')) +
-          row('Data request form', forms.dataRequest ? code(forms.dataRequest) : '—') +
+          field('Name', 'name', C.name, 'str') +
+          field('State', 'state', C.state, 'str') +
+          field('Data request form', 'forms.dataRequest', forms.dataRequest, 'str') +
         '</dl></div>' +
 
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Map defaults</h2></div>' +
         '<dl class="ac-grid">' +
-          row('Center [lng, lat]', m.center ? code(JSON.stringify(m.center)) : '—') +
-          row('Default zoom', m.zoom != null ? code(m.zoom) : '—') +
-          row('Extent', m.extent ? code(JSON.stringify(m.extent)) : '—') +
+          field('Center [lng, lat]', 'map.center', m.center, 'json') +
+          field('Default zoom', 'map.zoom', m.zoom, 'num') +
+          field('Extent', 'map.extent', m.extent, 'json') +
         '</dl></div>' +
 
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Endpoints</h2></div>' +
         '<dl class="ac-grid">' +
-          row('Map Buddy AI', ep.mapBuddy ? code(ep.mapBuddy) : '—') +
+          field('Map Buddy AI', 'endpoints.mapBuddy', ep.mapBuddy, 'str') +
         '</dl></div>' +
 
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Reference lookups</h2>' +
-        '<span class="ac-card-note">code → name maps shared by the popup &amp; explainers</span></div>' +
+        '<span class="ac-card-note">code → name maps' + (editing ? ' · edit via API for now' : ' shared by the popup &amp; explainers') + '</span></div>' +
         '<dl class="ac-grid">' +
           '<dt>Property classes</dt><dd>' + Object.keys(propClass).length + ' codes ' +
             '<button class="ac-lookup-toggle" data-lookup="propClass">View</button></dd>' +
           '<dt>School districts</dt><dd>' + Object.keys(schoolDist).length + ' codes ' +
             '<button class="ac-lookup-toggle" data-lookup="schoolDist">View</button></dd>' +
-        '</dl><div id="ac-lookup-out"></div></div>';
+        '</dl><div id="ac-lookup-out"></div></div>' +
+      '<div id="ac-history"></div>';
 
     host.innerHTML = html;
+    wireCounty(host, { propClass: propClass, schoolDist: schoolDist });
+  }
 
-    var maps = { propClass: propClass, schoolDist: schoolDist };
+  function toggleLookup(host, btn) {
+    var maps = host._maps || {};
     var out = host.querySelector('#ac-lookup-out');
-    var shown = null;
-    host.querySelectorAll('[data-lookup]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var key = btn.getAttribute('data-lookup');
-        if (shown === key) { out.innerHTML = ''; shown = null; host.querySelectorAll('[data-lookup]').forEach(function (b) { b.textContent = 'View'; }); return; }
-        shown = key;
-        host.querySelectorAll('[data-lookup]').forEach(function (b) { b.textContent = b === btn ? 'Hide' : 'View'; });
-        var rows = Object.keys(maps[key]).sort().map(function (k) {
-          return '<tr><td>' + esc(k) + '</td><td>' + esc(maps[key][k]) + '</td></tr>';
-        }).join('');
-        out.innerHTML = '<table class="ac-table"><thead><tr><th>Code</th><th>Name</th></tr></thead><tbody>' + rows + '</tbody></table>';
+    var key = btn.getAttribute('data-lookup');
+    if (host._lookupShown === key) {
+      out.innerHTML = ''; host._lookupShown = null;
+      host.querySelectorAll('[data-lookup]').forEach(function (b) { b.textContent = 'View'; });
+      return;
+    }
+    host._lookupShown = key;
+    host.querySelectorAll('[data-lookup]').forEach(function (b) { b.textContent = b === btn ? 'Hide' : 'View'; });
+    var rows = Object.keys(maps[key] || {}).sort().map(function (k) {
+      return '<tr><td>' + esc(k) + '</td><td>' + esc(maps[key][k]) + '</td></tr>';
+    }).join('');
+    out.innerHTML = '<table class="ac-table"><thead><tr><th>Code</th><th>Name</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+
+  // Delegated handlers attach ONCE to the persistent #ac-content host (re-rendering
+  // replaces its innerHTML, so per-render addEventListener would stack and fire N×).
+  function wireCounty(host, maps) {
+    host._maps = maps;
+    if (host._countyWired) return;
+    host._countyWired = true;
+
+    host.addEventListener('input', function (e) {
+      var inp = e.target.closest('[data-path]');
+      if (!inp || !STATE.editing) return;
+      var path = inp.getAttribute('data-path'), type = inp.getAttribute('data-type'), raw = inp.value, val;
+      if (type === 'num') { if (raw === '') { val = null; } else { val = Number(raw); if (isNaN(val)) return; } }
+      else if (type === 'json') { try { val = JSON.parse(raw); inp.classList.remove('ac-input-err'); } catch (_) { inp.classList.add('ac-input-err'); return; } }
+      else { val = raw; }
+      setPath(STATE.draft, path, val);
+    });
+
+    host.addEventListener('click', function (e) {
+      var act = e.target.closest('[data-act]');
+      if (act) return onAction(host, act.getAttribute('data-act'));
+      var rb = e.target.closest('[data-rollback]');
+      if (rb) return doRollback(host, parseInt(rb.getAttribute('data-rollback'), 10));
+      var lk = e.target.closest('[data-lookup]');
+      if (lk) return toggleLookup(host, lk);
+    });
+  }
+
+  var AUTHOR = window.PV_ADMIN_USER || 'console';
+
+  function onAction(host, act) {
+    if (act === 'edit') {
+      STATE.editing = true; STATE.draft = clone(STATE.config); renderCounty(host);
+      // Continue an existing server-side draft if there is one.
+      apiWrite('GET', '/config/' + COUNTY_KEY + '/draft').then(function (res) {
+        if (res.ok && res.body && !res.body.error) { STATE.draft = res.body; if (STATE.editing) renderCounty(host); }
       });
+      return;
+    }
+    if (act === 'cancel') { STATE.editing = false; STATE.draft = null; renderCounty(host); return; }
+    if (act === 'save') {
+      apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (res) {
+        flash(host, res.ok ? 'ok' : 'err', res.ok ? 'Draft saved.' : writeErr(res));
+      });
+      return;
+    }
+    if (act === 'publish') {
+      apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (r1) {
+        if (!r1.ok) { flash(host, 'err', writeErr(r1)); return; }
+        apiWrite('POST', '/config/' + COUNTY_KEY + '/publish', { author: AUTHOR, note: 'Published from console' }).then(function (res) {
+          if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
+          loadConfig().then(function () { STATE.editing = false; STATE.draft = null; renderCounty(host); flash(host, 'ok', 'Published version ' + res.body.version + '.'); });
+        });
+      });
+      return;
+    }
+    if (act === 'history') { loadHistory(host); return; }
+  }
+
+  function loadHistory(host) {
+    var box = host.querySelector('#ac-history');
+    box.innerHTML = '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Version history</h2></div><p class="ac-readonly">Loading…</p></div>';
+    apiWrite('GET', '/config/' + COUNTY_KEY + '/versions').then(function (res) {
+      if (!res.ok) { box.innerHTML = '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Version history</h2></div><p class="ac-readonly">' + esc(writeErr(res)) + '</p></div>'; return; }
+      var vs = (res.body && res.body.versions) || [];
+      var rows = vs.map(function (v) {
+        return '<tr><td>v' + esc(v.version) + '</td><td>' + esc(v.note || '') + '</td><td>' + esc(v.created_by || '') + '</td>' +
+          '<td>' + esc((v.created_at || '').slice(0, 19).replace('T', ' ')) + '</td>' +
+          '<td><button class="ac-btn ac-btn-sm" data-rollback="' + esc(v.version) + '">Restore</button></td></tr>';
+      }).join('');
+      box.innerHTML = '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Version history</h2>' +
+        '<span class="ac-card-note">' + vs.length + ' published version(s)</span></div>' +
+        (vs.length ? '<table class="ac-table"><thead><tr><th>Version</th><th>Note</th><th>By</th><th>When</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>'
+                   : '<p class="ac-readonly">No published versions yet.</p>') + '</div>';
+    });
+  }
+
+  function doRollback(host, version) {
+    apiWrite('POST', '/config/' + COUNTY_KEY + '/rollback', { version: version, author: AUTHOR }).then(function (res) {
+      if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
+      loadConfig().then(function () { renderCounty(host); loadHistory(host); flash(host, 'ok', 'Restored v' + version + ' as version ' + res.body.version + '.'); });
     });
   }
 
