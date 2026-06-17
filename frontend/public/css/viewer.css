@@ -855,6 +855,18 @@ textarea.pv-input { resize: vertical; min-height: 70px; }
 .pv-xp-hist { margin-top: 12px; }
 .pv-xp-hist-cap { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
 
+/* Tax-description header: verbatim recorded text + detected-type badge */
+.pv-xp-desc {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; line-height: 1.55; color: #1f2937;
+  white-space: pre-wrap; word-break: break-word;
+  background: rgba(255,255,255,0.6); border: 1px solid var(--ui-interactive-bd);
+  border-radius: 6px; padding: 9px 11px;
+}
+.pv-xp-desc-empty { font-family: inherit; font-style: italic; color: var(--text-muted); }
+.pv-xp-desc-type { margin-top: 7px; font-size: 12px; color: var(--text-muted); }
+[data-theme="dark"] .pv-xp-desc { color: #e8d8c4; background: rgba(0,0,0,0.22); }
+
 .pv-xp-summary {
   font-size: 14px; color: #1f2937; margin: 0 0 14px;
   padding-left: 12px; border-left: 3px solid var(--ui-accent);

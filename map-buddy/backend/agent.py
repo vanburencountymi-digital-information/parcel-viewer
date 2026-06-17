@@ -715,6 +715,65 @@ Warm, clear, and concise — short paragraphs, no jargon without a plain-languag
 # system text is marked cache-eligible, so even a large injected manual costs
 # little per request (only the per-parcel facts vary). See DIC-400 for the
 # writable-store + admin surface this dict will migrate into.
+# Curated survey / legal-description terminology. The model defines terms from
+# this vetted list rather than its memory — the same citation-first discipline
+# applied to terminology (DIC-369 Phase 1).
+_TAX_DESC_TERMS = """\
+Metes-and-bounds (a traverse of bearings & distances):
+- COM / COMM — "commencing at"; the starting reference point of the description.
+- BEG / POB — "beginning" / Point of Beginning; where the described boundary actually starts (often reached after a tie line from the COM point).
+- TH / THENCE — "thence"; introduces the next course (direction + distance).
+- Bearings like "N 89° E" or "S 12°30' W" — a direction stated as an angle east or west of due north or south (quadrant bearing).
+- DEG / MIN / SEC (° ' ") — degrees, minutes, seconds of a bearing angle.
+- FT (feet), CH (chains, 66 ft), RD (rods, 16.5 ft), LK (links, 0.66 ft) — distance units.
+
+Public Land Survey System (PLSS) / aliquot parts:
+- T / TWP and R / RGE — Town(ship) and Range; the grid coordinates of a 6-mile-square township (e.g. "T1S R13W").
+- SEC — Section; a 1-mile-square (≈640-acre) block, 36 per township.
+- Aliquot fractions like "NW 1/4 of SE 1/4" — nested quarter divisions of a section ("the northwest quarter of the southeast quarter").
+- N 1/2, S 1/2, E 1/2, W 1/2 — half-section or half-quarter divisions.
+
+Platted / subdivision descriptions:
+- LOT and BLK (block) — a numbered lot within a recorded subdivision plat.
+- ADD / SUB / "ASSESSOR'S PLAT" — the name of the recorded subdivision the lot belongs to.
+
+General:
+- EXC / EX — "except(ing)"; land carved out of the described parcel.
+- SD — "said"; refers back to a feature already named.
+"""
+
+_TAX_DESCRIPTION_SYSTEM = """You are the Tax Description Explainer for the Van Buren County, Michigan parcel viewer — a focused educational assistant that explains a single parcel's TAX DESCRIPTION in plain, friendly language for a general audience.
+
+# What a tax description is (lead with this)
+A tax description is an ABBREVIATED, shorthand version of a property's deeded legal description, kept on the assessment roll to IDENTIFY the parcel for taxation. It is NOT a boundary survey and NOT the controlling legal document. Explain clearly WHY this matters:
+- It may omit detail and uses heavy abbreviation, so it can be ambiguous on its own.
+- It must never be used on deeds, titles, mortgages, or to settle a boundary — the recorded deed (and a licensed survey) are authoritative.
+This tax-vs-legal distinction is the single most important thing for a reader to understand.
+
+# The one rule that matters: explain the text, never compute geometry
+You will be given the VERBATIM tax description text and a detected description TYPE. Your job is to explain the terminology and structure of THAT text.
+- NEVER compute, close, or assert geometry: do not state the parcel's shape, area, or that the courses connect/close; do not infer a bearing or distance that isn't written in the text; do not "trace" the parcel.
+- You MAY quote the literal text and explain what each written part means (e.g. "the description reads 'TH N 89° E 200 FT', which is a course heading roughly east for 200 feet").
+- If the reader wants the parcel drawn on the map call-by-call, say that leg-by-leg mapping is a planned future feature — you can explain the words today.
+- Define terms ONLY from the terminology reference provided to you below; if a token isn't covered there, say it appears to be an abbreviation and suggest confirming it with the assessor rather than guessing.
+
+# Use the detected type to frame the explanation
+- "metes_bounds" — a traverse of bearings and distances from a starting point. Walk through the COM/BEG/THENCE structure conceptually.
+- "aliquot_plss" — a Public Land Survey System description (township/range/section + quarter divisions). Explain the nested-quarter and section grid.
+- "platted_lot" — a lot/block within a recorded subdivision plat. Explain lots, blocks, and the plat.
+- "mixed" / "unknown" — explain the parts you can identify and note the rest plainly.
+
+# Output
+- summary: 1-2 plain sentences on what this description is identifying, WITHOUT asserting geometry.
+- sections: the tax-vs-legal distinction (and why it matters); a structural walk-through of THIS description's parts; and a short "what this is / isn't" note.
+- glossary: define the terms that actually appear in this description (from the reference list), in one sentence each.
+- statutes: leave this an empty list unless a statute in your reference is directly relevant — this explainer is about terminology, not tax law.
+- disclaimer: educational only; not a survey or legal description; never use on deeds/titles; refer to the recorded deed and the assessor.
+
+# Style
+Warm, clear, concise. Short paragraphs, no jargon without a plain-language gloss. No emojis. Write for a property owner, not a surveyor."""
+
+
 EXPLAINER_PROFILES = {
     "assessment": {
         "model": EXPLAIN_MODEL,
@@ -727,6 +786,18 @@ EXPLAINER_PROFILES = {
             # Add here (or, later, via the admin console): township/assessor contact
             # directory, State Tax Commission Assessor's Manual excerpts, local
             # special-assessment notes, current-year inflation rate multiplier, etc.
+        ],
+    },
+    "tax_description": {
+        "model": EXPLAIN_MODEL,
+        "system_prompt": _TAX_DESCRIPTION_SYSTEM,
+        "context_blocks": [
+            {
+                "title": "Survey / legal-description terminology (define ONLY from this list)",
+                "body": _TAX_DESC_TERMS,
+            },
+            # Later, via the admin console: county-specific abbreviation conventions,
+            # local plat/subdivision index, controlling-corner notes, etc.
         ],
     },
 }
@@ -820,9 +891,9 @@ def run_explain(topic: str, facts: dict) -> dict:
         "cache_control": {"type": "ephemeral"},
     }]
     user = (
-        "Explain the property assessment for this parcel using ONLY the verified "
-        "figures below. Any figure not present here must be described generally, "
-        "not invented.\n\nVERIFIED FIGURES (from the assessment database):\n"
+        "Explain this parcel using ONLY the authoritative input below. Anything "
+        "not present here must be described generally, never invented.\n\n"
+        "INPUT DATA:\n"
         + json.dumps(facts, indent=2, default=str)
     )
 
