@@ -21,9 +21,23 @@
   }
   function locked() { return '<span class="ac-field-locked"><span class="ac-lock" title="Editing requires the writable store (DIC-464)">🔒</span></span>'; }
 
+  // Config source: the runtime /config API (DIC-465) when reachable, else the
+  // baked window.COUNTY fallback (county-config.js).
+  var API_BASE = window.ADMIN_API || '/api';
+  var STATE = { config: window.COUNTY || {}, source: 'fallback' };
+  function loadConfig() {
+    return fetch(API_BASE + '/config', { cache: 'no-cache' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function (cfg) { if (cfg && typeof cfg === 'object' && !cfg.error) { STATE.config = cfg; STATE.source = 'api'; } })
+      .catch(function () { /* keep the baked fallback */ });
+  }
+
   // ── County Configuration module (DIC-458) ──────────────────────────────────
   function renderCounty(host) {
-    var C = window.COUNTY || {};
+    var C = STATE.config || {};
+    var srcNote = STATE.source === 'api'
+      ? 'Loaded live from the runtime <code>/config</code> API (<b>DIC-465</b>).'
+      : 'Runtime <code>/config</code> API (<b>DIC-465</b>) not reachable — showing the baked <code>county-config.js</code> fallback.';
     var m = C.map || {}, ep = C.endpoints || {}, forms = C.forms || {};
     var propClass = (C.labels && C.labels.propClass) || {};
     var schoolDist = (C.labels && C.labels.schoolDist) || {};
@@ -38,7 +52,7 @@
         'The identity, map defaults, endpoints, and reference lookups that define this county. Replaces county-config.js once the runtime config API lands.') +
       '<div class="ac-banner"><span>ⓘ</span><div><b>Read-only preview.</b> ' +
         'Editing &amp; publish need the writable config store (<b>DIC-464</b>, blocked by Drake’s <b>DIC-400</b>). ' +
-        'The viewer will boot from a runtime <code>/config</code> API (<b>DIC-465</b>) — today this reads the live <code>county-config.js</code> manifest.</div></div>' +
+        srcNote + '</div></div>' +
 
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Identity</h2></div>' +
         '<dl class="ac-grid">' +
@@ -139,12 +153,19 @@
       nav.appendChild(btn);
     });
 
+    var sel = document.getElementById('ac-county-select');
+    var pill = document.getElementById('ac-status');
+    function reflect() {
+      if (sel && STATE.config && STATE.config.name) sel.options[0].textContent = STATE.config.name;
+      if (pill) pill.textContent = STATE.source === 'api' ? 'Live config · read-only' : 'Read-only preview';
+    }
+
     var initial = (location.hash || '').replace('#', '');
     show(MODULES.some(function (m) { return m.id === initial; }) ? initial : 'county');
+    reflect();
 
-    // Reflect the live county name in the switcher.
-    var sel = document.getElementById('ac-county-select');
-    if (sel && window.COUNTY && window.COUNTY.name) sel.options[0].textContent = window.COUNTY.name;
+    // Pull the authoritative manifest from the runtime API, then refresh.
+    loadConfig().then(function () { reflect(); show(active || 'county'); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
