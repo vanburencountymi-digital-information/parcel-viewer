@@ -134,6 +134,13 @@ body {
 .ac-xp-chars { color: var(--ac-muted); font-size: 11px; }
 .ac-xp-pre { margin: 4px 0 8px 14px; padding: 10px 12px; background: #f7f5f1; border: 1px solid var(--ac-line); border-radius: 7px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; color: #374151; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow-y: auto; }
 
+/* Styling module — swatches & scheme presets */
+.ac-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(0,0,0,0.15); vertical-align: -2px; margin-right: 2px; }
+.ac-schemes { display: flex; flex-wrap: wrap; gap: 10px; }
+.ac-scheme { display: flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--ac-line); border-radius: 9px; font-size: 13px; }
+.ac-scheme.is-active { border-color: var(--ac-gold); box-shadow: 0 0 0 2px rgba(var(--ac-gold-rgb),0.20); }
+.ac-scheme-label { color: var(--ac-ink); }
+
 /* Roadmap placeholder modules */
 .ac-roadmap { text-align: left; max-width: 64ch; }
 .ac-roadmap ul { margin: 8px 0 0; padding-left: 18px; line-height: 1.7; color: #4b5563; }

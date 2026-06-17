@@ -326,13 +326,46 @@
     });
   }
 
+  // ── Styling module (DIC-460, read-only) ─────────────────────────────────────
+  function _swatch(c) { return c ? '<span class="ac-swatch" style="background:' + esc(c) + '" title="' + esc(c) + '"></span>' : ''; }
+  function renderStyling(host) {
+    var s = (STATE.config && STATE.config.styling) || {};
+    if (!s.schemes && !s.parcels && !s.labels) {
+      host.innerHTML = pageHead('Styling', 'Color scheme, theme, parcel styling, and labels for this county.') +
+        '<div class="ac-card"><p class="ac-readonly">No styling config in the manifest yet.</p></div>';
+      return;
+    }
+    var schemeRows = (s.schemes || []).map(function (sc) {
+      var active = sc.id === s.colorScheme;
+      return '<div class="ac-scheme' + (active ? ' is-active' : '') + '">' + _swatch(sc.accent) + _swatch(sc.interactive) +
+        '<span class="ac-scheme-label">' + esc(sc.label) + (active ? ' <span class="ac-xp-chars">default</span>' : '') + '</span></div>';
+    }).join('');
+    var pl = (s.parcels && s.parcels.light) || {}, pd = (s.parcels && s.parcels.dark) || {}, lb = s.labels || {};
+    host.innerHTML =
+      pageHead('Styling', 'How the map looks for this county — color scheme, theme, parcel styling, and labels. Read-only; editing lands with the writable store (DIC-464).') +
+      '<div class="ac-banner"><span>ⓘ</span><div>' + (STATE.source === 'api' ? 'Loaded live from <code>/config</code>.' : 'Showing the baked manifest fallback.') +
+        ' These model the viewer’s current look; wiring the viewer to <i>consume</i> this config (instead of its hardcoded CSS/JS) is the next step.</div></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Color scheme</h2>' +
+        '<span class="ac-card-note">default: ' + esc(s.colorScheme || '—') + '</span></div>' +
+        '<div class="ac-schemes">' + schemeRows + '</div></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Theme &amp; basemap</h2></div><dl class="ac-grid">' +
+        '<dt>Default theme</dt><dd>' + esc(s.theme || '—') + ' ' + locked() + '</dd>' +
+        '<dt>Base layer</dt><dd>' + esc(s.basemap || '—') + ' ' + locked() + '</dd></dl></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel styling</h2></div><dl class="ac-grid">' +
+        '<dt>Light — fill / stroke</dt><dd>' + _swatch(pl.fill) + ' <code>' + esc(pl.fill || '—') + '</code> &nbsp; ' + _swatch(pl.stroke) + ' <code>' + esc(pl.stroke || '—') + '</code></dd>' +
+        '<dt>Dark — fill / stroke</dt><dd>' + _swatch(pd.fill) + ' <code>' + esc(pd.fill || '—') + '</code> &nbsp; ' + _swatch(pd.stroke) + ' <code>' + esc(pd.stroke || '—') + '</code></dd></dl></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel labels</h2></div><dl class="ac-grid">' +
+        '<dt>Default field</dt><dd>' + esc(lb.defaultField || '—') + ' ' + locked() + '</dd>' +
+        '<dt>Available fields</dt><dd>' + esc((lb.fields || []).join(', ') || '—') + '</dd>' +
+        '<dt>Default size</dt><dd>' + esc(lb.defaultSize || '—') + '</dd>' +
+        '<dt>Zoom thresholds</dt><dd>large parcels ' + esc((lb.zoom && lb.zoom.largeParcels) || '—') + '+, small parcels ' + esc((lb.zoom && lb.zoom.smallParcels) || '—') + '+</dd></dl></div>';
+  }
+
   // ── Module registry ─────────────────────────────────────────────────────────
   var MODULES = [
     { id: 'county', label: 'County Configuration', icon: '◆', render: renderCounty },
     { id: 'intelligence', label: 'Intelligence', icon: '✦', render: renderIntelligence },
-    { id: 'styling', label: 'Styling', icon: '◑', soon: true,
-      render: roadmap('Styling', 'Parcel & label styling, choropleth, themes — moved out of hardcoded JS/CSS into editable config.', 'DIC-460',
-        ['Parcel fill/stroke + choropleth by class or AV/TV bands', 'Label field, sizing & zoom thresholds', 'Basemap, light/dark defaults, color-scheme presets', 'Live preview against a sandboxed viewer']) },
+    { id: 'styling', label: 'Styling', icon: '◑', render: renderStyling },
     { id: 'data', label: 'Data & Layers', icon: '▤', soon: true,
       render: roadmap('Data & Layers', 'Parcel/assessing ingestion, tiles & overlay registry — the biggest onboarding pain, made self-serve.', 'DIC-461',
         ['Upload / connect → field-map → validate → stage → atomic publish', 'Versioned, rollbackable datasets + async job runner', 'Martin tile refresh', 'WMS overlay registry (wetlands/flood/soils/aerial)']) },
