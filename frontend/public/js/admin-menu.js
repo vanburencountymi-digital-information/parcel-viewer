@@ -1061,9 +1061,18 @@
     ].join(""));
   }
 
-  // Assessment info — for now an educational overview + a teaser for the full
-  // AI/database-backed explainer (DIC-370). Becomes a callable module later.
+  // Assessment info (DIC-370). When a parcel is selected and the explainer module
+  // is loaded, open the live per-parcel AI Assessment Explainer; otherwise fall
+  // back to the generic educational overview below.
   function openAssessInfo() {
+    var parcel = window.PS_STATE && window.PS_STATE.parcel;
+    if (window.PV_EXPLAIN && parcel && parcel.id != null) {
+      return window.PV_EXPLAIN.openAssessment(parcel, { openModal: openModal, closeModal: closeModal });
+    }
+    return openAssessInfoStatic();
+  }
+
+  function openAssessInfoStatic() {
     openModal("About Property Assessment", [
       '<p class="pv-modal-lead">How your assessment works — and what your taxes pay for.</p>',
       helpItem("Assessed Value (AV)", "Set by the local assessor at 50% of a property&rsquo;s estimated True Cash Value (market value)."),

@@ -15,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from agent import run_chat_stream, WORKFLOWS, _expand_workflow
+from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain
 
 ALLOWED_ORIGINS = [
     o.strip()
@@ -76,6 +76,14 @@ class WorkflowRequest(BaseModel):
     parcel_context: ParcelContext | None = None
 
 
+class ExplainRequest(BaseModel):
+    # Topic selects the explainer (currently "assessment", DIC-370). `facts` is the
+    # deterministic, pre-verified figures the caller assembled — the model only
+    # narrates them, so the frontend (not the model) owns the authoritative numbers.
+    topic: str = "assessment"
+    facts: dict = {}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -105,6 +113,24 @@ async def chat(request: Request, body: ChatRequest):
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post("/explain")
+@limiter.limit(os.getenv("EXPLAIN_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
+async def explain(request: Request, body: ExplainRequest):
+    """Generate a grounded, structured explanation for a parcel (DIC-370). The
+    caller passes pre-verified figures; the model only narrates them. Returns
+    {ok, explanation} or {ok: false, error} so the frontend can fall back to the
+    static educational stub when the key/service is unavailable."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
+    try:
+        explanation = run_explain(body.topic, body.facts or {})
+        return {"ok": True, "explanation": explanation}
+    except ValueError as e:
+        return {"ok": False, "error": str(e)}
+    except Exception as e:  # noqa: BLE001 — surface a clean message; frontend degrades
+        return {"ok": False, "error": f"explainer failed: {e}"}
 
 
 @app.get("/workflows")
