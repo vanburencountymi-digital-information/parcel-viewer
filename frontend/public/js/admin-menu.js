@@ -574,9 +574,17 @@
   // Device-local color scheme (accent palette), applied as <html data-scheme>.
   // "terracotta" is the default (no attribute → :root tokens). See style.css.
   var PV_SCHEMES = ["terracotta", "forest", "ocean", "slate", "plum", "crimson"];
+  // The county's configured default (COUNTY.styling.colorScheme, DIC-460), used
+  // when the user hasn't picked a scheme; falls back to terracotta.
+  function _countyScheme() {
+    try {
+      var c = window.COUNTY && COUNTY.styling && COUNTY.styling.colorScheme;
+      return PV_SCHEMES.indexOf(c) !== -1 ? c : "terracotta";
+    } catch (_) { return "terracotta"; }
+  }
   function getScheme() {
-    try { var s = localStorage.getItem("pv-color-scheme"); return PV_SCHEMES.indexOf(s) !== -1 ? s : "terracotta"; }
-    catch (_) { return "terracotta"; }
+    try { var s = localStorage.getItem("pv-color-scheme"); return PV_SCHEMES.indexOf(s) !== -1 ? s : _countyScheme(); }
+    catch (_) { return _countyScheme(); }
   }
   function applyScheme(s) {
     if (s && s !== "terracotta") document.documentElement.setAttribute("data-scheme", s);
