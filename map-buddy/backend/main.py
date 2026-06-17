@@ -15,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain
+from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, explainer_profiles_public
 
 ALLOWED_ORIGINS = [
     o.strip()
@@ -131,6 +131,14 @@ async def explain(request: Request, body: ExplainRequest):
         return {"ok": False, "error": str(e)}
     except Exception as e:  # noqa: BLE001 — surface a clean message; frontend degrades
         return {"ok": False, "error": f"explainer failed: {e}"}
+
+
+@app.get("/explainers")
+async def explainers():
+    """Explainer-plugin catalog for the Admin Console (DIC-459) — each plugin's
+    model, system prompt, and injected context blocks. Read-only; no model call,
+    no secrets."""
+    return {"explainers": explainer_profiles_public()}
 
 
 @app.get("/workflows")

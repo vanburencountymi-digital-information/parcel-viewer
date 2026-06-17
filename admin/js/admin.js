@@ -24,6 +24,15 @@
   // Config source: the runtime /config API (DIC-465) when reachable, else the
   // baked window.COUNTY fallback (county-config.js).
   var API_BASE = window.ADMIN_API || '/api';
+  // The explainer plugins live in the Map Buddy service; resolve its base the same
+  // way the viewer does (window override first, for testing).
+  function explainBase() {
+    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+    return window.MAP_BUDDY_API ||
+      (window.COUNTY && COUNTY.endpoints && COUNTY.endpoints.mapBuddy) ||
+      (isLocal && '/map-buddy-api') ||
+      'https://map-buddy-toaozre74a-uc.a.run.app';
+  }
   var COUNTY_KEY = window.PV_COUNTY_KEY || 'vanburen';
   var STATE = {
     config: window.COUNTY || {}, source: 'fallback',
@@ -262,15 +271,68 @@
     };
   }
 
+  // ── Intelligence module: explainer-plugin admin backend (DIC-459, read-only) ─
+  function renderIntelligence(host) {
+    host.innerHTML = pageHead('Intelligence — Explainer Plugins',
+      'Each explainer is a callable plugin with its own LLM context — system prompt, injected reference material, and model. Read-only for now; editing lands with the writable store.') +
+      '<div class="ac-banner"><span>ⓘ</span><div>Live config from the Map Buddy service. Editing &amp; publish need the writable store (<b>DIC-464</b>) + auth (<b>DIC-463</b>).</div></div>' +
+      '<div id="ac-xp-list"><p class="ac-readonly">Loading explainer plugins…</p></div>';
+    var out = host.querySelector('#ac-xp-list');
+    fetch(explainBase() + '/explainers', { cache: 'no-cache' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function (res) {
+        var xs = (res && res.explainers) || [];
+        out.innerHTML = xs.length ? xs.map(xpCard).join('') : '<p class="ac-readonly">No explainer plugins registered.</p>';
+        wireCollapsibles(out);
+      })
+      .catch(function (e) {
+        out.innerHTML = '<div class="ac-card"><p class="ac-readonly">Couldn’t reach the Map Buddy service (' + esc(e.message) +
+          '). The explainer plugins live there; this view needs that service running (it goes live with the next Map Buddy redeploy, DIC-452).</p></div>';
+      });
+  }
+  function _collapse(id, label, body, chars) {
+    return '<button class="ac-collapse" data-collapse="' + esc(id) + '" aria-expanded="false">' +
+      '<span class="ac-arrow">▸</span> ' + esc(label) +
+      (chars != null ? ' <span class="ac-xp-chars">' + chars + ' chars</span>' : '') + '</button>' +
+      '<pre class="ac-xp-pre" id="' + esc(id) + '" hidden>' + esc(body || '') + '</pre>';
+  }
+  function xpCard(x) {
+    var blocks = (x.context_blocks || []).map(function (b, i) {
+      return '<div class="ac-xp-block">' + _collapse('blk-' + x.id + '-' + i, b.title, b.body, b.chars) + '</div>';
+    }).join('');
+    return '<div class="ac-card ac-xp-card" data-xp-id="' + esc(x.id) + '">' +
+      '<div class="ac-card-head"><h2 class="ac-card-title">' + esc(x.label) + '</h2>' +
+        '<span class="ac-xp-model">' + esc(x.model || '—') + '</span></div>' +
+      '<dl class="ac-grid">' +
+        '<dt>Plugin id</dt><dd><code>' + esc(x.id) + '</code></dd>' +
+        '<dt>Audience</dt><dd>' + esc(x.audience || '—') + '</dd>' +
+        '<dt>Callable</dt><dd><code>' + esc(x.callable_via || '—') + '</code></dd>' +
+      '</dl>' +
+      '<div class="ac-xp-section">' + _collapse('sp-' + x.id, 'System prompt', x.system_prompt, (x.system_prompt || '').length) + '</div>' +
+      (blocks ? '<div class="ac-xp-section"><div class="ac-xp-blocks-title">Injected context (' + (x.context_blocks || []).length + ')</div>' + blocks + '</div>' : '') +
+      '</div>';
+  }
+  // Toggle the <pre> next to each collapse button.
+  function wireCollapsibles(root) {
+    root.querySelectorAll('[data-collapse]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var el = document.getElementById(btn.getAttribute('data-collapse'));
+        if (!el) return;
+        var show = el.hasAttribute('hidden');
+        if (show) el.removeAttribute('hidden'); else el.setAttribute('hidden', '');
+        var arrow = btn.querySelector('.ac-arrow'); if (arrow) arrow.textContent = show ? '▾' : '▸';
+        btn.setAttribute('aria-expanded', show ? 'true' : 'false');
+      });
+    });
+  }
+
   // ── Module registry ─────────────────────────────────────────────────────────
   var MODULES = [
     { id: 'county', label: 'County Configuration', icon: '◆', render: renderCounty },
+    { id: 'intelligence', label: 'Intelligence', icon: '✦', render: renderIntelligence },
     { id: 'styling', label: 'Styling', icon: '◑', soon: true,
       render: roadmap('Styling', 'Parcel & label styling, choropleth, themes — moved out of hardcoded JS/CSS into editable config.', 'DIC-460',
         ['Parcel fill/stroke + choropleth by class or AV/TV bands', 'Label field, sizing & zoom thresholds', 'Basemap, light/dark defaults, color-scheme presets', 'Live preview against a sandboxed viewer']) },
-    { id: 'intelligence', label: 'Intelligence', icon: '✦', soon: true,
-      render: roadmap('Intelligence', 'Explainer profiles, AI models, feature flags & search — built on the EXPLAINER_PROFILES seam already shipping.', 'DIC-459',
-        ['Explainer profiles: editable prompt + injected context blocks + model', 'Per-feature model selection, API keys & rate limits', 'Map Buddy on/off feature flags', 'Search fields & relevance weighting']) },
     { id: 'data', label: 'Data & Layers', icon: '▤', soon: true,
       render: roadmap('Data & Layers', 'Parcel/assessing ingestion, tiles & overlay registry — the biggest onboarding pain, made self-serve.', 'DIC-461',
         ['Upload / connect → field-map → validate → stage → atomic publish', 'Versioned, rollbackable datasets + async job runner', 'Martin tile refresh', 'WMS overlay registry (wetlands/flood/soils/aerial)']) },
