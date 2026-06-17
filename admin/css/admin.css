@@ -145,6 +145,9 @@ body {
 .ac-input-sm { max-width: 220px; padding: 5px 9px; }
 .ac-color { width: 40px; height: 26px; padding: 0; border: 1px solid var(--ac-line); border-radius: 6px; vertical-align: -7px; cursor: pointer; background: none; }
 dl.ac-grid input[type="number"].ac-input-sm { max-width: 90px; }
+.ac-table .ac-input-sm { max-width: 100%; width: 100%; }
+.ac-add-row { margin-top: 10px; }
+.ac-table input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
 
 .ac-plan { margin: 4px 0 0; padding-left: 18px; line-height: 1.7; color: #4b5563; }
 .ac-plan li { margin-bottom: 3px; }
