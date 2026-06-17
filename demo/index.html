@@ -647,8 +647,12 @@
     };
     window.API_BASE = window.PS_CONFIG.API_BASE;
 </script>
-  <!-- County manifest — single source of truth for county-specific values. Load first. -->
+  <!-- County manifest. The baked file is the offline fallback; config.js (served
+       from the config store, DIC-465) overrides window.COUNTY at runtime when the
+       API is reachable. Both are synchronous + ordered, so COUNTY is authoritative
+       before map.js parses; if config.js 404s, the baked fallback stands. -->
   <script src="/frontend/public/js/county-config.js"></script>
+  <script src="/api/config.js" onerror="window.PV_CONFIG_SOURCE='fallback'"></script>
   <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
   <!-- proj4.js — coordinate projection (State Plane etc.) for Measurement tab -->

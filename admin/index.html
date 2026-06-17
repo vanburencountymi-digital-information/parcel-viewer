@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Parcel Viewer — Admin Console</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/admin/css/admin.css">
+</head>
+<body>
+  <div id="ac-app" class="ac-app">
+    <!-- Sidebar -->
+    <aside class="ac-side" role="navigation" aria-label="Admin sections">
+      <div class="ac-brand">
+        <span class="ac-brand-mark">◆</span>
+        <span class="ac-brand-text">Parcel Viewer<small>Admin Console</small></span>
+      </div>
+      <nav id="ac-nav" class="ac-nav"></nav>
+      <div class="ac-side-foot">
+        <span class="ac-pill ac-pill-warn" title="Authentication is not wired yet — DIC-463">Auth: stubbed</span>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <div class="ac-main">
+      <header class="ac-topbar">
+        <div class="ac-county">
+          <label for="ac-county-select" class="ac-county-label">County</label>
+          <select id="ac-county-select" class="ac-county-select" aria-label="Active county">
+            <option>Van Buren County</option>
+          </select>
+        </div>
+        <div class="ac-top-actions">
+          <span id="ac-status" class="ac-pill" role="status">Read-only preview</span>
+        </div>
+      </header>
+      <main id="ac-content" class="ac-content" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <!-- The live county manifest (current source of truth). The console reads it
+       today; a runtime /config API (DIC-465) replaces this bake later. -->
+  <script src="/frontend/public/js/county-config.js"></script>
+  <script src="/admin/js/admin.js"></script>
+</body>
+</html>
