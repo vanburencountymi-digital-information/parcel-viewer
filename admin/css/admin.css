@@ -140,6 +140,11 @@ body {
 .ac-scheme { display: flex; align-items: center; gap: 6px; padding: 7px 11px; border: 1px solid var(--ac-line); border-radius: 9px; font-size: 13px; }
 .ac-scheme.is-active { border-color: var(--ac-gold); box-shadow: 0 0 0 2px rgba(var(--ac-gold-rgb),0.20); }
 .ac-scheme-label { color: var(--ac-ink); }
+.ac-scheme-pick { cursor: pointer; font: inherit; background: #fff; }
+.ac-scheme-pick:hover { border-color: var(--ac-gold); }
+.ac-input-sm { max-width: 220px; padding: 5px 9px; }
+.ac-color { width: 40px; height: 26px; padding: 0; border: 1px solid var(--ac-line); border-radius: 6px; vertical-align: -7px; cursor: pointer; background: none; }
+dl.ac-grid input[type="number"].ac-input-sm { max-width: 90px; }
 
 .ac-plan { margin: 4px 0 0; padding-left: 18px; line-height: 1.7; color: #4b5563; }
 .ac-plan li { margin-bottom: 3px; }
