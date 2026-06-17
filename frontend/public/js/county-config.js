@@ -102,4 +102,35 @@ window.COUNTY = {
       zoom: { largeParcels: 13, smallParcels: 14 },
     },
   },
+
+  // Layers & data (DIC-461). Base layers, tile server, and the overlay registry —
+  // currently hardcoded in demo/index.html; modeled here as data for the console.
+  layers: {
+    tileServer: { provider: "Martin", url: "/tiles" },
+    baseLayers: [
+      { id: "parcels", label: "Parcels", source: "County PostGIS (vector tiles via Martin)", default: true },
+      { id: "aerial", label: "Aerial imagery", source: "County / state imagery", default: false },
+    ],
+    overlays: [
+      { id: "wetlands",   label: "Wetlands",         type: "WMS",    source: "USFWS National Wetlands Inventory", minZoom: 12 },
+      { id: "flood",      label: "Flood hazard",     type: "WMS",    source: "FEMA NFHL",                          minZoom: 0 },
+      { id: "soils",      label: "Soils",            type: "WMS",    source: "USDA SSURGO",                        minZoom: 0 },
+      { id: "hillshade",  label: "Hillshade",        type: "raster", source: "USGS 3DEP",                          minZoom: 0 },
+      { id: "contours10", label: "Contours (10 ft)", type: "raster", source: "USGS 3DEP",                          minZoom: 13 },
+      { id: "contours5",  label: "Contours (5 ft)",  type: "raster", source: "USGS 3DEP",                          minZoom: 14 },
+      { id: "contours2",  label: "Contours (2 ft)",  type: "raster", source: "USGS 3DEP",                          minZoom: 15 },
+    ],
+    dataSources: [
+      { id: "parcels", label: "Parcel geometry", source: "geo.parcels (PostGIS)" },
+      { id: "assessing", label: "Assessing / tax roll", source: "assessing.vbc_parcels" },
+    ],
+  },
+
+  // Access & ops (DIC-462). County-level access + operational facts.
+  access: {
+    model: "Public — no sign-in",
+    assessmentDataPublic: true,
+    reportTo: "gis@vanburencountymi.gov",
+    rateLimited: true,
+  },
 };

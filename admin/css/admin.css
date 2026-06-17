@@ -141,6 +141,9 @@ body {
 .ac-scheme.is-active { border-color: var(--ac-gold); box-shadow: 0 0 0 2px rgba(var(--ac-gold-rgb),0.20); }
 .ac-scheme-label { color: var(--ac-ink); }
 
+.ac-plan { margin: 4px 0 0; padding-left: 18px; line-height: 1.7; color: #4b5563; }
+.ac-plan li { margin-bottom: 3px; }
+
 /* Roadmap placeholder modules */
 .ac-roadmap { text-align: left; max-width: 64ch; }
 .ac-roadmap ul { margin: 8px 0 0; padding-left: 18px; line-height: 1.7; color: #4b5563; }
