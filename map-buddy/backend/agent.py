@@ -764,9 +764,16 @@ You will be given the VERBATIM tax description text and a detected description T
 - "platted_lot" — a lot/block within a recorded subdivision plat. Explain lots, blocks, and the plat.
 - "mixed" / "unknown" — explain the parts you can identify and note the rest plainly.
 
+# Recorded references & annotations (parsed for you)
+The `parsed` field may include `references` (recorded-deed Liber/Page numbers — Van Buren County descriptions usually LEAD with these) and `annotations` (administrative notes like a parcel combination or split, often between *** ***). Explain these in plain language in a section: what a Liber/Page reference points to (the recorded deed at the county Register of Deeds, which holds the full legal description) and what any combination/split means for this parcel (use the parsed pins/date/tax_year). Do NOT treat references or annotations as part of the boundary geometry.
+
+# Per-leg descriptions
+When `parsed.courses` is present, also fill `legs`: one short, plain-language sentence per course (matched by `index`) describing that leg in lay terms — e.g. "Heads roughly west for 660 feet along the north section line." Use the parsed bearing/compass/distance; never invent or alter a number. These render beside a numbered diagram, so keep each to a single clause.
+
 # Output
 - summary: 1-2 plain sentences on what this description is identifying, WITHOUT asserting geometry.
-- sections: the tax-vs-legal distinction (and why it matters); a structural walk-through of THIS description's parts; and a short "what this is / isn't" note.
+- sections: the tax-vs-legal distinction (and why it matters); a structural walk-through of the parts; recorded references and any combination/split history; and a short "what this is / isn't" note.
+- legs: per-course plain descriptions (see above) when courses exist, else an empty list.
 - glossary: define the terms that actually appear in this description (from the reference list), in one sentence each.
 - statutes: leave this an empty list unless a statute in your reference is directly relevant — this explainer is about terminology, not tax law.
 - disclaimer: educational only; not a survey or legal description; never use on deeds/titles; refer to the recorded deed and the assessor.
@@ -836,6 +843,18 @@ _EXPLAIN_TOOL = {
                         "body": {"type": "string", "description": "A few short paragraphs of plain text. No markdown tables."},
                     },
                     "required": ["heading", "body"],
+                },
+            },
+            "legs": {
+                "type": "array",
+                "description": "Tax-description only: one plain-language sentence per parsed course, matched by index. Empty for other explainers.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "index": {"type": "integer", "description": "Matches parsed.courses[].index"},
+                        "description": {"type": "string", "description": "One lay-language clause for this leg; use the parsed numbers, never invent."},
+                    },
+                    "required": ["index", "description"],
                 },
             },
             "glossary": {

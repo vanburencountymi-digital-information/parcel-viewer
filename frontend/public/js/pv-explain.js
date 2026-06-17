@@ -159,6 +159,74 @@
     return { value: v, unit: u, unit_name: _UNIT_NAME[u] || u, feet: Math.round(v * (_UNIT_FT[u] || 1) * 100) / 100, raw: m[0] };
   }
 
+  // Plain-language gloss for one course (deterministic; the AI can enrich further).
+  var _COMPASS_WORDS = {
+    N: 'north', NNE: 'north-northeast', NE: 'northeast', ENE: 'east-northeast',
+    E: 'east', ESE: 'east-southeast', SE: 'southeast', SSE: 'south-southeast',
+    S: 'south', SSW: 'south-southwest', SW: 'southwest', WSW: 'west-southwest',
+    W: 'west', WNW: 'west-northwest', NW: 'northwest', NNW: 'north-northwest',
+  };
+  var _NOTE_EXPAND = [
+    [/\bALG\b/g, 'along the'], [/\bSEC\b/g, 'section'], [/\bLN\b/g, 'line'], [/\bCOR\b/g, 'corner'],
+    [/\bR\/W\b/g, 'right-of-way'], [/\bC\/?L\b/g, 'centerline'],
+    [/\bNLY\b/g, 'northerly'], [/\bSLY\b/g, 'southerly'], [/\bELY\b/g, 'easterly'], [/\bWLY\b/g, 'westerly'],
+    [/\bN\b/g, 'north'], [/\bS\b/g, 'south'], [/\bE\b/g, 'east'], [/\bW\b/g, 'west'],
+  ];
+  function _expandNote(s) {
+    var out = ' ' + s + ' ';
+    _NOTE_EXPAND.forEach(function (p) { out = out.replace(p[0], p[1]); });
+    return out.replace(/\s+/g, ' ').trim();
+  }
+  function _coursePlain(c) {
+    var dir = c.bearing && c.bearing.compass ? _COMPASS_WORDS[c.bearing.compass] : null;
+    var s = dir ? ('Runs ' + dir) : 'Runs';
+    if (c.distance) {
+      s += ' about ' + ((c.distance.unit === 'FT' || c.distance.unit === "'")
+        ? (c.distance.value + ' feet')
+        : (c.distance.value + ' ' + c.distance.unit_name + ' (' + c.distance.feet + ' ft)'));
+    }
+    if (c.note) s += ', ' + _expandNote(c.note).toLowerCase();
+    return s;
+  }
+
+  // VBC-specific: descriptions usually LEAD with recorded-deed Liber/Page refs and
+  // may carry administrative *** annotations *** (combinations/splits). Pull both
+  // out so they're explained separately and don't pollute the geometry parse.
+  // TODO: move these conventions into per-county config (DIC-458) as counties are added.
+  function _extractReferences(text) {
+    var refs = [], re = /\bL(?:IBER|IB)?\.?\s*(\d+)\s*[,\/\- ]?\s*P(?:AGE|G)?\.?\s*(\d+)/gi, m;
+    while ((m = re.exec(text))) refs.push({ liber: m[1], page: m[2], raw: m[0].replace(/\s+/g, ' ').trim() });
+    return { references: refs, text: refs.length ? text.replace(re, ' ') : text };
+  }
+  function _titleCase(d) { return d.toLowerCase().replace(/\b\w/g, function (ch) { return ch.toUpperCase(); }); }
+  function _parseAnnotation(raw) {
+    raw = raw.replace(/\s+/g, ' ').trim().replace(/\.$/, '');
+    var pins = raw.match(/\b\d{2}-\d{2}-\d{3}-\d{3}-\d{2}\b/g) || [];
+    var date = (raw.match(/\b\d{1,2}\s+[A-Z]+\s+\d{4}\b/) || [])[0] || null;
+    var year = (raw.match(/\bFOR\s+(\d{4})\b/i) || [])[1] || null;
+    var action = /COMBINAT|COMBINED/i.test(raw) ? 'combination' : (/SPLIT/i.test(raw) ? 'split' : null);
+    return { raw: raw, action: action, pins: pins, date: date ? _titleCase(date) : null, tax_year: year };
+  }
+  function _extractAnnotations(text) {
+    var anns = [], t = text, re = /\*{2,}\s*([^*]+?)\s*\*{2,}/g, m;
+    while ((m = re.exec(text))) anns.push(_parseAnnotation(m[1]));
+    t = t.replace(re, ' ');
+    var re2 = /\b(?:COMBINATION OF|COMBINED WITH|SPLIT (?:FROM|FOR)|FORMERLY)\b[^.]*\.?/gi;
+    while ((m = re2.exec(t))) anns.push(_parseAnnotation(m[0]));
+    return { annotations: anns, text: t.replace(re2, ' ') };
+  }
+  function annotationPlain(a) {
+    if (a.action === 'combination' && a.pins.length) {
+      return 'Created by combining parcel' + (a.pins.length > 1 ? 's ' : ' ') + a.pins.join(' and ') +
+        (a.date ? (' on ' + a.date) : '') + (a.tax_year ? (', effective for the ' + a.tax_year + ' tax year') : '') + '.';
+    }
+    if (a.action === 'split' && a.pins.length) {
+      return 'Split from parcel' + (a.pins.length > 1 ? 's ' : ' ') + a.pins.join(', ') +
+        (a.date ? (' on ' + a.date) : '') + (a.tax_year ? (', effective for the ' + a.tax_year + ' tax year') : '') + '.';
+    }
+    return a.raw;
+  }
+
   function parseMetesAndBounds(text) {
     var t = _normDesc(text);
     var parts = t.split(/\bTH(?:ENCE)?\b/);
@@ -174,7 +242,9 @@
         .replace(/\bTO\s+BEG\b.*$/, '')
         .replace(/\bEXC(?:EPT)?\b.*$/, '')
         .replace(/\bDEG\b/g, '').replace(/[.,]/g, ' ').replace(/\s+/g, ' ').trim();
-      return { index: i + 1, bearing: bearing, distance: dist, note: note };
+      var c = { index: i + 1, bearing: bearing, distance: dist, note: note };
+      c.plain = _coursePlain(c);
+      return c;
     }).filter(function (c) { return c.bearing || c.distance; });
     var closings = [];
     if (/TO\s+P\.?\s?O\.?\s?B|TO\s+BEG|POINT\s+OF\s+BEG/.test(t)) closings.push('Returns to the Point of Beginning');
@@ -204,10 +274,18 @@
   }
   function parseDescription(text, type) {
     if (!text) return null;
-    if (type === 'metes_bounds') return parseMetesAndBounds(text);
-    if (type === 'aliquot_plss') return parseAliquot(text);
-    if (type === 'platted_lot') return parsePlatted(text);
-    return null;
+    // Pull VBC-specific deed refs + admin annotations before the geometry parse.
+    var r = _extractReferences(text);
+    var a = _extractAnnotations(r.text);
+    var geom = a.text;
+    var base;
+    if (type === 'metes_bounds') base = parseMetesAndBounds(geom);
+    else if (type === 'aliquot_plss') base = parseAliquot(geom);
+    else if (type === 'platted_lot') base = parsePlatted(geom);
+    else base = { kind: type || 'unknown' };
+    base.references = r.references;
+    base.annotations = a.annotations.map(function (an) { return { raw: an.raw, action: an.action, pins: an.pins, date: an.date, tax_year: an.tax_year, plain: annotationPlain(an) }; });
+    return base;
   }
 
   // Truth layer for the tax description (DIC-369). The verbatim text + detected
@@ -363,27 +441,67 @@
       history_years: (facts.assessed_value_by_year || []).length,
     };
   }
-  // Render the deterministic parse as a call-by-call breakdown (Phase 2).
+  // Walk the courses into a LOCAL traced outline (relative feet, not georeferenced
+  // and not rotated to the real parcel — that's Phase 3). Closure gap is a useful
+  // deterministic signal we surface honestly.
+  function _walkTraverse(courses) {
+    var usable = (courses || []).filter(function (c) { return c.bearing && c.bearing.azimuth != null && c.distance; });
+    if (usable.length < 2) return null;
+    var pts = [{ x: 0, y: 0 }], x = 0, y = 0, legs = [];
+    usable.forEach(function (c) {
+      var az = c.bearing.azimuth * Math.PI / 180, d = c.distance.feet;
+      var nx = x + Math.sin(az) * d, ny = y + Math.cos(az) * d;
+      legs.push({ from: { x: x, y: y }, to: { x: nx, y: ny }, index: c.index });
+      pts.push({ x: nx, y: ny }); x = nx; y = ny;
+    });
+    return { pts: pts, legs: legs, closureFt: Math.round(Math.sqrt(x * x + y * y) * 10) / 10 };
+  }
+  function _traverseDiagram(p) {
+    var w = _walkTraverse(p.courses);
+    if (!w) return '';
+    var xs = w.pts.map(function (q) { return q.x; }), ys = w.pts.map(function (q) { return q.y; });
+    var minx = Math.min.apply(null, xs), maxx = Math.max.apply(null, xs), miny = Math.min.apply(null, ys), maxy = Math.max.apply(null, ys);
+    var W = 300, H = 210, pad = 26;
+    var s = Math.min((W - 2 * pad) / ((maxx - minx) || 1), (H - 2 * pad) / ((maxy - miny) || 1));
+    function PX(q) { return (pad + (q.x - minx) * s).toFixed(1); }
+    function PY(q) { return (H - pad - (q.y - miny) * s).toFixed(1); }   // y up
+    var poly = w.pts.map(function (q) { return PX(q) + ',' + PY(q); }).join(' ');
+    var labels = w.legs.map(function (l) {
+      var cx = pad + ((l.from.x + l.to.x) / 2 - minx) * s, cy = H - pad - ((l.from.y + l.to.y) / 2 - miny) * s;
+      return '<circle cx="' + cx.toFixed(1) + '" cy="' + cy.toFixed(1) + '" r="8" fill="var(--ui-interactive)"/>' +
+        '<text x="' + cx.toFixed(1) + '" y="' + (cy + 3).toFixed(1) + '" text-anchor="middle" font-size="9" font-weight="700" fill="#fff">' + l.index + '</text>';
+    }).join('');
+    var p0 = w.pts[0];
+    var pob = '<circle cx="' + PX(p0) + '" cy="' + PY(p0) + '" r="3.5" fill="#A3473B"/>' +
+      '<text x="' + PX(p0) + '" y="' + (parseFloat(PY(p0)) - 6).toFixed(1) + '" text-anchor="middle" font-size="8" fill="#A3473B">POB</text>';
+    var note = 'Traced from the calls — not to scale, not georeferenced. ' +
+      (w.closureFt < 2 ? 'The traverse closes.' : 'Closure gap ≈ ' + w.closureFt + ' ft (the description may start with a tie line or omit a call).');
+    return '<div class="pv-xp-diagram"><svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block" role="img" aria-label="Traced parcel outline with numbered legs">' +
+      '<polyline points="' + poly + '" fill="rgba(181,141,74,0.12)" stroke="var(--ui-interactive)" stroke-width="1.5"/>' + labels + pob + '</svg>' +
+      '<div class="pv-xp-diag-note">' + note + '</div></div>';
+  }
+
+  // The per-call breakdown: numbered legs with a plain-language description (DIC-369
+  // Phase 2+). Each leg shows the AI's description when present, else the
+  // deterministic gloss, plus the raw bearing/distance.
+  function _legItem(c) {
+    var tech = [];
+    if (c.bearing) tech.push(esc(c.bearing.text));
+    if (c.distance) tech.push(esc(c.distance.value + ' ' + c.distance.unit_name) +
+      (c.distance.unit !== 'FT' && c.distance.unit !== "'" ? ' / ' + esc(c.distance.feet) + ' ft' : ''));
+    var plain = c.ai || c.plain || c.note || '';
+    return '<li><span class="pv-xp-leg-n">' + c.index + '</span><div class="pv-xp-leg-body">' +
+      '<div class="pv-xp-leg-plain">' + esc(plain) + '</div>' +
+      (tech.length ? '<div class="pv-xp-leg-tech">' + tech.join(' · ') + '</div>' : '') + '</div></li>';
+  }
   function _mbBreakdown(p) {
     if (!p.courses || !p.courses.length) return '';
-    var rows = p.courses.map(function (c) {
-      var dir = c.bearing
-        ? esc(c.bearing.text) + (c.bearing.compass ? ' <span class="pv-xp-course-az">(' + esc(c.bearing.compass) + ')</span>' : '')
-        : '—';
-      var dist = c.distance
-        ? esc(c.distance.value + ' ' + c.distance.unit_name) +
-          (c.distance.unit !== 'FT' && c.distance.unit !== "'" ? ' <span class="pv-xp-course-az">(' + esc(c.distance.feet) + ' ft)</span>' : '')
-        : '—';
-      return '<tr><td>' + c.index + '</td><td>' + dir + '</td><td>' + dist + '</td><td>' + esc(c.note || '') + '</td></tr>';
-    }).join('');
     var comm = p.commencement ? '<p class="pv-xp-course-lead">Commences at <span>' + esc(p.commencement) + '</span></p>' : '';
+    var legs = '<ul class="pv-xp-legs">' + p.courses.map(_legItem).join('') + '</ul>';
     var close = (p.closings && p.closings.length)
       ? '<ul class="pv-xp-closings">' + p.closings.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '';
-    return '<div class="pv-xp-breakdown">' +
-      '<div class="pv-xp-hist-cap">Structured breakdown — ' + p.courses.length + ' course' + (p.courses.length === 1 ? '' : 's') + ' (parsed from the text, not a survey)</div>' +
-      comm +
-      '<table class="pv-xp-table pv-xp-courses"><thead><tr><th>#</th><th>Direction</th><th>Distance</th><th>Notes</th></tr></thead><tbody>' + rows + '</tbody></table>' +
-      close + '</div>';
+    return '<div class="pv-xp-hist-cap">Traverse — ' + p.courses.length + ' leg' + (p.courses.length === 1 ? '' : 's') + ' (parsed from the text, not a survey)</div>' +
+      _traverseDiagram(p) + comm + legs + close;
   }
   function _kvBreakdown(rows, caption) {
     rows = rows.filter(function (r) { return r[1] != null && r[1] !== '' && !(Array.isArray(r[1]) && !r[1].length); });
@@ -392,19 +510,32 @@
       var v = Array.isArray(r[1]) ? r[1].join(' of ') : r[1];
       return '<tr><th>' + esc(r[0]) + '</th><td>' + esc(v) + '</td></tr>';
     }).join('');
-    return '<div class="pv-xp-breakdown"><div class="pv-xp-hist-cap">' + esc(caption) + '</div>' +
-      '<table class="pv-xp-table pv-xp-kv">' + trs + '</table></div>';
+    return '<div class="pv-xp-hist-cap">' + esc(caption) + '</div><table class="pv-xp-table pv-xp-kv">' + trs + '</table>';
+  }
+  function _refsHtml(refs) {
+    if (!refs || !refs.length) return '';
+    var items = refs.map(function (r) {
+      return '<li>Liber ' + esc(r.liber) + ', Page ' + esc(r.page) + ' <span class="pv-xp-course-az">(' + esc(r.raw) + ')</span></li>';
+    }).join('');
+    return '<div class="pv-xp-refs"><div class="pv-xp-hist-cap">Recorded references (deeds / documents)</div>' +
+      '<ul class="pv-xp-reflist">' + items + '</ul>' +
+      '<div class="pv-xp-diag-note">These Liber/Page numbers point to the recorded deed(s) at the county Register of Deeds — the full legal description lives there.</div></div>';
+  }
+  function _annosHtml(anns) {
+    if (!anns || !anns.length) return '';
+    var items = anns.map(function (a) {
+      var raw = (a.plain && a.plain !== a.raw) ? ' <span class="pv-xp-course-az">(' + esc(a.raw) + ')</span>' : '';
+      return '<li>' + esc(a.plain || a.raw) + raw + '</li>';
+    }).join('');
+    return '<div class="pv-xp-annos"><div class="pv-xp-hist-cap">Parcel history / notes</div><ul class="pv-xp-annolist">' + items + '</ul></div>';
   }
   function breakdownHtml(parsed) {
     if (!parsed) return '';
-    if (parsed.kind === 'metes_bounds') return _mbBreakdown(parsed);
-    if (parsed.kind === 'aliquot_plss') {
-      return _kvBreakdown([['Aliquot parts', parsed.quarters], ['Section', parsed.section], ['Town(ship)', parsed.town], ['Range', parsed.range]], 'Structured breakdown (PLSS)');
-    }
-    if (parsed.kind === 'platted_lot') {
-      return _kvBreakdown([['Lot', parsed.lot], ['Block', parsed.block]], 'Structured breakdown (platted lot)');
-    }
-    return '';
+    var inner = _refsHtml(parsed.references) + _annosHtml(parsed.annotations);
+    if (parsed.kind === 'metes_bounds') inner += _mbBreakdown(parsed);
+    else if (parsed.kind === 'aliquot_plss') inner += _kvBreakdown([['Aliquot parts', parsed.quarters], ['Section', parsed.section], ['Town(ship)', parsed.town], ['Range', parsed.range]], 'Structured breakdown (PLSS)');
+    else if (parsed.kind === 'platted_lot') inner += _kvBreakdown([['Lot', parsed.lot], ['Block', parsed.block]], 'Structured breakdown (platted lot)');
+    return inner ? '<div class="pv-xp-breakdown">' + inner + '</div>' : '';
   }
 
   function taxDescHeader(facts) {
@@ -440,6 +571,13 @@
   function buildData(facts, explanation, topic) {
     var meta = TOPICS[topic] || TOPICS.assessment;
     var data = { pin: facts.pin || '', lead: meta.lead, has_ai: !!explanation };
+    // Overlay the AI's per-leg descriptions (matched by index) onto the parsed
+    // courses, so the numbered legs read in the model's richer language.
+    if (topic === 'tax_description' && explanation && explanation.legs && facts.parsed && facts.parsed.courses) {
+      var byIndex = {};
+      explanation.legs.forEach(function (l) { if (l && l.index != null) byIndex[l.index] = l.description; });
+      facts.parsed.courses.forEach(function (c) { if (byIndex[c.index]) c.ai = byIndex[c.index]; });
+    }
     var h = meta.header(facts);
     for (var k in h) { if (Object.prototype.hasOwnProperty.call(h, k)) data[k] = h[k]; }
     if (explanation) {
