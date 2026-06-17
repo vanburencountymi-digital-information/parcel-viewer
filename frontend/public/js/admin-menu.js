@@ -1050,7 +1050,17 @@
 
   // Tax description info — for now the disclaimer + a teaser for the full
   // explainer (DIC-369). This window becomes the AI-driven explainer later.
+  // Tax Description info (DIC-369). Live per-parcel explainer when a parcel is
+  // selected and the module is loaded; static overview otherwise.
   function openTaxInfo() {
+    var parcel = window.PS_STATE && window.PS_STATE.parcel;
+    if (window.PV_EXPLAIN && parcel && parcel.id != null) {
+      return window.PV_EXPLAIN.openTaxDescription(parcel, { openModal: openModal, closeModal: closeModal });
+    }
+    return openTaxInfoStatic();
+  }
+
+  function openTaxInfoStatic() {
     openModal("About the Tax Description", [
       '<p class="pv-modal-lead">What the Tax Description is — and isn&rsquo;t.</p>',
       '<p>The Tax Description is an <strong>abbreviated</strong> version of the deeded legal description, used for <strong>taxation purposes only</strong>. It should never be used on deeds, titles, mortgages, or other legal documents. Always refer to the recorded deed for the full legal description.</p>',
@@ -1061,9 +1071,18 @@
     ].join(""));
   }
 
-  // Assessment info — for now an educational overview + a teaser for the full
-  // AI/database-backed explainer (DIC-370). Becomes a callable module later.
+  // Assessment info (DIC-370). When a parcel is selected and the explainer module
+  // is loaded, open the live per-parcel AI Assessment Explainer; otherwise fall
+  // back to the generic educational overview below.
   function openAssessInfo() {
+    var parcel = window.PS_STATE && window.PS_STATE.parcel;
+    if (window.PV_EXPLAIN && parcel && parcel.id != null) {
+      return window.PV_EXPLAIN.openAssessment(parcel, { openModal: openModal, closeModal: closeModal });
+    }
+    return openAssessInfoStatic();
+  }
+
+  function openAssessInfoStatic() {
     openModal("About Property Assessment", [
       '<p class="pv-modal-lead">How your assessment works — and what your taxes pay for.</p>',
       helpItem("Assessed Value (AV)", "Set by the local assessor at 50% of a property&rsquo;s estimated True Cash Value (market value)."),

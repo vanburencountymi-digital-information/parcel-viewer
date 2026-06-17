@@ -650,3 +650,263 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
         response_text = "Done — updated the map."
 
     yield {"type": "done", "response_text": response_text, "commands": commands}
+
+
+# ── Explainer engine (DIC-370) ────────────────────────────────────────────────
+# A separate, narrowly-scoped "teacher" model that explains a parcel's assessment
+# in plain language. It follows the two-engine / citation-first discipline: the
+# caller assembles the *verified figures* (the deterministic "truth"), and this
+# model only narrates them — it never originates a dollar amount, a millage rate,
+# or a statute it wasn't given. Michigan law is supplied below as a curated
+# reference so citations come from a vetted list, not the model's memory.
+
+EXPLAIN_MODEL = os.getenv("EXPLAIN_MODEL", os.getenv("MAP_BUDDY_MODEL", "claude-sonnet-4-6"))
+
+# Curated Michigan property-tax statute reference. The model must cite ONLY from
+# this list (or name no citation) — keeps legal references accurate for a
+# county-facing tool. Update here when the law changes.
+_MI_TAX_STATUTES = """\
+- General Property Tax Act — 1893 PA 206 (MCL 211.1 et seq.): the framework for assessing and taxing real property in Michigan.
+- Assessment at 50% of True Cash Value — Mich. Const. Art. IX, Sec. 3 and MCL 211.27a: Assessed Value (AV) is half of a property's True Cash (market) Value.
+- State Equalized Value (SEV) & equalization — MCL 211.34: county and state equalization confirm assessments sit uniformly at the 50% level; SEV is AV after equalization.
+- Taxable Value cap (Proposal A) — MCL 211.27a(2): a property's Taxable Value (TV) rises each year by the lesser of 5% or the inflation rate multiplier (CPI), until ownership transfers.
+- Uncapping on transfer of ownership — MCL 211.27a(3); "transfer of ownership" defined at MCL 211.27a(6)–(7): the year after a transfer, TV resets ("uncaps") to that year's SEV.
+- Principal Residence Exemption (PRE) — MCL 211.7cc and 211.7dd: exempts an owner-occupied principal residence from up to 18 mills of local school operating tax.
+- Property classification — MCL 211.34c: the assessor assigns each parcel an STC class (agricultural, commercial, industrial, residential, timber-cutover, developmental).
+- March Board of Review — MCL 211.30: the first level of appeal for assessment, taxable value, or classification disputes.
+- Michigan Tax Tribunal — MCL 205.731: appeals beyond the Board of Review; residential/agricultural appeals follow the Board of Review, commercial/industrial may go directly by May 31.
+"""
+
+_ASSESSMENT_SYSTEM = """You are the Assessment Explainer for the Van Buren County, Michigan parcel viewer — a focused educational assistant that explains a single parcel's property assessment in plain, friendly language for a general audience.
+
+# The one rule that matters: explain, never originate
+You are the "teacher", not the "calculator". You will be given a block of VERIFIED FIGURES for one parcel (assessed value, taxable value, history, PRE, classification, etc.) that were pulled directly from the assessment database. Your job is to explain what those numbers mean and how Michigan's system produced them.
+
+- NEVER state a dollar amount, percentage, millage rate, year, or classification that is not in the VERIFIED FIGURES. If a figure isn't provided (e.g. a specific millage rate or SEV), explain the concept generally and say the exact figure isn't shown here — do not invent one.
+- NEVER compute new figures beyond what is given. You may restate and compare the provided numbers (e.g. "your taxable value is lower than your assessed value, which is common under the cap"), but do not derive new dollar values.
+- This is educational information, not tax advice or an official assessment notice.
+
+# Tie every explanation to THIS parcel's numbers
+Do not explain concepts in the abstract when a figure is available — anchor each one to this parcel:
+- The summary and sections must reference this parcel's actual figures by value (e.g. "your Taxable Value of $98,000…", "your assessment classification is 401 – Residential…").
+- In the GLOSSARY, every term that has a matching figure for this parcel must state that figure in its definition. Define "Taxable Value" by naming this parcel's TV; define "PRE" by naming this parcel's exemption percentage; etc. Only fall back to a generic definition when this parcel has no corresponding value.
+- When you reference the assessment year, use the years given in the figures (the history is labeled by year).
+
+# Citing Michigan law
+Cite statutes ONLY from the "Michigan property-tax statutes" reference block provided to you below. If a point isn't covered there, explain it without a citation rather than guessing one.
+
+# What to cover
+- What the numbers mean: Assessed Value (AV, 50%% of True Cash Value), State Equalized Value (SEV), Taxable Value (TV), True Cash / market value, and the Principal Residence Exemption (PRE).
+- The single most common point of confusion: assessing vs. equalization vs. appraisal — distinguish them clearly.
+- Proposal A: why TV is usually below AV, the annual cap, and what "uncapping" on sale means.
+- Where property taxes generally go (schools, county, township, libraries, roads, special assessments) — describe the categories; do NOT invent specific millage numbers for this parcel.
+- The owner's appeal rights (March Board of Review, then the Michigan Tax Tribunal). Where contact information is provided to you below, point the owner to it.
+
+# Style
+Warm, clear, and concise — short paragraphs, no jargon without a plain-language gloss. No emojis. Write for a homeowner, not an assessor. Always note the assessment year/vintage if given, and that the assessor or Board of Review is the authority for official figures and appeals."""
+
+
+# ── Explainer profiles (config-driven; future home: writable store + admin UI) ─
+# Each explainer is a profile: a base system prompt plus an ordered list of
+# *context blocks* (reference material injected as grounding). Keeping prompt +
+# context as data — not hardcoded into run_explain — is what lets an admin console
+# later edit the prompt and add references (assessor's manual, township contacts,
+# STC bulletins) per explainer without a code change. The assembled static
+# system text is marked cache-eligible, so even a large injected manual costs
+# little per request (only the per-parcel facts vary). See DIC-400 for the
+# writable-store + admin surface this dict will migrate into.
+# Curated survey / legal-description terminology. The model defines terms from
+# this vetted list rather than its memory — the same citation-first discipline
+# applied to terminology (DIC-369 Phase 1).
+_TAX_DESC_TERMS = """\
+Metes-and-bounds (a traverse of bearings & distances):
+- COM / COMM — "commencing at"; the starting reference point of the description.
+- BEG / POB — "beginning" / Point of Beginning; where the described boundary actually starts (often reached after a tie line from the COM point).
+- TH / THENCE — "thence"; introduces the next course (direction + distance).
+- Bearings like "N 89° E" or "S 12°30' W" — a direction stated as an angle east or west of due north or south (quadrant bearing).
+- DEG / MIN / SEC (° ' ") — degrees, minutes, seconds of a bearing angle.
+- FT (feet), CH (chains, 66 ft), RD (rods, 16.5 ft), LK (links, 0.66 ft) — distance units.
+
+Public Land Survey System (PLSS) / aliquot parts:
+- T / TWP and R / RGE — Town(ship) and Range; the grid coordinates of a 6-mile-square township (e.g. "T1S R13W").
+- SEC — Section; a 1-mile-square (≈640-acre) block, 36 per township.
+- Aliquot fractions like "NW 1/4 of SE 1/4" — nested quarter divisions of a section ("the northwest quarter of the southeast quarter").
+- N 1/2, S 1/2, E 1/2, W 1/2 — half-section or half-quarter divisions.
+
+Platted / subdivision descriptions:
+- LOT and BLK (block) — a numbered lot within a recorded subdivision plat.
+- ADD / SUB / "ASSESSOR'S PLAT" — the name of the recorded subdivision the lot belongs to.
+
+General:
+- EXC / EX — "except(ing)"; land carved out of the described parcel.
+- SD — "said"; refers back to a feature already named.
+"""
+
+_TAX_DESCRIPTION_SYSTEM = """You are the Tax Description Explainer for the Van Buren County, Michigan parcel viewer — a focused educational assistant that explains a single parcel's TAX DESCRIPTION in plain, friendly language for a general audience.
+
+# What a tax description is (lead with this)
+A tax description is an ABBREVIATED, shorthand version of a property's deeded legal description, kept on the assessment roll to IDENTIFY the parcel for taxation. It is NOT a boundary survey and NOT the controlling legal document. Explain clearly WHY this matters:
+- It may omit detail and uses heavy abbreviation, so it can be ambiguous on its own.
+- It must never be used on deeds, titles, mortgages, or to settle a boundary — the recorded deed (and a licensed survey) are authoritative.
+This tax-vs-legal distinction is the single most important thing for a reader to understand.
+
+# The one rule that matters: explain the text, never compute geometry
+You will be given the VERBATIM tax description text and a detected description TYPE. Your job is to explain the terminology and structure of THAT text.
+- NEVER compute, close, or assert geometry: do not state the parcel's shape, area, or that the courses connect/close; do not infer a bearing or distance that isn't written in the text; do not "trace" the parcel.
+- You MAY quote the literal text and explain what each written part means (e.g. "the description reads 'TH N 89° E 200 FT', which is a course heading roughly east for 200 feet").
+- If the reader wants the parcel drawn on the map call-by-call, say that leg-by-leg mapping is a planned future feature — you can explain the words today.
+- Define terms ONLY from the terminology reference provided to you below; if a token isn't covered there, say it appears to be an abbreviation and suggest confirming it with the assessor rather than guessing.
+
+# Use the detected type to frame the explanation
+- "metes_bounds" — a traverse of bearings and distances from a starting point. Walk through the COM/BEG/THENCE structure conceptually.
+- "aliquot_plss" — a Public Land Survey System description (township/range/section + quarter divisions). Explain the nested-quarter and section grid.
+- "platted_lot" — a lot/block within a recorded subdivision plat. Explain lots, blocks, and the plat.
+- "mixed" / "unknown" — explain the parts you can identify and note the rest plainly.
+
+# Output
+- summary: 1-2 plain sentences on what this description is identifying, WITHOUT asserting geometry.
+- sections: the tax-vs-legal distinction (and why it matters); a structural walk-through of THIS description's parts; and a short "what this is / isn't" note.
+- glossary: define the terms that actually appear in this description (from the reference list), in one sentence each.
+- statutes: leave this an empty list unless a statute in your reference is directly relevant — this explainer is about terminology, not tax law.
+- disclaimer: educational only; not a survey or legal description; never use on deeds/titles; refer to the recorded deed and the assessor.
+
+# Style
+Warm, clear, concise. Short paragraphs, no jargon without a plain-language gloss. No emojis. Write for a property owner, not a surveyor."""
+
+
+EXPLAINER_PROFILES = {
+    "assessment": {
+        "model": EXPLAIN_MODEL,
+        "system_prompt": _ASSESSMENT_SYSTEM,
+        "context_blocks": [
+            {
+                "title": "Michigan property-tax statutes (cite ONLY from this list)",
+                "body": _MI_TAX_STATUTES,
+            },
+            # Add here (or, later, via the admin console): township/assessor contact
+            # directory, State Tax Commission Assessor's Manual excerpts, local
+            # special-assessment notes, current-year inflation rate multiplier, etc.
+        ],
+    },
+    "tax_description": {
+        "model": EXPLAIN_MODEL,
+        "system_prompt": _TAX_DESCRIPTION_SYSTEM,
+        "context_blocks": [
+            {
+                "title": "Survey / legal-description terminology (define ONLY from this list)",
+                "body": _TAX_DESC_TERMS,
+            },
+            # Later, via the admin console: county-specific abbreviation conventions,
+            # local plat/subdivision index, controlling-corner notes, etc.
+        ],
+    },
+}
+
+
+def _assemble_system(profile: dict) -> str:
+    """Concatenate a profile's base prompt with its injected reference blocks."""
+    parts = [profile["system_prompt"]]
+    for blk in profile.get("context_blocks", []):
+        body = (blk.get("body") or "").strip()
+        if body:
+            parts.append("\n\n# Reference: " + blk.get("title", "") + "\n" + body)
+    return "".join(parts)
+
+
+# Structured output contract for the explainer. Forcing this tool guarantees a
+# stable shape the frontend can lay out via PV_TEMPLATE.
+_EXPLAIN_TOOL = {
+    "name": "render_explanation",
+    "description": "Return the structured assessment explanation for this parcel.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": "1-2 sentence plain-language read of THIS parcel's numbers, grounded only in the verified figures.",
+            },
+            "sections": {
+                "type": "array",
+                "description": "Ordered explanatory sections.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "heading": {"type": "string"},
+                        "body": {"type": "string", "description": "A few short paragraphs of plain text. No markdown tables."},
+                    },
+                    "required": ["heading", "body"],
+                },
+            },
+            "glossary": {
+                "type": "array",
+                "description": "Key terms (AV, SEV, TV, TCV, PRE, millage, etc.), each defined in one sentence. Where this parcel has a matching figure, the definition MUST state that figure (e.g. 'Taxable Value (TV) — the $98,000 your taxes are levied on').",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "term": {"type": "string"},
+                        "definition": {"type": "string"},
+                    },
+                    "required": ["term", "definition"],
+                },
+            },
+            "statutes": {
+                "type": "array",
+                "description": "Relevant Michigan statutes cited, drawn ONLY from the provided reference list.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "description": "e.g. 'Taxable Value cap (Proposal A)'"},
+                        "citation": {"type": "string", "description": "e.g. 'MCL 211.27a(2)'"},
+                        "plain": {"type": "string", "description": "One-sentence plain-language summary."},
+                    },
+                    "required": ["name", "citation", "plain"],
+                },
+            },
+            "disclaimer": {
+                "type": "string",
+                "description": "One or two sentences: educational only, not tax advice/official notice; direct to assessor / Board of Review.",
+            },
+        },
+        "required": ["summary", "sections", "glossary", "statutes", "disclaimer"],
+    },
+}
+
+
+def run_explain(topic: str, facts: dict) -> dict:
+    """Generate a structured, grounded explanation for a parcel.
+
+    `facts` is the deterministic "truth" assembled by the caller. Returns the
+    validated tool input (summary/sections/glossary/statutes/disclaimer). Raises
+    on a missing key or if the model declines to call the tool.
+    """
+    profile = EXPLAINER_PROFILES.get(topic)
+    if not profile:
+        raise ValueError(f"unsupported explainer topic: {topic!r}")
+
+    # Static, reusable across every parcel → cache it. Only the per-parcel facts
+    # (the user turn) vary, so a large injected reference corpus stays cheap.
+    system = [{
+        "type": "text",
+        "text": _assemble_system(profile),
+        "cache_control": {"type": "ephemeral"},
+    }]
+    user = (
+        "Explain this parcel using ONLY the authoritative input below. Anything "
+        "not present here must be described generally, never invented.\n\n"
+        "INPUT DATA:\n"
+        + json.dumps(facts, indent=2, default=str)
+    )
+
+    max_tokens = int(os.getenv("EXPLAIN_MAX_TOKENS", "2048"))
+    response = _get_client().messages.create(
+        model=profile["model"],
+        max_tokens=max_tokens,
+        system=system,
+        tools=[_EXPLAIN_TOOL],
+        tool_choice={"type": "tool", "name": "render_explanation"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "render_explanation":
+            return dict(block.input or {})
+    raise RuntimeError("model did not return a render_explanation tool call")
