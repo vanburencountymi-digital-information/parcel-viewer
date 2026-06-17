@@ -867,36 +867,6 @@ textarea.pv-input { resize: vertical; min-height: 70px; }
 .pv-xp-desc-type { margin-top: 7px; font-size: 12px; color: var(--text-muted); }
 [data-theme="dark"] .pv-xp-desc { color: #e8d8c4; background: rgba(0,0,0,0.22); }
 
-/* Per-call structured breakdown (DIC-369 Phase 2) */
-.pv-xp-breakdown { margin-top: 12px; }
-.pv-xp-course-lead { font-size: 12px; color: var(--text-muted); margin: 0 0 8px; }
-.pv-xp-course-lead span { color: #374151; }
-.pv-xp-courses th, .pv-xp-courses td { text-align: left; padding: 5px 8px; font-size: 12.5px; white-space: normal; font-weight: 400; color: #374151; }
-.pv-xp-courses thead th { font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); border-bottom: 1px solid var(--ui-interactive-bd); }
-.pv-xp-courses td:first-child, .pv-xp-courses th:first-child { width: 28px; color: var(--text-muted); }
-.pv-xp-course-az { color: var(--text-muted); font-size: 11px; }
-.pv-xp-closings { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: #4b5563; }
-.pv-xp-closings li { margin-bottom: 2px; }
-.pv-xp-kv th { text-align: left; font-weight: 500; color: var(--text-muted); white-space: nowrap; }
-.pv-xp-kv td { text-align: left; font-weight: 600; color: #1f2937; }
-[data-theme="dark"] .pv-xp-course-lead span, [data-theme="dark"] .pv-xp-courses td, [data-theme="dark"] .pv-xp-kv td { color: #e8d8c4; }
-[data-theme="dark"] .pv-xp-closings { color: #b3a99d; }
-
-/* Recorded references, annotations, numbered legs, traced diagram (DIC-369) */
-.pv-xp-refs, .pv-xp-annos { margin-bottom: 12px; }
-.pv-xp-reflist, .pv-xp-annolist { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; color: #374151; }
-.pv-xp-reflist li, .pv-xp-annolist li { margin-bottom: 3px; }
-.pv-xp-diag-note { font-size: 11px; color: var(--text-muted); margin-top: 6px; line-height: 1.45; }
-.pv-xp-diagram { margin: 8px 0 12px; padding: 10px; background: var(--ui-accent-bg); border: 1px solid var(--ui-interactive-bd); border-radius: 8px; }
-.pv-xp-legs { list-style: none; margin: 8px 0 0; padding: 0; }
-.pv-xp-legs li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-top: 1px solid var(--ui-interactive-bd); }
-.pv-xp-legs li:first-child { border-top: 0; }
-.pv-xp-leg-n { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; background: var(--ui-interactive); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; margin-top: 1px; }
-.pv-xp-leg-body { min-width: 0; }
-.pv-xp-leg-plain { font-size: 13px; color: #1f2937; }
-.pv-xp-leg-tech { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-top: 1px; }
-[data-theme="dark"] .pv-xp-reflist, [data-theme="dark"] .pv-xp-annolist, [data-theme="dark"] .pv-xp-leg-plain { color: #e8d8c4; }
-
 .pv-xp-summary {
   font-size: 14px; color: #1f2937; margin: 0 0 14px;
   padding-left: 12px; border-left: 3px solid var(--ui-accent);
