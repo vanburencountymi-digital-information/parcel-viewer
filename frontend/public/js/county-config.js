@@ -74,4 +74,32 @@ window.COUNTY = {
       "14020":"Watervliet Public Schools",    "14050":"Berrien County District",
     },
   },
+
+  // Styling defaults (DIC-460). Models the viewer's current look as data; the
+  // admin console reads this. NOTE: the viewer still applies most of these from
+  // hardcoded JS/CSS today — wiring it to *consume* this block is the follow-on.
+  styling: {
+    colorScheme: "terracotta",        // default scheme (users can switch in Settings)
+    schemes: [
+      { id: "terracotta", label: "Terracotta", accent: "#A3473B", interactive: "#B58D4A" },
+      { id: "forest",     label: "Forest",     accent: "#2F6B4F", interactive: "#4E9A6B" },
+      { id: "ocean",      label: "Ocean",      accent: "#1F5E80", interactive: "#2E76A6" },
+      { id: "slate",      label: "Slate",      accent: "#475569", interactive: "#64748B" },
+      { id: "plum",       label: "Plum",       accent: "#7A3B6B", interactive: "#9D5A8C" },
+      { id: "crimson",    label: "Crimson",    accent: "#B11E2F", interactive: "#C0392C" },
+    ],
+    theme: "light",                   // default theme
+    basemap: "parcels",               // 'parcels' | 'aerial'
+    parcels: {
+      light: { fill: "#FDF6E3", stroke: "#8a7a55" },
+      dark:  { fill: "#1e1a14", stroke: "#b8a97a" },
+    },
+    labels: {
+      defaultField: "owner",
+      fields: ["owner", "pin", "address", "acres", "av", "tv", "class"],
+      defaultSize: "medium",
+      sizes: ["small", "medium", "large"],
+      zoom: { largeParcels: 13, smallParcels: 14 },
+    },
+  },
 };
