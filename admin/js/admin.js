@@ -361,17 +361,70 @@
         '<dt>Zoom thresholds</dt><dd>large parcels ' + esc((lb.zoom && lb.zoom.largeParcels) || '—') + '+, small parcels ' + esc((lb.zoom && lb.zoom.smallParcels) || '—') + '+</dd></dl></div>';
   }
 
+  function _srcNote() {
+    return STATE.source === 'api' ? 'Loaded live from <code>/config</code>.' : 'Showing the baked manifest fallback.';
+  }
+  function _plan(items) {
+    return '<ul class="ac-plan">' + items.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>';
+  }
+
+  // ── Data & Layers module (DIC-461, read-only) ───────────────────────────────
+  function renderData(host) {
+    var L = (STATE.config && STATE.config.layers) || {};
+    var ts = L.tileServer || {};
+    var baseRows = (L.baseLayers || []).map(function (b) {
+      return '<tr><td>' + esc(b.label) + '</td><td>' + esc(b.source) + '</td><td>' + (b.default ? 'default' : '') + '</td></tr>';
+    }).join('');
+    var ovRows = (L.overlays || []).map(function (o) {
+      return '<tr><td>' + esc(o.label) + '</td><td>' + esc(o.type) + '</td><td>' + esc(o.source) + '</td><td>' + (o.minZoom ? ('z' + o.minZoom + '+') : 'all') + '</td></tr>';
+    }).join('');
+    var dsRows = (L.dataSources || []).map(function (d) {
+      return '<tr><td>' + esc(d.label) + '</td><td><code>' + esc(d.source) + '</code></td></tr>';
+    }).join('');
+    host.innerHTML =
+      pageHead('Data & Layers', 'Base layers, the tile server, the overlay registry, and the underlying data sources for this county. Read-only.') +
+      '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() + ' The overlay registry is modeled from the viewer’s current layers; self-serve ingestion / field-mapping / versioning is the bigger DIC-461 build.</div></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Tile server</h2></div><dl class="ac-grid">' +
+        '<dt>Provider</dt><dd>' + esc(ts.provider || '—') + '</dd><dt>URL</dt><dd><code>' + esc(ts.url || '—') + '</code></dd></dl></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Base layers</h2></div>' +
+        '<table class="ac-table"><thead><tr><th>Layer</th><th>Source</th><th></th></tr></thead><tbody>' + baseRows + '</tbody></table></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Overlay registry</h2><span class="ac-card-note">' + (L.overlays || []).length + ' overlays</span></div>' +
+        '<table class="ac-table"><thead><tr><th>Overlay</th><th>Type</th><th>Source</th><th>Visible</th></tr></thead><tbody>' + ovRows + '</tbody></table></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Data sources</h2></div>' +
+        '<table class="ac-table"><thead><tr><th>Dataset</th><th>Source</th></tr></thead><tbody>' + dsRows + '</tbody></table>' +
+        '<p class="ac-readonly" style="margin-top:8px">Self-serve ingestion (upload → field-map → validate → publish, versioned, with a job runner) is the planned DIC-461 loader.</p></div>';
+  }
+
+  // ── Access & Ops module (DIC-462, read-only) ────────────────────────────────
+  function renderAccess(host) {
+    var A = (STATE.config && STATE.config.access) || {};
+    var forms = (STATE.config && STATE.config.forms) || {};
+    var ep = (STATE.config && STATE.config.endpoints) || {};
+    var ts = ((STATE.config && STATE.config.layers) || {}).tileServer || {};
+    host.innerHTML =
+      pageHead('Access & Ops', 'Who can see what, how it’s shared, and how staff watch it. Read-only.') +
+      '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() + ' Embeds, usage dashboards, and a deploy trigger are the planned DIC-462 build.</div></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Access</h2></div><dl class="ac-grid">' +
+        '<dt>Access model</dt><dd>' + esc(A.model || '—') + ' ' + locked() + '</dd>' +
+        '<dt>Assessment data</dt><dd>' + (A.assessmentDataPublic ? 'Public' : 'Gated') + ' ' + locked() + '</dd>' +
+        '<dt>Data request form</dt><dd>' + (forms.dataRequest ? '<code>' + esc(forms.dataRequest) + '</code>' : '—') + '</dd>' +
+        '<dt>Error reports go to</dt><dd><code>' + esc(A.reportTo || '—') + '</code></dd></dl></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Services</h2>' +
+        '<span class="ac-card-note">' + (A.rateLimited ? 'rate-limited' : '') + '</span></div><dl class="ac-grid">' +
+        '<dt>Parcel API</dt><dd><code>' + esc(API_BASE) + '</code></dd>' +
+        '<dt>Tile server</dt><dd><code>' + esc(ts.url || '/tiles') + '</code></dd>' +
+        '<dt>Map Buddy AI</dt><dd><code>' + esc(ep.mapBuddy || '—') + '</code></dd></dl></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Planned (DIC-462)</h2></div>' +
+        _plan(['Public-vs-staff gating toggles per county', 'Embeds + shareable links (DIC-399 / DIC-340)', 'Data-error report triage dashboard (DIC-391)', 'Usage / analytics + change audit log', 'One-click redeploy trigger (e.g. Map Buddy, DIC-452)']) + '</div>';
+  }
+
   // ── Module registry ─────────────────────────────────────────────────────────
   var MODULES = [
     { id: 'county', label: 'County Configuration', icon: '◆', render: renderCounty },
     { id: 'intelligence', label: 'Intelligence', icon: '✦', render: renderIntelligence },
     { id: 'styling', label: 'Styling', icon: '◑', render: renderStyling },
-    { id: 'data', label: 'Data & Layers', icon: '▤', soon: true,
-      render: roadmap('Data & Layers', 'Parcel/assessing ingestion, tiles & overlay registry — the biggest onboarding pain, made self-serve.', 'DIC-461',
-        ['Upload / connect → field-map → validate → stage → atomic publish', 'Versioned, rollbackable datasets + async job runner', 'Martin tile refresh', 'WMS overlay registry (wetlands/flood/soils/aerial)']) },
-    { id: 'access', label: 'Access & Ops', icon: '◈', soon: true,
-      render: roadmap('Access & Ops', 'Gating, embeds, reports, usage & deploy controls.', 'DIC-462',
-        ['Public-vs-staff gating of assessment data', 'Embeds + shareable links', 'Data-error report triage dashboard', 'Usage/analytics, audit log, redeploy trigger']) },
+    { id: 'data', label: 'Data & Layers', icon: '▤', render: renderData },
+    { id: 'access', label: 'Access & Ops', icon: '◈', render: renderAccess },
   ];
 
   // ── Shell wiring ────────────────────────────────────────────────────────────
