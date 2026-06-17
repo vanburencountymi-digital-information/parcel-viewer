@@ -180,11 +180,20 @@
 
   // Delegated handlers attach ONCE to the persistent #ac-content host (re-rendering
   // replaces its innerHTML, so per-render addEventListener would stack and fire N×).
-  function wireCounty(host, maps) {
-    host._maps = maps;
-    if (host._countyWired) return;
-    host._countyWired = true;
+  // The currently-shown module id (module scope so the shared edit wiring can
+  // re-render the right module after an action).
+  var _active = null;
+  function activeRenderer() {
+    for (var i = 0; i < MODULES.length; i++) { if (MODULES[i].id === _active) return MODULES[i].render; }
+    return renderCounty;
+  }
 
+  // Delegated edit wiring, attached ONCE to the persistent #ac-content host. It
+  // dispatches to whichever module is active, so editable modules (County,
+  // Styling, …) share one handler instead of each stacking listeners.
+  function wireEditHost(host) {
+    if (host._editWired) return;
+    host._editWired = true;
     host.addEventListener('input', function (e) {
       var inp = e.target.closest('[data-path]');
       if (!inp || !STATE.editing) return;
@@ -194,29 +203,34 @@
       else { val = raw; }
       setPath(STATE.draft, path, val);
     });
-
     host.addEventListener('click', function (e) {
       var act = e.target.closest('[data-act]');
-      if (act) return onAction(host, act.getAttribute('data-act'));
+      if (act) return onAction(host, act.getAttribute('data-act'), activeRenderer());
       var rb = e.target.closest('[data-rollback]');
-      if (rb) return doRollback(host, parseInt(rb.getAttribute('data-rollback'), 10));
+      if (rb) return doRollback(host, parseInt(rb.getAttribute('data-rollback'), 10), activeRenderer());
+      var pick = e.target.closest('[data-scheme-pick]');
+      if (pick && STATE.editing) { setPath(STATE.draft, 'styling.colorScheme', pick.getAttribute('data-scheme-pick')); return activeRenderer()(host); }
       var lk = e.target.closest('[data-lookup]');
       if (lk) return toggleLookup(host, lk);
     });
   }
+  function wireCounty(host, maps) { host._maps = maps; wireEditHost(host); }
 
   var AUTHOR = window.PV_ADMIN_USER || 'console';
 
-  function onAction(host, act) {
+  // Generic edit/save/publish/history actions, shared by any editable module.
+  // `rerender(host)` re-draws the active module; defaults to County.
+  function onAction(host, act, rerender) {
+    rerender = rerender || renderCounty;
     if (act === 'edit') {
-      STATE.editing = true; STATE.draft = clone(STATE.config); renderCounty(host);
+      STATE.editing = true; STATE.draft = clone(STATE.config); rerender(host);
       // Continue an existing server-side draft if there is one.
       apiWrite('GET', '/config/' + COUNTY_KEY + '/draft').then(function (res) {
-        if (res.ok && res.body && !res.body.error) { STATE.draft = res.body; if (STATE.editing) renderCounty(host); }
+        if (res.ok && res.body && !res.body.error) { STATE.draft = res.body; if (STATE.editing) rerender(host); }
       });
       return;
     }
-    if (act === 'cancel') { STATE.editing = false; STATE.draft = null; renderCounty(host); return; }
+    if (act === 'cancel') { STATE.editing = false; STATE.draft = null; rerender(host); return; }
     if (act === 'save') {
       apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (res) {
         flash(host, res.ok ? 'ok' : 'err', res.ok ? 'Draft saved.' : writeErr(res));
@@ -228,7 +242,7 @@
         if (!r1.ok) { flash(host, 'err', writeErr(r1)); return; }
         apiWrite('POST', '/config/' + COUNTY_KEY + '/publish', { author: AUTHOR, note: 'Published from console' }).then(function (res) {
           if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
-          loadConfig().then(function () { STATE.editing = false; STATE.draft = null; renderCounty(host); flash(host, 'ok', 'Published version ' + res.body.version + '.'); });
+          loadConfig().then(function () { STATE.editing = false; STATE.draft = null; rerender(host); flash(host, 'ok', 'Published version ' + res.body.version + '.'); });
         });
       });
       return;
@@ -254,10 +268,11 @@
     });
   }
 
-  function doRollback(host, version) {
+  function doRollback(host, version, rerender) {
+    rerender = rerender || renderCounty;
     apiWrite('POST', '/config/' + COUNTY_KEY + '/rollback', { version: version, author: AUTHOR }).then(function (res) {
       if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
-      loadConfig().then(function () { renderCounty(host); loadHistory(host); flash(host, 'ok', 'Restored v' + version + ' as version ' + res.body.version + '.'); });
+      loadConfig().then(function () { rerender(host); loadHistory(host); flash(host, 'ok', 'Restored v' + version + ' as version ' + res.body.version + '.'); });
     });
   }
 
@@ -326,39 +341,71 @@
     });
   }
 
-  // ── Styling module (DIC-460, read-only) ─────────────────────────────────────
+  // ── Styling module (DIC-460 — read + edit) ──────────────────────────────────
   function _swatch(c) { return c ? '<span class="ac-swatch" style="background:' + esc(c) + '" title="' + esc(c) + '"></span>' : ''; }
   function renderStyling(host) {
-    var s = (STATE.config && STATE.config.styling) || {};
+    var editing = STATE.editing;
+    var s = (editing ? (STATE.draft && STATE.draft.styling) : (STATE.config && STATE.config.styling)) || {};
     if (!s.schemes && !s.parcels && !s.labels) {
       host.innerHTML = pageHead('Styling', 'Color scheme, theme, parcel styling, and labels for this county.') +
         '<div class="ac-card"><p class="ac-readonly">No styling config in the manifest yet.</p></div>';
       return;
     }
-    var schemeRows = (s.schemes || []).map(function (sc) {
-      var active = sc.id === s.colorScheme;
-      return '<div class="ac-scheme' + (active ? ' is-active' : '') + '">' + _swatch(sc.accent) + _swatch(sc.interactive) +
-        '<span class="ac-scheme-label">' + esc(sc.label) + (active ? ' <span class="ac-xp-chars">default</span>' : '') + '</span></div>';
-    }).join('');
     var pl = (s.parcels && s.parcels.light) || {}, pd = (s.parcels && s.parcels.dark) || {}, lb = s.labels || {};
+
+    function sel(path, val, opts) {
+      return '<select class="ac-input ac-input-sm" data-path="' + path + '" data-type="str">' +
+        opts.map(function (o) { return '<option value="' + esc(o) + '"' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
+    }
+    function colorCell(path, val) {
+      if (!editing) return _swatch(val) + ' <code>' + esc(val || '—') + '</code>';
+      return '<input type="color" class="ac-color" data-path="' + path + '" data-type="str" value="' + esc(val || '#000000') + '"> <code>' + esc(val || '—') + '</code>';
+    }
+    function chip(sc) {
+      var act = sc.id === s.colorScheme;
+      var inner = _swatch(sc.accent) + _swatch(sc.interactive) + '<span class="ac-scheme-label">' + esc(sc.label) + (act ? ' <span class="ac-xp-chars">default</span>' : '') + '</span>';
+      return editing
+        ? '<button type="button" class="ac-scheme ac-scheme-pick' + (act ? ' is-active' : '') + '" data-scheme-pick="' + esc(sc.id) + '">' + inner + '</button>'
+        : '<div class="ac-scheme' + (act ? ' is-active' : '') + '">' + inner + '</div>';
+    }
+
+    var toolbar = editing
+      ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
+        '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="cancel">Cancel</button>'
+      : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit styling</button>' +
+        '<button class="ac-btn" data-act="history">Version history</button>';
+    var banner = editing
+      ? '<div class="ac-banner ac-banner-edit"><span>✎</span><div><b>Editing a draft.</b> <b>Publish</b> makes it the live styling; the viewer reads the published config (scheme, theme, parcel colors).</div></div>'
+      : '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() + ' The viewer consumes the published styling (color scheme, theme, parcel paint).</div></div>';
+
     host.innerHTML =
-      pageHead('Styling', 'How the map looks for this county — color scheme, theme, parcel styling, and labels. Read-only; editing lands with the writable store (DIC-464).') +
-      '<div class="ac-banner"><span>ⓘ</span><div>' + (STATE.source === 'api' ? 'Loaded live from <code>/config</code>.' : 'Showing the baked manifest fallback.') +
-        ' These model the viewer’s current look; wiring the viewer to <i>consume</i> this config (instead of its hardcoded CSS/JS) is the next step.</div></div>' +
+      '<div class="ac-page-head ac-page-head-row"><div>' +
+        '<h1 class="ac-page-title">Styling</h1>' +
+        '<p class="ac-page-sub">Color scheme, theme, parcel paint, and labels for this county.</p></div>' +
+        '<div class="ac-toolbar">' + toolbar + '</div></div>' +
+      '<div id="ac-flash"></div>' + banner +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Color scheme</h2>' +
-        '<span class="ac-card-note">default: ' + esc(s.colorScheme || '—') + '</span></div>' +
-        '<div class="ac-schemes">' + schemeRows + '</div></div>' +
+        '<span class="ac-card-note">' + (editing ? 'click to set default' : 'default: ' + esc(s.colorScheme || '—')) + '</span></div>' +
+        '<div class="ac-schemes">' + (s.schemes || []).map(chip).join('') + '</div></div>' +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Theme &amp; basemap</h2></div><dl class="ac-grid">' +
-        '<dt>Default theme</dt><dd>' + esc(s.theme || '—') + ' ' + locked() + '</dd>' +
-        '<dt>Base layer</dt><dd>' + esc(s.basemap || '—') + ' ' + locked() + '</dd></dl></div>' +
+        '<dt>Default theme</dt><dd>' + (editing ? sel('styling.theme', s.theme, ['light', 'dark', 'auto']) : esc(s.theme || '—')) + '</dd>' +
+        '<dt>Base layer</dt><dd>' + (editing ? sel('styling.basemap', s.basemap, ['parcels', 'aerial']) : esc(s.basemap || '—')) + '</dd></dl></div>' +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel styling</h2></div><dl class="ac-grid">' +
-        '<dt>Light — fill / stroke</dt><dd>' + _swatch(pl.fill) + ' <code>' + esc(pl.fill || '—') + '</code> &nbsp; ' + _swatch(pl.stroke) + ' <code>' + esc(pl.stroke || '—') + '</code></dd>' +
-        '<dt>Dark — fill / stroke</dt><dd>' + _swatch(pd.fill) + ' <code>' + esc(pd.fill || '—') + '</code> &nbsp; ' + _swatch(pd.stroke) + ' <code>' + esc(pd.stroke || '—') + '</code></dd></dl></div>' +
+        '<dt>Light — fill</dt><dd>' + colorCell('styling.parcels.light.fill', pl.fill) + '</dd>' +
+        '<dt>Light — stroke</dt><dd>' + colorCell('styling.parcels.light.stroke', pl.stroke) + '</dd>' +
+        '<dt>Dark — fill</dt><dd>' + colorCell('styling.parcels.dark.fill', pd.fill) + '</dd>' +
+        '<dt>Dark — stroke</dt><dd>' + colorCell('styling.parcels.dark.stroke', pd.stroke) + '</dd></dl></div>' +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel labels</h2></div><dl class="ac-grid">' +
-        '<dt>Default field</dt><dd>' + esc(lb.defaultField || '—') + ' ' + locked() + '</dd>' +
-        '<dt>Available fields</dt><dd>' + esc((lb.fields || []).join(', ') || '—') + '</dd>' +
-        '<dt>Default size</dt><dd>' + esc(lb.defaultSize || '—') + '</dd>' +
-        '<dt>Zoom thresholds</dt><dd>large parcels ' + esc((lb.zoom && lb.zoom.largeParcels) || '—') + '+, small parcels ' + esc((lb.zoom && lb.zoom.smallParcels) || '—') + '+</dd></dl></div>';
+        '<dt>Default field</dt><dd>' + (editing ? sel('styling.labels.defaultField', lb.defaultField, lb.fields || []) : esc(lb.defaultField || '—')) + '</dd>' +
+        '<dt>Default size</dt><dd>' + (editing ? sel('styling.labels.defaultSize', lb.defaultSize, lb.sizes || ['small', 'medium', 'large']) : esc(lb.defaultSize || '—')) + '</dd>' +
+        '<dt>Zoom — large / small</dt><dd>' + (editing
+          ? '<input type="number" class="ac-input ac-input-sm" data-path="styling.labels.zoom.largeParcels" data-type="num" value="' + esc((lb.zoom && lb.zoom.largeParcels) || '') + '"> / ' +
+            '<input type="number" class="ac-input ac-input-sm" data-path="styling.labels.zoom.smallParcels" data-type="num" value="' + esc((lb.zoom && lb.zoom.smallParcels) || '') + '">'
+          : 'large ' + esc((lb.zoom && lb.zoom.largeParcels) || '—') + '+, small ' + esc((lb.zoom && lb.zoom.smallParcels) || '—') + '+') + '</dd></dl></div>' +
+      '<div id="ac-history"></div>';
+
+    wireEditHost(host);
   }
 
   function _srcNote() {
@@ -431,11 +478,11 @@
   function init() {
     var nav = document.getElementById('ac-nav');
     var content = document.getElementById('ac-content');
-    var active = null;
 
     function show(id) {
       var mod = MODULES.filter(function (m) { return m.id === id; })[0] || MODULES[0];
-      active = mod.id;
+      if (mod.id !== _active) { STATE.editing = false; STATE.draft = null; }  // drop any in-progress edit on switch
+      _active = mod.id;
       nav.querySelectorAll('.ac-nav-item').forEach(function (b) {
         b.classList.toggle('is-active', b.getAttribute('data-mod') === mod.id);
       });
@@ -464,7 +511,7 @@
     reflect();
 
     // Pull the authoritative manifest from the runtime API, then refresh.
-    loadConfig().then(function () { reflect(); show(active || 'county'); });
+    loadConfig().then(function () { reflect(); show(_active || 'county'); });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
