@@ -1,0 +1,113 @@
+/* Parcel Viewer Admin Console (DIC-467). Self-contained — own design tokens
+   mirroring the viewer's terracotta/gold palette so it reads as the same product
+   without depending on the viewer's global CSS. */
+:root {
+  --ac-accent: #A3473B;            /* terracotta */
+  --ac-accent-rgb: 163,71,59;
+  --ac-gold: #B58D4A;              /* gold — interactive */
+  --ac-gold-dk: #8B6535;
+  --ac-gold-rgb: 181,141,74;
+  --ac-ink: #1f2937;
+  --ac-muted: #6b7280;
+  --ac-line: #e5e7eb;
+  --ac-bg: #f4f2ee;
+  --ac-surface: #ffffff;
+  --ac-side: #2d1613;             /* warm near-black */
+  --ac-side-2: #3d2420;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  font-family: "Atkinson Hyperlegible", -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  color: var(--ac-ink); background: var(--ac-bg);
+}
+
+.ac-app { display: grid; grid-template-columns: 248px 1fr; height: 100vh; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────────── */
+.ac-side {
+  background: linear-gradient(160deg, var(--ac-side), var(--ac-side-2));
+  color: #e8d8c4; display: flex; flex-direction: column;
+}
+.ac-brand { display: flex; align-items: center; gap: 10px; padding: 18px 18px 16px; }
+.ac-brand-mark { color: var(--ac-gold); font-size: 18px; }
+.ac-brand-text { font-weight: 700; font-size: 15px; line-height: 1.1; display: flex; flex-direction: column; }
+.ac-brand-text small { font-weight: 400; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: #b3a99d; margin-top: 2px; }
+
+.ac-nav { flex: 1 1 auto; padding: 8px; overflow-y: auto; }
+.ac-nav-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  background: none; border: 0; color: #d8c9b8; cursor: pointer;
+  font: inherit; font-size: 13.5px; text-align: left;
+  padding: 9px 11px; border-radius: 8px; margin-bottom: 2px;
+}
+.ac-nav-item:hover { background: rgba(255,255,255,0.06); color: #fff; }
+.ac-nav-item.is-active { background: rgba(var(--ac-gold-rgb),0.22); color: #fff; box-shadow: inset 3px 0 0 var(--ac-gold); }
+.ac-nav-ico { width: 16px; text-align: center; opacity: .85; }
+.ac-nav-soon { margin-left: auto; font-size: 9.5px; letter-spacing: .04em; text-transform: uppercase; color: #b3a99d; border: 1px solid rgba(255,255,255,0.15); border-radius: 4px; padding: 1px 5px; }
+
+.ac-side-foot { padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.08); }
+
+/* ── Top bar ─────────────────────────────────────────────────────────────── */
+.ac-main { display: flex; flex-direction: column; min-width: 0; }
+.ac-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 22px; background: var(--ac-surface); border-bottom: 1px solid var(--ac-line);
+}
+.ac-county { display: flex; align-items: center; gap: 9px; }
+.ac-county-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--ac-muted); }
+.ac-county-select { font: inherit; font-size: 13.5px; padding: 6px 10px; border: 1px solid var(--ac-line); border-radius: 7px; background: #fff; color: var(--ac-ink); }
+
+.ac-pill { font-size: 11.5px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: rgba(var(--ac-gold-rgb),0.14); color: var(--ac-gold-dk); }
+.ac-pill-warn { background: rgba(163,71,59,0.12); color: var(--ac-accent); }
+
+/* ── Content ─────────────────────────────────────────────────────────────── */
+.ac-content { flex: 1 1 auto; overflow-y: auto; padding: 24px 26px 60px; }
+.ac-page-head { margin-bottom: 18px; }
+.ac-page-title { font-size: 20px; font-weight: 700; margin: 0 0 3px; }
+.ac-page-sub { color: var(--ac-muted); font-size: 13.5px; margin: 0; max-width: 70ch; }
+
+.ac-banner {
+  display: flex; gap: 10px; align-items: flex-start;
+  background: rgba(var(--ac-gold-rgb),0.10); border: 1px solid rgba(var(--ac-gold-rgb),0.30);
+  border-radius: 10px; padding: 11px 14px; margin-bottom: 20px; font-size: 12.5px; color: #5b4a2e;
+}
+.ac-banner b { color: var(--ac-gold-dk); }
+
+.ac-card { background: var(--ac-surface); border: 1px solid var(--ac-line); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+.ac-card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.ac-card-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ac-gold-dk); margin: 0; }
+.ac-card-note { font-size: 11.5px; color: var(--ac-muted); }
+
+.ac-grid { display: grid; grid-template-columns: 180px 1fr; gap: 9px 16px; font-size: 13.5px; }
+.ac-grid dt { color: var(--ac-muted); font-weight: 600; }
+.ac-grid dd { margin: 0; color: var(--ac-ink); }
+.ac-grid code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; background: #f3f1ec; padding: 1px 6px; border-radius: 5px; }
+
+.ac-readonly { font-size: 11px; color: var(--ac-muted); font-style: italic; }
+.ac-field-locked { display: inline-flex; align-items: center; gap: 6px; }
+.ac-lock { color: var(--ac-muted); font-size: 11px; }
+
+/* Reference-lookup tables */
+.ac-lookup-toggle { background: none; border: 1px solid var(--ac-line); border-radius: 7px; font: inherit; font-size: 12.5px; color: var(--ac-gold-dk); cursor: pointer; padding: 5px 11px; }
+.ac-lookup-toggle:hover { border-color: var(--ac-gold); }
+.ac-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 10px; }
+.ac-table th { text-align: left; color: var(--ac-muted); font-weight: 600; padding: 5px 8px; border-bottom: 1px solid var(--ac-line); }
+.ac-table td { padding: 5px 8px; border-bottom: 1px solid #f1efea; }
+.ac-table td:first-child { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ac-gold-dk); white-space: nowrap; }
+
+/* Roadmap placeholder modules */
+.ac-roadmap { text-align: left; max-width: 64ch; }
+.ac-roadmap ul { margin: 8px 0 0; padding-left: 18px; line-height: 1.7; color: #4b5563; }
+.ac-roadmap a { color: var(--ac-gold-dk); }
+.ac-epic { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: var(--ac-accent); }
+
+@media (max-width: 760px) {
+  .ac-app { grid-template-columns: 1fr; height: auto; min-height: 100vh; }
+  .ac-side { flex-direction: row; align-items: center; overflow-x: auto; }
+  .ac-nav { display: flex; }
+  .ac-side-foot { display: none; }
+  .ac-grid { grid-template-columns: 1fr; gap: 2px 0; }
+  .ac-grid dt { margin-top: 8px; }
+}
