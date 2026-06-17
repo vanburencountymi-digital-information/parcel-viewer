@@ -515,7 +515,10 @@
       '</div>',
       '<p class="pv-settings-h">Accessibility</p>',
       a11yControlsHtml(),
-      '<p class="pv-modal-note">Changes apply immediately and are saved on this device. The header button toggles all of these at once.</p>'
+      '<p class="pv-modal-note">Changes apply immediately and are saved on this device. The header button toggles all of these at once.</p>',
+      // Low-key staff entry point to the admin console (DIC-463). The console
+      // itself requires a DICE sign-in; this is just a discreet launcher.
+      '<div class="pv-staff-row"><a class="pv-staff-link" href="/admin/" target="_blank" rel="noopener">Staff sign-in / Admin <span aria-hidden="true">↗</span></a></div>'
     ].join(""), function (bodyEl) {
       var a = bodyEl.querySelector("#pv-set-area");
       var c = bodyEl.querySelector("#pv-set-coord");

@@ -680,6 +680,12 @@
 .pv-modal-lead { margin: 0 0 14px; color: #4b5563; }
 .pv-modal-note { margin: 14px 0 0; font-size: 12px; color: var(--text-muted); }
 
+/* Discreet staff entry point to the admin console (DIC-463) */
+.pv-staff-row { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--ui-interactive-bd); text-align: right; }
+.pv-staff-link { font-size: 12px; color: var(--text-muted); text-decoration: none; }
+.pv-staff-link:hover { color: var(--ui-interactive-dk); text-decoration: underline; }
+[data-theme="dark"] .pv-staff-link:hover { color: var(--ui-interactive); }
+
 /* What's New — changelog entries */
 .pv-change { margin-bottom: 14px; }
 .pv-change-date {
