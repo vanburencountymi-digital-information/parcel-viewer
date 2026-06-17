@@ -122,6 +122,18 @@ body {
 .ac-table td { padding: 5px 8px; border-bottom: 1px solid #f1efea; }
 .ac-table td:first-child { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; color: var(--ac-gold-dk); white-space: nowrap; }
 
+/* Intelligence module — explainer plugin cards */
+.ac-xp-card .ac-card-head { align-items: center; }
+.ac-xp-model { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--ac-gold-dk); background: rgba(var(--ac-gold-rgb),0.12); padding: 3px 9px; border-radius: 999px; }
+.ac-xp-section { margin-top: 12px; }
+.ac-xp-blocks-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--ac-muted); margin-bottom: 4px; }
+.ac-xp-block { margin-bottom: 4px; }
+.ac-collapse { display: block; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--ac-line); padding: 8px 2px; font: inherit; font-size: 13px; color: var(--ac-ink); cursor: pointer; }
+.ac-collapse:hover { color: var(--ac-gold-dk); }
+.ac-arrow { display: inline-block; width: 12px; color: var(--ac-muted); }
+.ac-xp-chars { color: var(--ac-muted); font-size: 11px; }
+.ac-xp-pre { margin: 4px 0 8px 14px; padding: 10px 12px; background: #f7f5f1; border: 1px solid var(--ac-line); border-radius: 7px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; line-height: 1.5; color: #374151; white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow-y: auto; }
+
 /* Roadmap placeholder modules */
 .ac-roadmap { text-align: left; max-width: 64ch; }
 .ac-roadmap ul { margin: 8px 0 0; padding-left: 18px; line-height: 1.7; color: #4b5563; }

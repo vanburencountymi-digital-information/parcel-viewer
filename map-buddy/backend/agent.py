@@ -776,6 +776,8 @@ Warm, clear, concise. Short paragraphs, no jargon without a plain-language gloss
 
 EXPLAINER_PROFILES = {
     "assessment": {
+        "label": "Assessment Explainer",
+        "audience": "Local residents / property owners (plain language)",
         "model": EXPLAIN_MODEL,
         "system_prompt": _ASSESSMENT_SYSTEM,
         "context_blocks": [
@@ -789,6 +791,8 @@ EXPLAINER_PROFILES = {
         ],
     },
     "tax_description": {
+        "label": "Tax Description Explainer",
+        "audience": "Local residents / property owners (plain language)",
         "model": EXPLAIN_MODEL,
         "system_prompt": _TAX_DESCRIPTION_SYSTEM,
         "context_blocks": [
@@ -801,6 +805,27 @@ EXPLAINER_PROFILES = {
         ],
     },
 }
+
+
+def explainer_profiles_public() -> list:
+    """Serializable view of the explainer plugins for the admin console (DIC-459).
+    Exposes prompt + injected context (no secrets — there are none here). Each
+    explainer is callable as a plugin via POST /explain with its topic id."""
+    out = []
+    for topic, p in EXPLAINER_PROFILES.items():
+        out.append({
+            "id": topic,
+            "label": p.get("label", topic),
+            "audience": p.get("audience"),
+            "model": p.get("model"),
+            "callable_via": f"POST /explain (topic: {topic})",
+            "system_prompt": p.get("system_prompt", ""),
+            "context_blocks": [
+                {"title": b.get("title", ""), "body": b.get("body", ""), "chars": len(b.get("body", ""))}
+                for b in p.get("context_blocks", [])
+            ],
+        })
+    return out
 
 
 def _assemble_system(profile: dict) -> str:
