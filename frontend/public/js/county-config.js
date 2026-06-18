@@ -101,6 +101,41 @@ window.COUNTY = {
       sizes: ["small", "medium", "large"],
       zoom: { largeParcels: 13, smallParcels: 14 },
     },
+
+    // Choropleth — color parcels by a tile attribute (DIC-460). Dormant by
+    // default (enabled:false → solid parcel fill above is used). The viewer
+    // builds a MapLibre fill expression from this and shows a legend.
+    //   mode 'categorical': ["match"] over `categories` (value→color).
+    //   mode 'graduated':   ["step"] over `stops` (>= min → color).
+    //   transform 'classGroup': key on the FIRST digit of prop_class so the
+    //   Michigan major class (1xx Ag, 2xx Commercial, …) drives the color.
+    // Attributes available on the parcel tiles: prop_class, gis_acres,
+    // municipality, owner_name, parcel_no (NOT av/tv — those aren't in the
+    // tiles yet; needs the geo.parcel_tiles function to expose them).
+    choropleth: {
+      enabled: false,
+      attribute: "prop_class",
+      mode: "categorical",
+      transform: "classGroup",
+      fallback: "#d9d2c5",
+      categories: [
+        { value: "1", label: "Agricultural",  color: "#7CB342" },
+        { value: "2", label: "Commercial",    color: "#FB8C00" },
+        { value: "3", label: "Industrial",    color: "#8E24AA" },
+        { value: "4", label: "Residential",   color: "#1E88E5" },
+        { value: "5", label: "Ag / Timber",   color: "#558B2F" },
+        { value: "6", label: "Developmental", color: "#00897B" },
+        { value: "7", label: "Exempt",        color: "#9E9E9E" },
+      ],
+      // Used when mode === 'graduated' (e.g. attribute:'gis_acres', transform:null).
+      stops: [
+        { min: 0,   label: "< 5 ac",     color: "#fee5d9" },
+        { min: 5,   label: "5–40 ac",    color: "#fcae91" },
+        { min: 40,  label: "40–160 ac",  color: "#fb6a4a" },
+        { min: 160, label: "160–640 ac", color: "#de2d26" },
+        { min: 640, label: "≥ 640 ac",   color: "#a50f15" },
+      ],
+    },
   },
 
   // Layers & data (DIC-461). Base layers, tile server, and the overlay registry —

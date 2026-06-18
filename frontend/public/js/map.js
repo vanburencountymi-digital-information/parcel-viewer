@@ -338,6 +338,85 @@
     "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
   ];
 
+  // ── Choropleth (DIC-460) ────────────────────────────────────────────────────
+  // Color parcels by a tile attribute from COUNTY.styling.choropleth. Returns the
+  // active config or null when disabled / unconfigured.
+  function choroplethConfig() {
+    const ch = window.COUNTY && COUNTY.styling && COUNTY.styling.choropleth;
+    if (!ch || !ch.enabled) return null;
+    const hasCats = ch.mode !== "graduated" && Array.isArray(ch.categories) && ch.categories.length;
+    const hasStops = ch.mode === "graduated" && Array.isArray(ch.stops) && ch.stops.length;
+    return (hasCats || hasStops) ? ch : null;
+  }
+
+  // The key the ramp reads: the raw attribute, or — with transform 'classGroup' —
+  // the first character of prop_class (Michigan major class: 1xx Ag, 4xx Res, …).
+  function _choroKey(ch) {
+    const get = ["to-string", ["get", ch.attribute]];
+    return ch.transform === "classGroup" ? ["slice", get, 0, 1] : get;
+  }
+
+  // Build the MapLibre fill-color expression for the active choropleth config.
+  function choroplethFillExpr(ch) {
+    const fallback = ch.fallback || "#cccccc";
+    if (ch.mode === "graduated") {
+      const stops = (ch.stops || []).slice().sort((a, b) => (a.min || 0) - (b.min || 0));
+      const expr = ["step", ["to-number", ["get", ch.attribute], 0], stops[0].color];
+      for (let i = 1; i < stops.length; i++) expr.push(stops[i].min, stops[i].color);
+      return expr;
+    }
+    const expr = ["match", _choroKey(ch)];
+    ch.categories.forEach((c) => { expr.push(String(c.value), c.color); });
+    expr.push(fallback);
+    return expr;
+  }
+
+  // A readable title for the legend, derived from the attribute unless overridden.
+  function _choroTitle(ch) {
+    if (ch.legendTitle) return ch.legendTitle;
+    if (ch.attribute === "prop_class" || ch.transform === "classGroup") return "Property class";
+    if (ch.attribute === "gis_acres") return "Parcel size (acres)";
+    return ch.attribute;
+  }
+
+  // Build (or tear down) the floating choropleth legend over the map. Rows come
+  // from `categories` (categorical) or `stops` (graduated). DOM-built so config
+  // labels/colors are inserted as text/style, never as HTML.
+  function updateChoroplethLegend(ch) {
+    const mapEl = document.getElementById("map");
+    let el = document.getElementById("choropleth-legend");
+    if (!ch) { if (el) el.remove(); return; }
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "choropleth-legend";
+      el.className = "choropleth-legend";
+      el.setAttribute("role", "img");
+      if (mapEl) mapEl.appendChild(el);
+    }
+    el.setAttribute("aria-label", _choroTitle(ch) + " legend");
+    el.textContent = "";
+    const title = document.createElement("div");
+    title.className = "choropleth-legend-title";
+    title.textContent = _choroTitle(ch);
+    el.appendChild(title);
+    const rows = ch.mode === "graduated"
+      ? (ch.stops || []).map((s) => ({ color: s.color, label: s.label || ("≥ " + s.min) }))
+      : (ch.categories || []).map((c) => ({ color: c.color, label: c.label || c.value }));
+    rows.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "choropleth-legend-row";
+      const sw = document.createElement("span");
+      sw.className = "choropleth-legend-swatch";
+      sw.style.background = r.color;
+      const lab = document.createElement("span");
+      lab.className = "choropleth-legend-label";
+      lab.textContent = r.label;
+      row.appendChild(sw);
+      row.appendChild(lab);
+      el.appendChild(row);
+    });
+  }
+
   function applyTheme(dark) {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     const moonIcon = document.getElementById("theme-icon-moon");
@@ -366,6 +445,12 @@
         map.setPaintProperty("parcels-labels", "text-color",  "#1f2937");
         map.setPaintProperty("parcels-labels", "text-halo-color", "#ffffff");
       }
+
+      // Choropleth (DIC-460) overrides the solid parcel fill with a data-driven
+      // ramp. Theme still drives stroke/labels; only the fill is attribute-driven.
+      const _ch = choroplethConfig();
+      if (_ch) map.setPaintProperty("parcels-fill", "fill-color", choroplethFillExpr(_ch));
+      updateChoroplethLegend(_ch);
     }
     localStorage.setItem("pv-theme", dark ? "dark" : "light");
 
