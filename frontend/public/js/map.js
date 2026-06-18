@@ -338,11 +338,31 @@
     "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
   ];
 
-  // ── Choropleth (DIC-460) ────────────────────────────────────────────────────
-  // Color parcels by a tile attribute from COUNTY.styling.choropleth. Returns the
-  // active config or null when disabled / unconfigured.
-  function choroplethConfig() {
-    const ch = window.COUNTY && COUNTY.styling && COUNTY.styling.choropleth;
+  // ── Per-layer styling (DIC-460) ─────────────────────────────────────────────
+  // styling.layers keys logical layers → { label, paint:{light,dark:{fill,stroke}},
+  // choropleth:{…} }, so paint + choropleth scale to many layers, not just parcels.
+  // Back-compat: an older manifest with top-level styling.parcels / styling.choropleth
+  // is normalized into a single 'parcels' entry.
+  function stylingLayers() {
+    const st = (window.COUNTY && COUNTY.styling) || {};
+    if (st.layers && typeof st.layers === "object") return st.layers;
+    if (st.parcels || st.choropleth) {
+      return { parcels: { label: "Parcels", paint: st.parcels || {}, choropleth: st.choropleth || null } };
+    }
+    return {};
+  }
+
+  // Map a logical layer id → the style-layer ids it drives. Parcels has bespoke ids
+  // (incl. hover/labels); other vector layers follow the ${id}-fill / -line convention
+  // used when they're added to the map.
+  function mapLayersFor(id) {
+    if (id === "parcels") return { fill: "parcels-fill", line: "parcels-line" };
+    return { fill: id + "-fill", line: id + "-line" };
+  }
+
+  // The active choropleth for a layer's style, or null when off / empty.
+  function choroplethConfig(style) {
+    const ch = style && style.choropleth;
     if (!ch || !ch.enabled) return null;
     const hasCats = ch.mode !== "graduated" && Array.isArray(ch.categories) && ch.categories.length;
     const hasStops = ch.mode === "graduated" && Array.isArray(ch.stops) && ch.stops.length;
@@ -356,7 +376,7 @@
     return ch.transform === "classGroup" ? ["slice", get, 0, 1] : get;
   }
 
-  // Build the MapLibre fill-color expression for the active choropleth config.
+  // Build the MapLibre fill-color expression for a choropleth config.
   function choroplethFillExpr(ch) {
     const fallback = ch.fallback || "#cccccc";
     if (ch.mode === "graduated") {
@@ -371,7 +391,7 @@
     return expr;
   }
 
-  // A readable title for the legend, derived from the attribute unless overridden.
+  // A readable title for a legend section, derived from the attribute unless overridden.
   function _choroTitle(ch) {
     if (ch.legendTitle) return ch.legendTitle;
     if (ch.attribute === "prop_class" || ch.transform === "classGroup") return "Property class";
@@ -379,13 +399,29 @@
     return ch.attribute;
   }
 
-  // Build (or tear down) the floating choropleth legend over the map. Rows come
-  // from `categories` (categorical) or `stops` (graduated). DOM-built so config
+  // Apply a layer's paint for the active theme: solid fill (or choropleth ramp) +
+  // stroke. Each setPaintProperty is guarded so layers not yet on the map are skipped.
+  function applyLayerPaint(id, style, dark) {
+    if (!style) return;
+    const ids = mapLayersFor(id);
+    const tone = ((style.paint && (dark ? style.paint.dark : style.paint.light)) || {});
+    const ch = choroplethConfig(style);
+    if (map.getLayer(ids.fill)) {
+      map.setPaintProperty(ids.fill, "fill-color",
+        ch ? choroplethFillExpr(ch) : (tone.fill || (dark ? "#1e1a14" : "#FDF6E3")));
+    }
+    if (ids.line && map.getLayer(ids.line)) {
+      map.setPaintProperty(ids.line, "line-color", tone.stroke || (dark ? "#b8a97a" : "#8a7a55"));
+    }
+  }
+
+  // Build (or tear down) the floating legend. One section per choropleth-enabled
+  // layer; sections = [{ title, rows:[{color,label}] }]. DOM-built so config
   // labels/colors are inserted as text/style, never as HTML.
-  function updateChoroplethLegend(ch) {
+  function updateChoroplethLegend(sections) {
     const mapEl = document.getElementById("map");
     let el = document.getElementById("choropleth-legend");
-    if (!ch) { if (el) el.remove(); return; }
+    if (!sections || !sections.length) { if (el) el.remove(); return; }
     if (!el) {
       el = document.createElement("div");
       el.id = "choropleth-legend";
@@ -393,28 +429,43 @@
       el.setAttribute("role", "img");
       if (mapEl) mapEl.appendChild(el);
     }
-    el.setAttribute("aria-label", _choroTitle(ch) + " legend");
+    el.setAttribute("aria-label", sections.map((s) => s.title).join("; ") + " legend");
     el.textContent = "";
-    const title = document.createElement("div");
-    title.className = "choropleth-legend-title";
-    title.textContent = _choroTitle(ch);
-    el.appendChild(title);
-    const rows = ch.mode === "graduated"
-      ? (ch.stops || []).map((s) => ({ color: s.color, label: s.label || ("≥ " + s.min) }))
-      : (ch.categories || []).map((c) => ({ color: c.color, label: c.label || c.value }));
-    rows.forEach((r) => {
-      const row = document.createElement("div");
-      row.className = "choropleth-legend-row";
-      const sw = document.createElement("span");
-      sw.className = "choropleth-legend-swatch";
-      sw.style.background = r.color;
-      const lab = document.createElement("span");
-      lab.className = "choropleth-legend-label";
-      lab.textContent = r.label;
-      row.appendChild(sw);
-      row.appendChild(lab);
-      el.appendChild(row);
+    sections.forEach((sec, i) => {
+      if (i > 0) { const sep = document.createElement("div"); sep.className = "choropleth-legend-sep"; el.appendChild(sep); }
+      const title = document.createElement("div");
+      title.className = "choropleth-legend-title";
+      title.textContent = sec.title;
+      el.appendChild(title);
+      sec.rows.forEach((r) => {
+        const row = document.createElement("div");
+        row.className = "choropleth-legend-row";
+        const sw = document.createElement("span");
+        sw.className = "choropleth-legend-swatch";
+        sw.style.background = r.color;
+        const lab = document.createElement("span");
+        lab.className = "choropleth-legend-label";
+        lab.textContent = r.label;
+        row.appendChild(sw);
+        row.appendChild(lab);
+        el.appendChild(row);
+      });
     });
+  }
+
+  // The legend sections for every choropleth-enabled styled layer.
+  function choroplethLegendSections(layers) {
+    const ids = Object.keys(layers);
+    return ids.map((id) => {
+      const ch = choroplethConfig(layers[id]);
+      if (!ch) return null;
+      const base = _choroTitle(ch);
+      const title = ids.length > 1 ? ((layers[id].label || id) + " · " + base) : base;
+      const rows = ch.mode === "graduated"
+        ? (ch.stops || []).map((s) => ({ color: s.color, label: s.label || ("≥ " + s.min) }))
+        : (ch.categories || []).map((c) => ({ color: c.color, label: c.label || c.value }));
+      return { title, rows };
+    }).filter(Boolean);
   }
 
   function applyTheme(dark) {
@@ -428,29 +479,20 @@
       const src = map.getSource("carto-positron");
       if (src) src.setTiles(dark ? CARTO_DARK : CARTO_LIGHT);
 
-      // Parcel layer colors — from the county styling config (DIC-460) with the
-      // prior hardcoded values as fallbacks.
-      const _cp = (window.COUNTY && COUNTY.styling && COUNTY.styling.parcels) || {};
-      const _cl = _cp.light || {}, _cd = _cp.dark || {};
-      if (dark) {
-        map.setPaintProperty("parcels-fill",   "fill-color",  _cd.fill   || "#1e1a14");
-        map.setPaintProperty("parcels-line",   "line-color",  _cd.stroke || "#b8a97a");
-        map.setPaintProperty("parcels-hover",  "line-color",  "#e2d8ce");
-        map.setPaintProperty("parcels-labels", "text-color",  "#c8b89a");
-        map.setPaintProperty("parcels-labels", "text-halo-color", "#111009");
-      } else {
-        map.setPaintProperty("parcels-fill",   "fill-color",  _cl.fill   || "#FDF6E3");
-        map.setPaintProperty("parcels-line",   "line-color",  _cl.stroke || "#8a7a55");
-        map.setPaintProperty("parcels-hover",  "line-color",  "#111827");
-        map.setPaintProperty("parcels-labels", "text-color",  "#1f2937");
-        map.setPaintProperty("parcels-labels", "text-halo-color", "#ffffff");
+      // Per-layer paint (DIC-460): fill (solid or choropleth ramp) + stroke for
+      // every styled layer, from COUNTY.styling.layers. Scales to many layers.
+      const _layers = stylingLayers();
+      Object.keys(_layers).forEach((id) => applyLayerPaint(id, _layers[id], dark));
+
+      // Parcels-specific UI chrome (hover outline + label colors) stays theme-driven.
+      if (map.getLayer("parcels-hover")) map.setPaintProperty("parcels-hover", "line-color", dark ? "#e2d8ce" : "#111827");
+      if (map.getLayer("parcels-labels")) {
+        map.setPaintProperty("parcels-labels", "text-color", dark ? "#c8b89a" : "#1f2937");
+        map.setPaintProperty("parcels-labels", "text-halo-color", dark ? "#111009" : "#ffffff");
       }
 
-      // Choropleth (DIC-460) overrides the solid parcel fill with a data-driven
-      // ramp. Theme still drives stroke/labels; only the fill is attribute-driven.
-      const _ch = choroplethConfig();
-      if (_ch) map.setPaintProperty("parcels-fill", "fill-color", choroplethFillExpr(_ch));
-      updateChoroplethLegend(_ch);
+      // Legend: one section per choropleth-enabled layer.
+      updateChoroplethLegend(choroplethLegendSections(_layers));
     }
     localStorage.setItem("pv-theme", dark ? "dark" : "light");
 

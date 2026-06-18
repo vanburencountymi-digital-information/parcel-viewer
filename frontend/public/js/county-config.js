@@ -90,10 +90,6 @@ window.COUNTY = {
     ],
     theme: "light",                   // default theme
     basemap: "parcels",               // 'parcels' | 'aerial'
-    parcels: {
-      light: { fill: "#FDF6E3", stroke: "#8a7a55" },
-      dark:  { fill: "#1e1a14", stroke: "#b8a97a" },
-    },
     labels: {
       defaultField: "owner",
       fields: ["owner", "pin", "address", "acres", "av", "tv", "class"],
@@ -102,39 +98,52 @@ window.COUNTY = {
       zoom: { largeParcels: 13, smallParcels: 14 },
     },
 
-    // Choropleth — color parcels by a tile attribute (DIC-460). Dormant by
-    // default (enabled:false → solid parcel fill above is used). The viewer
-    // builds a MapLibre fill expression from this and shows a legend.
-    //   mode 'categorical': ["match"] over `categories` (value→color).
-    //   mode 'graduated':   ["step"] over `stops` (>= min → color).
-    //   transform 'classGroup': key on the FIRST digit of prop_class so the
-    //   Michigan major class (1xx Ag, 2xx Commercial, …) drives the color.
-    // Attributes available on the parcel tiles: prop_class, gis_acres,
-    // municipality, owner_name, parcel_no (NOT av/tv — those aren't in the
-    // tiles yet; needs the geo.parcel_tiles function to expose them).
-    choropleth: {
-      enabled: false,
-      attribute: "prop_class",
-      mode: "categorical",
-      transform: "classGroup",
-      fallback: "#d9d2c5",
-      categories: [
-        { value: "1", label: "Agricultural",  color: "#7CB342" },
-        { value: "2", label: "Commercial",    color: "#FB8C00" },
-        { value: "3", label: "Industrial",    color: "#8E24AA" },
-        { value: "4", label: "Residential",   color: "#1E88E5" },
-        { value: "5", label: "Ag / Timber",   color: "#558B2F" },
-        { value: "6", label: "Developmental", color: "#00897B" },
-        { value: "7", label: "Exempt",        color: "#9E9E9E" },
-      ],
-      // Used when mode === 'graduated' (e.g. attribute:'gis_acres', transform:null).
-      stops: [
-        { min: 0,   label: "< 5 ac",     color: "#fee5d9" },
-        { min: 5,   label: "5–40 ac",    color: "#fcae91" },
-        { min: 40,  label: "40–160 ac",  color: "#fb6a4a" },
-        { min: 160, label: "160–640 ac", color: "#de2d26" },
-        { min: 640, label: "≥ 640 ac",   color: "#a50f15" },
-      ],
+    // Per-layer styling (DIC-460). Each stylable layer → paint (fill/stroke per
+    // theme) + optional choropleth, keyed by layer id so styling scales beyond
+    // parcels as vector layers are added (DIC-461). Today parcels is the only
+    // vector layer. The viewer (map.js) applies each layer's paint to its map
+    // layers and builds a legend section per choropleth-enabled layer.
+    layers: {
+      parcels: {
+        label: "Parcels",
+        paint: {
+          light: { fill: "#FDF6E3", stroke: "#8a7a55" },
+          dark:  { fill: "#1e1a14", stroke: "#b8a97a" },
+        },
+        // Choropleth — color this layer by a tile attribute. Dormant by default
+        // (enabled:false → the solid paint above is used).
+        //   mode 'categorical': ["match"] over `categories` (value→color).
+        //   mode 'graduated':   ["step"] over `stops` (>= min → color).
+        //   transform 'classGroup': key on the FIRST digit of prop_class (MI
+        //   major class: 1xx Ag, 2xx Commercial, …).
+        //   fields: attributes available on this layer's tiles (drives the admin
+        //   attribute picker). parcels lacks av/tv until geo.parcel_tiles exposes them.
+        choropleth: {
+          enabled: false,
+          attribute: "prop_class",
+          fields: ["prop_class", "gis_acres", "municipality", "owner_name", "parcel_no"],
+          mode: "categorical",
+          transform: "classGroup",
+          fallback: "#d9d2c5",
+          categories: [
+            { value: "1", label: "Agricultural",  color: "#7CB342" },
+            { value: "2", label: "Commercial",    color: "#FB8C00" },
+            { value: "3", label: "Industrial",    color: "#8E24AA" },
+            { value: "4", label: "Residential",   color: "#1E88E5" },
+            { value: "5", label: "Ag / Timber",   color: "#558B2F" },
+            { value: "6", label: "Developmental", color: "#00897B" },
+            { value: "7", label: "Exempt",        color: "#9E9E9E" },
+          ],
+          // Used when mode === 'graduated' (e.g. attribute:'gis_acres', transform:null).
+          stops: [
+            { min: 0,   label: "< 5 ac",     color: "#fee5d9" },
+            { min: 5,   label: "5–40 ac",    color: "#fcae91" },
+            { min: 40,  label: "40–160 ac",  color: "#fb6a4a" },
+            { min: 160, label: "160–640 ac", color: "#de2d26" },
+            { min: 640, label: "≥ 640 ac",   color: "#a50f15" },
+          ],
+        },
+      },
     },
   },
 
