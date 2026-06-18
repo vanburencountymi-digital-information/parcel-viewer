@@ -87,15 +87,25 @@
   var ADD_TEMPLATES = {
     'layers.overlays': { id: '', label: 'New PostGIS layer', type: 'vector', source: '', minZoom: 0, default: false },
     'layers.dataSources': { id: '', label: '', source: '' },
-    'styling.choropleth.categories': { value: '', label: '', color: '#888888' },
-    'styling.choropleth.stops': { min: 0, label: '', color: '#888888' },
+    'choropleth.categories': { value: '', label: '', color: '#888888' },
+    'choropleth.stops': { min: 0, label: '', color: '#888888' },
   };
   function arrayAt(path) {
     var arr = getPath(STATE.draft, path);
     if (!Array.isArray(arr)) { setPath(STATE.draft, path, []); arr = getPath(STATE.draft, path); }
     return arr;
   }
-  function arrayAdd(path) { arrayAt(path).push(clone(ADD_TEMPLATES[path] || {})); }
+  // Find an "add row" template by exact path or by trailing-segment match, so
+  // per-layer paths (styling.layers.<id>.choropleth.categories) reuse one template.
+  function templateFor(path) {
+    if (ADD_TEMPLATES[path]) return ADD_TEMPLATES[path];
+    var keys = Object.keys(ADD_TEMPLATES);
+    for (var i = 0; i < keys.length; i++) {
+      if (path.slice(-(keys[i].length + 1)) === '.' + keys[i]) return ADD_TEMPLATES[keys[i]];
+    }
+    return {};
+  }
+  function arrayAdd(path) { arrayAt(path).push(clone(templateFor(path))); }
   function arrayRemove(path, idx) {
     var arr = getPath(STATE.draft, path);
     if (Array.isArray(arr) && idx >= 0 && idx < arr.length) arr.splice(idx, 1);
@@ -205,6 +215,9 @@
   // The currently-shown module id (module scope so the shared edit wiring can
   // re-render the right module after an action).
   var _active = null;
+  // Which styling layer the Styling module is focused on (view preference, not a
+  // draft edit). Resolved to a valid id at render time.
+  var _styleLayer = null;
   function activeRenderer() {
     for (var i = 0; i < MODULES.length; i++) { if (MODULES[i].id === _active) return MODULES[i].render; }
     return renderCounty;
@@ -217,6 +230,9 @@
     if (host._editWired) return;
     host._editWired = true;
     host.addEventListener('input', function (e) {
+      // Layer picker (Styling module) — a view selector, works in view + edit.
+      var picker = e.target.closest('[data-style-layer]');
+      if (picker) { _styleLayer = picker.value; return activeRenderer()(host); }
       var inp = e.target.closest('[data-path]');
       if (!inp || !STATE.editing) return;
       var path = inp.getAttribute('data-path'), type = inp.getAttribute('data-type'), raw = inp.value, val;
@@ -376,12 +392,24 @@
   function renderStyling(host) {
     var editing = STATE.editing;
     var s = (editing ? (STATE.draft && STATE.draft.styling) : (STATE.config && STATE.config.styling)) || {};
-    if (!s.schemes && !s.parcels && !s.labels) {
-      host.innerHTML = pageHead('Styling', 'Color scheme, theme, parcel styling, and labels for this county.') +
+    if (!s.schemes && !s.layers && !s.labels) {
+      host.innerHTML = pageHead('Styling', 'Color scheme, theme, per-layer paint, and labels for this county.') +
         '<div class="ac-card"><p class="ac-readonly">No styling config in the manifest yet.</p></div>';
       return;
     }
-    var pl = (s.parcels && s.parcels.light) || {}, pd = (s.parcels && s.parcels.dark) || {}, lb = s.labels || {};
+    var lb = s.labels || {};
+    // Per-layer styling (DIC-460): pick the focused layer (_styleLayer view
+    // preference, default first). The paint + choropleth cards target this layer.
+    var layers = s.layers || {};
+    var layerIds = Object.keys(layers);
+    var hasLayer = layerIds.length > 0;
+    var selId = (_styleLayer && layers[_styleLayer]) ? _styleLayer : layerIds[0];
+    _styleLayer = selId;
+    var lyr = (selId && layers[selId]) || {};
+    var lyrLabel = lyr.label || selId || 'layer';
+    var lp = 'styling.layers.' + selId;        // config path prefix for this layer
+    var paint = lyr.paint || {};
+    var pl = paint.light || {}, pd = paint.dark || {};
 
     function sel(path, val, opts) {
       return '<select class="ac-input ac-input-sm" data-path="' + path + '" data-type="str">' +
@@ -418,20 +446,23 @@
           return '<option value="' + esc(v) + '"' + (v === (val == null ? '' : val) ? ' selected' : '') + '>' + esc(lbl) + '</option>';
         }).join('') + '</select>';
     }
+    // Choropleth editor for the selected layer (paths under styling.layers.<id>).
     function choroCards() {
-      var ch = s.choropleth || {};
+      if (!hasLayer) return '';
+      var ch = lyr.choropleth || {};
+      var cp = lp + '.choropleth';
       var cats = ch.categories || [], stops = ch.stops || [];
+      var attrOpts = (ch.fields && ch.fields.length) ? ch.fields : ['prop_class', 'gis_acres', 'municipality', 'owner_name', 'parcel_no'];
       var note = ch.enabled ? 'on · ' + esc(ch.attribute || '—') : 'off';
       var settings = editing
         ? '<dl class="ac-grid">' +
-            '<dt>Enabled</dt><dd><input type="checkbox" data-path="styling.choropleth.enabled" data-type="bool"' + (ch.enabled ? ' checked' : '') +
-              '> <span class="ac-card-note">color parcels by the attribute below</span></dd>' +
-            '<dt>Attribute</dt><dd>' + selR('styling.choropleth.attribute', ch.attribute,
-              ['prop_class', 'gis_acres', 'municipality', 'owner_name', 'parcel_no']) + '</dd>' +
-            '<dt>Mode</dt><dd>' + selR('styling.choropleth.mode', ch.mode, ['categorical', 'graduated'], true) + '</dd>' +
-            '<dt>Transform</dt><dd>' + selR('styling.choropleth.transform', ch.transform, [{ v: '', l: '(none)' }, { v: 'classGroup', l: 'classGroup' }]) +
+            '<dt>Enabled</dt><dd><input type="checkbox" data-path="' + cp + '.enabled" data-type="bool"' + (ch.enabled ? ' checked' : '') +
+              '> <span class="ac-card-note">color ' + esc(lyrLabel) + ' by the attribute below</span></dd>' +
+            '<dt>Attribute</dt><dd>' + selR(cp + '.attribute', ch.attribute, attrOpts) + '</dd>' +
+            '<dt>Mode</dt><dd>' + selR(cp + '.mode', ch.mode, ['categorical', 'graduated'], true) + '</dd>' +
+            '<dt>Transform</dt><dd>' + selR(cp + '.transform', ch.transform, [{ v: '', l: '(none)' }, { v: 'classGroup', l: 'classGroup' }]) +
               ' <span class="ac-card-note">classGroup → first digit of prop_class</span></dd>' +
-            '<dt>Fallback</dt><dd>' + colorCell('styling.choropleth.fallback', ch.fallback) + '</dd></dl>'
+            '<dt>Fallback</dt><dd>' + colorCell(cp + '.fallback', ch.fallback) + '</dd></dl>'
         : '<dl class="ac-grid">' +
             '<dt>Enabled</dt><dd>' + (ch.enabled ? 'Yes' : 'No') + '</dd>' +
             (ch.enabled ? (
@@ -442,9 +473,9 @@
 
       var settingsCard =
         '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Choropleth</h2>' +
-          '<span class="ac-card-note">' + (editing ? 'color parcels by a parcel attribute' : note) + '</span></div>' +
+          '<span class="ac-card-note">' + (editing ? 'color ' + esc(lyrLabel) + ' by an attribute' : note) + '</span></div>' +
           settings +
-          (!editing && !ch.enabled ? '<p class="ac-readonly">Off — parcels use the solid fill above. Edit to color parcels by an attribute.</p>' : '') +
+          (!editing && !ch.enabled ? '<p class="ac-readonly">Off — ' + esc(lyrLabel) + ' uses the solid paint above. Edit to color by an attribute.</p>' : '') +
         '</div>';
 
       // Only the ramp matching the active mode is shown/edited.
@@ -453,11 +484,11 @@
       var rampCard;
       if (graduated) {
         var srows = stops.map(function (st, i) {
-          var p = 'styling.choropleth.stops.' + i;
+          var p = cp + '.stops.' + i;
           return editing
             ? '<tr><td>' + colorCell(p + '.color', st.color) + '</td><td>' + numin(p + '.min', st.min) + '</td>' +
               '<td>' + txt(p + '.label', st.label, '≥ ' + (st.min != null ? st.min : '')) + '</td>' +
-              '<td><button class="ac-btn ac-btn-sm" data-remove="styling.choropleth.stops" data-index="' + i + '">Remove</button></td></tr>'
+              '<td><button class="ac-btn ac-btn-sm" data-remove="' + cp + '.stops" data-index="' + i + '">Remove</button></td></tr>'
             : '<tr><td>' + _swatch(st.color) + ' <code>' + esc(st.color || '—') + '</code></td><td>' + esc(st.min != null ? st.min : '—') + '</td><td>' + esc(st.label || '—') + '</td></tr>';
         }).join('');
         if (!srows) srows = '<tr><td colspan="' + (editing ? 4 : 3) + '" class="ac-readonly">No stops yet' + (editing ? ' — add one below.' : '.') + '</td></tr>';
@@ -465,15 +496,15 @@
           '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Color stops</h2>' +
             '<span class="ac-card-note">≥ min → color (step)</span></div>' +
             '<table class="ac-table"><thead><tr><th>Color</th><th>Min</th><th>Label</th>' + (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + srows + '</tbody></table>' +
-            (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="styling.choropleth.stops">+ Add stop</button></div>' : '') +
+            (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="' + cp + '.stops">+ Add stop</button></div>' : '') +
           '</div>';
       } else {
         var crows = cats.map(function (c, i) {
-          var p = 'styling.choropleth.categories.' + i;
+          var p = cp + '.categories.' + i;
           return editing
             ? '<tr><td>' + colorCell(p + '.color', c.color) + '</td><td>' + txt(p + '.value', c.value, '1') + '</td>' +
               '<td>' + txt(p + '.label', c.label, 'Residential') + '</td>' +
-              '<td><button class="ac-btn ac-btn-sm" data-remove="styling.choropleth.categories" data-index="' + i + '">Remove</button></td></tr>'
+              '<td><button class="ac-btn ac-btn-sm" data-remove="' + cp + '.categories" data-index="' + i + '">Remove</button></td></tr>'
             : '<tr><td>' + _swatch(c.color) + ' <code>' + esc(c.color || '—') + '</code></td><td><code>' + esc(c.value || '—') + '</code></td><td>' + esc(c.label || '—') + '</td></tr>';
         }).join('');
         if (!crows) crows = '<tr><td colspan="' + (editing ? 4 : 3) + '" class="ac-readonly">No categories yet' + (editing ? ' — add one below.' : '.') + '</td></tr>';
@@ -481,10 +512,32 @@
           '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Categories</h2>' +
             '<span class="ac-card-note">value → color (match)</span></div>' +
             '<table class="ac-table"><thead><tr><th>Color</th><th>Value</th><th>Label</th>' + (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + crows + '</tbody></table>' +
-            (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="styling.choropleth.categories">+ Add category</button></div>' : '') +
+            (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="' + cp + '.categories">+ Add category</button></div>' : '') +
           '</div>';
       }
       return settingsCard + rampCard;
+    }
+
+    // Layer picker + per-layer paint card. The picker (a view selector) sets which
+    // layer the paint/choropleth cards target; it works in view and edit modes.
+    function layerCards() {
+      if (!hasLayer) {
+        return '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Layer styling</h2></div>' +
+          '<p class="ac-readonly">No stylable layers in the manifest yet.</p></div>';
+      }
+      var picker = '<select class="ac-input ac-input-sm" data-style-layer>' +
+        layerIds.map(function (id) {
+          return '<option value="' + esc(id) + '"' + (id === selId ? ' selected' : '') + '>' + esc((layers[id] && layers[id].label) || id) + '</option>';
+        }).join('') + '</select>';
+      var paintCard =
+        '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Layer styling</h2>' +
+          '<span class="ac-card-note">paint &amp; choropleth, per layer</span></div>' +
+          '<dl class="ac-grid"><dt>Layer</dt><dd>' + picker + '</dd>' +
+            '<dt>Light — fill</dt><dd>' + colorCell(lp + '.paint.light.fill', pl.fill) + '</dd>' +
+            '<dt>Light — stroke</dt><dd>' + colorCell(lp + '.paint.light.stroke', pl.stroke) + '</dd>' +
+            '<dt>Dark — fill</dt><dd>' + colorCell(lp + '.paint.dark.fill', pd.fill) + '</dd>' +
+            '<dt>Dark — stroke</dt><dd>' + colorCell(lp + '.paint.dark.stroke', pd.stroke) + '</dd></dl></div>';
+      return paintCard + choroCards();
     }
 
     var toolbar = editing
@@ -500,7 +553,7 @@
     host.innerHTML =
       '<div class="ac-page-head ac-page-head-row"><div>' +
         '<h1 class="ac-page-title">Styling</h1>' +
-        '<p class="ac-page-sub">Color scheme, theme, parcel paint, and labels for this county.</p></div>' +
+        '<p class="ac-page-sub">Color scheme, theme, per-layer paint &amp; choropleth, and labels.</p></div>' +
         '<div class="ac-toolbar">' + toolbar + '</div></div>' +
       '<div id="ac-flash"></div>' + banner +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Color scheme</h2>' +
@@ -509,11 +562,7 @@
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Theme &amp; basemap</h2></div><dl class="ac-grid">' +
         '<dt>Default theme</dt><dd>' + (editing ? sel('styling.theme', s.theme, ['light', 'dark', 'auto']) : esc(s.theme || '—')) + '</dd>' +
         '<dt>Base layer</dt><dd>' + (editing ? sel('styling.basemap', s.basemap, ['parcels', 'aerial']) : esc(s.basemap || '—')) + '</dd></dl></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel styling</h2></div><dl class="ac-grid">' +
-        '<dt>Light — fill</dt><dd>' + colorCell('styling.parcels.light.fill', pl.fill) + '</dd>' +
-        '<dt>Light — stroke</dt><dd>' + colorCell('styling.parcels.light.stroke', pl.stroke) + '</dd>' +
-        '<dt>Dark — fill</dt><dd>' + colorCell('styling.parcels.dark.fill', pd.fill) + '</dd>' +
-        '<dt>Dark — stroke</dt><dd>' + colorCell('styling.parcels.dark.stroke', pd.stroke) + '</dd></dl></div>' +
+      layerCards() +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel labels</h2></div><dl class="ac-grid">' +
         '<dt>Default field</dt><dd>' + (editing ? sel('styling.labels.defaultField', lb.defaultField, lb.fields || []) : esc(lb.defaultField || '—')) + '</dd>' +
         '<dt>Default size</dt><dd>' + (editing ? sel('styling.labels.defaultSize', lb.defaultSize, lb.sizes || ['small', 'medium', 'large']) : esc(lb.defaultSize || '—')) + '</dd>' +
@@ -521,7 +570,6 @@
           ? '<input type="number" class="ac-input ac-input-sm" data-path="styling.labels.zoom.largeParcels" data-type="num" value="' + esc((lb.zoom && lb.zoom.largeParcels) || '') + '"> / ' +
             '<input type="number" class="ac-input ac-input-sm" data-path="styling.labels.zoom.smallParcels" data-type="num" value="' + esc((lb.zoom && lb.zoom.smallParcels) || '') + '">'
           : 'large ' + esc((lb.zoom && lb.zoom.largeParcels) || '—') + '+, small ' + esc((lb.zoom && lb.zoom.smallParcels) || '—') + '+') + '</dd></dl></div>' +
-      choroCards() +
       '<div id="ac-history"></div>';
 
     wireEditHost(host);

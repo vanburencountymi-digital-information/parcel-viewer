@@ -63,10 +63,6 @@
     ],
     "theme": "light",
     "basemap": "parcels",
-    "parcels": {
-      "light": { "fill": "#FDF6E3", "stroke": "#8a7a55" },
-      "dark": { "fill": "#1e1a14", "stroke": "#b8a97a" }
-    },
     "labels": {
       "defaultField": "owner",
       "fields": ["owner", "pin", "address", "acres", "av", "tv", "class"],
@@ -74,28 +70,38 @@
       "sizes": ["small", "medium", "large"],
       "zoom": { "largeParcels": 13, "smallParcels": 14 }
     },
-    "choropleth": {
-      "enabled": false,
-      "attribute": "prop_class",
-      "mode": "categorical",
-      "transform": "classGroup",
-      "fallback": "#d9d2c5",
-      "categories": [
-        { "value": "1", "label": "Agricultural",  "color": "#7CB342" },
-        { "value": "2", "label": "Commercial",    "color": "#FB8C00" },
-        { "value": "3", "label": "Industrial",    "color": "#8E24AA" },
-        { "value": "4", "label": "Residential",   "color": "#1E88E5" },
-        { "value": "5", "label": "Ag / Timber",   "color": "#558B2F" },
-        { "value": "6", "label": "Developmental", "color": "#00897B" },
-        { "value": "7", "label": "Exempt",        "color": "#9E9E9E" }
-      ],
-      "stops": [
-        { "min": 0,   "label": "< 5 ac",     "color": "#fee5d9" },
-        { "min": 5,   "label": "5–40 ac",    "color": "#fcae91" },
-        { "min": 40,  "label": "40–160 ac",  "color": "#fb6a4a" },
-        { "min": 160, "label": "160–640 ac", "color": "#de2d26" },
-        { "min": 640, "label": "≥ 640 ac",   "color": "#a50f15" }
-      ]
+    "layers": {
+      "parcels": {
+        "label": "Parcels",
+        "paint": {
+          "light": { "fill": "#FDF6E3", "stroke": "#8a7a55" },
+          "dark": { "fill": "#1e1a14", "stroke": "#b8a97a" }
+        },
+        "choropleth": {
+          "enabled": false,
+          "attribute": "prop_class",
+          "fields": ["prop_class", "gis_acres", "municipality", "owner_name", "parcel_no"],
+          "mode": "categorical",
+          "transform": "classGroup",
+          "fallback": "#d9d2c5",
+          "categories": [
+            { "value": "1", "label": "Agricultural",  "color": "#7CB342" },
+            { "value": "2", "label": "Commercial",    "color": "#FB8C00" },
+            { "value": "3", "label": "Industrial",    "color": "#8E24AA" },
+            { "value": "4", "label": "Residential",   "color": "#1E88E5" },
+            { "value": "5", "label": "Ag / Timber",   "color": "#558B2F" },
+            { "value": "6", "label": "Developmental", "color": "#00897B" },
+            { "value": "7", "label": "Exempt",        "color": "#9E9E9E" }
+          ],
+          "stops": [
+            { "min": 0,   "label": "< 5 ac",     "color": "#fee5d9" },
+            { "min": 5,   "label": "5–40 ac",    "color": "#fcae91" },
+            { "min": 40,  "label": "40–160 ac",  "color": "#fb6a4a" },
+            { "min": 160, "label": "160–640 ac", "color": "#de2d26" },
+            { "min": 640, "label": "≥ 640 ac",   "color": "#a50f15" }
+          ]
+        }
+      }
     }
   },
   "layers": {
