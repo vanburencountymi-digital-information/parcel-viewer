@@ -28,16 +28,6 @@ _FEATURE_PROPS_SQL = """
 """
 
 
-@router.get("/config")
-async def get_config():
-    """Runtime frontend configuration."""
-    return {
-        "style_url": "/style.json",
-        "center": config.MAP_CENTER,
-        "bounds": config.MAP_BOUNDS,
-    }
-
-
 @router.get("/style.json")
 async def style_json():
     """MapLibre style for the parcel map."""
