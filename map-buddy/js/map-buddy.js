@@ -718,20 +718,38 @@
     hillshade: 'overlay-hillshade', terrain: 'overlay-hillshade', shade: 'overlay-hillshade',
     contours: 'overlay-contours-10ft', 'contours-10ft': 'overlay-contours-10ft',
     'contours-5ft': 'overlay-contours-5ft', 'contours-2ft': 'overlay-contours-2ft',
+    drains: 'county-drains', drain: 'county-drains',
+    roads: 'county-roads', road: 'county-roads', 'road-centerlines': 'county-roads',
+    'section-lines': 'county-section-lines', 'plss-section-lines': 'county-section-lines',
+    sections: 'county-plss-sections', 'plss-sections': 'county-plss-sections',
+    subdivisions: 'county-subdivisions', subdivision: 'county-subdivisions',
+    'address-points': 'county-address-points', addresses: 'county-address-points',
+    'parcel-points': 'county-parcel-points',
+    'plss-corners': 'county-plss-corners', corners: 'county-plss-corners',
+    'section-centers': 'county-section-centers',
   };
   var _LAYER_LABEL = {
     'overlay-flood': 'Flood Hazard', 'overlay-wetlands': 'Wetlands', 'overlay-soils': 'Soils',
     'overlay-hillshade': 'Hillshade', 'overlay-contours-10ft': 'Contours 10ft',
     'overlay-contours-5ft': 'Contours 5ft', 'overlay-contours-2ft': 'Contours 2ft',
+    'county-drains': 'Drains', 'county-roads': 'Road centerlines',
+    'county-section-lines': 'PLSS section lines', 'county-plss-sections': 'PLSS sections',
+    'county-subdivisions': 'Subdivisions', 'county-address-points': 'Address points',
+    'county-parcel-points': 'Parcel points', 'county-plss-corners': 'PLSS corners',
+    'county-section-centers': 'Section centers',
   };
   function _resolveLayerId(id) {
     if (!id) return null;
     var key = String(id).toLowerCase().replace(/[_\s]+/g, '-');
     if (_LAYER_ALIASES[key]) return _LAYER_ALIASES[key];
-    return key.indexOf('overlay-') === 0 ? key : null;
+    if (key.indexOf('overlay-') === 0 || key.indexOf('county-') === 0) return key;
+    return null;
   }
   function _setLayer(id, visible) {
     var oid = _resolveLayerId(id);
+    if (oid && oid.indexOf('county-') === 0 && root.PS_COUNTY_LAYERS && root.PS_COUNTY_LAYERS.setLayer) {
+      root.PS_COUNTY_LAYERS.setLayer(oid, !!visible); return oid;
+    }
     if (oid && root.PS_OVERLAY_LAYERS && root.PS_OVERLAY_LAYERS.setOverlay) {
       root.PS_OVERLAY_LAYERS.setOverlay(oid, !!visible); return oid;
     }
@@ -1104,6 +1122,10 @@
       if (root.PS_OVERLAY_LAYERS && root.PS_OVERLAY_LAYERS.getState) {
         var st = root.PS_OVERLAY_LAYERS.getState() || {};
         for (var id in st) { if (st[id]) layers.push(_LAYER_LABEL[id] || id); }
+      }
+      if (root.PS_COUNTY_LAYERS && root.PS_COUNTY_LAYERS.getState) {
+        var cst = root.PS_COUNTY_LAYERS.getState() || {};
+        for (var cid in cst) { if (cst[cid]) layers.push(_LAYER_LABEL[cid] || cid); }
       }
     } catch (e) {}
     return {

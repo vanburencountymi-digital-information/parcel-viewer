@@ -164,9 +164,67 @@ window.COUNTY = {
       { id: "contours5",  label: "Contours (5 ft)",  type: "raster", source: "USGS 3DEP",                          minZoom: 14 },
       { id: "contours2",  label: "Contours (2 ft)",  type: "raster", source: "USGS 3DEP",                          minZoom: 15 },
     ],
+    // County PostGIS vector overlays (Martin MVT). Loaded by county-layers.js.
+    countyOverlays: [
+      {
+        id: "county-drains", label: "Drains", martin: "reference_drains_tiles",
+        sourceLayer: "reference_drains", geom: "line", minzoom: 12,
+        paint: { line: { "line-color": "#2563eb", "line-width": 2 } },
+      },
+      {
+        id: "county-roads", label: "Road centerlines", martin: "reference_roads_tiles",
+        sourceLayer: "reference_roads", geom: "line", minzoom: 10,
+        paint: { line: { "line-color": "#6b7280", "line-width": 1.5 } },
+      },
+      {
+        id: "county-section-lines", label: "PLSS section lines", martin: "reference_section_lines_tiles",
+        sourceLayer: "reference_section_lines", geom: "line", minzoom: 11,
+        paint: { line: { "line-color": "#b45309", "line-width": 1, "line-dasharray": [4, 2] } },
+      },
+      {
+        id: "county-plss-sections", label: "PLSS sections", martin: "plss_sections_tiles",
+        sourceLayer: "plss_sections", geom: "polygon", minzoom: 10,
+        paint: {
+          fill: { "fill-color": "#fef3c7", "fill-opacity": 0.15 },
+          line: { "line-color": "#d97706", "line-width": 1 },
+        },
+      },
+      {
+        id: "county-subdivisions", label: "Subdivisions", martin: "subdivisions_tiles",
+        sourceLayer: "subdivisions", geom: "polygon", minzoom: 12,
+        paint: {
+          fill: { "fill-color": "#ddd6fe", "fill-opacity": 0.2 },
+          line: { "line-color": "#7c3aed", "line-width": 1.2 },
+        },
+      },
+      {
+        id: "county-address-points", label: "Address points", martin: "address_points_tiles",
+        sourceLayer: "address_points", geom: "point", minzoom: 14,
+        paint: { circle: { "circle-color": "#dc2626", "circle-radius": 4 } },
+      },
+      {
+        id: "county-parcel-points", label: "Parcel points", martin: "parcel_points_tiles",
+        sourceLayer: "parcel_points", geom: "point", minzoom: 13,
+        paint: { circle: { "circle-color": "#059669", "circle-radius": 3 } },
+      },
+      {
+        id: "county-plss-corners", label: "PLSS corners", martin: "plss_corners_tiles",
+        sourceLayer: "plss_corners", geom: "point", minzoom: 13,
+        paint: { circle: { "circle-color": "#ea580c", "circle-radius": 5 } },
+      },
+      {
+        id: "county-section-centers", label: "Section centers", martin: "section_centers_tiles",
+        sourceLayer: "section_centers", geom: "point", minzoom: 11,
+        paint: { circle: { "circle-color": "#0891b2", "circle-radius": 4 } },
+      },
+    ],
     dataSources: [
       { id: "parcels", label: "Parcel geometry", source: "geo.parcels (PostGIS)" },
       { id: "assessing", label: "Assessing / tax roll", source: "assessing.vbc_parcels" },
+      { id: "reference_layers", label: "Reference lines (drains, roads, PLSS)", source: "geo.reference_layers" },
+      { id: "address_points", label: "Address points", source: "geo.address_points" },
+      { id: "plss_sections", label: "PLSS sections", source: "geo.plss_sections" },
+      { id: "subdivisions", label: "Subdivisions", source: "geo.subdivisions" },
     ],
   },
 

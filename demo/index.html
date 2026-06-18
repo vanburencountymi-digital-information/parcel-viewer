@@ -203,6 +203,39 @@
               <input type="checkbox" id="toggle-zoning" checked> Parcels
             </label>
 
+            <!-- County PostGIS vector overlays (Martin MVT) -->
+            <div class="overlay-divider"></div>
+            <div class="overlay-section-title">County Layers</div>
+
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-drains-toggle"> Drains
+            </label>
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-roads-toggle"> Road centerlines
+            </label>
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-section-lines-toggle"> PLSS section lines
+            </label>
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-plss-sections-toggle"> PLSS sections
+            </label>
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-subdivisions-toggle"> Subdivisions
+            </label>
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-address-points-toggle"> Address points
+            </label>
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-parcel-points-toggle"> Parcel points
+            </label>
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-plss-corners-toggle"> PLSS corners
+            </label>
+            <label class="mcp-toggle-row">
+              <input type="checkbox" id="county-section-centers-toggle"> Section centers
+            </label>
+            <div class="overlay-hint">Address points visible at zoom 14+</div>
+
             <!-- Regulatory / Environmental Overlays (WMS) -->
             <div class="overlay-divider"></div>
             <div class="overlay-section-title">Regulatory Overlays</div>
@@ -670,6 +703,7 @@
   <script src="/frontend/public/js/map.js"></script>
   <script src="/frontend/public/js/parcel-labels.js"></script>
   <script src="/frontend/public/js/overlay-layers.js"></script>
+  <script src="/frontend/public/js/county-layers.js"></script>
   <script src="/frontend/public/js/legend-panel.js"></script>
   <script src="/frontend/public/js/wms-feature-info.js"></script>
   <script src="/frontend/public/js/admin-menu.js"></script>
