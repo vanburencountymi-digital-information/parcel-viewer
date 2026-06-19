@@ -32,6 +32,25 @@ window.COUNTY = {
     mapBuddy: "https://map-buddy-toaozre74a-uc.a.run.app",
   },
 
+  // Parcel number (PIN) format — how THIS county encodes its parcel IDs. The Tax
+  // Description explainer reads this to break a PIN into labeled parts. Every
+  // county numbers parcels differently, so the meaning of each part is config,
+  // never code: edit `segments` here or in the Admin Console → County module.
+  // `segments` are matched left-to-right against the PIN split on `separator`.
+  parcelNumber: {
+    label: "Parcel Number",
+    separator: "-",
+    example: "80-08-032-002-00",
+    intro: "Van Buren County parcel numbers encode a parcel's location and lineage in dash-separated parts:",
+    segments: [
+      { name: "County code",           description: "Van Buren County’s state identifying code." },
+      { name: "Local unit",            description: "Two-digit code for the local unit — the city or township that levies the tax." },
+      { name: "Section / subdivision", description: "Section number (01–36) within the township, or a code identifying a platted subdivision." },
+      { name: "Parcel identifier",     description: "The unique number for this parcel within its section or subdivision." },
+      { name: "Child parcel",          description: "Split/child suffix — non-zero when this parcel was divided from a parent (00 if none)." },
+    ],
+  },
+
   labels: {
     // Michigan STC property classification codes → human label (statewide MI).
     propClass: {
