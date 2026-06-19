@@ -115,6 +115,15 @@
       getFormat: _coordFormat,
       formats: COORD_FORMATS.slice(),
     };
+
+    // Persistent zoom readout (DIC-514): tells you the current zoom so the
+    // "visible at zoom N+" layer hints make sense at a glance.
+    const zEl = document.getElementById("pv-zoom");
+    if (zEl) {
+      const renderZoom = () => { zEl.textContent = "z" + map.getZoom().toFixed(1); };
+      map.on("zoom", renderZoom);
+      renderZoom();
+    }
   }
 
   // ── Style ──────────────────────────────────────────────────────────────

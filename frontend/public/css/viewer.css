@@ -244,6 +244,27 @@
 [data-theme="dark"] .pv-coords:hover { color: var(--ui-interactive); }
 @media (max-width: 640px) { .pv-coords { display: none; } }  /* no cursor on touch */
 
+/* Zoom readout (DIC-514) — small always-on pill above the coord readout, so the
+   "visible at zoom N+" layer hints are legible at a glance. */
+.pv-zoom-readout {
+  /* Top-left, below the header — stays visible while the Layers panel (right)
+     and legend (bottom-left) are open, so it reads alongside the "visible at
+     zoom N+" layer hints. */
+  position: absolute; top: 60px; left: 8px; z-index: 5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px; color: #374151;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(0,0,0,0.1); border-radius: 6px;
+  padding: 3px 8px; white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;  /* readout only — never intercepts map interaction */
+}
+[data-theme="dark"] .pv-zoom-readout {
+  background: rgba(18,13,12,0.9); color: #c9bfb3; border-color: rgba(255,255,255,0.12);
+}
+@media (max-width: 640px) { .pv-zoom-readout { top: 92px; } }  /* clear the mobile tab bar */
+
 /* ── Dark mode ───────────────────────────────────────────────────────────── */
 /* Dark page background so any area behind fixed panels (e.g. the corners cut by
    Map Buddy's rounded top on mobile) reads dark instead of flashing white. */
