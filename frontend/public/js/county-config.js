@@ -137,21 +137,27 @@ window.COUNTY = {
         //   major class: 1xx Ag, 2xx Commercial, …).
         //   fields: attributes available on this layer's tiles (drives the admin
         //   attribute picker). parcels lacks av/tv until geo.parcel_tiles exposes them.
+        // Property-class resting wash (DIC-506): the default parcel fill is a
+        // subtle land-use tint keyed on Michigan major class (leading digit of
+        // prop_class via the classGroup transform). On by default at low opacity;
+        // SEMANTIC — these hues carry meaning and are never re-tinted by the color
+        // scheme (DIC-505). colorDark = the dark-basemap variant.
         choropleth: {
-          enabled: false,
+          enabled: true,
+          opacity: 0.16,
           attribute: "prop_class",
           fields: ["prop_class", "gis_acres", "municipality", "owner_name", "parcel_no"],
           mode: "categorical",
           transform: "classGroup",
-          fallback: "#d9d2c5",
+          fallback: "#d9d2c5", fallbackDark: "#2a251d",
           categories: [
-            { value: "1", label: "Agricultural",  color: "#7CB342" },
-            { value: "2", label: "Commercial",    color: "#FB8C00" },
-            { value: "3", label: "Industrial",    color: "#8E24AA" },
-            { value: "4", label: "Residential",   color: "#1E88E5" },
-            { value: "5", label: "Ag / Timber",   color: "#558B2F" },
-            { value: "6", label: "Developmental", color: "#00897B" },
-            { value: "7", label: "Exempt",        color: "#9E9E9E" },
+            { value: "1", label: "Agricultural",  color: "#6FA84A", colorDark: "#8FCB6A" },
+            { value: "2", label: "Commercial",    color: "#D9594C", colorDark: "#E8786A" },
+            { value: "3", label: "Industrial",    color: "#8E5BA6", colorDark: "#B07FC8" },
+            { value: "4", label: "Residential",   color: "#E3C56B", colorDark: "#D9B85A" },
+            { value: "5", label: "Ag / Timber",   color: "#6B7A3A", colorDark: "#90A152" },
+            { value: "6", label: "Developmental", color: "#E08A3C", colorDark: "#EBA45E" },
+            { value: "7", label: "Exempt",        color: "#8A95A3", colorDark: "#9AA6B5" },
           ],
           // Used when mode === 'graduated' (e.g. attribute:'gis_acres', transform:null).
           stops: [

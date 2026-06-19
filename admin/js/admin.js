@@ -521,13 +521,16 @@
             '<dt>Mode</dt><dd>' + selR(cp + '.mode', ch.mode, ['categorical', 'graduated'], true) + '</dd>' +
             '<dt>Transform</dt><dd>' + selR(cp + '.transform', ch.transform, [{ v: '', l: '(none)' }, { v: 'classGroup', l: 'classGroup' }]) +
               ' <span class="ac-card-note">classGroup → first digit of prop_class</span></dd>' +
-            '<dt>Fallback</dt><dd>' + colorCell(cp + '.fallback', ch.fallback) + '</dd></dl>'
+            '<dt>Fallback</dt><dd>' + colorCell(cp + '.fallback', ch.fallback) + '</dd>' +
+            '<dt>Opacity</dt><dd>' + numin(cp + '.opacity', ch.opacity) +
+              ' <span class="ac-card-note">fill opacity of the wash (e.g. 0.16 = subtle)</span></dd></dl>'
         : '<dl class="ac-grid">' +
             '<dt>Enabled</dt><dd>' + (ch.enabled ? 'Yes' : 'No') + '</dd>' +
             (ch.enabled ? (
               '<dt>Attribute</dt><dd><code>' + esc(ch.attribute || '—') + '</code></dd>' +
               '<dt>Mode</dt><dd>' + esc(ch.mode || '—') + (ch.transform === 'classGroup' ? ' · classGroup' : '') + '</dd>' +
-              '<dt>Fallback</dt><dd>' + _swatch(ch.fallback) + ' <code>' + esc(ch.fallback || '—') + '</code></dd>'
+              '<dt>Fallback</dt><dd>' + _swatch(ch.fallback) + ' <code>' + esc(ch.fallback || '—') + '</code></dd>' +
+              '<dt>Opacity</dt><dd>' + esc(ch.opacity != null ? ch.opacity : '—') + '</dd>'
             ) : '') + '</dl>';
 
       var settingsCard =

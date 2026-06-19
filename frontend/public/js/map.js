@@ -152,7 +152,7 @@
       map.setFilter("parcels-selected-line", null);
       map.setPaintProperty("parcels-selected-line", "line-color", [
         "case",
-        ["boolean", ["feature-state", "activeInfo"], false], "#A3473B",
+        ["boolean", ["feature-state", "activeInfo"], false], mapAccent("accent", "#A3473B"),
         "#0b1220"
       ]);
       map.setPaintProperty("parcels-selected-line", "line-width", [
@@ -376,17 +376,20 @@
     return ch.transform === "classGroup" ? ["slice", get, 0, 1] : get;
   }
 
-  // Build the MapLibre fill-color expression for a choropleth config.
-  function choroplethFillExpr(ch) {
-    const fallback = ch.fallback || "#cccccc";
+  // Build the MapLibre fill-color expression for a choropleth config. Theme-aware
+  // (DIC-506): each category/stop may carry a `colorDark`; with no dark variant it
+  // falls back to its light `color`.
+  function choroplethFillExpr(ch, dark) {
+    const hue = (o) => (dark && o.colorDark) ? o.colorDark : o.color;
+    const fallback = (dark && ch.fallbackDark) || ch.fallback || "#cccccc";
     if (ch.mode === "graduated") {
       const stops = (ch.stops || []).slice().sort((a, b) => (a.min || 0) - (b.min || 0));
-      const expr = ["step", ["to-number", ["get", ch.attribute], 0], stops[0].color];
-      for (let i = 1; i < stops.length; i++) expr.push(stops[i].min, stops[i].color);
+      const expr = ["step", ["to-number", ["get", ch.attribute], 0], hue(stops[0])];
+      for (let i = 1; i < stops.length; i++) expr.push(stops[i].min, hue(stops[i]));
       return expr;
     }
     const expr = ["match", _choroKey(ch)];
-    ch.categories.forEach((c) => { expr.push(String(c.value), c.color); });
+    ch.categories.forEach((c) => { expr.push(String(c.value), hue(c)); });
     expr.push(fallback);
     return expr;
   }
@@ -411,7 +414,7 @@
     const ch = choroplethConfig(style);
     if (map.getLayer(ids.fill)) {
       map.setPaintProperty(ids.fill, "fill-color",
-        ch ? choroplethFillExpr(ch) : (tone.fill || (dark ? "#1e1a14" : "#FDF6E3")));
+        ch ? choroplethFillExpr(ch, dark) : (tone.fill || (dark ? "#1e1a14" : "#FDF6E3")));
     }
     if (ids.line && map.getLayer(ids.line)) {
       map.setPaintProperty(ids.line, "line-color", tone.stroke || (dark ? "#b8a97a" : "#8a7a55"));
@@ -456,8 +459,10 @@
     });
   }
 
-  // The legend sections for every choropleth-enabled styled layer.
-  function choroplethLegendSections(layers) {
+  // The legend sections for every choropleth-enabled styled layer. Theme-aware
+  // swatches (DIC-506): use each row's `colorDark` in dark mode when present.
+  function choroplethLegendSections(layers, dark) {
+    const hue = (o) => (dark && o.colorDark) ? o.colorDark : o.color;
     const ids = Object.keys(layers);
     return ids.map((id) => {
       const ch = choroplethConfig(layers[id]);
@@ -465,10 +470,19 @@
       const base = _choroTitle(ch);
       const title = ids.length > 1 ? ((layers[id].label || id) + " · " + base) : base;
       const rows = ch.mode === "graduated"
-        ? (ch.stops || []).map((s) => ({ color: s.color, label: s.label || ("≥ " + s.min) }))
-        : (ch.categories || []).map((c) => ({ color: c.color, label: c.label || c.value }));
+        ? (ch.stops || []).map((s) => ({ color: hue(s), label: s.label || ("≥ " + s.min) }))
+        : (ch.categories || []).map((c) => ({ color: hue(c), label: c.label || c.value }));
       return { title, rows };
     }).filter(Boolean);
+  }
+
+  // Resolve a map accent token (DIC-505) off <html> for the active color scheme +
+  // theme. Falls back if the CSS var is missing (e.g. a stale cached stylesheet).
+  function mapAccent(role, fallback) {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue("--map-" + role).trim();
+      return v || fallback;
+    } catch (_) { return fallback; }
   }
 
   function applyTheme(dark) {
@@ -487,15 +501,28 @@
       const _layers = stylingLayers();
       Object.keys(_layers).forEach((id) => applyLayerPaint(id, _layers[id], dark));
 
-      // Parcels-specific UI chrome (hover outline + label colors) stays theme-driven.
-      if (map.getLayer("parcels-hover")) map.setPaintProperty("parcels-hover", "line-color", dark ? "#e2d8ce" : "#111827");
+      // Map accent chrome (DIC-505): the active color scheme drives selection,
+      // hover, and the resting parcel stroke lean. Re-read here so a scheme change
+      // ('pv-scheme-change' → applyTheme) re-tints the map live. SEMANTIC colors
+      // (resting fill / class wash) are never touched by the accent.
+      var _accent = mapAccent("accent", dark ? "#c9684f" : "#A3473B");
+      var _accentStroke = mapAccent("accent-stroke", dark ? "#b8a97a" : "#8a7a55");
+      if (map.getLayer("parcels-line")) map.setPaintProperty("parcels-line", "line-color", _accentStroke);
+      if (map.getLayer("parcels-hover")) map.setPaintProperty("parcels-hover", "line-color", _accent);
+      if (map.getLayer("parcels-selected-line")) {
+        map.setPaintProperty("parcels-selected-line", "line-color", [
+          "case", ["boolean", ["feature-state", "activeInfo"], false], _accent, "#0b1220",
+        ]);
+      }
+      // Label colors stay theme-driven (parcels-labels is hidden — DIC-504 — kept
+      // themed in case it's re-enabled).
       if (map.getLayer("parcels-labels")) {
         map.setPaintProperty("parcels-labels", "text-color", dark ? "#c8b89a" : "#1f2937");
         map.setPaintProperty("parcels-labels", "text-halo-color", dark ? "#111009" : "#ffffff");
       }
 
       // Legend: one section per choropleth-enabled layer.
-      updateChoroplethLegend(choroplethLegendSections(_layers));
+      updateChoroplethLegend(choroplethLegendSections(_layers, dark));
     }
     localStorage.setItem("pv-theme", dark ? "dark" : "light");
 
@@ -566,6 +593,13 @@
       // Expose map instance for drawing modules and MapControlAPI
       window.PS_MAP = map;
 
+      // Re-tint the map when the color scheme changes (DIC-505). admin-menu's
+      // setScheme() flips data-scheme then dispatches this; applyTheme re-reads
+      // the --map-* tokens for the new scheme.
+      window.addEventListener("pv-scheme-change", function () {
+        applyTheme(document.documentElement.getAttribute("data-theme") === "dark");
+      });
+
       setupSelectionLayers();
       setupBufferLayers();
       setupAnnotationLayers();
@@ -604,6 +638,15 @@
       const aerialToggle = document.getElementById("toggle-aerial");
       const zoningToggle = document.getElementById("toggle-zoning");
 
+      // Resting fill opacity (DIC-506): when the property-class wash (a choropleth
+      // on the parcels layer) is the resting fill, render it subtle (~0.16) so
+      // labels, selection, hover, and overlays read clearly on top. No wash → the
+      // original cream/dark opacity from the style.
+      function restingFillOpacity() {
+        const ch = choroplethConfig((stylingLayers().parcels) || {});
+        return (ch && ch.opacity != null) ? ch.opacity : origFillOpacity;
+      }
+
       function updateZoningOpacity() {
         const zoningOn = zoningToggle.checked;
         const aerialOn = aerialToggle.checked;
@@ -612,7 +655,7 @@
         } else if (aerialOn) {
           map.setPaintProperty("parcels-fill", "fill-opacity", 0.25);
         } else {
-          map.setPaintProperty("parcels-fill", "fill-opacity", origFillOpacity);
+          map.setPaintProperty("parcels-fill", "fill-opacity", restingFillOpacity());
         }
       }
 
@@ -635,13 +678,17 @@
         // owned by the "Parcel Labels" tool (DIC-504) — the Parcels toggle no
         // longer force-shows the legacy parcels-labels layer (kept hidden).
         if (e.target.checked) {
-          map.setPaintProperty("parcels-line", "line-color", origLineColor);
+          map.setPaintProperty("parcels-line", "line-color", mapAccent("accent-stroke", origLineColor));
         } else {
           map.setPaintProperty("parcels-line", "line-color", "rgba(255,255,255,0.65)");
         }
         if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.zoning = e.target.checked;
         updateZoningOpacity();
       });
+
+      // Apply the resting fill opacity now (so the class wash loads subtle, not at
+      // the heavier default cream opacity — DIC-506).
+      updateZoningOpacity();
 
       const HOVER_MIN_ZOOM = 14;
 
