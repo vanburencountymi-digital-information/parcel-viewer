@@ -55,13 +55,10 @@
   ];
   var LAT_RAD        = 42 * Math.PI / 180;
   var LAT_FACTOR     = Math.cos(LAT_RAD);        // ≈ 0.743 at Michigan latitude
-  // Label fit constants.
-  // PX_PER_CHAR: MapLibre renders text more compactly than a raw px-per-char
-  // estimate suggests — using 4.2 rather than ~6 avoids over-rotating labels
-  // that would in fact fit horizontally ("the cheat" from plat-book days).
-  var PX_PER_CHAR     = 4.2;
+  // Label fit constants. (Text width is measured for real now — DIC-520 — so
+  // there's no px-per-char proxy.)
   var LINE_HEIGHT_FAC = 1.30;  // line-height as a fraction of font-size (px)
-  var HORIZ_PAD       = 0.92;  // allow label to fill 92% of parcel width
+  var HORIZ_PAD       = 0.96;  // allow label to fill 96% of parcel width (favor horizontal, DIC-520)
   var VERT_PAD        = 0.88;  // allow label to fill 88% of parcel height
   var MAX_WRAP_LINES  = 4;     // never stack more than 4 lines at 0°
   var POLYLABEL_STEPS = 10;    // grid resolution for meatiest-point search
@@ -348,31 +345,6 @@
     return [bestX, bestY];
   }
 
-  // ── Geometry — PCA axis angle ────────────────────────────────────────────
-
-  /**
-   * Principal-axis angle of a polygon ring, in MapLibre text-rotate convention
-   * (0 = horizontal, positive = clockwise, returned in [-90, 90]).
-   * Used as a last-resort rotation for parcels whose natural orientation
-   * isn't aligned with the bbox axes (e.g. road-front strips on diagonal roads).
-   */
-  function _pcaAngle(ring) {
-    var n = ring.length;
-    if (n < 3) return 0;
-    var cx = 0, cy = 0, i;
-    for (i = 0; i < n; i++) { cx += ring[i][0]; cy += ring[i][1]; }
-    cx /= n; cy /= n;
-    var sxx = 0, syy = 0, sxy = 0;
-    for (i = 0; i < n; i++) {
-      var dx = ring[i][0] - cx, dy = ring[i][1] - cy;
-      sxx += dx * dx; syy += dy * dy; sxy += dx * dy;
-    }
-    var deg = -(0.5 * Math.atan2(2 * sxy, sxx - syy) * 180 / Math.PI);
-    while (deg >  90) deg -= 180;
-    while (deg < -90) deg += 180;
-    return deg;
-  }
-
   /**
    * Projected extent of a W×H bounding box along a direction at `angleDeg`.
    * Approximates "how much space is available along this rotation axis".
@@ -380,6 +352,81 @@
   function _extentAtAngle(W, H, angleDeg) {
     var r = angleDeg * Math.PI / 180;
     return Math.abs(W * Math.cos(r)) + Math.abs(H * Math.sin(r));
+  }
+
+  // ── Text measurement (DIC-520) ─────────────────────────────────────────────
+  // Real glyph widths via canvas, so horizontal-fit decisions match what actually
+  // renders — replaces the fixed PX_PER_CHAR proxy that over-estimated some names
+  // and triggered premature wrap/rotate.
+  var _mctx = (function () { try { return document.createElement('canvas').getContext('2d'); } catch (_) { return null; } })();
+  function _fontStr(px) { return '700 ' + px + 'px "Noto Sans","Helvetica Neue",Arial,sans-serif'; }
+  var _wCache = {};
+  function _textW(str, px) {
+    if (str == null || str === '') return 0;
+    if (!_mctx) return String(str).length * px * 0.55;   // fallback ≈ avg advance
+    var key = px + '|' + str;
+    if (_wCache[key] != null) return _wCache[key];
+    _mctx.font = _fontStr(px);
+    var w = _mctx.measureText(str).width;
+    _wCache[key] = w;
+    return w;
+  }
+  var _avgCache = {};
+  function _avgCharW(px) {
+    if (_avgCache[px] != null) return _avgCache[px];
+    var a = _textW('ABCDEFGHIJKLMNOPQRSTUVWXYZ', px) / 26;   // uppercase — owner names
+    _avgCache[px] = a;
+    return a;
+  }
+
+  // ── Geometry — minimum-area bounding rectangle (DIC-520) ───────────────────
+  // Orientation from the min-area rect (convex hull + rotating calipers), in
+  // screen-proportional coords. Robust to uneven vertex sampling (unlike PCA): an
+  // axis-aligned rectangle returns 0°/90° no matter where its vertices sit, so
+  // rectangular parcels never get spurious angled labels.
+  function _convexHull(pts) {
+    var p = pts.slice().sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    if (p.length < 3) return p;
+    var cross = function (o, a, b) { return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]); };
+    var lower = [], i;
+    for (i = 0; i < p.length; i++) {
+      while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p[i]) <= 0) lower.pop();
+      lower.push(p[i]);
+    }
+    var upper = [];
+    for (i = p.length - 1; i >= 0; i--) {
+      while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p[i]) <= 0) upper.pop();
+      upper.push(p[i]);
+    }
+    lower.pop(); upper.pop();
+    return lower.concat(upper);
+  }
+  // → { angleDeg: long-axis in text-rotate convention [-90,90], elongation: long/short }.
+  function _minAreaRect(ring) {
+    var pts = [], i;
+    for (i = 0; i < ring.length; i++) pts.push([ring[i][0], ring[i][1] / LAT_FACTOR]);  // screen-proportional
+    var hull = _convexHull(pts);
+    if (hull.length < 3) return { angleDeg: 0, elongation: 1 };
+    var best = Infinity, bestAng = 0, bestW = 1, bestH = 1;
+    for (var h = 0; h < hull.length; h++) {
+      var a = hull[h], b = hull[(h + 1) % hull.length];
+      var ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+      var c = Math.cos(-ang), s = Math.sin(-ang);
+      var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+      for (var k = 0; k < hull.length; k++) {
+        var rx = hull[k][0] * c - hull[k][1] * s, ry = hull[k][0] * s + hull[k][1] * c;
+        if (rx < minX) minX = rx; if (rx > maxX) maxX = rx;
+        if (ry < minY) minY = ry; if (ry > maxY) maxY = ry;
+      }
+      var w = maxX - minX, ht = maxY - minY, area = w * ht;
+      if (area < best) { best = area; bestAng = ang; bestW = w; bestH = ht; }
+    }
+    var longAng = (bestW >= bestH) ? bestAng : bestAng + Math.PI / 2;
+    var deg = -(longAng * 180 / Math.PI);   // screen y inverted vs north-up → negate
+    while (deg > 90) deg -= 180;
+    while (deg <= -90) deg += 180;
+    var lo = Math.min(bestW, bestH), hi = Math.max(bestW, bestH);
+    return { angleDeg: deg, elongation: hi / Math.max(lo, 1e-9) };
   }
 
   // ── Geometry — true polygon centroid (shoelace) ─────────────────────────
@@ -594,14 +641,16 @@
     return out;
   }
 
-  /** Size of a pre-wrapped line array — used for fit checks. */
-  function _wrapSize(lines, lineHeightPx) {
-    var longest = 0;
+  /** Size of a pre-wrapped line array — used for fit checks. Width is the widest
+   *  line's REAL measured pixel width at fontPx (DIC-520), not a char-count proxy. */
+  function _wrapSize(lines, lineHeightPx, fontPx) {
+    var widthPx = 0;
     for (var i = 0; i < lines.length; i++) {
-      if (lines[i].length > longest) longest = lines[i].length;
+      var w = _textW(lines[i], fontPx);
+      if (w > widthPx) widthPx = w;
     }
     return {
-      widthPx:  longest * PX_PER_CHAR,
+      widthPx:  widthPx,
       heightPx: lines.length * lineHeightPx,
       lines:    lines.length,
     };
@@ -645,9 +694,12 @@
       var ownerRaw = p.owner_name || p.OWNERNAME || '';
       var tiers    = buildOwnerTiers(ownerRaw);
 
-      // Principal-axis angle — used as a Phase 3 fallback when the parcel's
-      // natural orientation isn't aligned with the bbox axes.
-      var pcaDeg = _pcaAngle(ring);
+      // Parcel orientation from the minimum-area bounding rectangle (DIC-520):
+      // robust to vertex density, so axis-aligned rectangles read as 0°/90° and
+      // only genuinely diagonal, elongated parcels get an angled label (Phase 3).
+      var orient    = _minAreaRect(ring);
+      var rectAngle = orient.angleDeg;
+      var elong     = orient.elongation;
 
       // Pre-formatted non-owner text (for per-zoom wrapping below).
       // PIN: spaces inserted at digits 3/6/9 so smart-wrap can break there naturally.
@@ -667,14 +719,13 @@
 
       // ── Per-zoom: select the BEST TIER + ANGLE for this parcel at this zoom.
       //
-      // Algorithm (plat-book convention):
-      //   Phase 1 — try each tier from highest (most info) to lowest at 0°.
-      //             Uses word-wrap simulation so multi-line labels count.
-      //             Pick the first tier whose wrapped block fits E-W and N-S.
-      //   Phase 2 — if nothing fits at 0°, try tiers 1–2 at -90° (vertical,
-      //             reads bottom-to-top).  Text length runs N-S; line height E-W.
-      //   Phase 3 — try tier 1 at 45° (diagonal fallback for odd shapes).
-      //   Phase 4 — suppress (label = '').
+      // Algorithm (plat-book convention; fit uses REAL measured text — DIC-520):
+      //   Phase 1 — each tier highest→lowest at 0° (horizontal), smart-wrapped;
+      //             first whose measured block fits E-W and N-S wins.
+      //   Phase 2 — if none fit at 0°, tiers 1–2 at -90° (vertical).
+      //   Phase 3 — along the parcel's long axis, ONLY for genuinely diagonal,
+      //             elongated parcels (min-area-rect orientation + elongation gate).
+      //   Phase 4 — force tier 1 at whichever cardinal axis is longer (never angled).
       //
       // Pixel math (Mercator at ~42°N):
       //   horizPx = bboxW × pxPerDeg          (lon degrees → px; uniform in Mercator)
@@ -685,8 +736,9 @@
       // check is a better signal of whether the longest label actually fits.
       var maxTier = 4;
 
-      // Line height in screen pixels (based on medium-size font for this parcel).
+      // Line height + font size in screen pixels (medium-size font for this parcel).
       var lineHeightPx = FONT_SIZES.medium * scale * LINE_HEIGHT_FAC;
+      var fontPx       = FONT_SIZES.medium * scale;   // for real text measurement (DIC-520)
 
       var zProps = {}, aProps = {};
       for (var z = 13; z <= 17; z++) {
@@ -696,8 +748,9 @@
 
         var label = '', angle = 0;
 
-        // maxCharsPerLine: how many chars fit across the available parcel width
-        var maxCPL = Math.max(3, Math.floor((horizPx * HORIZ_PAD) / PX_PER_CHAR));
+        // maxCharsPerLine: how many chars fit across the parcel width, from the
+        // REAL average glyph width at this font size (DIC-520).
+        var maxCPL = Math.max(3, Math.floor((horizPx * HORIZ_PAD) / _avgCharW(fontPx)));
         var acresLine = _formatAcresLine(acres);
 
         // ── Phase 1: Highest tier that fits at 0° with smart wrapping ────────
@@ -710,7 +763,7 @@
           if (acresLine) {
             var withAc = cand + '\n' + acresLine;
             var lA = _smartWrap(withAc, maxCPL);
-            var szA = _wrapSize(lA, lineHeightPx);
+            var szA = _wrapSize(lA, lineHeightPx, fontPx);
             if (szA.lines <= MAX_WRAP_LINES + 1 &&    // allow 1 extra line for acres
                 szA.widthPx  <= horizPx &&
                 szA.heightPx <= vertPx * VERT_PAD) {
@@ -720,7 +773,7 @@
 
           // Fallback: without acres
           var l0 = _smartWrap(cand, maxCPL);
-          var sz0 = _wrapSize(l0, lineHeightPx);
+          var sz0 = _wrapSize(l0, lineHeightPx, fontPx);
           if (sz0.lines <= MAX_WRAP_LINES &&
               sz0.widthPx  <= horizPx &&
               sz0.heightPx <= vertPx * VERT_PAD) {
@@ -736,44 +789,32 @@
             if (!cand2) continue;
             // At -90°: text length runs N-S; each line height consumes E-W space
             var lines2raw = cand2.split('\n');
-            var long2 = _longestLine(cand2).length;
-            if (long2 * PX_PER_CHAR <= vertPx * HORIZ_PAD &&
+            if (_textW(_longestLine(cand2), fontPx) <= vertPx * HORIZ_PAD &&
                 lines2raw.length * lineHeightPx <= horizPx * VERT_PAD) {
               label = cand2; angle = -90; break;
             }
           }
         }
 
-        // ── Phase 3: PCA-aligned rotation (edge cases — diagonally oriented parcels)
-        //   Only attempted if the principal axis is genuinely off-cardinal
-        //   (|angle| between 18° and 72°) — otherwise Phase 1/2 should have caught it.
-        if (!label && Math.abs(pcaDeg) >= 18 && Math.abs(pcaDeg) <= 72) {
-          var widthAlong = _extentAtAngle(horizPx, vertPx, pcaDeg);
-          var heightPerp = _extentAtAngle(horizPx, vertPx, pcaDeg + 90);
+        // ── Phase 3: Along the parcel's long axis — ONLY for genuinely diagonal,
+        //   elongated parcels (DIC-520). Min-area-rect orientation must be clearly
+        //   off-cardinal (12°–78°) AND the parcel elongated (long/short ≥ 1.4), so
+        //   axis-aligned rectangles never get an angled label. (No blind 45°.)
+        if (!label && Math.abs(rectAngle) >= 12 && Math.abs(rectAngle) <= 78 && elong >= 1.4) {
+          var widthAlong = _extentAtAngle(horizPx, vertPx, rectAngle);
+          var heightPerp = _extentAtAngle(horizPx, vertPx, rectAngle + 90);
           for (var t3 = Math.min(maxTier, 2); t3 >= 1; t3--) {
             var cand3 = tiers['lbl_' + t3] || '';
             if (!cand3) continue;
-            var long3 = _longestLine(cand3).length;
-            var n3    = cand3.split('\n').length;
-            if (long3 * PX_PER_CHAR     <= widthAlong * HORIZ_PAD &&
-                n3 * lineHeightPx       <= heightPerp * VERT_PAD) {
-              label = cand3; angle = pcaDeg; break;
+            var n3 = cand3.split('\n').length;
+            if (_textW(_longestLine(cand3), fontPx) <= widthAlong * HORIZ_PAD &&
+                n3 * lineHeightPx <= heightPerp * VERT_PAD) {
+              label = cand3; angle = rectAngle; break;
             }
           }
         }
 
-        // ── Phase 4: Tier 1 at 45° (final diagonal fallback) ────────────────
-        if (!label) {
-          var lbl1 = tiers['lbl_1'] || '';
-          if (lbl1) {
-            var diagPx = Math.sqrt(horizPx * horizPx + vertPx * vertPx);
-            if (_longestLine(lbl1).length * PX_PER_CHAR <= diagPx * HORIZ_PAD) {
-              label = lbl1; angle = 45;
-            }
-          }
-        }
-
-        // ── Phase 5: Force-show tier 1 (last name only) at whichever axis is longest.
+        // ── Phase 4: Force-show tier 1 (last name only) at whichever axis is longest.
         //   MapLibre's text-allow-overlap:false will cull it if it truly can't
         //   fit alongside higher-priority labels.  Better to try than suppress.
         if (!label) {
@@ -784,7 +825,7 @@
           }
         }
 
-        // ── Phase 4: Too small — suppress ────────────────────────────────────
+        // Store the chosen label + angle for this zoom ('' if nothing fit).
         zProps['_z' + z] = label;
         aProps['_a' + z] = angle;
 
