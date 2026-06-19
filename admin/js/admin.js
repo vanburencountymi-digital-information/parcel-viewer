@@ -89,6 +89,7 @@
     'layers.dataSources': { id: '', label: '', source: '' },
     'choropleth.categories': { value: '', label: '', color: '#888888' },
     'choropleth.stops': { min: 0, label: '', color: '#888888' },
+    'parcelNumber.segments': { name: '', description: '' },
   };
   function arrayAt(path) {
     var arr = getPath(STATE.draft, path);
@@ -153,6 +154,35 @@
       : '<div class="ac-banner"><span>ⓘ</span><div>' + srcNote +
         ' Editing writes to the config store (<b>DIC-464</b>); real auth is <b>DIC-463</b>.</div></div>';
 
+    // Parcel number format (DIC-501) — per-county PIN segments, read by the Tax
+    // Description explainer. Separator/intro are simple fields; segments are an
+    // editable, ordered list (add/remove via the shared array handlers).
+    var pn = C.parcelNumber || {};
+    var pnSegs = pn.segments || [];
+    var pnSegRows = pnSegs.map(function (s, i) {
+      var p = 'parcelNumber.segments.' + i;
+      if (editing) {
+        return '<tr><td class="ac-pn-ord">' + (i + 1) + '</td>' +
+          '<td><input class="ac-input ac-input-sm" data-path="' + p + '.name" data-type="str" value="' + esc(s.name || '') + '"></td>' +
+          '<td><input class="ac-input" data-path="' + p + '.description" data-type="str" value="' + esc(s.description || '') + '"></td>' +
+          '<td><button class="ac-btn ac-btn-sm" data-remove="parcelNumber.segments" data-index="' + i + '">Remove</button></td></tr>';
+      }
+      return '<tr><td class="ac-pn-ord">' + (i + 1) + '</td><td>' + esc(s.name || '—') + '</td><td>' + esc(s.description || '—') + '</td></tr>';
+    }).join('');
+    if (!pnSegRows) pnSegRows = '<tr><td colspan="' + (editing ? 4 : 3) + '" class="ac-readonly">No segments defined' + (editing ? ' — add one below.' : '.') + '</td></tr>';
+    var pnCard =
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel number format</h2>' +
+        '<span class="ac-card-note">how this county’s PIN breaks down · used by the Tax Description explainer (DIC-501)</span></div>' +
+        '<dl class="ac-grid">' +
+          field('Separator', 'parcelNumber.separator', pn.separator, 'str') +
+          field('Example PIN', 'parcelNumber.example', pn.example, 'str') +
+          field('Intro line', 'parcelNumber.intro', pn.intro, 'str') +
+        '</dl>' +
+        '<table class="ac-table"><thead><tr><th style="width:32px">#</th><th>Segment</th><th>Meaning</th>' +
+          (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + pnSegRows + '</tbody></table>' +
+        (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="parcelNumber.segments">+ Add segment</button></div>' : '') +
+      '</div>';
+
     var html =
       '<div class="ac-page-head ac-page-head-row"><div>' +
         '<h1 class="ac-page-title">County Configuration</h1>' +
@@ -178,6 +208,8 @@
         '<dl class="ac-grid">' +
           field('Map Buddy AI', 'endpoints.mapBuddy', ep.mapBuddy, 'str') +
         '</dl></div>' +
+
+      pnCard +
 
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Reference lookups</h2>' +
         '<span class="ac-card-note">code → name maps' + (editing ? ' · edit via API for now' : ' shared by the popup &amp; explainers') + '</span></div>' +
