@@ -111,26 +111,28 @@
       kind:        'hillshade-dem',
       demTiles:    ['https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'],
       demEncoding: 'terrarium',
-      demMaxzoom:  14,                 // AWS Terrain Tiles depth; overzoom past this
+      demMaxzoom:  15,                 // AWS Terrain Tiles depth (US NED ~10 m); overzoom past
       minzoom:     0,
       beforeLayer: 'mi-aerial',        // bottom of the stack — under parcels + aerial
       sideEffect:  _dimAerial,         // dim aerial so relief shows through when both on
-      // Theme-aware treatment: warm shadows tie to the terracotta ground; dark
-      // theme lifts highlights so relief reads on the dim basemap without glare.
-      // Quietest layer in the stack — low exaggeration, never competes with data.
+      // Theme-aware treatment, dialled PUNCHY (DIC-507): max exaggeration + strong
+      // shadow/highlight separation so the gentle moraine relief reads as a
+      // featured cartographic element. Warm shadows tie to the terracotta ground;
+      // dark theme drives bright warm highlights so ridges pop on the dim basemap.
+      // Still under parcels + class wash, which stay legible on top.
       paintByTheme: {
         light: {
-          'hillshade-exaggeration':           0.45,
-          'hillshade-shadow-color':           '#5b4636',
-          'hillshade-highlight-color':        '#fffaf1',
-          'hillshade-accent-color':           '#6e5a44',
+          'hillshade-exaggeration':           0.9,
+          'hillshade-shadow-color':           '#2e2014',   // deep warm shadow (high contrast)
+          'hillshade-highlight-color':        '#fff6e2',   // warm light, not pure white
+          'hillshade-accent-color':           '#7a5a36',   // crisp slope edges
           'hillshade-illumination-direction': 315,
         },
         dark: {
-          'hillshade-exaggeration':           0.5,
+          'hillshade-exaggeration':           1.0,
           'hillshade-shadow-color':           '#000000',
-          'hillshade-highlight-color':        '#b59a78',
-          'hillshade-accent-color':           '#2a2018',
+          'hillshade-highlight-color':        '#d8bd92',   // bright warm so ridges pop on dark
+          'hillshade-accent-color':           '#6b4f30',
           'hillshade-illumination-direction': 315,
         },
       },
