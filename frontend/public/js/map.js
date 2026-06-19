@@ -931,11 +931,12 @@
   }
 
   if (infoClose) {
+    // The card's × deselects (DIC-508 follow-up): clears the selection so the
+    // focus/dim spotlight lifts and the map returns to normal. (Panel-vs-panel
+    // mutual exclusion still uses collapseInfoPanel, which keeps the selection.)
     infoClose.addEventListener("click", () => {
-      collapseInfoPanel();
-      // Move focus to the now-visible reopen tab so keyboard users keep their place.
-      if (infoReopenTab && !infoReopenTab.hidden) infoReopenTab.focus();
-      else if (_lastFocusBeforeInfo && document.contains(_lastFocusBeforeInfo)) _lastFocusBeforeInfo.focus();
+      clearSelectionAll();
+      if (_lastFocusBeforeInfo && document.contains(_lastFocusBeforeInfo)) _lastFocusBeforeInfo.focus();
     });
   }
 
@@ -1569,6 +1570,17 @@
 
   document.addEventListener("click", (e) => {
     if (!e.target.closest("#parcel-search")) hideResults();
+  });
+
+  // Escape clears the parcel selection (and lifts the focus/dim spotlight) when
+  // one is active — a universal "deselect" the map was missing. Ignored while
+  // typing in a field so it doesn't fight input/search Escape handling.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !selectedPins.length) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (searchResults && !searchResults.hidden) return;   // search owns Escape first
+    clearSelectionAll();
   });
 
   // ── Map Control Panel ──────────────────────────────────────────────────
