@@ -597,6 +597,9 @@
     if (PV_SCHEMES.indexOf(s) === -1) s = "terracotta";
     try { localStorage.setItem("pv-color-scheme", s); } catch (_) {}
     applyScheme(s);
+    // Re-tint the MAP too, not just the GUI chrome (DIC-505). map.js listens and
+    // re-reads the scheme's --map-* accent tokens via applyTheme.
+    try { window.dispatchEvent(new Event("pv-scheme-change")); } catch (_) {}
   }
   // Programmatic control (Settings UI, and available to MapBuddy AI later).
   window.PV_SCHEME = { get: getScheme, set: setScheme, list: PV_SCHEMES.slice() };
