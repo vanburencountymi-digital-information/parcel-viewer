@@ -212,6 +212,24 @@
     }
   }
 
+  // ── Reactive cartography: focus/dim spotlight (DIC-508) ────────────────────
+  // When something is selected, the rest of the map recedes (rack-focus). Driven
+  // off the existing `selected` feature-state, so it fires for user AND AI/Map
+  // Buddy selections alike. The actual paint fn is assigned in init (it needs the
+  // layer toggles + resting opacity); this is the module-level handle + the
+  // effective-mode resolver.
+  let _spotlightFn = null;
+  function _effectiveReactions() {
+    let mode = "subtle";
+    try { mode = (window.PV_PREFS && PV_PREFS.getMapReactions && PV_PREFS.getMapReactions()) || "subtle"; } catch (_) {}
+    if (mode === "full") {
+      let reduced = false;
+      try { reduced = document.documentElement.classList.contains("pv-a11y-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (_) {}
+      if (reduced) mode = "subtle";   // a11y: reduced-motion never gets cinematics
+    }
+    return mode;
+  }
+
   function updateSelectionBadge() {
     // Notify listeners (Parcel Edits pane) whenever the selection set changes
     document.dispatchEvent(new CustomEvent("ps:selection-changed", {
@@ -219,6 +237,7 @@
     }));
     const selActions = document.getElementById("sel-actions");
     if (selActions) selActions.hidden = selectedPins.length === 0;
+    if (_spotlightFn) _spotlightFn();   // re-evaluate the focus/dim spotlight
   }
 
   // ── Full parcel record fetch (property card / selection payload) ───────
@@ -647,6 +666,32 @@
         return (ch && ch.opacity != null) ? ch.opacity : origFillOpacity;
       }
 
+      // Focus/dim spotlight painter (DIC-508). When a parcel is selected (user or
+      // AI), the non-selected parcels recede (fill + line) and the subject keeps
+      // its wash + accent outline. Subtle = instant; Full = animated transition
+      // (capped to instant under reduced-motion). Off = no dim.
+      _spotlightFn = function () {
+        if (!map || !map.getLayer("parcels-fill")) return;
+        const mode = _effectiveReactions();
+        const active = mode !== "off" && selectedPins.length > 0;
+        const dur = mode === "full" ? 320 : 0;
+        try {
+          map.setPaintProperty("parcels-fill", "fill-opacity-transition", { duration: dur });
+          map.setPaintProperty("parcels-line", "line-opacity-transition", { duration: dur });
+        } catch (_) {}
+        const normalFill = zoningToggle.checked && !aerialToggle.checked;
+        if (normalFill) {
+          map.setPaintProperty("parcels-fill", "fill-opacity",
+            active
+              ? ["case", ["boolean", ["feature-state", "selected"], false], Math.max(restingFillOpacity(), 0.24), 0.04]
+              : restingFillOpacity());
+        }
+        map.setPaintProperty("parcels-line", "line-opacity",
+          active
+            ? ["case", ["boolean", ["feature-state", "selected"], false], 1, 0.18]
+            : 0.85);
+      };
+
       function updateZoningOpacity() {
         const zoningOn = zoningToggle.checked;
         const aerialOn = aerialToggle.checked;
@@ -654,10 +699,18 @@
           map.setPaintProperty("parcels-fill", "fill-opacity", 0);
         } else if (aerialOn) {
           map.setPaintProperty("parcels-fill", "fill-opacity", 0.25);
-        } else {
-          map.setPaintProperty("parcels-fill", "fill-opacity", restingFillOpacity());
         }
+        // Normal-mode resting fill + the focus/dim spotlight are owned by _spotlightFn.
+        _spotlightFn();
       }
+
+      // Programmatic / AI focus handle (DIC-508). Selecting parcels already
+      // triggers the spotlight via updateSelectionBadge; Map Buddy focuses by
+      // selecting (existing bridge). This re-applies on a "Map reactions" change.
+      window.PS_MAP_FOCUS = {
+        refresh: function () { if (_spotlightFn) _spotlightFn(); },
+        mode: function () { return _effectiveReactions(); },
+      };
 
       aerialToggle.addEventListener("change", (e) => {
         map.setLayoutProperty("mi-aerial", "visibility", e.target.checked ? "visible" : "none");
@@ -808,6 +861,16 @@
     },
     setCinematicOrbit: function (on) {
       try { localStorage.setItem("pv-cinematic-orbit", on ? "1" : "0"); } catch (_) {}
+    },
+    // Reactive cartography (DIC-508): focus/dim spotlight + AI map reactions.
+    // 'off' | 'subtle' | 'full'. Default 'subtle'; reduced-motion caps Full→Subtle.
+    getMapReactions: function () {
+      try { var v = localStorage.getItem("pv-map-reactions"); return (v === "off" || v === "full") ? v : "subtle"; } catch (_) { return "subtle"; }
+    },
+    setMapReactions: function (v) {
+      if (v !== "off" && v !== "full") v = "subtle";
+      try { localStorage.setItem("pv-map-reactions", v); } catch (_) {}
+      try { if (window.PS_MAP_FOCUS) window.PS_MAP_FOCUS.refresh(); } catch (_) {}
     },
   };
 
