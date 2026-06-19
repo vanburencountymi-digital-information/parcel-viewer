@@ -184,6 +184,31 @@ _GEOM_KIND = {  # PostGIS GeometryType() → viewer geomType
 # reference_layers is one table split into several tile functions by feature_type.
 _REFERENCE_FEATURE = {"roads": "road", "drains": "drain", "section_lines": "section_line"}
 
+import re as _re
+
+
+def _tile_fields(src: str) -> list[str]:
+    """The non-geometry MVT properties a tile function exposes, parsed from its
+    SELECT list (the columns feeding ST_AsMVT, before ST_AsMVTGeom). Drives the
+    label / attribute pickers in the console with the layer's REAL attributes."""
+    if not src:
+        return []
+    i = src.find("ST_AsMVTGeom")
+    if i < 0:
+        return []
+    head = src[:i]
+    j = head.rfind("SELECT")
+    if j < 0:
+        return []
+    out: list[str] = []
+    for part in head[j + 6:].split(","):
+        m = _re.match(r"\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*$", part)
+        if m:
+            name = m.group(1).lower()
+            if name not in ("geom", "id"):
+                out.append(name)
+    return out
+
 
 def _discover_layers(county: str) -> list[dict]:
     cfg = _published_config(county) or {}
@@ -193,7 +218,8 @@ def _discover_layers(county: str) -> list[dict]:
     rows: list[dict] = []
     with pool.connection() as conn:
         funcs = conn.execute(
-            "SELECT proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "SELECT proname, pg_get_functiondef(p.oid) AS def "
+            "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
             "WHERE n.nspname = 'geo' AND proname LIKE %s ORDER BY proname",
             ("%\\_tiles",),
         ).fetchall()
@@ -243,6 +269,7 @@ def _discover_layers(county: str) -> list[dict]:
                 "id": base, "source": src, "sourceLayer": base,
                 "geomType": geom_kind, "srid": srid, "rowCount": count,
                 "dbSource": db_table, "registered": src in registered,
+                "fields": _tile_fields(f["def"]),
             })
     return rows
 

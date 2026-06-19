@@ -428,6 +428,15 @@
       if (layers[id] && layers[id].point) return 'point';
       return 'polygon';
     }
+    // Attributes available to label / color by — from the layer's tiles (DIC-503).
+    function layerFields(id) {
+      if (id === 'parcels') {
+        var ch = (layers.parcels && layers.parcels.choropleth) || {};
+        return ch.fields || [];
+      }
+      var ov = overlays.filter(function (o) { return o.id === id; })[0];
+      return (ov && ov.fields) || [];
+    }
 
     function sel(path, val, opts) {
       return '<select class="ac-input ac-input-sm" data-path="' + path + '" data-type="str">' +
@@ -575,6 +584,37 @@
         '<dt>Dark — stroke</dt><dd>' + colorCell(lp + '.point.dark.strokeColor', ptd.strokeColor) + '</dd>';
     }
 
+    // Label tool (DIC-503) — works for any geometry; the field picker is driven
+    // by the layer's real tile attributes. Placement note follows geometry.
+    function labelCard() {
+      var lab = lyr.label || {}, ll = lab.light || {}, ld = lab.dark || {};
+      var fields = layerFields(selId);
+      var fieldOpts = [{ v: '', l: '(none)' }].concat(fields.map(function (f) { return { v: f, l: f }; }));
+      var place = geomTypeFor(selId) === 'line' ? 'along the line' : 'at each feature';
+      var body;
+      if (!fields.length) {
+        body = '<p class="ac-readonly">This layer’s tiles expose no label-able attributes.</p>';
+      } else if (editing) {
+        body = '<dl class="ac-grid">' +
+          '<dt>Show labels</dt><dd><input type="checkbox" data-path="' + lp + '.label.enabled" data-type="bool"' + (lab.enabled ? ' checked' : '') + '></dd>' +
+          '<dt>Label field</dt><dd>' + selR(lp + '.label.field', lab.field, fieldOpts) + '</dd>' +
+          '<dt>Text size</dt><dd>' + numin(lp + '.label.size', lab.size) + '</dd>' +
+          '<dt>Min zoom</dt><dd>' + numin(lp + '.label.minZoom', lab.minZoom) + '</dd>' +
+          '<dt>Halo width</dt><dd>' + numin(lp + '.label.haloWidth', lab.haloWidth) + '</dd>' +
+          '<dt>Light — text</dt><dd>' + colorCell(lp + '.label.light.color', ll.color) + '</dd>' +
+          '<dt>Light — halo</dt><dd>' + colorCell(lp + '.label.light.haloColor', ll.haloColor) + '</dd>' +
+          '<dt>Dark — text</dt><dd>' + colorCell(lp + '.label.dark.color', ld.color) + '</dd>' +
+          '<dt>Dark — halo</dt><dd>' + colorCell(lp + '.label.dark.haloColor', ld.haloColor) + '</dd></dl>';
+      } else {
+        body = '<dl class="ac-grid"><dt>Labels</dt><dd>' + (lab.enabled ? 'On' : 'Off') + '</dd>' +
+          (lab.enabled ? '<dt>Field</dt><dd><code>' + esc(lab.field || '—') + '</code></dd>' +
+            '<dt>Size · min zoom</dt><dd>' + esc(lab.size || '—') + 'px · z' + esc(lab.minZoom || 0) + '+</dd>' : '') +
+          '</dl>';
+      }
+      return '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Labels</h2>' +
+        '<span class="ac-card-note">text ' + place + '</span></div>' + body + '</div>';
+    }
+
     // Layer picker + geometry-aware styling card. The picker (a view selector)
     // sets which layer the styling targets; the controls shown depend on the
     // layer's geometry (polygon → fill+choropleth, line → casing/dash/glow,
@@ -602,8 +642,9 @@
           '<span class="ac-card-note">' + note + '</span></div>' +
           '<dl class="ac-grid"><dt>Layer</dt><dd>' + picker + ' <span class="ac-card-note">' + esc(gt) + '</span></dd>' +
             rows + '</dl>' + lineHint + '</div>';
-      // Choropleth is polygon-only (colors a fill by attribute).
-      return card + (gt === 'polygon' ? choroCards() : '');
+      // Choropleth is polygon-only (colors a fill by attribute); labels apply to
+      // every geometry.
+      return card + (gt === 'polygon' ? choroCards() : '') + labelCard();
     }
 
     var toolbar = editing
@@ -802,7 +843,7 @@
       id: d.id, label: _titleize(d.id), type: 'vector',
       source: d.source, sourceLayer: d.sourceLayer,
       geomType: d.geomType || 'polygon', minZoom: 12, default: false,
-      dbSource: d.dbSource,
+      dbSource: d.dbSource, fields: d.fields || [],
     };
   }
   // Populate the "add a layer" pulldown with serveable layers not yet registered.

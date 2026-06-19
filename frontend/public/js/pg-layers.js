@@ -90,6 +90,21 @@
     };
   }
 
+  // Label style (DIC-503): a symbol layer over the geometry, drawing the chosen
+  // attribute. Returns null when labels are off or no field is set. Sizing is
+  // theme-independent; text + halo colors are per-theme.
+  function labelStyle(id) {
+    var l = styleEntry(id).label;
+    if (!l || !l.enabled || !l.field) return null;
+    var tone = (isDark() ? l.dark : l.light) || l.light || {};
+    return {
+      field: l.field, size: l.size != null ? l.size : 11, minZoom: l.minZoom || 0,
+      color: tone.color || (isDark() ? '#e8d8c4' : '#333333'),
+      haloColor: tone.haloColor || (isDark() ? '#15110c' : '#ffffff'),
+      haloWidth: l.haloWidth != null ? l.haloWidth : 1.2,
+    };
+  }
+
   var LS = 'pg_layers_state';
   var _state = {};   // { id: bool } — what the user wants on
   var _added = {};   // { id: bool } — what's been added to the map
@@ -166,10 +181,35 @@
           layout: { visibility: vis } }, before);
       }
     }
+
+    // Labels (DIC-503) — a symbol layer over the geometry, on TOP of everything
+    // (no `before`) so text isn't hidden by parcels. Placement follows geometry:
+    // 'line' draws names along roads/lines; 'point' labels polygons (at a
+    // representative point) and points.
+    var lab = labelStyle(o.id);
+    if (lab && !map.getLayer(o.id + '-label')) {
+      map.addLayer({ id: o.id + '-label', type: 'symbol', source: srcId, 'source-layer': sl,
+        minzoom: Math.max(mz, lab.minZoom),
+        layout: {
+          visibility: vis,
+          'text-field': ['coalesce', ['to-string', ['get', lab.field]], ''],
+          'text-font': ['Noto Sans Bold'],
+          'text-size': lab.size,
+          'symbol-placement': g === 'line' ? 'line' : 'point',
+          'text-max-angle': 30,
+          'text-padding': 2,
+          'text-allow-overlap': false,
+        },
+        paint: {
+          'text-color': lab.color,
+          'text-halo-color': lab.haloColor,
+          'text-halo-width': lab.haloWidth,
+        } });
+    }
     _added[o.id] = true;
   }
 
-  var SUFFIXES = ['-fill', '-line', '-casing', '-glow', '-circle'];
+  var SUFFIXES = ['-fill', '-line', '-casing', '-glow', '-circle', '-label'];
 
   function setOverlay(id, on) {
     _state[id] = !!on;
@@ -209,6 +249,12 @@
         var c = paintColors(o.id);
         if (map.getLayer(o.id + '-fill')) map.setPaintProperty(o.id + '-fill', 'fill-color', c.fill);
         if (map.getLayer(o.id + '-line')) map.setPaintProperty(o.id + '-line', 'line-color', c.stroke);
+      }
+      // Labels (any geometry) — re-color text + halo for the new theme.
+      var lab = labelStyle(o.id);
+      if (lab && map.getLayer(o.id + '-label')) {
+        map.setPaintProperty(o.id + '-label', 'text-color', lab.color);
+        map.setPaintProperty(o.id + '-label', 'text-halo-color', lab.haloColor);
       }
     });
   }
