@@ -518,23 +518,22 @@
 
   /**
    * Scale multiplier based on parcel size in acres.
-   * Wider range than before — large farms get clearly bigger text,
-   * tiny lots get clearly smaller text, making the map feel like a plat book.
-   *   medium base (10.5px):  7.4 px (tiny lot) → 18.9 px (big farm)
-   *   small  base ( 8.5px):  6.0 px            → 15.3 px
-   *   large  base (13.0px):  9.1 px            → 23.4 px
+   * NARROW band (DIC-521): the priority is label *content*, not size. A tight
+   * 0.88–1.25 spread (≈1.4×, vs the old 2.9×) keeps type fairly uniform AND lets
+   * more text fit on big parcels (smaller font ⇒ more chars per line ⇒ fuller
+   * plat-book labels). Acres is now reliable (geodesic, server-side), so the
+   * size cue is honest but gentle.
+   *   medium base (10px): 8.8 px (tiny lot) → 12.5 px (big farm)
    */
   function _fontScale(acres) {
-    // Wide range so large farms are obviously bigger than small lots.
-    // At medium (10px base): 7px (tiny lot) → 20px (big farm) = 2.9× spread.
-    if (!acres || acres <= 0) return 0.80;
-    if (acres > 200) return 2.00;
-    if (acres > 100) return 1.65;
-    if (acres >  40) return 1.35;
-    if (acres >  10) return 1.00;
-    if (acres >   2) return 0.88;
-    if (acres > 0.5) return 0.78;
-    return 0.70;
+    if (!acres || acres <= 0) return 1.00;  // unknown ⇒ neutral (no size penalty)
+    if (acres > 200) return 1.25;
+    if (acres > 100) return 1.20;
+    if (acres >  40) return 1.15;
+    if (acres >  10) return 1.05;
+    if (acres >   2) return 1.00;
+    if (acres > 0.5) return 0.94;
+    return 0.88;
   }
 
   // ── Longest line in a (possibly multi-line) label string ─────────────────
