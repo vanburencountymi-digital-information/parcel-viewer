@@ -631,12 +631,13 @@
       } catch (_) {}
 
       zoningToggle.addEventListener("change", (e) => {
+        // Parcels checkbox controls only the parcel fill/line. Parcel LABELS are
+        // owned by the "Parcel Labels" tool (DIC-504) — the Parcels toggle no
+        // longer force-shows the legacy parcels-labels layer (kept hidden).
         if (e.target.checked) {
           map.setPaintProperty("parcels-line", "line-color", origLineColor);
-          map.setLayoutProperty("parcels-labels", "visibility", "visible");
         } else {
           map.setPaintProperty("parcels-line", "line-color", "rgba(255,255,255,0.65)");
-          map.setLayoutProperty("parcels-labels", "visibility", "none");
         }
         if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.zoning = e.target.checked;
         updateZoningOpacity();

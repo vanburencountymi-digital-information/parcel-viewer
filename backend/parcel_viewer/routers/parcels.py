@@ -102,9 +102,14 @@ async def style_json():
                 "filter": ["==", ["get", "pin"], ""],
             },
             {
+                # Legacy auto-PIN label. Hidden by default (DIC-504): parcel
+                # labeling is owned by the "Parcel Labels" tool (parcel-labels.js),
+                # which is richer (field picker, sizing). This layer is kept only
+                # as a stable insertion anchor (`before: "parcels-labels"` in map.js).
                 "id": "parcels-labels", "type": "symbol", "source": "parcels", "source-layer": "parcels",
                 "minzoom": 15,
                 "layout": {
+                    "visibility": "none",
                     "text-field": ["get", "pin"],
                     "text-font": ["Noto Sans Regular"],
                     "text-size": ["interpolate", ["linear"], ["zoom"], 15, 9, 17, 12, 19, 14],
