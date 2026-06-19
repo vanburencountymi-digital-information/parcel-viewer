@@ -2380,17 +2380,17 @@
         paint: { "line-color": "#0ea5e9", "line-width": 2, "line-dasharray": [4, 3] } }, before);
     }
     if (!map.getLayer("buffer-preview-parcels")) {
-      map.addLayer({ id: "buffer-preview-parcels", type: "fill", source: "parcels",
+      map.addLayer({ id: "buffer-preview-parcels", type: "fill", source: "parcels", "source-layer": SOURCE_LAYER,
         paint: { "fill-color": "#0ea5e9",
           "fill-opacity": ["case", ["boolean", ["feature-state", "bufferPreview"], false], 0.22, 0] } }, before);
     }
     if (!map.getLayer("buffer-seed-fill")) {
-      map.addLayer({ id: "buffer-seed-fill", type: "fill", source: "parcels",
+      map.addLayer({ id: "buffer-seed-fill", type: "fill", source: "parcels", "source-layer": SOURCE_LAYER,
         paint: { "fill-color": "#f97316",
           "fill-opacity": ["case", ["boolean", ["feature-state", "bufferSeed"], false], 0.40, 0] } }, before);
     }
     if (!map.getLayer("buffer-seed-line")) {
-      map.addLayer({ id: "buffer-seed-line", type: "line", source: "parcels",
+      map.addLayer({ id: "buffer-seed-line", type: "line", source: "parcels", "source-layer": SOURCE_LAYER,
         paint: { "line-color": "#ea580c",
           "line-width":   ["case", ["boolean", ["feature-state", "bufferSeed"], false], 3, 0],
           "line-opacity": ["case", ["boolean", ["feature-state", "bufferSeed"], false], 1, 0] } }, before);
