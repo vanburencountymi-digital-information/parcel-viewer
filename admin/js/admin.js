@@ -415,6 +415,20 @@
     var paint = lyr.paint || {};
     var pl = paint.light || {}, pd = paint.dark || {};
 
+    // Geometry type drives which styling tools show (DIC-503). Resolved from the
+    // layer's overlay registration; parcels is polygon; fall back to the presence
+    // of a line/point style block.
+    var Cfg = (editing ? STATE.draft : STATE.config) || {};
+    var overlays = (Cfg.layers || {}).overlays || [];
+    function geomTypeFor(id) {
+      if (id === 'parcels') return 'polygon';
+      var ov = overlays.filter(function (o) { return o.id === id; })[0];
+      if (ov && ov.geomType) return String(ov.geomType).toLowerCase();
+      if (layers[id] && layers[id].line) return 'line';
+      if (layers[id] && layers[id].point) return 'point';
+      return 'polygon';
+    }
+
     function sel(path, val, opts) {
       return '<select class="ac-input ac-input-sm" data-path="' + path + '" data-type="str">' +
         opts.map(function (o) { return '<option value="' + esc(o) + '"' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
@@ -522,8 +536,49 @@
       return settingsCard + rampCard;
     }
 
-    // Layer picker + per-layer paint card. The picker (a view selector) sets which
-    // layer the paint/choropleth cards target; it works in view and edit modes.
+    // View-aware number / select fields (colorCell already branches on editing).
+    function numField(path, val, sfx) {
+      return editing ? numin(path, val) : (val == null || val === '' ? '—' : esc(val) + (sfx ? ' ' + sfx : ''));
+    }
+    function selField(path, val, opts) { return editing ? selR(path, val, opts) : esc(val || '—'); }
+
+    // Geometry-specific control rows (each returns <dt>/<dd> pairs inside the dl).
+    function polygonRows() {
+      return '<dt>Light — fill</dt><dd>' + colorCell(lp + '.paint.light.fill', pl.fill) + '</dd>' +
+        '<dt>Light — stroke</dt><dd>' + colorCell(lp + '.paint.light.stroke', pl.stroke) + '</dd>' +
+        '<dt>Dark — fill</dt><dd>' + colorCell(lp + '.paint.dark.fill', pd.fill) + '</dd>' +
+        '<dt>Dark — stroke</dt><dd>' + colorCell(lp + '.paint.dark.stroke', pd.stroke) + '</dd>';
+    }
+    function lineRows() {
+      var ln = lyr.line || {}, ll = ln.light || {}, ld = ln.dark || {};
+      return '<dt>Width</dt><dd>' + numField(lp + '.line.width', ln.width, 'px') + '</dd>' +
+        '<dt>Opacity</dt><dd>' + numField(lp + '.line.opacity', ln.opacity) + '</dd>' +
+        '<dt>Dash</dt><dd>' + selField(lp + '.line.dash', ln.dash || 'solid', ['solid', 'dashed', 'dotted']) + '</dd>' +
+        '<dt>Casing width</dt><dd>' + numField(lp + '.line.casingWidth', ln.casingWidth) +
+          ' <span class="ac-card-note">outline under the line (0 = none)</span></dd>' +
+        '<dt>Glow width</dt><dd>' + numField(lp + '.line.glowWidth', ln.glowWidth) +
+          ' <span class="ac-card-note">blurred halo (0 = none)</span></dd>' +
+        '<dt>Light — line</dt><dd>' + colorCell(lp + '.line.light.color', ll.color) + '</dd>' +
+        '<dt>Light — casing</dt><dd>' + colorCell(lp + '.line.light.casingColor', ll.casingColor) + '</dd>' +
+        '<dt>Light — glow</dt><dd>' + colorCell(lp + '.line.light.glowColor', ll.glowColor) + '</dd>' +
+        '<dt>Dark — line</dt><dd>' + colorCell(lp + '.line.dark.color', ld.color) + '</dd>' +
+        '<dt>Dark — casing</dt><dd>' + colorCell(lp + '.line.dark.casingColor', ld.casingColor) + '</dd>' +
+        '<dt>Dark — glow</dt><dd>' + colorCell(lp + '.line.dark.glowColor', ld.glowColor) + '</dd>';
+    }
+    function pointRows() {
+      var pt = lyr.point || {}, ptl = pt.light || {}, ptd = pt.dark || {};
+      return '<dt>Radius</dt><dd>' + numField(lp + '.point.radius', pt.radius, 'px') + '</dd>' +
+        '<dt>Stroke width</dt><dd>' + numField(lp + '.point.strokeWidth', pt.strokeWidth) + '</dd>' +
+        '<dt>Light — fill</dt><dd>' + colorCell(lp + '.point.light.color', ptl.color) + '</dd>' +
+        '<dt>Light — stroke</dt><dd>' + colorCell(lp + '.point.light.strokeColor', ptl.strokeColor) + '</dd>' +
+        '<dt>Dark — fill</dt><dd>' + colorCell(lp + '.point.dark.color', ptd.color) + '</dd>' +
+        '<dt>Dark — stroke</dt><dd>' + colorCell(lp + '.point.dark.strokeColor', ptd.strokeColor) + '</dd>';
+    }
+
+    // Layer picker + geometry-aware styling card. The picker (a view selector)
+    // sets which layer the styling targets; the controls shown depend on the
+    // layer's geometry (polygon → fill+choropleth, line → casing/dash/glow,
+    // point → radius/stroke). Works in view and edit modes.
     function layerCards() {
       if (!hasLayer) {
         return '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Layer styling</h2></div>' +
@@ -533,15 +588,22 @@
         layerIds.map(function (id) {
           return '<option value="' + esc(id) + '"' + (id === selId ? ' selected' : '') + '>' + esc((layers[id] && layers[id].label) || id) + '</option>';
         }).join('') + '</select>';
-      var paintCard =
+      var gt = geomTypeFor(selId);
+      var rows = gt === 'line' ? lineRows() : gt === 'point' ? pointRows() : polygonRows();
+      var note = gt === 'line' ? 'line — casing, dash &amp; glow'
+        : gt === 'point' ? 'point — radius &amp; stroke'
+        : 'fill, stroke &amp; choropleth';
+      var lineHint = gt === 'line'
+        ? '<p class="ac-readonly" style="margin-top:8px">Width-by-type needs the layer’s tiles to expose a class attribute (DB-side); ' +
+          'this layer’s tiles carry only name/feature_type today.</p>'
+        : '';
+      var card =
         '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Layer styling</h2>' +
-          '<span class="ac-card-note">paint &amp; choropleth, per layer</span></div>' +
-          '<dl class="ac-grid"><dt>Layer</dt><dd>' + picker + '</dd>' +
-            '<dt>Light — fill</dt><dd>' + colorCell(lp + '.paint.light.fill', pl.fill) + '</dd>' +
-            '<dt>Light — stroke</dt><dd>' + colorCell(lp + '.paint.light.stroke', pl.stroke) + '</dd>' +
-            '<dt>Dark — fill</dt><dd>' + colorCell(lp + '.paint.dark.fill', pd.fill) + '</dd>' +
-            '<dt>Dark — stroke</dt><dd>' + colorCell(lp + '.paint.dark.stroke', pd.stroke) + '</dd></dl></div>';
-      return paintCard + choroCards();
+          '<span class="ac-card-note">' + note + '</span></div>' +
+          '<dl class="ac-grid"><dt>Layer</dt><dd>' + picker + ' <span class="ac-card-note">' + esc(gt) + '</span></dd>' +
+            rows + '</dl>' + lineHint + '</div>';
+      // Choropleth is polygon-only (colors a fill by attribute).
+      return card + (gt === 'polygon' ? choroCards() : '');
     }
 
     var toolbar = editing

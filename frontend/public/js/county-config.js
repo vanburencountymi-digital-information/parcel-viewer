@@ -164,9 +164,13 @@ window.COUNTY = {
       },
       reference_roads: {
         label: "Roads",
-        paint: {
-          light: { fill: "#8a6d3b", stroke: "#8a6d3b" },
-          dark:  { fill: "#c9a24a", stroke: "#c9a24a" },
+        // Line styling (DIC-503): theme-independent sizing + per-theme colors.
+        // A cream/dark casing under the road line gives the classic cased-road
+        // look. dash: solid|dashed|dotted; glowWidth>0 adds a blurred halo.
+        line: {
+          width: 1.6, opacity: 1, dash: "solid", casingWidth: 1.1, glowWidth: 0,
+          light: { color: "#7a5c34", casingColor: "#fbf6ec", glowColor: "#000000" },
+          dark:  { color: "#d8b15a", casingColor: "#241d12", glowColor: "#000000" },
         },
       },
     },

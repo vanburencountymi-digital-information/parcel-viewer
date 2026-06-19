@@ -42,13 +42,52 @@
     });
   }
 
-  // Paint for a layer comes from styling.layers[id] (DIC-460), theme-aware.
-  function paintColors(id) {
+  function styleEntry(id) {
     var sl = (window.COUNTY && window.COUNTY.styling && window.COUNTY.styling.layers) || {};
-    var p = (sl[id] && sl[id].paint) || {};
+    return sl[id] || {};
+  }
+
+  // Paint for a polygon layer comes from styling.layers[id].paint (DIC-460).
+  function paintColors(id) {
+    var p = styleEntry(id).paint || {};
     var t = (isDark() ? p.dark : p.light) || p.light || {};
     var fill = t.fill || '#7A3B6B';
     return { fill: fill, stroke: t.stroke || fill };
+  }
+
+  // Dash presets → MapLibre line-dasharray (units = line widths). Round caps make
+  // 'dotted' render as dots. 'solid' → no dasharray.
+  var DASH = { solid: null, dashed: [2, 2], dotted: [0.1, 1.8] };
+
+  // Line style (DIC-503): theme-independent sizing + per-theme colors. Falls back
+  // to the legacy paint.{light,dark}.stroke shape when no `line` block exists.
+  function lineStyle(id) {
+    var s = styleEntry(id);
+    var ln = s.line;
+    if (!ln) {
+      var c = paintColors(id);
+      return { color: c.stroke, width: 1.4, opacity: 1, dash: 'solid',
+        casingColor: null, casingWidth: 0, glowColor: null, glowWidth: 0 };
+    }
+    var tone = (isDark() ? ln.dark : ln.light) || ln.light || {};
+    return {
+      color: tone.color || '#888', width: ln.width != null ? ln.width : 1.4,
+      opacity: ln.opacity != null ? ln.opacity : 1, dash: ln.dash || 'solid',
+      casingColor: tone.casingColor || null, casingWidth: ln.casingWidth || 0,
+      glowColor: tone.glowColor || null, glowWidth: ln.glowWidth || 0,
+    };
+  }
+
+  // Point style (DIC-503): theme-independent sizing + per-theme colors.
+  function pointStyle(id) {
+    var s = styleEntry(id);
+    var pt = s.point;
+    if (!pt) { var c = paintColors(id); return { color: c.fill, radius: 3, strokeColor: c.stroke, strokeWidth: 0.8 }; }
+    var tone = (isDark() ? pt.dark : pt.light) || pt.light || {};
+    return {
+      color: tone.color || '#888', radius: pt.radius != null ? pt.radius : 3,
+      strokeColor: tone.strokeColor || '#555', strokeWidth: pt.strokeWidth != null ? pt.strokeWidth : 0.8,
+    };
   }
 
   var LS = 'pg_layers_state';
@@ -98,23 +137,39 @@
           layout: { visibility: vis } }, before);
       }
     } else if (g === 'line') {
+      var L = lineStyle(o.id);
+      var lineLayout = { visibility: vis, 'line-cap': 'round', 'line-join': 'round' };
+      // glow (bottom) → casing → main, all inserted before parcels so they stack
+      // in call order with the main line on top.
+      if (L.glowColor && L.glowWidth > 0 && !map.getLayer(o.id + '-glow')) {
+        map.addLayer({ id: o.id + '-glow', type: 'line', source: srcId, 'source-layer': sl,
+          minzoom: mz, layout: lineLayout, paint: { 'line-color': L.glowColor,
+            'line-width': L.glowWidth, 'line-blur': Math.max(1, L.glowWidth * 0.7), 'line-opacity': 0.55 } }, before);
+      }
+      if (L.casingColor && L.casingWidth > 0 && !map.getLayer(o.id + '-casing')) {
+        map.addLayer({ id: o.id + '-casing', type: 'line', source: srcId, 'source-layer': sl,
+          minzoom: mz, layout: lineLayout, paint: { 'line-color': L.casingColor,
+            'line-width': L.width + 2 * L.casingWidth } }, before);
+      }
       if (!map.getLayer(o.id + '-line')) {
+        var linePaint = { 'line-color': L.color, 'line-width': L.width, 'line-opacity': L.opacity };
+        if (DASH[L.dash]) linePaint['line-dasharray'] = DASH[L.dash];
         map.addLayer({ id: o.id + '-line', type: 'line', source: srcId, 'source-layer': sl,
-          minzoom: mz, paint: { 'line-color': c.stroke, 'line-width': 1.4 },
-          layout: { visibility: vis } }, before);
+          minzoom: mz, layout: lineLayout, paint: linePaint }, before);
       }
     } else { // point
+      var P = pointStyle(o.id);
       if (!map.getLayer(o.id + '-circle')) {
         map.addLayer({ id: o.id + '-circle', type: 'circle', source: srcId, 'source-layer': sl,
-          minzoom: mz, paint: { 'circle-color': c.fill, 'circle-radius': 3,
-            'circle-stroke-color': c.stroke, 'circle-stroke-width': 0.8 },
+          minzoom: mz, paint: { 'circle-color': P.color, 'circle-radius': P.radius,
+            'circle-stroke-color': P.strokeColor, 'circle-stroke-width': P.strokeWidth },
           layout: { visibility: vis } }, before);
       }
     }
     _added[o.id] = true;
   }
 
-  var SUFFIXES = ['-fill', '-line', '-circle'];
+  var SUFFIXES = ['-fill', '-line', '-casing', '-glow', '-circle'];
 
   function setOverlay(id, on) {
     _state[id] = !!on;
@@ -131,18 +186,29 @@
     });
   }
 
-  // Re-apply theme-dependent colors when the viewer toggles dark/light.
+  // Re-apply theme-dependent colors when the viewer toggles dark/light. Sizing
+  // (width/radius/dash) is theme-independent, so only colors are updated here.
   function restyle() {
     var map = getMap();
     if (!map) return;
     vectorOverlays().forEach(function (o) {
       if (!_added[o.id]) return;
-      var c = paintColors(o.id);
-      if (map.getLayer(o.id + '-fill')) map.setPaintProperty(o.id + '-fill', 'fill-color', c.fill);
-      if (map.getLayer(o.id + '-line')) map.setPaintProperty(o.id + '-line', 'line-color', c.stroke);
-      if (map.getLayer(o.id + '-circle')) {
-        map.setPaintProperty(o.id + '-circle', 'circle-color', c.fill);
-        map.setPaintProperty(o.id + '-circle', 'circle-stroke-color', c.stroke);
+      var g = (o.geomType || 'polygon').toLowerCase();
+      if (g === 'line') {
+        var L = lineStyle(o.id);
+        if (map.getLayer(o.id + '-line')) map.setPaintProperty(o.id + '-line', 'line-color', L.color);
+        if (map.getLayer(o.id + '-casing') && L.casingColor) map.setPaintProperty(o.id + '-casing', 'line-color', L.casingColor);
+        if (map.getLayer(o.id + '-glow') && L.glowColor) map.setPaintProperty(o.id + '-glow', 'line-color', L.glowColor);
+      } else if (g === 'point') {
+        var P = pointStyle(o.id);
+        if (map.getLayer(o.id + '-circle')) {
+          map.setPaintProperty(o.id + '-circle', 'circle-color', P.color);
+          map.setPaintProperty(o.id + '-circle', 'circle-stroke-color', P.strokeColor);
+        }
+      } else {
+        var c = paintColors(o.id);
+        if (map.getLayer(o.id + '-fill')) map.setPaintProperty(o.id + '-fill', 'fill-color', c.fill);
+        if (map.getLayer(o.id + '-line')) map.setPaintProperty(o.id + '-line', 'line-color', c.stroke);
       }
     });
   }
