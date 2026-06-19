@@ -653,6 +653,9 @@
        before map.js parses; if config.js 404s, the baked fallback stands. -->
   <script src="/frontend/public/js/county-config.js"></script>
   <script src="/api/config.js" onerror="window.PV_CONFIG_SOURCE='fallback'"></script>
+  <!-- Local draft preview (DIC-512): merges an Admin Console draft from
+       localStorage over window.COUNTY for testing, before map.js reads it. -->
+  <script src="/frontend/public/js/style-preview.js"></script>
   <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
   <!-- proj4.js — coordinate projection (State Plane etc.) for Measurement tab -->

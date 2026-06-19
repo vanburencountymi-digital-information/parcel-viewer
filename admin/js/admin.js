@@ -144,6 +144,7 @@
     var toolbar = editing
       ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
         '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
         '<button class="ac-btn" data-act="cancel">Cancel</button>'
       : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit configuration</button>' +
         '<button class="ac-btn" data-act="history">Version history</button>';
@@ -312,7 +313,25 @@
       });
       return;
     }
-    if (act === 'cancel') { STATE.editing = false; STATE.draft = null; rerender(host); return; }
+    if (act === 'cancel') {
+      STATE.editing = false; STATE.draft = null;
+      try { localStorage.removeItem('pv-config-preview'); } catch (_) {}  // drop any stale preview
+      rerender(host); return;
+    }
+    // Local draft preview (DIC-512): push the in-memory draft to the viewer via
+    // localStorage — no server write. The viewer (style-preview.js) merges it
+    // over window.COUNTY and shows a banner. Opens/focuses a named viewer tab; if
+    // it's already open, its storage listener reloads it with the new draft.
+    if (act === 'preview') {
+      try {
+        localStorage.setItem('pv-config-preview', JSON.stringify(STATE.draft || STATE.config));
+        window.open('/demo/', 'pvPreview');
+        flash(host, 'ok', 'Draft sent to the viewer preview (opened /demo/). Edit & Preview again to refresh it.');
+      } catch (e) {
+        flash(host, 'err', 'Could not open preview: ' + (e && e.message || e));
+      }
+      return;
+    }
     if (act === 'save') {
       apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (res) {
         flash(host, res.ok ? 'ok' : 'err', res.ok ? 'Draft saved.' : writeErr(res));
@@ -685,6 +704,7 @@
     var toolbar = editing
       ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
         '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
         '<button class="ac-btn" data-act="cancel">Cancel</button>'
       : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit styling</button>' +
         '<button class="ac-btn" data-act="history">Version history</button>';
@@ -756,6 +776,7 @@
     var toolbar = editing
       ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
         '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
         '<button class="ac-btn" data-act="cancel">Cancel</button>'
       : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit layers</button>' +
         '<button class="ac-btn" data-act="history">Version history</button>';
@@ -983,6 +1004,7 @@
     var toolbar = editing
       ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
         '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
         '<button class="ac-btn" data-act="cancel">Cancel</button>'
       : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit access</button>' +
         '<button class="ac-btn" data-act="history">Version history</button>';
