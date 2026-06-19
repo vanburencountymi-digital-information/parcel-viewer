@@ -263,6 +263,33 @@
 [data-theme="dark"] .pv-zoom-readout {
   background: rgba(18,13,12,0.9); color: #c9bfb3; border-color: rgba(255,255,255,0.12);
 }
+
+/* ── Map mood (DIC-509) — super-theme above color schemes ────────────────────
+   The overlay ages the map ground per the active mood; it sits ABOVE the map
+   canvas but BELOW all chrome (readouts/panels), so UI stays crisp. Opt-in. */
+.pv-mood-overlay { position: absolute; inset: 0; z-index: 2; pointer-events: none; display: none; }
+
+/* Antique: parchment ground = warm tint + paper grain + vignette, multiplied
+   over the map. Labels keep their halos (DIC-503) so AA contrast still holds. */
+html[data-mood="antique"] .pv-mood-overlay {
+  display: block;
+  background-color: #d8c09c;
+  background-image:
+    radial-gradient(135% 110% at 50% 42%, rgba(0,0,0,0) 58%, rgba(54,34,14,0.55) 100%),
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='150'%20height='150'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.9'%20numOctaves='2'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20type='saturate'%20values='0'/%3E%3C/filter%3E%3Crect%20width='150'%20height='150'%20filter='url(%23n)'%20opacity='0.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat;
+  background-size: 100% 100%, 160px 160px;
+  mix-blend-mode: multiply;
+  opacity: 0.6;
+}
+/* Antique serif touches on map-overlay text (a nod). The on-map LABEL serif
+   needs a serif glyph source — tracked as a refinement, not in this v1. */
+html[data-mood="antique"] {
+  --pv-mood-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+}
+html[data-mood="antique"] .pv-brand,
+html[data-mood="antique"] .parcel-info-title,
+html[data-mood="antique"] .choropleth-legend-title { font-family: var(--pv-mood-serif); }
 @media (max-width: 640px) { .pv-zoom-readout { top: 92px; } }  /* clear the mobile tab bar */
 
 /* ── Dark mode ───────────────────────────────────────────────────────────── */
