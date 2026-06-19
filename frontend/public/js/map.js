@@ -513,6 +513,38 @@
     } catch (_) { return fallback; }
   }
 
+  // ── Map mood (DIC-509) ─────────────────────────────────────────────────────
+  // A "super-theme" above color schemes: a mood bundles typography / texture /
+  // stroke overrides ("antique" = parchment ground + hairline strokes). Applied
+  // as <html data-mood>; CSS does the ground/typography, here we set the attribute,
+  // ensure the parchment overlay element, and tune map strokes. Opt-in, never a
+  // county default. Generalizable to field/presentation/blueprint moods later.
+  function _ensureMoodOverlay() {
+    const host = document.getElementById("panel-map");
+    if (!host || document.getElementById("pv-mood-overlay")) return;
+    const el = document.createElement("div");
+    el.id = "pv-mood-overlay";
+    el.className = "pv-mood-overlay";
+    el.setAttribute("aria-hidden", "true");
+    host.appendChild(el);   // CSS reveals it only for moods that define a ground
+  }
+  function applyMapMood(mood) {
+    mood = mood || "none";
+    document.documentElement.setAttribute("data-mood", mood);
+    _ensureMoodOverlay();
+    // Hairline parcel strokes in antique; restore the style default otherwise.
+    // (Stroke WIDTH only — the spotlight owns line-opacity, so no conflict.)
+    if (map && map.getLayer("parcels-line")) {
+      try {
+        map.setPaintProperty("parcels-line", "line-width",
+          mood === "antique"
+            ? ["interpolate", ["linear"], ["zoom"], 11, 0.2, 14, 0.5, 17, 0.9]
+            : ["interpolate", ["linear"], ["zoom"], 11, 0.3, 14, 0.6, 17, 1.2, 19, 2]);
+      } catch (_) {}
+    }
+  }
+  window.PS_MAP_MOOD = { apply: applyMapMood, get: function () { return document.documentElement.getAttribute("data-mood") || "none"; } };
+
   function applyTheme(dark) {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     const moonIcon = document.getElementById("theme-icon-moon");
@@ -620,6 +652,9 @@
 
       // Expose map instance for drawing modules and MapControlAPI
       window.PS_MAP = map;
+
+      // Apply the saved map mood (DIC-509) now that the map is ready.
+      try { applyMapMood(window.PV_PREFS && PV_PREFS.getMapMood ? PV_PREFS.getMapMood() : "none"); } catch (_) {}
 
       // Re-tint the map when the color scheme changes (DIC-505). admin-menu's
       // setScheme() flips data-scheme then dispatches this; applyTheme re-reads
@@ -880,6 +915,16 @@
       if (v !== "off" && v !== "full") v = "subtle";
       try { localStorage.setItem("pv-map-reactions", v); } catch (_) {}
       try { if (window.PS_MAP_FOCUS) window.PS_MAP_FOCUS.refresh(); } catch (_) {}
+    },
+    // Map mood (DIC-509): super-theme above color schemes. 'none' | 'antique'.
+    // Opt-in; never a county default. Device-local.
+    getMapMood: function () {
+      try { var v = localStorage.getItem("pv-map-mood"); return v === "antique" ? v : "none"; } catch (_) { return "none"; }
+    },
+    setMapMood: function (v) {
+      if (v !== "antique") v = "none";
+      try { localStorage.setItem("pv-map-mood", v); } catch (_) {}
+      applyMapMood(v);
     },
   };
 
