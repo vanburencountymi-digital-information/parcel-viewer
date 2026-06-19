@@ -109,6 +109,10 @@ window.COUNTY = {
     ],
     theme: "light",                   // default theme
     basemap: "parcels",               // 'parcels' | 'aerial'
+    // Hillshade basemap treatment (DIC-507). Client-side relief from a DEM tile
+    // source (overlay-layers.js). OFF by default while the source is external;
+    // flip defaultOn:true (one line) once the in-house DEM tiles land.
+    hillshade: { defaultOn: false },
     labels: {
       defaultField: "owner",
       fields: ["owner", "pin", "address", "acres", "av", "tv", "class"],
