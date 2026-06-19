@@ -163,6 +163,31 @@ window.COUNTY = {
           ],
         },
       },
+
+      // PostGIS vector overlay paint (DIC-502). pg-layers.js reads paint per
+      // theme; the same per-layer shape as parcels, so the admin Styling module
+      // can edit these once a layer is registered.
+      subdivisions: {
+        label: "Subdivisions",
+        paint: {
+          light: { fill: "#7A3B6B", stroke: "#553c5a" },
+          dark:  { fill: "#9f7aea", stroke: "#b794f4" },
+        },
+      },
+      plss_sections: {
+        label: "PLSS Sections",
+        paint: {
+          light: { fill: "#2F6B4F", stroke: "#2F6B4F" },
+          dark:  { fill: "#4E9A6B", stroke: "#6db38a" },
+        },
+      },
+      reference_roads: {
+        label: "Roads",
+        paint: {
+          light: { fill: "#8a6d3b", stroke: "#8a6d3b" },
+          dark:  { fill: "#c9a24a", stroke: "#c9a24a" },
+        },
+      },
     },
   },
 
@@ -175,6 +200,12 @@ window.COUNTY = {
       { id: "aerial", label: "Aerial imagery", source: "County / state imagery", default: false },
     ],
     overlays: [
+      // PostGIS vector layers (DIC-502) — served by Martin as `<source>` function
+      // tiles (MVT layer `sourceLayer`), styled from styling.layers[id], rendered
+      // by pg-layers.js. Registered/curated through the Admin Console Data module.
+      { id: "subdivisions", label: "Subdivisions", type: "vector", source: "subdivisions_tiles", sourceLayer: "subdivisions", geomType: "polygon", minZoom: 12, default: false, dbSource: "geo.subdivisions" },
+      { id: "plss_sections", label: "PLSS Sections", type: "vector", source: "plss_sections_tiles", sourceLayer: "plss_sections", geomType: "polygon", outlineOnly: true, minZoom: 11, default: false, dbSource: "geo.plss_sections" },
+      { id: "reference_roads", label: "Roads", type: "vector", source: "reference_roads_tiles", sourceLayer: "reference_roads", geomType: "line", minZoom: 12, default: false, dbSource: "geo.reference_layers (feature_type=road)" },
       { id: "wetlands",   label: "Wetlands",         type: "WMS",    source: "USFWS National Wetlands Inventory", minZoom: 12 },
       { id: "flood",      label: "Flood hazard",     type: "WMS",    source: "FEMA NFHL",                          minZoom: 0 },
       { id: "soils",      label: "Soils",            type: "WMS",    source: "USDA SSURGO",                        minZoom: 0 },

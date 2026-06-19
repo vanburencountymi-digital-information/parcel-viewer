@@ -262,6 +262,8 @@
     if (host._editWired) return;
     host._editWired = true;
     host.addEventListener('input', function (e) {
+      // "Add a layer" pulldown (Data module) — preview the picked layer.
+      if (e.target.closest('[data-pg-pick]')) return updatePickMeta(host);
       // Layer picker (Styling module) — a view selector, works in view + edit.
       var picker = e.target.closest('[data-style-layer]');
       if (picker) { _styleLayer = picker.value; return activeRenderer()(host); }
@@ -290,6 +292,8 @@
       if (rem && STATE.editing) { arrayRemove(rem.getAttribute('data-remove'), parseInt(rem.getAttribute('data-index'), 10)); return activeRenderer()(host); }
       var lk = e.target.closest('[data-lookup]');
       if (lk) return toggleLookup(host, lk);
+      var addpick = e.target.closest('[data-add-pick]');
+      if (addpick) return addPickedLayer(host);
     });
   }
   function wireCounty(host, maps) { host._maps = maps; wireEditHost(host); }
@@ -719,16 +723,134 @@
                  : '<p class="ac-readonly" style="margin-top:8px">Self-serve ingestion (upload → field-map → validate → publish, versioned) is the planned DIC-461 loader.</p>') +
       '</div>';
 
+    // Add a layer (DIC-502) — pick a PostGIS layer the tile server can serve from
+    // an always-ready pulldown; selecting + Add registers it into the draft.
+    var pickCard =
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Add a layer</h2>' +
+        '<span class="ac-card-note">PostGIS layers the tile server can serve (DIC-502)</span></div>' +
+        '<p class="ac-readonly" style="margin:0 0 10px">Pick a spatial layer already in PostGIS to add it as a viewer overlay — no developer, no DB migration.</p>' +
+        '<div class="ac-pick-row">' +
+          '<select class="ac-input ac-input-sm" id="ac-pg-pick" data-pg-pick></select>' +
+          '<button class="ac-btn ac-btn-sm ac-btn-primary" data-add-pick>Add layer</button>' +
+        '</div>' +
+        '<div id="ac-pg-pick-meta" style="margin-top:10px"></div>' +
+      '</div>';
+
     host.innerHTML =
       '<div class="ac-page-head ac-page-head-row"><div>' +
         '<h1 class="ac-page-title">Data &amp; Layers</h1>' +
         '<p class="ac-page-sub">PostGIS layers, the tile server, and the data sources behind them.</p></div>' +
         '<div class="ac-toolbar">' + toolbar + '</div></div>' +
       '<div id="ac-flash"></div>' + banner +
-      tileCard + pgCard + extCard + dsCard +
+      tileCard + pgCard + pickCard + extCard + dsCard +
       '<div id="ac-history"></div>';
 
     wireEditHost(host);
+    loadAvailableLayers(host);            // populate the pulldown immediately
+  }
+
+  // ── PostGIS layer discovery (DIC-502) ───────────────────────────────────────
+  // Discover spatial layers the tile server can serve (geo.<name>_tiles) and
+  // register them into the config draft as vector overlays — no developer.
+  function _titleize(id) {
+    return String(id || '').split(/[_\s]+/).map(function (w) {
+      if (/^plss$/i.test(w)) return 'PLSS';
+      return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+    }).join(' ');
+  }
+  // A distinct default paint per geometry kind (editable later in Styling).
+  function _defaultStyle(geomType) {
+    var palette = {
+      polygon: { light: { fill: '#2F6B4F', stroke: '#1f4d39' }, dark: { fill: '#4E9A6B', stroke: '#6db38a' } },
+      line:    { light: { fill: '#1F5E80', stroke: '#1F5E80' }, dark: { fill: '#2E76A6', stroke: '#7fb6d8' } },
+      point:   { light: { fill: '#B58D4A', stroke: '#8B6535' }, dark: { fill: '#d4a862', stroke: '#b8923f' } },
+    };
+    return (palette[geomType] || palette.polygon);
+  }
+  function _overlayFromDiscovered(d) {
+    return {
+      id: d.id, label: _titleize(d.id), type: 'vector',
+      source: d.source, sourceLayer: d.sourceLayer,
+      geomType: d.geomType || 'polygon', minZoom: 12, default: false,
+      dbSource: d.dbSource,
+    };
+  }
+  // Populate the "add a layer" pulldown with serveable layers not yet registered.
+  // Auto-runs whenever the Data module renders, so the dropdown is always ready —
+  // adding a layer is just picking it from the list.
+  function loadAvailableLayers(host) {
+    var sel = host.querySelector('#ac-pg-pick');
+    var meta = host.querySelector('#ac-pg-pick-meta');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Loading available layers…</option>';
+    sel.disabled = true;
+    fetch(API_BASE + '/admin/discover/layers', { cache: 'no-cache' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function (res) {
+        var layers = (res && res.layers) || [];
+        host._discovered = {};
+        layers.forEach(function (d) { host._discovered[d.source] = d; });
+        // Exclude layers already registered (in the live draft/config).
+        var cfg = STATE.editing ? (STATE.draft || {}) : (STATE.config || {});
+        var regd = {};
+        ((cfg.layers || {}).overlays || []).forEach(function (o) {
+          if (String(o.type || '').toLowerCase() === 'vector' && o.source) regd[o.source] = true;
+        });
+        var avail = layers.filter(function (d) { return !d.registered && !regd[d.source]; });
+        if (meta) meta.innerHTML = '';
+        if (!avail.length) {
+          sel.innerHTML = '<option value="">All available layers added</option>';
+          sel.disabled = true;
+          return;
+        }
+        sel.disabled = false;
+        sel.innerHTML = '<option value="">Select a layer to add…</option>' +
+          avail.map(function (d) {
+            var bits = [d.geomType || '—'];
+            if (d.rowCount != null) bits.push(Number(d.rowCount).toLocaleString() + ' features');
+            return '<option value="' + esc(d.source) + '">' + esc(_titleize(d.id)) + ' — ' + esc(bits.join(', ')) + '</option>';
+          }).join('');
+      })
+      .catch(function (e) {
+        sel.innerHTML = '<option value="">Discovery unavailable</option>';
+        sel.disabled = true;
+        if (meta) meta.innerHTML = '<p class="ac-readonly">Couldn’t reach the tile server / DB (' + esc(e.message) + ').</p>';
+      });
+  }
+
+  // Preview the picked layer's metadata beneath the pulldown.
+  function updatePickMeta(host) {
+    var sel = host.querySelector('#ac-pg-pick');
+    var meta = host.querySelector('#ac-pg-pick-meta');
+    if (!sel || !meta) return;
+    var d = sel.value && host._discovered && host._discovered[sel.value];
+    meta.innerHTML = d
+      ? '<dl class="ac-grid"><dt>Geometry</dt><dd>' + esc(d.geomType || '—') + '</dd>' +
+        '<dt>Features</dt><dd>' + (d.rowCount != null ? Number(d.rowCount).toLocaleString() : '—') + '</dd>' +
+        '<dt>PostGIS source</dt><dd><code>' + esc(d.dbSource || d.source) + '</code></dd>' +
+        '<dt>Tile source</dt><dd><code>' + esc(d.source) + '</code></dd></dl>'
+      : '';
+  }
+
+  // Add the layer currently selected in the pulldown. Enters edit mode first if
+  // needed, so it's a one-step "pick → add".
+  function addPickedLayer(host) {
+    var sel = host.querySelector('#ac-pg-pick');
+    if (!sel || !sel.value) { flash(host, 'err', 'Pick a layer to add first.'); return; }
+    if (!STATE.editing) { STATE.editing = true; STATE.draft = clone(STATE.config); }
+    addDiscoveredLayer(host, sel.value);
+  }
+
+  function addDiscoveredLayer(host, source) {
+    var d = host._discovered && host._discovered[source];
+    if (!d || !STATE.editing) return;
+    var overlays = arrayAt('layers.overlays');
+    if (overlays.some(function (o) { return o.source === source; })) return;  // already there
+    overlays.push(_overlayFromDiscovered(d));
+    // Seed a default per-layer style (DIC-460) so the viewer can paint it.
+    setPath(STATE.draft, 'styling.layers.' + d.id, { label: _titleize(d.id), paint: _defaultStyle(d.geomType || 'polygon') });
+    renderData(host);                       // re-render: layer now appears under PostGIS layers; pulldown reloads without it
+    flash(host, 'ok', 'Added “' + _titleize(d.id) + '”. Publish to make it live in the viewer.');
   }
 
   // ── Access & Ops module (DIC-462 — read + edit) ─────────────────────────────
