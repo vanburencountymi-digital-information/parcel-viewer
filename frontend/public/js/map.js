@@ -403,6 +403,9 @@
   // stroke. Each setPaintProperty is guarded so layers not yet on the map are skipped.
   function applyLayerPaint(id, style, dark) {
     if (!style) return;
+    // Line/point layers are owned by pg-layers.js (casing, glow, dashes, radius
+    // — DIC-503). Skip them here so this fill/stroke pass doesn't clobber them.
+    if (style.line || style.point) return;
     const ids = mapLayersFor(id);
     const tone = ((style.paint && (dark ? style.paint.dark : style.paint.light)) || {});
     const ch = choroplethConfig(style);
