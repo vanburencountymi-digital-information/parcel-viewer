@@ -27,6 +27,12 @@
   }
   function getMap() { return window.PS_MAP || null; }
   function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+  // Effective dark BACKGROUND for label legibility (DIC-519): dark theme OR aerial
+  // imagery on. Used only for label text/halo — geometry paint stays theme-based.
+  function darkBackground() {
+    if (isDark()) return true;
+    try { var a = document.getElementById('toggle-aerial'); return !!(a && a.checked); } catch (_) { return false; }
+  }
 
   // Resolve the Martin tile base the same way map.js does.
   function martinBase() {
@@ -96,11 +102,12 @@
   function labelStyle(id) {
     var l = styleEntry(id).labels;
     if (!l || !l.enabled || !l.field) return null;
-    var tone = (isDark() ? l.dark : l.light) || l.light || {};
+    var dk = darkBackground();   // label colors track the background, incl. aerial
+    var tone = (dk ? l.dark : l.light) || l.light || {};
     return {
       field: l.field, size: l.size != null ? l.size : 11, minZoom: l.minZoom || 0,
-      color: tone.color || (isDark() ? '#e8d8c4' : '#333333'),
-      haloColor: tone.haloColor || (isDark() ? '#15110c' : '#ffffff'),
+      color: tone.color || (dk ? '#e8d8c4' : '#333333'),
+      haloColor: tone.haloColor || (dk ? '#15110c' : '#ffffff'),
       haloWidth: l.haloWidth != null ? l.haloWidth : 1.2,
     };
   }
@@ -295,6 +302,10 @@
       new MutationObserver(restyle).observe(document.documentElement,
         { attributes: true, attributeFilter: ['data-theme'] });
     } catch (_) {}
+    // Aerial toggle flips the effective label background (DIC-519) → re-color.
+    document.addEventListener('change', function (e) {
+      if (e.target && e.target.id === 'toggle-aerial') restyle();
+    });
   }
 
   load();

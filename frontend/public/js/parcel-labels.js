@@ -865,6 +865,34 @@
 
   function getMap() { return window.PS_MAP || null; }
 
+  // ── Background-aware label paint (DIC-519) ─────────────────────────────────
+  // Labels sit over the basemap (the parcel wash is mostly transparent), so the
+  // basemap brightness decides readable text. Effective dark background = dark
+  // theme OR aerial imagery on → white text + dark halo (the original scheme).
+  // Light basemap → dark text + cream halo. Halos stay on either way (AA).
+  function _darkBackground() {
+    try {
+      if (document.documentElement.getAttribute('data-theme') === 'dark') return true;
+      var aerial = document.getElementById('toggle-aerial');
+      if (aerial && aerial.checked) return true;
+    } catch (_) {}
+    return false;
+  }
+  function _labelPaint() {
+    return _darkBackground()
+      ? { 'text-color': '#ffffff', 'text-halo-color': '#1a1a2e', 'text-halo-width': 1.5, 'text-halo-blur': 0.5 }
+      : { 'text-color': '#1f2937', 'text-halo-color': '#fbf7ec', 'text-halo-width': 1.6, 'text-halo-blur': 0.3 };
+  }
+  function _repaintLabels() {
+    var map = getMap();
+    if (!map) return;
+    var p = _labelPaint();
+    _LAYER_DEFS.forEach(function (def) {
+      if (!_layersAdded[def.id] || !map.getLayer(def.id)) return;
+      Object.keys(p).forEach(function (k) { try { map.setPaintProperty(def.id, k, p[k]); } catch (_) {} });
+    });
+  }
+
   function _textFieldExpr(field) {
     // Multi-token fields are pre-wrapped per zoom (owner / pin / address).
     // Single-token fields (AV, SEV, acres, zoning, class) need no wrapping.
@@ -960,12 +988,7 @@
             'symbol-avoid-edges':      true,
             'symbol-sort-key':         ['-', 0, ['coalesce', ['get', '_acres'], 0]],
           },
-          paint: {
-            'text-color':      '#ffffff',
-            'text-halo-color': '#1a1a2e',
-            'text-halo-width': 1.5,
-            'text-halo-blur':  0.5,
-          },
+          paint: _labelPaint(),
         }, before);
         _layersAdded[def.id] = true;
         } catch (err) { console.error('[parcel-labels] addLayer failed for', def.id, err); }
@@ -976,6 +999,7 @@
         map.setLayoutProperty(def.id, 'text-size',   _sizeExpr());
       }
     });
+    _repaintLabels();   // match the current background (theme / aerial)
   }
 
   // ── Public actions ────────────────────────────────────────────────────────
@@ -1091,6 +1115,16 @@
 
   _loadState();
   _wireUI();
+
+  // Re-color labels when the background changes (DIC-519): theme toggle (data-theme)
+  // and the aerial-imagery toggle both flip the effective background brightness.
+  try {
+    new MutationObserver(_repaintLabels).observe(document.documentElement,
+      { attributes: true, attributeFilter: ['data-theme'] });
+  } catch (_) {}
+  document.addEventListener('change', function (e) {
+    if (e.target && e.target.id === 'toggle-aerial') _repaintLabels();
+  });
 
   if (_active) {
     var _tryActivate = function () {
