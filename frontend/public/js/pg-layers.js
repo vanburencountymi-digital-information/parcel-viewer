@@ -94,7 +94,7 @@
   // attribute. Returns null when labels are off or no field is set. Sizing is
   // theme-independent; text + halo colors are per-theme.
   function labelStyle(id) {
-    var l = styleEntry(id).label;
+    var l = styleEntry(id).labels;
     if (!l || !l.enabled || !l.field) return null;
     var tone = (isDark() ? l.dark : l.light) || l.light || {};
     return {

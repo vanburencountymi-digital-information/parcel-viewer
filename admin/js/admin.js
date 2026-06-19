@@ -622,7 +622,7 @@
     // Label tool (DIC-503) — works for any geometry; the field picker is driven
     // by the layer's real tile attributes. Placement note follows geometry.
     function labelCard() {
-      var lab = lyr.label || {}, ll = lab.light || {}, ld = lab.dark || {};
+      var lab = lyr.labels || {}, ll = lab.light || {}, ld = lab.dark || {};
       var fields = layerFields(selId);
       var fieldOpts = [{ v: '', l: '(none)' }].concat(fields.map(function (f) { return { v: f, l: f }; }));
       var place = geomTypeFor(selId) === 'line' ? 'along the line' : 'at each feature';
@@ -631,15 +631,15 @@
         body = '<p class="ac-readonly">This layer’s tiles expose no label-able attributes.</p>';
       } else if (editing) {
         body = '<dl class="ac-grid">' +
-          '<dt>Show labels</dt><dd><input type="checkbox" data-path="' + lp + '.label.enabled" data-type="bool"' + (lab.enabled ? ' checked' : '') + '></dd>' +
-          '<dt>Label field</dt><dd>' + selR(lp + '.label.field', lab.field, fieldOpts) + '</dd>' +
-          '<dt>Text size</dt><dd>' + numin(lp + '.label.size', lab.size) + '</dd>' +
-          '<dt>Min zoom</dt><dd>' + numin(lp + '.label.minZoom', lab.minZoom) + '</dd>' +
-          '<dt>Halo width</dt><dd>' + numin(lp + '.label.haloWidth', lab.haloWidth) + '</dd>' +
-          '<dt>Light — text</dt><dd>' + colorCell(lp + '.label.light.color', ll.color) + '</dd>' +
-          '<dt>Light — halo</dt><dd>' + colorCell(lp + '.label.light.haloColor', ll.haloColor) + '</dd>' +
-          '<dt>Dark — text</dt><dd>' + colorCell(lp + '.label.dark.color', ld.color) + '</dd>' +
-          '<dt>Dark — halo</dt><dd>' + colorCell(lp + '.label.dark.haloColor', ld.haloColor) + '</dd></dl>';
+          '<dt>Show labels</dt><dd><input type="checkbox" data-path="' + lp + '.labels.enabled" data-type="bool"' + (lab.enabled ? ' checked' : '') + '></dd>' +
+          '<dt>Label field</dt><dd>' + selR(lp + '.labels.field', lab.field, fieldOpts) + '</dd>' +
+          '<dt>Text size</dt><dd>' + numin(lp + '.labels.size', lab.size) + '</dd>' +
+          '<dt>Min zoom</dt><dd>' + numin(lp + '.labels.minZoom', lab.minZoom) + '</dd>' +
+          '<dt>Halo width</dt><dd>' + numin(lp + '.labels.haloWidth', lab.haloWidth) + '</dd>' +
+          '<dt>Light — text</dt><dd>' + colorCell(lp + '.labels.light.color', ll.color) + '</dd>' +
+          '<dt>Light — halo</dt><dd>' + colorCell(lp + '.labels.light.haloColor', ll.haloColor) + '</dd>' +
+          '<dt>Dark — text</dt><dd>' + colorCell(lp + '.labels.dark.color', ld.color) + '</dd>' +
+          '<dt>Dark — halo</dt><dd>' + colorCell(lp + '.labels.dark.haloColor', ld.haloColor) + '</dd></dl>';
       } else {
         body = '<dl class="ac-grid"><dt>Labels</dt><dd>' + (lab.enabled ? 'On' : 'Off') + '</dd>' +
           (lab.enabled ? '<dt>Field</dt><dd><code>' + esc(lab.field || '—') + '</code></dd>' +

@@ -182,7 +182,7 @@ window.COUNTY = {
         // Label tool (DIC-503): symbol over the geometry. Sizing theme-
         // independent; text + halo colors per theme. field = an exposed tile
         // attribute (see overlay.fields).
-        label: {
+        labels: {
           enabled: true, field: "name", size: 11, minZoom: 13, haloWidth: 1.4,
           light: { color: "#5a3b52", haloColor: "#ffffff" },
           dark:  { color: "#d9b3cf", haloColor: "#15110c" },
@@ -194,7 +194,7 @@ window.COUNTY = {
           light: { fill: "#2F6B4F", stroke: "#2F6B4F" },
           dark:  { fill: "#4E9A6B", stroke: "#6db38a" },
         },
-        label: {
+        labels: {
           enabled: true, field: "section", size: 11, minZoom: 12, haloWidth: 1.4,
           light: { color: "#2F6B4F", haloColor: "#ffffff" },
           dark:  { color: "#7fc3a0", haloColor: "#15110c" },
@@ -210,7 +210,7 @@ window.COUNTY = {
           light: { color: "#7a5c34", casingColor: "#fbf6ec", glowColor: "#000000" },
           dark:  { color: "#d8b15a", casingColor: "#241d12", glowColor: "#000000" },
         },
-        label: {
+        labels: {
           enabled: true, field: "name", size: 10, minZoom: 14, haloWidth: 1.2,
           light: { color: "#4a3826", haloColor: "#fbf6ec" },
           dark:  { color: "#e8d3a8", haloColor: "#1a140c" },
