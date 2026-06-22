@@ -869,6 +869,18 @@
       var name = _LAYER_LABEL[oid] || p.layer_id;
       return (p.visible ? '🌊 ' : '🚫 ') + name + (p.visible ? ' on' : ' off');
     },
+    // Reactive cartography (DIC-515): bloom an overlay the AI is *talking about*
+    // so the eye follows the words. PS_pulseOverlay ensures the layer is on,
+    // pulses it, and self-gates on the "Map reactions" setting + reduced-motion
+    // (Off = silent no-op). It resolves WMS rasters and PostGIS layers alike, so
+    // pass the friendly name straight through (alias-map first for a tidy chip).
+    pulse_layer: function (p) {
+      var ref = p.layer_id;
+      if (!ref || !root.PS_pulseOverlay) return null;
+      var oid = _resolveLayerId(ref) || ref;
+      if (!root.PS_pulseOverlay(oid)) return null;
+      return '💫 ' + (_LAYER_LABEL[oid] || ref);
+    },
 
     // ── Drawing ───────────────────────────────────────────────────────────────
     draw_point:  function (p) { var a = _api(), c = _coordsOf(p); if (!a || !c) return null; a.drawPoint(c, _annProps(p, 'point')); return '📌 Point'; },
@@ -1106,12 +1118,22 @@
         for (var id in st) { if (st[id]) layers.push(_LAYER_LABEL[id] || id); }
       }
     } catch (e) {}
+    // Full live layer state (DIC-327): every layer + visibility + field schema,
+    // so the AI knows what's on the map and what each layer contains. Falls back
+    // to the legacy visible-overlay labels if the registry isn't loaded.
+    var registry = null;
+    try {
+      if (root.PS_LAYER_REGISTRY && root.PS_LAYER_REGISTRY.snapshot) {
+        registry = root.PS_LAYER_REGISTRY.snapshot();
+      }
+    } catch (e) {}
     return {
       center:  [ +c.lng.toFixed(6), +c.lat.toFixed(6) ],
       zoom:    +m.getZoom().toFixed(2),
       bearing: Math.round(m.getBearing()),
       pitch:   Math.round(m.getPitch()),
       visible_layers: layers,
+      layers:  registry,
     };
   }
 

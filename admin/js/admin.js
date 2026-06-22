@@ -116,7 +116,7 @@
   function renderCounty(host) {
     var editing = STATE.editing;
     var C = editing ? (STATE.draft || {}) : (STATE.config || {});
-    var m = C.map || {}, ep = C.endpoints || {}, forms = C.forms || {};
+    var m = C.map || {}, ep = C.endpoints || {}, forms = C.forms || {}, integ = C.integrations || {};
     var propClass = (C.labels && C.labels.propClass) || {};
     var schoolDist = (C.labels && C.labels.schoolDist) || {};
 
@@ -208,6 +208,12 @@
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Endpoints</h2></div>' +
         '<dl class="ac-grid">' +
           field('Map Buddy AI', 'endpoints.mapBuddy', ep.mapBuddy, 'str') +
+        '</dl></div>' +
+
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Integrations</h2>' +
+        '<span class="ac-card-note">Google Maps Embed key powers in-panel Street View. Restrict it by HTTP referrer to this domain. Empty &rarr; Street View opens in a new tab.</span></div>' +
+        '<dl class="ac-grid">' +
+          field('Google Maps Embed key', 'integrations.googleMapsEmbedKey', integ.googleMapsEmbedKey, 'str') +
         '</dl></div>' +
 
       pnCard +
