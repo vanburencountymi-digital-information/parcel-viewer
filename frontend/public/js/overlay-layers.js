@@ -102,19 +102,41 @@
     },
     {
       id:          'overlay-hillshade',
-      label:       'Hillshade (USGS 3DEP)',
-      url:         _buildWmsUrl(_dep3Url, '1.3.0', '3DEPElevation:Hillshade Gray'),
-      opacity:     0.75,
+      label:       'Hillshade',
+      // Client-side hillshade (DIC-507): MapLibre computes relief on the GPU from
+      // a DEM tile source — fast static CDN tiles instead of the slow per-tile
+      // 3DEP WMS GetMap render. SOURCE IS ISOLATED for the in-house swap: point
+      // `demTiles` at our own Martin terrain-RGB endpoint later and nothing else
+      // changes (treatment/blend below is source-agnostic).
+      kind:        'hillshade-dem',
+      demTiles:    ['https://elevation-tiles-prod.s3.amazonaws.com/terrarium/{z}/{x}/{y}.png'],
+      demEncoding: 'terrarium',
+      demMaxzoom:  15,                 // AWS Terrain Tiles depth (US NED ~10 m); overzoom past
       minzoom:     0,
-      beforeLayer: 'mi-aerial',        // render under the aerial image
-      sideEffect:  _dimAerial,         // dim aerial while hillshade is on
-      paint: {
-        'raster-brightness-min': 0.0,  // keep shadows fully dark
-        'raster-brightness-max': 0.40, // cap highlights at mid-gray (no more white blowout)
-        'raster-contrast':       0.6,  // punch up shadow/highlight separation
-        'raster-saturation':    -1.0   // full grayscale — no color cast from the WMS
+      beforeLayer: 'mi-aerial',        // bottom of the stack — under parcels + aerial
+      sideEffect:  _dimAerial,         // dim aerial so relief shows through when both on
+      // Theme-aware treatment, dialled PUNCHY (DIC-507): max exaggeration + strong
+      // shadow/highlight separation so the gentle moraine relief reads as a
+      // featured cartographic element. Warm shadows tie to the terracotta ground;
+      // dark theme drives bright warm highlights so ridges pop on the dim basemap.
+      // Still under parcels + class wash, which stay legible on top.
+      paintByTheme: {
+        light: {
+          'hillshade-exaggeration':           0.9,
+          'hillshade-shadow-color':           '#2e2014',   // deep warm shadow (high contrast)
+          'hillshade-highlight-color':        '#fff6e2',   // warm light, not pure white
+          'hillshade-accent-color':           '#7a5a36',   // crisp slope edges
+          'hillshade-illumination-direction': 315,
+        },
+        dark: {
+          'hillshade-exaggeration':           1.0,
+          'hillshade-shadow-color':           '#000000',
+          'hillshade-highlight-color':        '#d8bd92',   // bright warm so ridges pop on dark
+          'hillshade-accent-color':           '#6b4f30',
+          'hillshade-illumination-direction': 315,
+        },
       },
-      attribution: _dep3Attr
+      attribution: 'Elevation: <a href="https://registry.opendata.aws/terrain-tiles/" target="_blank" rel="noopener">AWS Terrain Tiles</a> / USGS 3DEP',
     },
     {
       id:          'overlay-contours-10ft',
@@ -159,10 +181,59 @@
 
   function _getMap() { return window.PS_MAP || null; }
 
+  function _isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
+
+  // Theme-appropriate hillshade-* paint for a DEM overlay.
+  function _hillshadePaint(cfg) {
+    var p = cfg.paintByTheme || {};
+    return (_isDark() ? p.dark : p.light) || p.light || {};
+  }
+
+  // Re-apply hillshade paint when the viewer switches light/dark.
+  function _retintHillshade() {
+    var map = _getMap();
+    if (!map) return;
+    OVERLAYS.forEach(function (cfg) {
+      if (cfg.kind === 'hillshade-dem' && _added[cfg.id] && map.getLayer(cfg.id)) {
+        var paint = _hillshadePaint(cfg);
+        Object.keys(paint).forEach(function (k) { map.setPaintProperty(cfg.id, k, paint[k]); });
+      }
+    });
+  }
+
   /** Lazily add the source + layer the first time an overlay is enabled. */
   function _addOverlay(cfg) {
     var map = _getMap();
     if (!map || _added[cfg.id]) return;
+
+    // Client-side hillshade from a DEM source (DIC-507) — raster-dem + a hillshade
+    // layer (GPU-rendered relief), inserted at the bottom of the stack.
+    if (cfg.kind === 'hillshade-dem') {
+      if (!map.getSource(cfg.id)) {
+        map.addSource(cfg.id, {
+          type:        'raster-dem',
+          tiles:       cfg.demTiles,
+          encoding:    cfg.demEncoding || 'terrarium',
+          tileSize:    256,
+          maxzoom:     cfg.demMaxzoom || 14,
+          attribution: cfg.attribution,
+        });
+      }
+      var hbefore = cfg.beforeLayer && map.getLayer(cfg.beforeLayer) ? cfg.beforeLayer
+        : (map.getLayer('parcels-fill') ? 'parcels-fill' : undefined);
+      if (!map.getLayer(cfg.id)) {
+        map.addLayer({
+          id:      cfg.id,
+          type:    'hillshade',
+          source:  cfg.id,
+          minzoom: cfg.minzoom || 0,
+          paint:   _hillshadePaint(cfg),
+          layout:  { visibility: _state[cfg.id] ? 'visible' : 'none' },
+        }, hbefore);
+      }
+      _added[cfg.id] = true;
+      return;
+    }
 
     if (!map.getSource(cfg.id)) {
       map.addSource(cfg.id, {
@@ -226,12 +297,20 @@
   }
 
   function _loadState() {
+    var s = {};
+    try { s = JSON.parse(localStorage.getItem(_LS_KEY) || '{}'); } catch (_) { s = {}; }
+    // Config-driven defaults (DIC-507): hillshade ships OFF by default but flipping
+    // it ON is a one-line config change (COUNTY.styling.hillshade.defaultOn) — no
+    // code edit — for when the in-house DEM tiles land. A stored user pref wins.
+    var defaults = {};
     try {
-      var s = JSON.parse(localStorage.getItem(_LS_KEY) || '{}');
-      OVERLAYS.forEach(function (cfg) { _state[cfg.id] = !!s[cfg.id]; });
-    } catch (_) {
-      OVERLAYS.forEach(function (cfg) { _state[cfg.id] = false; });
-    }
+      if (window.COUNTY && COUNTY.styling && COUNTY.styling.hillshade) {
+        defaults['overlay-hillshade'] = !!COUNTY.styling.hillshade.defaultOn;
+      }
+    } catch (_) {}
+    OVERLAYS.forEach(function (cfg) {
+      _state[cfg.id] = (cfg.id in s) ? !!s[cfg.id] : !!defaults[cfg.id];
+    });
   }
 
   // ── UI wiring ────────────────────────────────────────────────────────────
@@ -268,6 +347,11 @@
     _wireUI();
   }
   _waitForMap();
+  // Re-tint the hillshade on light/dark switch (DIC-507).
+  try {
+    new MutationObserver(_retintHillshade).observe(document.documentElement,
+      { attributes: true, attributeFilter: ['data-theme'] });
+  } catch (_) {}
 
   // ── Export ───────────────────────────────────────────────────────────────
 

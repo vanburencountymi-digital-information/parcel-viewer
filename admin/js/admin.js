@@ -89,6 +89,7 @@
     'layers.dataSources': { id: '', label: '', source: '' },
     'choropleth.categories': { value: '', label: '', color: '#888888' },
     'choropleth.stops': { min: 0, label: '', color: '#888888' },
+    'parcelNumber.segments': { name: '', description: '' },
   };
   function arrayAt(path) {
     var arr = getPath(STATE.draft, path);
@@ -143,6 +144,7 @@
     var toolbar = editing
       ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
         '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
         '<button class="ac-btn" data-act="cancel">Cancel</button>'
       : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit configuration</button>' +
         '<button class="ac-btn" data-act="history">Version history</button>';
@@ -152,6 +154,35 @@
         '<b>Save draft</b> stores your changes; <b>Publish</b> makes the draft the live config as a new version. ' + srcNote + '</div></div>'
       : '<div class="ac-banner"><span>ⓘ</span><div>' + srcNote +
         ' Editing writes to the config store (<b>DIC-464</b>); real auth is <b>DIC-463</b>.</div></div>';
+
+    // Parcel number format (DIC-501) — per-county PIN segments, read by the Tax
+    // Description explainer. Separator/intro are simple fields; segments are an
+    // editable, ordered list (add/remove via the shared array handlers).
+    var pn = C.parcelNumber || {};
+    var pnSegs = pn.segments || [];
+    var pnSegRows = pnSegs.map(function (s, i) {
+      var p = 'parcelNumber.segments.' + i;
+      if (editing) {
+        return '<tr><td class="ac-pn-ord">' + (i + 1) + '</td>' +
+          '<td><input class="ac-input ac-input-sm" data-path="' + p + '.name" data-type="str" value="' + esc(s.name || '') + '"></td>' +
+          '<td><input class="ac-input" data-path="' + p + '.description" data-type="str" value="' + esc(s.description || '') + '"></td>' +
+          '<td><button class="ac-btn ac-btn-sm" data-remove="parcelNumber.segments" data-index="' + i + '">Remove</button></td></tr>';
+      }
+      return '<tr><td class="ac-pn-ord">' + (i + 1) + '</td><td>' + esc(s.name || '—') + '</td><td>' + esc(s.description || '—') + '</td></tr>';
+    }).join('');
+    if (!pnSegRows) pnSegRows = '<tr><td colspan="' + (editing ? 4 : 3) + '" class="ac-readonly">No segments defined' + (editing ? ' — add one below.' : '.') + '</td></tr>';
+    var pnCard =
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel number format</h2>' +
+        '<span class="ac-card-note">how this county’s PIN breaks down · used by the Tax Description explainer (DIC-501)</span></div>' +
+        '<dl class="ac-grid">' +
+          field('Separator', 'parcelNumber.separator', pn.separator, 'str') +
+          field('Example PIN', 'parcelNumber.example', pn.example, 'str') +
+          field('Intro line', 'parcelNumber.intro', pn.intro, 'str') +
+        '</dl>' +
+        '<table class="ac-table"><thead><tr><th style="width:32px">#</th><th>Segment</th><th>Meaning</th>' +
+          (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + pnSegRows + '</tbody></table>' +
+        (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="parcelNumber.segments">+ Add segment</button></div>' : '') +
+      '</div>';
 
     var html =
       '<div class="ac-page-head ac-page-head-row"><div>' +
@@ -178,6 +209,8 @@
         '<dl class="ac-grid">' +
           field('Map Buddy AI', 'endpoints.mapBuddy', ep.mapBuddy, 'str') +
         '</dl></div>' +
+
+      pnCard +
 
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Reference lookups</h2>' +
         '<span class="ac-card-note">code → name maps' + (editing ? ' · edit via API for now' : ' shared by the popup &amp; explainers') + '</span></div>' +
@@ -230,6 +263,8 @@
     if (host._editWired) return;
     host._editWired = true;
     host.addEventListener('input', function (e) {
+      // "Add a layer" pulldown (Data module) — preview the picked layer.
+      if (e.target.closest('[data-pg-pick]')) return updatePickMeta(host);
       // Layer picker (Styling module) — a view selector, works in view + edit.
       var picker = e.target.closest('[data-style-layer]');
       if (picker) { _styleLayer = picker.value; return activeRenderer()(host); }
@@ -258,6 +293,8 @@
       if (rem && STATE.editing) { arrayRemove(rem.getAttribute('data-remove'), parseInt(rem.getAttribute('data-index'), 10)); return activeRenderer()(host); }
       var lk = e.target.closest('[data-lookup]');
       if (lk) return toggleLookup(host, lk);
+      var addpick = e.target.closest('[data-add-pick]');
+      if (addpick) return addPickedLayer(host);
     });
   }
   function wireCounty(host, maps) { host._maps = maps; wireEditHost(host); }
@@ -276,7 +313,25 @@
       });
       return;
     }
-    if (act === 'cancel') { STATE.editing = false; STATE.draft = null; rerender(host); return; }
+    if (act === 'cancel') {
+      STATE.editing = false; STATE.draft = null;
+      try { localStorage.removeItem('pv-config-preview'); } catch (_) {}  // drop any stale preview
+      rerender(host); return;
+    }
+    // Local draft preview (DIC-512): push the in-memory draft to the viewer via
+    // localStorage — no server write. The viewer (style-preview.js) merges it
+    // over window.COUNTY and shows a banner. Opens/focuses a named viewer tab; if
+    // it's already open, its storage listener reloads it with the new draft.
+    if (act === 'preview') {
+      try {
+        localStorage.setItem('pv-config-preview', JSON.stringify(STATE.draft || STATE.config));
+        window.open('/demo/', 'pvPreview');
+        flash(host, 'ok', 'Draft sent to the viewer preview (opened /demo/). Edit & Preview again to refresh it.');
+      } catch (e) {
+        flash(host, 'err', 'Could not open preview: ' + (e && e.message || e));
+      }
+      return;
+    }
     if (act === 'save') {
       apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (res) {
         flash(host, res.ok ? 'ok' : 'err', res.ok ? 'Draft saved.' : writeErr(res));
@@ -411,6 +466,29 @@
     var paint = lyr.paint || {};
     var pl = paint.light || {}, pd = paint.dark || {};
 
+    // Geometry type drives which styling tools show (DIC-503). Resolved from the
+    // layer's overlay registration; parcels is polygon; fall back to the presence
+    // of a line/point style block.
+    var Cfg = (editing ? STATE.draft : STATE.config) || {};
+    var overlays = (Cfg.layers || {}).overlays || [];
+    function geomTypeFor(id) {
+      if (id === 'parcels') return 'polygon';
+      var ov = overlays.filter(function (o) { return o.id === id; })[0];
+      if (ov && ov.geomType) return String(ov.geomType).toLowerCase();
+      if (layers[id] && layers[id].line) return 'line';
+      if (layers[id] && layers[id].point) return 'point';
+      return 'polygon';
+    }
+    // Attributes available to label / color by — from the layer's tiles (DIC-503).
+    function layerFields(id) {
+      if (id === 'parcels') {
+        var ch = (layers.parcels && layers.parcels.choropleth) || {};
+        return ch.fields || [];
+      }
+      var ov = overlays.filter(function (o) { return o.id === id; })[0];
+      return (ov && ov.fields) || [];
+    }
+
     function sel(path, val, opts) {
       return '<select class="ac-input ac-input-sm" data-path="' + path + '" data-type="str">' +
         opts.map(function (o) { return '<option value="' + esc(o) + '"' + (o === val ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('') + '</select>';
@@ -462,13 +540,16 @@
             '<dt>Mode</dt><dd>' + selR(cp + '.mode', ch.mode, ['categorical', 'graduated'], true) + '</dd>' +
             '<dt>Transform</dt><dd>' + selR(cp + '.transform', ch.transform, [{ v: '', l: '(none)' }, { v: 'classGroup', l: 'classGroup' }]) +
               ' <span class="ac-card-note">classGroup → first digit of prop_class</span></dd>' +
-            '<dt>Fallback</dt><dd>' + colorCell(cp + '.fallback', ch.fallback) + '</dd></dl>'
+            '<dt>Fallback</dt><dd>' + colorCell(cp + '.fallback', ch.fallback) + '</dd>' +
+            '<dt>Opacity</dt><dd>' + numin(cp + '.opacity', ch.opacity) +
+              ' <span class="ac-card-note">fill opacity of the wash (e.g. 0.16 = subtle)</span></dd></dl>'
         : '<dl class="ac-grid">' +
             '<dt>Enabled</dt><dd>' + (ch.enabled ? 'Yes' : 'No') + '</dd>' +
             (ch.enabled ? (
               '<dt>Attribute</dt><dd><code>' + esc(ch.attribute || '—') + '</code></dd>' +
               '<dt>Mode</dt><dd>' + esc(ch.mode || '—') + (ch.transform === 'classGroup' ? ' · classGroup' : '') + '</dd>' +
-              '<dt>Fallback</dt><dd>' + _swatch(ch.fallback) + ' <code>' + esc(ch.fallback || '—') + '</code></dd>'
+              '<dt>Fallback</dt><dd>' + _swatch(ch.fallback) + ' <code>' + esc(ch.fallback || '—') + '</code></dd>' +
+              '<dt>Opacity</dt><dd>' + esc(ch.opacity != null ? ch.opacity : '—') + '</dd>'
             ) : '') + '</dl>';
 
       var settingsCard =
@@ -518,8 +599,80 @@
       return settingsCard + rampCard;
     }
 
-    // Layer picker + per-layer paint card. The picker (a view selector) sets which
-    // layer the paint/choropleth cards target; it works in view and edit modes.
+    // View-aware number / select fields (colorCell already branches on editing).
+    function numField(path, val, sfx) {
+      return editing ? numin(path, val) : (val == null || val === '' ? '—' : esc(val) + (sfx ? ' ' + sfx : ''));
+    }
+    function selField(path, val, opts) { return editing ? selR(path, val, opts) : esc(val || '—'); }
+
+    // Geometry-specific control rows (each returns <dt>/<dd> pairs inside the dl).
+    function polygonRows() {
+      return '<dt>Light — fill</dt><dd>' + colorCell(lp + '.paint.light.fill', pl.fill) + '</dd>' +
+        '<dt>Light — stroke</dt><dd>' + colorCell(lp + '.paint.light.stroke', pl.stroke) + '</dd>' +
+        '<dt>Dark — fill</dt><dd>' + colorCell(lp + '.paint.dark.fill', pd.fill) + '</dd>' +
+        '<dt>Dark — stroke</dt><dd>' + colorCell(lp + '.paint.dark.stroke', pd.stroke) + '</dd>';
+    }
+    function lineRows() {
+      var ln = lyr.line || {}, ll = ln.light || {}, ld = ln.dark || {};
+      return '<dt>Width</dt><dd>' + numField(lp + '.line.width', ln.width, 'px') + '</dd>' +
+        '<dt>Opacity</dt><dd>' + numField(lp + '.line.opacity', ln.opacity) + '</dd>' +
+        '<dt>Dash</dt><dd>' + selField(lp + '.line.dash', ln.dash || 'solid', ['solid', 'dashed', 'dotted']) + '</dd>' +
+        '<dt>Casing width</dt><dd>' + numField(lp + '.line.casingWidth', ln.casingWidth) +
+          ' <span class="ac-card-note">outline under the line (0 = none)</span></dd>' +
+        '<dt>Glow width</dt><dd>' + numField(lp + '.line.glowWidth', ln.glowWidth) +
+          ' <span class="ac-card-note">blurred halo (0 = none)</span></dd>' +
+        '<dt>Light — line</dt><dd>' + colorCell(lp + '.line.light.color', ll.color) + '</dd>' +
+        '<dt>Light — casing</dt><dd>' + colorCell(lp + '.line.light.casingColor', ll.casingColor) + '</dd>' +
+        '<dt>Light — glow</dt><dd>' + colorCell(lp + '.line.light.glowColor', ll.glowColor) + '</dd>' +
+        '<dt>Dark — line</dt><dd>' + colorCell(lp + '.line.dark.color', ld.color) + '</dd>' +
+        '<dt>Dark — casing</dt><dd>' + colorCell(lp + '.line.dark.casingColor', ld.casingColor) + '</dd>' +
+        '<dt>Dark — glow</dt><dd>' + colorCell(lp + '.line.dark.glowColor', ld.glowColor) + '</dd>';
+    }
+    function pointRows() {
+      var pt = lyr.point || {}, ptl = pt.light || {}, ptd = pt.dark || {};
+      return '<dt>Radius</dt><dd>' + numField(lp + '.point.radius', pt.radius, 'px') + '</dd>' +
+        '<dt>Stroke width</dt><dd>' + numField(lp + '.point.strokeWidth', pt.strokeWidth) + '</dd>' +
+        '<dt>Light — fill</dt><dd>' + colorCell(lp + '.point.light.color', ptl.color) + '</dd>' +
+        '<dt>Light — stroke</dt><dd>' + colorCell(lp + '.point.light.strokeColor', ptl.strokeColor) + '</dd>' +
+        '<dt>Dark — fill</dt><dd>' + colorCell(lp + '.point.dark.color', ptd.color) + '</dd>' +
+        '<dt>Dark — stroke</dt><dd>' + colorCell(lp + '.point.dark.strokeColor', ptd.strokeColor) + '</dd>';
+    }
+
+    // Label tool (DIC-503) — works for any geometry; the field picker is driven
+    // by the layer's real tile attributes. Placement note follows geometry.
+    function labelCard() {
+      var lab = lyr.labels || {}, ll = lab.light || {}, ld = lab.dark || {};
+      var fields = layerFields(selId);
+      var fieldOpts = [{ v: '', l: '(none)' }].concat(fields.map(function (f) { return { v: f, l: f }; }));
+      var place = geomTypeFor(selId) === 'line' ? 'along the line' : 'at each feature';
+      var body;
+      if (!fields.length) {
+        body = '<p class="ac-readonly">This layer’s tiles expose no label-able attributes.</p>';
+      } else if (editing) {
+        body = '<dl class="ac-grid">' +
+          '<dt>Show labels</dt><dd><input type="checkbox" data-path="' + lp + '.labels.enabled" data-type="bool"' + (lab.enabled ? ' checked' : '') + '></dd>' +
+          '<dt>Label field</dt><dd>' + selR(lp + '.labels.field', lab.field, fieldOpts) + '</dd>' +
+          '<dt>Text size</dt><dd>' + numin(lp + '.labels.size', lab.size) + '</dd>' +
+          '<dt>Min zoom</dt><dd>' + numin(lp + '.labels.minZoom', lab.minZoom) + '</dd>' +
+          '<dt>Halo width</dt><dd>' + numin(lp + '.labels.haloWidth', lab.haloWidth) + '</dd>' +
+          '<dt>Light — text</dt><dd>' + colorCell(lp + '.labels.light.color', ll.color) + '</dd>' +
+          '<dt>Light — halo</dt><dd>' + colorCell(lp + '.labels.light.haloColor', ll.haloColor) + '</dd>' +
+          '<dt>Dark — text</dt><dd>' + colorCell(lp + '.labels.dark.color', ld.color) + '</dd>' +
+          '<dt>Dark — halo</dt><dd>' + colorCell(lp + '.labels.dark.haloColor', ld.haloColor) + '</dd></dl>';
+      } else {
+        body = '<dl class="ac-grid"><dt>Labels</dt><dd>' + (lab.enabled ? 'On' : 'Off') + '</dd>' +
+          (lab.enabled ? '<dt>Field</dt><dd><code>' + esc(lab.field || '—') + '</code></dd>' +
+            '<dt>Size · min zoom</dt><dd>' + esc(lab.size || '—') + 'px · z' + esc(lab.minZoom || 0) + '+</dd>' : '') +
+          '</dl>';
+      }
+      return '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Labels</h2>' +
+        '<span class="ac-card-note">text ' + place + '</span></div>' + body + '</div>';
+    }
+
+    // Layer picker + geometry-aware styling card. The picker (a view selector)
+    // sets which layer the styling targets; the controls shown depend on the
+    // layer's geometry (polygon → fill+choropleth, line → casing/dash/glow,
+    // point → radius/stroke). Works in view and edit modes.
     function layerCards() {
       if (!hasLayer) {
         return '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Layer styling</h2></div>' +
@@ -529,20 +682,29 @@
         layerIds.map(function (id) {
           return '<option value="' + esc(id) + '"' + (id === selId ? ' selected' : '') + '>' + esc((layers[id] && layers[id].label) || id) + '</option>';
         }).join('') + '</select>';
-      var paintCard =
+      var gt = geomTypeFor(selId);
+      var rows = gt === 'line' ? lineRows() : gt === 'point' ? pointRows() : polygonRows();
+      var note = gt === 'line' ? 'line — casing, dash &amp; glow'
+        : gt === 'point' ? 'point — radius &amp; stroke'
+        : 'fill, stroke &amp; choropleth';
+      var lineHint = gt === 'line'
+        ? '<p class="ac-readonly" style="margin-top:8px">Width-by-type needs the layer’s tiles to expose a class attribute (DB-side); ' +
+          'this layer’s tiles carry only name/feature_type today.</p>'
+        : '';
+      var card =
         '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Layer styling</h2>' +
-          '<span class="ac-card-note">paint &amp; choropleth, per layer</span></div>' +
-          '<dl class="ac-grid"><dt>Layer</dt><dd>' + picker + '</dd>' +
-            '<dt>Light — fill</dt><dd>' + colorCell(lp + '.paint.light.fill', pl.fill) + '</dd>' +
-            '<dt>Light — stroke</dt><dd>' + colorCell(lp + '.paint.light.stroke', pl.stroke) + '</dd>' +
-            '<dt>Dark — fill</dt><dd>' + colorCell(lp + '.paint.dark.fill', pd.fill) + '</dd>' +
-            '<dt>Dark — stroke</dt><dd>' + colorCell(lp + '.paint.dark.stroke', pd.stroke) + '</dd></dl></div>';
-      return paintCard + choroCards();
+          '<span class="ac-card-note">' + note + '</span></div>' +
+          '<dl class="ac-grid"><dt>Layer</dt><dd>' + picker + ' <span class="ac-card-note">' + esc(gt) + '</span></dd>' +
+            rows + '</dl>' + lineHint + '</div>';
+      // Choropleth is polygon-only (colors a fill by attribute); labels apply to
+      // every geometry.
+      return card + (gt === 'polygon' ? choroCards() : '') + labelCard();
     }
 
     var toolbar = editing
       ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
         '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
         '<button class="ac-btn" data-act="cancel">Cancel</button>'
       : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit styling</button>' +
         '<button class="ac-btn" data-act="history">Version history</button>';
@@ -614,6 +776,7 @@
     var toolbar = editing
       ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
         '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
         '<button class="ac-btn" data-act="cancel">Cancel</button>'
       : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit layers</button>' +
         '<button class="ac-btn" data-act="history">Version history</button>';
@@ -687,16 +850,134 @@
                  : '<p class="ac-readonly" style="margin-top:8px">Self-serve ingestion (upload → field-map → validate → publish, versioned) is the planned DIC-461 loader.</p>') +
       '</div>';
 
+    // Add a layer (DIC-502) — pick a PostGIS layer the tile server can serve from
+    // an always-ready pulldown; selecting + Add registers it into the draft.
+    var pickCard =
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Add a layer</h2>' +
+        '<span class="ac-card-note">PostGIS layers the tile server can serve (DIC-502)</span></div>' +
+        '<p class="ac-readonly" style="margin:0 0 10px">Pick a spatial layer already in PostGIS to add it as a viewer overlay — no developer, no DB migration.</p>' +
+        '<div class="ac-pick-row">' +
+          '<select class="ac-input ac-input-sm" id="ac-pg-pick" data-pg-pick></select>' +
+          '<button class="ac-btn ac-btn-sm ac-btn-primary" data-add-pick>Add layer</button>' +
+        '</div>' +
+        '<div id="ac-pg-pick-meta" style="margin-top:10px"></div>' +
+      '</div>';
+
     host.innerHTML =
       '<div class="ac-page-head ac-page-head-row"><div>' +
         '<h1 class="ac-page-title">Data &amp; Layers</h1>' +
         '<p class="ac-page-sub">PostGIS layers, the tile server, and the data sources behind them.</p></div>' +
         '<div class="ac-toolbar">' + toolbar + '</div></div>' +
       '<div id="ac-flash"></div>' + banner +
-      tileCard + pgCard + extCard + dsCard +
+      tileCard + pgCard + pickCard + extCard + dsCard +
       '<div id="ac-history"></div>';
 
     wireEditHost(host);
+    loadAvailableLayers(host);            // populate the pulldown immediately
+  }
+
+  // ── PostGIS layer discovery (DIC-502) ───────────────────────────────────────
+  // Discover spatial layers the tile server can serve (geo.<name>_tiles) and
+  // register them into the config draft as vector overlays — no developer.
+  function _titleize(id) {
+    return String(id || '').split(/[_\s]+/).map(function (w) {
+      if (/^plss$/i.test(w)) return 'PLSS';
+      return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+    }).join(' ');
+  }
+  // A distinct default paint per geometry kind (editable later in Styling).
+  function _defaultStyle(geomType) {
+    var palette = {
+      polygon: { light: { fill: '#2F6B4F', stroke: '#1f4d39' }, dark: { fill: '#4E9A6B', stroke: '#6db38a' } },
+      line:    { light: { fill: '#1F5E80', stroke: '#1F5E80' }, dark: { fill: '#2E76A6', stroke: '#7fb6d8' } },
+      point:   { light: { fill: '#B58D4A', stroke: '#8B6535' }, dark: { fill: '#d4a862', stroke: '#b8923f' } },
+    };
+    return (palette[geomType] || palette.polygon);
+  }
+  function _overlayFromDiscovered(d) {
+    return {
+      id: d.id, label: _titleize(d.id), type: 'vector',
+      source: d.source, sourceLayer: d.sourceLayer,
+      geomType: d.geomType || 'polygon', minZoom: 12, default: false,
+      dbSource: d.dbSource, fields: d.fields || [],
+    };
+  }
+  // Populate the "add a layer" pulldown with serveable layers not yet registered.
+  // Auto-runs whenever the Data module renders, so the dropdown is always ready —
+  // adding a layer is just picking it from the list.
+  function loadAvailableLayers(host) {
+    var sel = host.querySelector('#ac-pg-pick');
+    var meta = host.querySelector('#ac-pg-pick-meta');
+    if (!sel) return;
+    sel.innerHTML = '<option value="">Loading available layers…</option>';
+    sel.disabled = true;
+    fetch(API_BASE + '/admin/discover/layers', { cache: 'no-cache' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function (res) {
+        var layers = (res && res.layers) || [];
+        host._discovered = {};
+        layers.forEach(function (d) { host._discovered[d.source] = d; });
+        // Exclude layers already registered (in the live draft/config).
+        var cfg = STATE.editing ? (STATE.draft || {}) : (STATE.config || {});
+        var regd = {};
+        ((cfg.layers || {}).overlays || []).forEach(function (o) {
+          if (String(o.type || '').toLowerCase() === 'vector' && o.source) regd[o.source] = true;
+        });
+        var avail = layers.filter(function (d) { return !d.registered && !regd[d.source]; });
+        if (meta) meta.innerHTML = '';
+        if (!avail.length) {
+          sel.innerHTML = '<option value="">All available layers added</option>';
+          sel.disabled = true;
+          return;
+        }
+        sel.disabled = false;
+        sel.innerHTML = '<option value="">Select a layer to add…</option>' +
+          avail.map(function (d) {
+            var bits = [d.geomType || '—'];
+            if (d.rowCount != null) bits.push(Number(d.rowCount).toLocaleString() + ' features');
+            return '<option value="' + esc(d.source) + '">' + esc(_titleize(d.id)) + ' — ' + esc(bits.join(', ')) + '</option>';
+          }).join('');
+      })
+      .catch(function (e) {
+        sel.innerHTML = '<option value="">Discovery unavailable</option>';
+        sel.disabled = true;
+        if (meta) meta.innerHTML = '<p class="ac-readonly">Couldn’t reach the tile server / DB (' + esc(e.message) + ').</p>';
+      });
+  }
+
+  // Preview the picked layer's metadata beneath the pulldown.
+  function updatePickMeta(host) {
+    var sel = host.querySelector('#ac-pg-pick');
+    var meta = host.querySelector('#ac-pg-pick-meta');
+    if (!sel || !meta) return;
+    var d = sel.value && host._discovered && host._discovered[sel.value];
+    meta.innerHTML = d
+      ? '<dl class="ac-grid"><dt>Geometry</dt><dd>' + esc(d.geomType || '—') + '</dd>' +
+        '<dt>Features</dt><dd>' + (d.rowCount != null ? Number(d.rowCount).toLocaleString() : '—') + '</dd>' +
+        '<dt>PostGIS source</dt><dd><code>' + esc(d.dbSource || d.source) + '</code></dd>' +
+        '<dt>Tile source</dt><dd><code>' + esc(d.source) + '</code></dd></dl>'
+      : '';
+  }
+
+  // Add the layer currently selected in the pulldown. Enters edit mode first if
+  // needed, so it's a one-step "pick → add".
+  function addPickedLayer(host) {
+    var sel = host.querySelector('#ac-pg-pick');
+    if (!sel || !sel.value) { flash(host, 'err', 'Pick a layer to add first.'); return; }
+    if (!STATE.editing) { STATE.editing = true; STATE.draft = clone(STATE.config); }
+    addDiscoveredLayer(host, sel.value);
+  }
+
+  function addDiscoveredLayer(host, source) {
+    var d = host._discovered && host._discovered[source];
+    if (!d || !STATE.editing) return;
+    var overlays = arrayAt('layers.overlays');
+    if (overlays.some(function (o) { return o.source === source; })) return;  // already there
+    overlays.push(_overlayFromDiscovered(d));
+    // Seed a default per-layer style (DIC-460) so the viewer can paint it.
+    setPath(STATE.draft, 'styling.layers.' + d.id, { label: _titleize(d.id), paint: _defaultStyle(d.geomType || 'polygon') });
+    renderData(host);                       // re-render: layer now appears under PostGIS layers; pulldown reloads without it
+    flash(host, 'ok', 'Added “' + _titleize(d.id) + '”. Publish to make it live in the viewer.');
   }
 
   // ── Access & Ops module (DIC-462 — read + edit) ─────────────────────────────
@@ -723,6 +1004,7 @@
     var toolbar = editing
       ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
         '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
+        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
         '<button class="ac-btn" data-act="cancel">Cancel</button>'
       : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit access</button>' +
         '<button class="ac-btn" data-act="history">Version history</button>';

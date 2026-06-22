@@ -107,7 +107,7 @@
       <div id="parcel-info-panel" class="parcel-info-panel" role="region" aria-labelledby="parcel-info-title" tabindex="-1" hidden>
         <div class="parcel-info-header">
           <span class="parcel-info-title" id="parcel-info-title" role="heading" aria-level="2">Parcel</span>
-          <button class="parcel-info-close" title="Close">✕</button>
+          <button class="parcel-info-close" title="Clear selection" aria-label="Clear selection">✕</button>
         </div>
         <div id="parcel-info-nav" class="parcel-info-nav" hidden>
           <button id="parcel-nav-prev" class="parcel-nav-btn" title="Previous parcel">&#8249;</button>
@@ -123,6 +123,7 @@
 
       <!-- Live cursor coordinate readout (desktop only); click to change format -->
       <div id="pv-coords" class="pv-coords" hidden title="Click to change coordinate format" aria-label="Cursor coordinates"></div>
+      <div id="pv-zoom" class="pv-zoom-readout" aria-label="Map zoom level" title="Current map zoom">z—</div>
 
       <!-- Overlays for spatial selection tools -->
       <canvas id="lasso-canvas" class="lasso-canvas"></canvas>
@@ -686,6 +687,9 @@
        before map.js parses; if config.js 404s, the baked fallback stands. -->
   <script src="/frontend/public/js/county-config.js"></script>
   <script src="/api/config.js" onerror="window.PV_CONFIG_SOURCE='fallback'"></script>
+  <!-- Local draft preview (DIC-512): merges an Admin Console draft from
+       localStorage over window.COUNTY for testing, before map.js reads it. -->
+  <script src="/frontend/public/js/style-preview.js"></script>
   <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
   <!-- proj4.js — coordinate projection (State Plane etc.) for Measurement tab -->
@@ -704,6 +708,7 @@
   <script src="/frontend/public/js/parcel-labels.js"></script>
   <script src="/frontend/public/js/overlay-layers.js"></script>
   <script src="/frontend/public/js/county-layers.js"></script>
+  <script src="/frontend/public/js/pg-layers.js"></script>
   <script src="/frontend/public/js/legend-panel.js"></script>
   <script src="/frontend/public/js/wms-feature-info.js"></script>
   <script src="/frontend/public/js/admin-menu.js"></script>

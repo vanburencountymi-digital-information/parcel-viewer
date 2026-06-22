@@ -32,6 +32,25 @@ window.COUNTY = {
     mapBuddy: "https://map-buddy-toaozre74a-uc.a.run.app",
   },
 
+  // Parcel number (PIN) format — how THIS county encodes its parcel IDs. The Tax
+  // Description explainer reads this to break a PIN into labeled parts. Every
+  // county numbers parcels differently, so the meaning of each part is config,
+  // never code: edit `segments` here or in the Admin Console → County module.
+  // `segments` are matched left-to-right against the PIN split on `separator`.
+  parcelNumber: {
+    label: "Parcel Number",
+    separator: "-",
+    example: "80-08-032-002-00",
+    intro: "Van Buren County parcel numbers encode a parcel's location and lineage in dash-separated parts:",
+    segments: [
+      { name: "County code",           description: "Van Buren County’s state identifying code." },
+      { name: "Local unit",            description: "Two-digit code for the local unit — the city or township that levies the tax." },
+      { name: "Section / subdivision", description: "Section number (01–36) within the township, or a code identifying a platted subdivision." },
+      { name: "Parcel identifier",     description: "The unique number for this parcel within its section or subdivision." },
+      { name: "Child parcel",          description: "Split/child suffix — non-zero when this parcel was divided from a parent (00 if none)." },
+    ],
+  },
+
   labels: {
     // Michigan STC property classification codes → human label (statewide MI).
     propClass: {
@@ -90,6 +109,10 @@ window.COUNTY = {
     ],
     theme: "light",                   // default theme
     basemap: "parcels",               // 'parcels' | 'aerial'
+    // Hillshade basemap treatment (DIC-507). Client-side relief from a DEM tile
+    // source (overlay-layers.js). OFF by default while the source is external;
+    // flip defaultOn:true (one line) once the in-house DEM tiles land.
+    hillshade: { defaultOn: false },
     labels: {
       defaultField: "owner",
       fields: ["owner", "pin", "address", "acres", "av", "tv", "class"],
@@ -118,21 +141,27 @@ window.COUNTY = {
         //   major class: 1xx Ag, 2xx Commercial, …).
         //   fields: attributes available on this layer's tiles (drives the admin
         //   attribute picker). parcels lacks av/tv until geo.parcel_tiles exposes them.
+        // Property-class resting wash (DIC-506): the default parcel fill is a
+        // subtle land-use tint keyed on Michigan major class (leading digit of
+        // prop_class via the classGroup transform). On by default at low opacity;
+        // SEMANTIC — these hues carry meaning and are never re-tinted by the color
+        // scheme (DIC-505). colorDark = the dark-basemap variant.
         choropleth: {
-          enabled: false,
+          enabled: true,
+          opacity: 0.16,
           attribute: "prop_class",
           fields: ["prop_class", "gis_acres", "municipality", "owner_name", "parcel_no"],
           mode: "categorical",
           transform: "classGroup",
-          fallback: "#d9d2c5",
+          fallback: "#d9d2c5", fallbackDark: "#2a251d",
           categories: [
-            { value: "1", label: "Agricultural",  color: "#7CB342" },
-            { value: "2", label: "Commercial",    color: "#FB8C00" },
-            { value: "3", label: "Industrial",    color: "#8E24AA" },
-            { value: "4", label: "Residential",   color: "#1E88E5" },
-            { value: "5", label: "Ag / Timber",   color: "#558B2F" },
-            { value: "6", label: "Developmental", color: "#00897B" },
-            { value: "7", label: "Exempt",        color: "#9E9E9E" },
+            { value: "1", label: "Agricultural",  color: "#6FA84A", colorDark: "#8FCB6A" },
+            { value: "2", label: "Commercial",    color: "#D9594C", colorDark: "#E8786A" },
+            { value: "3", label: "Industrial",    color: "#8E5BA6", colorDark: "#B07FC8" },
+            { value: "4", label: "Residential",   color: "#E3C56B", colorDark: "#D9B85A" },
+            { value: "5", label: "Ag / Timber",   color: "#6B7A3A", colorDark: "#90A152" },
+            { value: "6", label: "Developmental", color: "#E08A3C", colorDark: "#EBA45E" },
+            { value: "7", label: "Exempt",        color: "#8A95A3", colorDark: "#9AA6B5" },
           ],
           // Used when mode === 'graduated' (e.g. attribute:'gis_acres', transform:null).
           stops: [
@@ -142,6 +171,53 @@ window.COUNTY = {
             { min: 160, label: "160–640 ac", color: "#de2d26" },
             { min: 640, label: "≥ 640 ac",   color: "#a50f15" },
           ],
+        },
+      },
+
+      // PostGIS vector overlay paint (DIC-502). pg-layers.js reads paint per
+      // theme; the same per-layer shape as parcels, so the admin Styling module
+      // can edit these once a layer is registered.
+      subdivisions: {
+        label: "Subdivisions",
+        paint: {
+          light: { fill: "#7A3B6B", stroke: "#553c5a" },
+          dark:  { fill: "#9f7aea", stroke: "#b794f4" },
+        },
+        // Label tool (DIC-503): symbol over the geometry. Sizing theme-
+        // independent; text + halo colors per theme. field = an exposed tile
+        // attribute (see overlay.fields).
+        labels: {
+          enabled: true, field: "name", size: 11, minZoom: 13, haloWidth: 1.4,
+          light: { color: "#5a3b52", haloColor: "#ffffff" },
+          dark:  { color: "#d9b3cf", haloColor: "#15110c" },
+        },
+      },
+      plss_sections: {
+        label: "PLSS Sections",
+        paint: {
+          light: { fill: "#2F6B4F", stroke: "#2F6B4F" },
+          dark:  { fill: "#4E9A6B", stroke: "#6db38a" },
+        },
+        labels: {
+          enabled: true, field: "section", size: 11, minZoom: 12, haloWidth: 1.4,
+          light: { color: "#2F6B4F", haloColor: "#ffffff" },
+          dark:  { color: "#7fc3a0", haloColor: "#15110c" },
+        },
+      },
+      reference_roads: {
+        label: "Roads",
+        // Line styling (DIC-503): theme-independent sizing + per-theme colors.
+        // A cream/dark casing under the road line gives the classic cased-road
+        // look. dash: solid|dashed|dotted; glowWidth>0 adds a blurred halo.
+        line: {
+          width: 1.6, opacity: 1, dash: "solid", casingWidth: 1.1, glowWidth: 0,
+          light: { color: "#7a5c34", casingColor: "#fbf6ec", glowColor: "#000000" },
+          dark:  { color: "#d8b15a", casingColor: "#241d12", glowColor: "#000000" },
+        },
+        labels: {
+          enabled: true, field: "name", size: 10, minZoom: 14, haloWidth: 1.2,
+          light: { color: "#4a3826", haloColor: "#fbf6ec" },
+          dark:  { color: "#e8d3a8", haloColor: "#1a140c" },
         },
       },
     },
@@ -156,6 +232,12 @@ window.COUNTY = {
       { id: "aerial", label: "Aerial imagery", source: "County / state imagery", default: false },
     ],
     overlays: [
+      // PostGIS vector layers (DIC-502) — served by Martin as `<source>` function
+      // tiles (MVT layer `sourceLayer`), styled from styling.layers[id], rendered
+      // by pg-layers.js. Registered/curated through the Admin Console Data module.
+      { id: "subdivisions", label: "Subdivisions", type: "vector", source: "subdivisions_tiles", sourceLayer: "subdivisions", geomType: "polygon", minZoom: 12, default: false, dbSource: "geo.subdivisions", fields: ["name", "unit", "twp_range"] },
+      { id: "plss_sections", label: "PLSS Sections", type: "vector", source: "plss_sections_tiles", sourceLayer: "plss_sections", geomType: "polygon", outlineOnly: true, minZoom: 11, default: false, dbSource: "geo.plss_sections", fields: ["section", "twnrngsec", "municipality", "area_sq_ft"] },
+      { id: "reference_roads", label: "Roads", type: "vector", source: "reference_roads_tiles", sourceLayer: "reference_roads", geomType: "line", minZoom: 12, default: false, dbSource: "geo.reference_layers (feature_type=road)", fields: ["name", "feature_type", "source_id"] },
       { id: "wetlands",   label: "Wetlands",         type: "WMS",    source: "USFWS National Wetlands Inventory", minZoom: 12 },
       { id: "flood",      label: "Flood hazard",     type: "WMS",    source: "FEMA NFHL",                          minZoom: 0 },
       { id: "soils",      label: "Soils",            type: "WMS",    source: "USDA SSURGO",                        minZoom: 0 },

@@ -18,7 +18,10 @@ _FEATURE_PROPS_SQL = """
     pg.parcel_no         AS pin,
     pg.parcel_no         AS parcel_no,
     pg.municipality      AS municipality,
-    pg.acres             AS gis_acres,
+    -- True area from geometry (geodesic), NOT the stored pg.acres column, which
+    -- is unreliable (most rows default to 1.0 or 0.0). Same formula as the
+    -- /parcel/{id} computed_acres so label and popup acreage agree. (DIC-521)
+    ST_Area(ST_Transform(pg.geom, 4326)::geography) / 4046.8564224 AS gis_acres,
     pg.source            AS source,
     a.owner_name         AS owner_name,
     a.prop_street        AS "PCOMBINED",
@@ -102,9 +105,14 @@ async def style_json():
                 "filter": ["==", ["get", "pin"], ""],
             },
             {
+                # Legacy auto-PIN label. Hidden by default (DIC-504): parcel
+                # labeling is owned by the "Parcel Labels" tool (parcel-labels.js),
+                # which is richer (field picker, sizing). This layer is kept only
+                # as a stable insertion anchor (`before: "parcels-labels"` in map.js).
                 "id": "parcels-labels", "type": "symbol", "source": "parcels", "source-layer": "parcels",
                 "minzoom": 15,
                 "layout": {
+                    "visibility": "none",
                     "text-field": ["get", "pin"],
                     "text-font": ["Noto Sans Regular"],
                     "text-size": ["interpolate", ["linear"], ["zoom"], 15, 9, 17, 12, 19, 14],

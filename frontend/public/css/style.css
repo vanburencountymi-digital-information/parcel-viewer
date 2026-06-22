@@ -26,6 +26,17 @@
   --ui-interactive-bg: rgba(var(--ui-interactive-rgb),0.10);  /* gold tint — selected/hover bg */
   --ui-interactive-bd: rgba(var(--ui-interactive-rgb),0.35);  /* gold tint — borders */
 
+  /* Map accent tokens (DIC-505) — the active color scheme drives the MAP's
+     accent chrome too, not just the GUI. Derived once per scheme from the brand
+     hue; map.js reads these at paint time. SEMANTIC colors (resting fill / class
+     wash / overlays) are NEVER driven by these. Three roles:
+       --map-accent        vivid → selection / active-info outline
+       --map-accent-stroke desaturated lean → resting parcel stroke
+       --map-accent-glow   mid-lightness → hover / feature glow */
+  --map-accent:        #A3473B;   /* terracotta */
+  --map-accent-stroke: #8a7a55;   /* warm gold-gray (current resting stroke) */
+  --map-accent-glow:   #c2735c;
+
   /* Accessible text tokens (WCAG 2.1 AA, DIC-376). --text-muted is dark enough to
      clear 4.5:1 even at the worst-case effective background of the translucent
      "glass" panels over a dark basemap (min panel luminance ≈ rgb(220,220,220)). */
@@ -88,6 +99,7 @@ html[data-scheme="forest"] {
   --ui-header-from-rgb: 15,36,26; --ui-header-to-rgb: 42,96,71;
   --vbc-primary: #2F6B4F; --vbc-secondary: #4E9A6B; --vbc-brown: #2f6a4e;
   --ui-on-interactive: #1e1814;
+  --map-accent: #2F6B4F; --map-accent-stroke: #6f7d72; --map-accent-glow: #57977a;
 }
 html[data-scheme="ocean"] {
   --ui-accent-rgb: 31,94,128;  --ui-interactive-rgb: 46,118,166;
@@ -96,6 +108,7 @@ html[data-scheme="ocean"] {
   --ui-header-from-rgb: 8,31,43; --ui-header-to-rgb: 31,80,107;
   --vbc-primary: #1F5E80; --vbc-secondary: #2E76A6; --vbc-brown: #265873;
   --ui-on-interactive: #ffffff;
+  --map-accent: #1F5E80; --map-accent-stroke: #6c7d88; --map-accent-glow: #4f8aab;
 }
 html[data-scheme="slate"] {
   --ui-accent-rgb: 71,85,105;  --ui-interactive-rgb: 100,116,139;
@@ -104,6 +117,7 @@ html[data-scheme="slate"] {
   --ui-header-from-rgb: 20,25,31; --ui-header-to-rgb: 56,67,82;
   --vbc-primary: #475569; --vbc-secondary: #64748B; --vbc-brown: #3e4a5b;
   --ui-on-interactive: #ffffff;
+  --map-accent: #475569; --map-accent-stroke: #6f7585; --map-accent-glow: #7e8ca3;
 }
 html[data-scheme="plum"] {
   --ui-accent-rgb: 122,59,107;  --ui-interactive-rgb: 157,90,140;
@@ -112,6 +126,7 @@ html[data-scheme="plum"] {
   --ui-header-from-rgb: 35,16,31; --ui-header-to-rgb: 93,45,81;
   --vbc-primary: #7A3B6B; --vbc-secondary: #9D5A8C; --vbc-brown: #67325a;
   --ui-on-interactive: #ffffff;
+  --map-accent: #7A3B6B; --map-accent-stroke: #837081; --map-accent-glow: #a9719b;
 }
 html[data-scheme="crimson"] {
   --ui-accent-rgb: 177,30,47;  --ui-interactive-rgb: 192,57,44;
@@ -120,7 +135,20 @@ html[data-scheme="crimson"] {
   --ui-header-from-rgb: 43,8,12; --ui-header-to-rgb: 107,31,40;
   --vbc-primary: #B11E2F; --vbc-secondary: #C0392C; --vbc-brown: #73262f;
   --ui-on-interactive: #ffffff;
+  --map-accent: #B11E2F; --map-accent-stroke: #8c6f72; --map-accent-glow: #c66b73;
 }
+
+/* Map-accent dark variants (DIC-505) — more luminous on the dim dark basemap so
+   selection / glow read clearly. Hue per scheme; the [theme][scheme] selectors
+   beat the single-attribute light blocks above. */
+html[data-theme="dark"] {                              /* terracotta (default) */
+  --map-accent: #c9684f; --map-accent-stroke: #b8a97a; --map-accent-glow: #d99a7e;
+}
+html[data-theme="dark"][data-scheme="forest"]  { --map-accent: #5fae82; --map-accent-stroke: #8fa896; --map-accent-glow: #74c79e; }
+html[data-theme="dark"][data-scheme="ocean"]   { --map-accent: #4f9ec9; --map-accent-stroke: #8aa3b3; --map-accent-glow: #6fb6d8; }
+html[data-theme="dark"][data-scheme="slate"]   { --map-accent: #8493ab; --map-accent-stroke: #97a0b0; --map-accent-glow: #a7b4c9; }
+html[data-theme="dark"][data-scheme="plum"]    { --map-accent: #c074ac; --map-accent-stroke: #a892a3; --map-accent-glow: #d295c1; }
+html[data-theme="dark"][data-scheme="crimson"] { --map-accent: #d65663; --map-accent-stroke: #b08f92; --map-accent-glow: #e0848b; }
 
 /* Settings swatch picker for the schemes above. */
 .pv-scheme-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }

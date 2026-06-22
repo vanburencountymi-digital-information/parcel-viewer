@@ -477,6 +477,8 @@
     var basemap   = (window.PV_PREFS && window.PV_PREFS.getBasemap && window.PV_PREFS.getBasemap()) || "light";
     var glassPct  = 62; try { var _ga = parseFloat(localStorage.getItem("pv-glass-alpha")); if (_ga > 0) glassPct = Math.round(_ga * 100); } catch (_) {}
     var orbitOn   = !(window.PV_PREFS && window.PV_PREFS.getCinematicOrbit) || window.PV_PREFS.getCinematicOrbit();
+    var reactions = (window.PV_PREFS && window.PV_PREFS.getMapReactions && window.PV_PREFS.getMapReactions()) || "subtle";
+    var mood      = (window.PV_PREFS && window.PV_PREFS.getMapMood && window.PV_PREFS.getMapMood()) || "none";
     function opt(v, label, cur) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + label + '</option>'; }
     var scheme = (window.PV_SCHEME && window.PV_SCHEME.get && window.PV_SCHEME.get()) || "terracotta";
     var SCHEME_META = [
@@ -512,6 +514,14 @@
           '<label class="pv-a11y-row" style="margin:0"><input type="checkbox" id="pv-set-orbit"' + (orbitOn ? " checked" : "") + '>' +
           '<span><span class="pv-a11y-lbl">Spin around parcel</span>' +
           '<span class="pv-a11y-desc">After a search, orbit the parcel once. Turn off for a quick fly-in.</span></span></label>') +
+        field("Map reactions",
+          '<select class="pv-input" id="pv-set-reactions">' +
+            opt("off", "Off", reactions) + opt("subtle", "Subtle", reactions) + opt("full", "Full", reactions) + '</select>' +
+          '<span class="pv-range-hint">Selecting a parcel dims the rest to focus it. Subtle = instant · Full = animated · Off = static.</span>') +
+        field("Map mood",
+          '<select class="pv-input" id="pv-set-mood">' +
+            opt("none", "None", mood) + opt("antique", "Antique", mood) + '</select>' +
+          '<span class="pv-range-hint">A cartographic mood above the color scheme. Antique = parchment ground &amp; hairline strokes (opt-in).</span>') +
       '</div>',
       '<p class="pv-settings-h">Accessibility</p>',
       a11yControlsHtml(),
@@ -528,6 +538,10 @@
       if (b) b.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setBasemap(b.value); });
       var orb = bodyEl.querySelector("#pv-set-orbit");
       if (orb) orb.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setCinematicOrbit && window.PV_PREFS.setCinematicOrbit(orb.checked); });
+      var rx = bodyEl.querySelector("#pv-set-reactions");
+      if (rx) rx.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setMapReactions && window.PV_PREFS.setMapReactions(rx.value); });
+      var md = bodyEl.querySelector("#pv-set-mood");
+      if (md) md.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setMapMood && window.PV_PREFS.setMapMood(md.value); });
       var g = bodyEl.querySelector("#pv-set-glass");
       if (g) g.addEventListener("input", function () { var a = Math.max(0.4, Math.min(1, g.value / 100)); document.documentElement.style.setProperty("--glass-alpha", a); try { localStorage.setItem("pv-glass-alpha", String(a)); } catch (_) {} });
       [].forEach.call(bodyEl.querySelectorAll(".pv-scheme-swatch"), function (sw) {
@@ -597,6 +611,9 @@
     if (PV_SCHEMES.indexOf(s) === -1) s = "terracotta";
     try { localStorage.setItem("pv-color-scheme", s); } catch (_) {}
     applyScheme(s);
+    // Re-tint the MAP too, not just the GUI chrome (DIC-505). map.js listens and
+    // re-reads the scheme's --map-* accent tokens via applyTheme.
+    try { window.dispatchEvent(new Event("pv-scheme-change")); } catch (_) {}
   }
   // Programmatic control (Settings UI, and available to MapBuddy AI later).
   window.PV_SCHEME = { get: getScheme, set: setScheme, list: PV_SCHEMES.slice() };

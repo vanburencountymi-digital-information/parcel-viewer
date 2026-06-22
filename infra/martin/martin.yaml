@@ -16,6 +16,17 @@ cache:
 postgres:
   connection_string: "${MARTIN_DATABASE_URL}"
   auto_publish:
+    # Publish PostGIS tile *functions* from the geo schema. Each layer has a
+    # purpose-built `<name>_tiles(z,x,y)` function emitting an MVT layer named
+    # `<name>` (geo.parcel_tiles → "parcels"; geo.subdivisions_tiles →
+    # "subdivisions"; reference_layers is split by feature_type into
+    # reference_roads / reference_drains / reference_section_lines). These are
+    # the curated serving interface the viewer consumes (DIC-502).
+    #
+    # NOTE (ops): Martin discovers functions at boot. When new `*_tiles`
+    # functions are added to the DB, the Martin service must be restarted to
+    # pick them up — that, not a config change, was why Drake's layers were
+    # absent from the catalog.
     tables: false
     functions:
       from_schemas:

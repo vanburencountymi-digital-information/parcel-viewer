@@ -6,13 +6,16 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from parcel_viewer import config_store
-from parcel_viewer.db import close_pool, health_check, open_pool
+from parcel_viewer.db import close_pool, health_check, open_pool, pool
 from parcel_viewer.routers import feedback, parcels
 
 # ── County config manifests (DIC-465) ────────────────────────────────────────
@@ -122,6 +125,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting (DIC-496). Applied per-endpoint via @limiter.limit — today only
+# /wms-proxy, the public unauthenticated abuse surface. Behind nginx the real
+# client IP arrives as X-Real-IP (proxy_set_header is set on /api/); fall back to
+# the socket peer for direct/local requests.
+def _client_ip(request: Request) -> str:
+    return request.headers.get("X-Real-IP") or get_remote_address(request)
+
+
+limiter = Limiter(key_func=_client_ip)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.include_router(parcels.router, tags=["parcels"])
 app.include_router(feedback.router, tags=["feedback"])
 
@@ -154,6 +169,118 @@ async def config_js(county: str = DEFAULT_COUNTY):
     body = "window.COUNTY = " + json.dumps(data, ensure_ascii=False) + ";"
     return Response(body, media_type="application/javascript",
                     headers={"Cache-Control": "no-cache"})
+
+
+# ── PostGIS layer discovery (DIC-502) ─────────────────────────────────────────
+# Introspect the spatial layers that Martin can serve (geo.<name>_tiles function
+# sources) so the Admin Console can discover and register them as viewer overlays
+# without a developer. Read-only; the data is public assessment-adjacent GIS.
+# TODO(DIC-463): gate behind admin auth once real auth lands.
+_GEOM_KIND = {  # PostGIS GeometryType() → viewer geomType
+    "POINT": "point", "MULTIPOINT": "point",
+    "LINESTRING": "line", "MULTILINESTRING": "line",
+    "POLYGON": "polygon", "MULTIPOLYGON": "polygon",
+}
+# reference_layers is one table split into several tile functions by feature_type.
+_REFERENCE_FEATURE = {"roads": "road", "drains": "drain", "section_lines": "section_line"}
+
+import re as _re
+
+
+def _tile_fields(src: str) -> list[str]:
+    """The non-geometry MVT properties a tile function exposes, parsed from its
+    SELECT list (the columns feeding ST_AsMVT, before ST_AsMVTGeom). Drives the
+    label / attribute pickers in the console with the layer's REAL attributes."""
+    if not src:
+        return []
+    i = src.find("ST_AsMVTGeom")
+    if i < 0:
+        return []
+    head = src[:i]
+    j = head.rfind("SELECT")
+    if j < 0:
+        return []
+    out: list[str] = []
+    for part in head[j + 6:].split(","):
+        m = _re.match(r"\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*$", part)
+        if m:
+            name = m.group(1).lower()
+            if name not in ("geom", "id"):
+                out.append(name)
+    return out
+
+
+def _discover_layers(county: str) -> list[dict]:
+    cfg = _published_config(county) or {}
+    overlays = (cfg.get("layers") or {}).get("overlays") or []
+    registered = {o.get("source") for o in overlays if str(o.get("type", "")).lower() == "vector"}
+
+    rows: list[dict] = []
+    with pool.connection() as conn:
+        funcs = conn.execute(
+            "SELECT proname, pg_get_functiondef(p.oid) AS def "
+            "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+            "WHERE n.nspname = 'geo' AND proname LIKE %s ORDER BY proname",
+            ("%\\_tiles",),
+        ).fetchall()
+        tables = {
+            r["relname"]
+            for r in conn.execute(
+                "SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'geo' AND c.relkind IN ('r', 'v', 'm', 'p')"
+            ).fetchall()
+        }
+
+        def sample(table: str, where_ft: str | None):
+            """Geometry kind + SRID + row count for a geo table (optionally filtered)."""
+            ident = f'geo."{table}"'
+            clause = " WHERE feature_type = %s" if where_ft else ""
+            args = (where_ft,) if where_ft else ()
+            geom_kind = srid = count = None
+            try:
+                g = conn.execute(
+                    f"SELECT GeometryType(geom) AS gt, ST_SRID(geom) AS srid FROM {ident}"
+                    + (clause or " WHERE geom IS NOT NULL") + " LIMIT 1",
+                    args,
+                ).fetchone()
+                if g:
+                    geom_kind = _GEOM_KIND.get((g["gt"] or "").upper())
+                    srid = g["srid"]
+                count = conn.execute(f"SELECT count(*) AS n FROM {ident}{clause}", args).fetchone()["n"]
+            except Exception:  # noqa: BLE001 — discovery never fails the request
+                conn.rollback()
+            return geom_kind, srid, count
+
+        for f in funcs:
+            src = f["proname"]                          # e.g. "subdivisions_tiles"
+            base = src[:-6] if src.endswith("_tiles") else src
+            if base == "parcel":                        # parcels is the base layer, not an overlay
+                continue
+            if base in tables:
+                geom_kind, srid, count = sample(base, None)
+                db_table = f"geo.{base}"
+            elif base.startswith("reference_"):
+                ft = _REFERENCE_FEATURE.get(base[len("reference_"):])
+                geom_kind, srid, count = sample("reference_layers", ft) if ft else (None, None, None)
+                db_table = "geo.reference_layers" + (f" (feature_type={ft})" if ft else "")
+            else:
+                geom_kind, srid, count, db_table = None, None, None, None
+            rows.append({
+                "id": base, "source": src, "sourceLayer": base,
+                "geomType": geom_kind, "srid": srid, "rowCount": count,
+                "dbSource": db_table, "registered": src in registered,
+                "fields": _tile_fields(f["def"]),
+            })
+    return rows
+
+
+@app.get("/admin/discover/layers")
+async def discover_layers(county: str = DEFAULT_COUNTY):
+    """Spatial layers Martin can serve, for Admin-Console registration (DIC-502)."""
+    try:
+        return {"layers": _discover_layers(county)}
+    except Exception as e:  # noqa: BLE001
+        return JSONResponse({"error": str(e), "layers": []}, status_code=500)
 
 
 # ── Config editing (writer-only; DIC-464 / DIC-466) ───────────────────────────
@@ -199,8 +326,14 @@ async def rollback_config(county: str, body: RollbackBody, store=Depends(_requir
 
 
 @app.get("/wms-proxy")
-async def wms_proxy(url: str):
-    """Proxy WMS GetFeatureInfo / GetLegendGraphic requests server-side."""
+@limiter.limit(os.getenv("WMS_PROXY_RATE_LIMIT", "45/minute"))
+async def wms_proxy(request: Request, url: str):
+    """Proxy WMS GetFeatureInfo / GetLegendGraphic requests server-side.
+
+    Per-IP rate limited (DIC-496) — the only unauthenticated abuse surface here.
+    Baseline is ~30–60 req/min per active user (up to 3 parallel overlay calls
+    per map click), so the default 45/minute is tunable via WMS_PROXY_RATE_LIMIT.
+    """
     import urllib.error
     import urllib.request
     from urllib.parse import urlparse

@@ -244,6 +244,54 @@
 [data-theme="dark"] .pv-coords:hover { color: var(--ui-interactive); }
 @media (max-width: 640px) { .pv-coords { display: none; } }  /* no cursor on touch */
 
+/* Zoom readout (DIC-514) — small always-on pill above the coord readout, so the
+   "visible at zoom N+" layer hints are legible at a glance. */
+.pv-zoom-readout {
+  /* Top-left, below the header — stays visible while the Layers panel (right)
+     and legend (bottom-left) are open, so it reads alongside the "visible at
+     zoom N+" layer hints. */
+  position: absolute; top: 60px; left: 8px; z-index: 5;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11.5px; color: #374151;
+  background: rgba(255,255,255,0.9);
+  border: 1px solid rgba(0,0,0,0.1); border-radius: 6px;
+  padding: 3px 8px; white-space: nowrap;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;  /* readout only — never intercepts map interaction */
+}
+[data-theme="dark"] .pv-zoom-readout {
+  background: rgba(18,13,12,0.9); color: #c9bfb3; border-color: rgba(255,255,255,0.12);
+}
+
+/* ── Map mood (DIC-509) — super-theme above color schemes ────────────────────
+   The overlay ages the map ground per the active mood; it sits ABOVE the map
+   canvas but BELOW all chrome (readouts/panels), so UI stays crisp. Opt-in. */
+.pv-mood-overlay { position: absolute; inset: 0; z-index: 2; pointer-events: none; display: none; }
+
+/* Antique: parchment ground = warm tint + paper grain + vignette, multiplied
+   over the map. Labels keep their halos (DIC-503) so AA contrast still holds. */
+html[data-mood="antique"] .pv-mood-overlay {
+  display: block;
+  background-color: #d8c09c;
+  background-image:
+    radial-gradient(135% 110% at 50% 42%, rgba(0,0,0,0) 58%, rgba(54,34,14,0.55) 100%),
+    url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='150'%20height='150'%3E%3Cfilter%20id='n'%3E%3CfeTurbulence%20type='fractalNoise'%20baseFrequency='0.9'%20numOctaves='2'%20stitchTiles='stitch'/%3E%3CfeColorMatrix%20type='saturate'%20values='0'/%3E%3C/filter%3E%3Crect%20width='150'%20height='150'%20filter='url(%23n)'%20opacity='0.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat, repeat;
+  background-size: 100% 100%, 160px 160px;
+  mix-blend-mode: multiply;
+  opacity: 0.6;
+}
+/* Antique serif touches on map-overlay text (a nod). The on-map LABEL serif
+   needs a serif glyph source — tracked as a refinement, not in this v1. */
+html[data-mood="antique"] {
+  --pv-mood-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+}
+html[data-mood="antique"] .pv-brand,
+html[data-mood="antique"] .parcel-info-title,
+html[data-mood="antique"] .choropleth-legend-title { font-family: var(--pv-mood-serif); }
+@media (max-width: 640px) { .pv-zoom-readout { top: 92px; } }  /* clear the mobile tab bar */
+
 /* ── Dark mode ───────────────────────────────────────────────────────────── */
 /* Dark page background so any area behind fixed panels (e.g. the corners cut by
    Map Buddy's rounded top on mobile) reads dark instead of flashing white. */
@@ -872,6 +920,36 @@ textarea.pv-input { resize: vertical; min-height: 70px; }
 .pv-xp-desc-empty { font-family: inherit; font-style: italic; color: var(--text-muted); }
 .pv-xp-desc-type { margin-top: 7px; font-size: 12px; color: var(--text-muted); }
 [data-theme="dark"] .pv-xp-desc { color: #e8d8c4; background: rgba(0,0,0,0.22); }
+
+/* Parcel-number breakdown (DIC-501): config-driven PIN explainer. The PIN with
+   each part tinted, then a legend mapping each part to its meaning. */
+.pv-pin-break { margin-top: 12px; }
+.pv-pin-intro { margin: 0 0 8px; font-size: 12.5px; color: var(--text-muted); }
+.pv-pin-line {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 16px; font-weight: 700; letter-spacing: 0.02em;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-bottom: 10px;
+}
+.pv-pin-seg { padding: 1px 5px; border-bottom: 2px solid currentColor; }
+.pv-pin-sep { color: var(--text-muted); font-weight: 400; padding: 0 1px; }
+.pv-pin-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.pv-pin-row { display: flex; align-items: flex-start; gap: 9px; }
+.pv-pin-chip {
+  flex: 0 0 auto; min-width: 34px; text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; font-weight: 700; color: #fff;
+  padding: 2px 7px; border-radius: 5px; margin-top: 1px;
+}
+.pv-pin-meaning { flex: 1 1 auto; min-width: 0; }
+.pv-pin-name { font-size: 13px; font-weight: 600; color: #1f2937; }
+.pv-pin-extra {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+  color: var(--text-muted); border: 1px solid var(--ui-interactive-bd);
+  border-radius: 4px; padding: 0 4px; margin-left: 4px; vertical-align: middle;
+}
+.pv-pin-desc { font-size: 12.5px; line-height: 1.45; color: #4b5563; margin-top: 1px; }
+[data-theme="dark"] .pv-pin-name { color: #e8d8c4; }
+[data-theme="dark"] .pv-pin-desc { color: #c9bca9; }
 
 .pv-xp-summary {
   font-size: 14px; color: #1f2937; margin: 0 0 14px;

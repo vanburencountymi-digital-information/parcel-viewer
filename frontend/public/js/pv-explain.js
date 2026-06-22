@@ -118,6 +118,28 @@
     return { type: 'unknown', label: null, note: '' };
   }
 
+  // Parcel-number (PIN) breakdown — DETERMINISTIC, config-driven (DIC-501).
+  // The meaning of each PIN part differs by county, so it lives in config
+  // (COUNTY.parcelNumber), never in code. We split the PIN on the configured
+  // separator and zip each part to its segment definition. Extra parts (beyond
+  // the configured segments) are kept and flagged, never silently dropped — and
+  // segments with no matching part are dropped, so a short PIN degrades cleanly.
+  function pinConfig() { return (root.COUNTY && root.COUNTY.parcelNumber) || null; }
+  function parsePinSegments(pin) {
+    var cfg = pinConfig();
+    if (!cfg || !pin) return null;
+    var sep = cfg.separator || '-';
+    var parts = String(pin).split(sep).map(function (s) { return s.trim(); })
+      .filter(function (s) { return s !== ''; });
+    if (parts.length < 2) return null;   // single token → nothing to break down
+    var segs = cfg.segments || [];
+    var rows = parts.map(function (val, i) {
+      var s = segs[i] || {};
+      return { value: val, name: s.name || ('Part ' + (i + 1)), description: s.description || '', extra: i >= segs.length };
+    });
+    return { separator: sep, intro: cfg.intro || '', parts: rows };
+  }
+
   // Truth layer for the tax description (DIC-369). The verbatim text + detected
   // type ARE the verified input; the model explains only this, never geometry.
   function assembleTaxDescriptionFacts(parcel) {
@@ -129,13 +151,21 @@
         var p = (feat && feat.properties) || {};
         var text = p.ps_legal_description || p.legal_description || '';
         var cls = classifyDescription(text);
+        var pin = p.pin || p.parcel_no || (parcel && parcel.pin) || '';
+        var breakdown = parsePinSegments(pin);
         return {
-          pin: p.pin || p.parcel_no || (parcel && parcel.pin) || '',
+          pin: pin,
           tax_id: p.pin || p.parcel_no || '',
           description_text: text,
           description_type: cls.type,
           type_label: cls.label,
           type_note: cls.note,
+          // Deterministic PIN breakdown for our render (object form):
+          pin_breakdown: breakdown,
+          // Flattened for the AI teacher so narration can reference the parts:
+          parcel_number_parts: breakdown ? breakdown.parts.map(function (r) {
+            return { part: r.value, name: r.name, description: r.description };
+          }) : null,
         };
       });
   }
@@ -203,6 +233,46 @@
     return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block" role="img" aria-label="Five-year assessed value history, oldest to newest">' + defs + bars + '</svg>';
   }
 
+  // PIN-part palette (cycles if a county defines more parts than colors).
+  var PIN_COLORS = ['#A3473B', '#B58D4A', '#2F6B4F', '#1F5E80', '#7A3B6B', '#475569'];
+
+  // Deterministic breakdown card for the modal — the PIN with each part tinted to
+  // its row, then a legend mapping part → name → meaning. Styled via viewer.css.
+  function pinBreakdownHtml(b) {
+    if (!b || !b.parts || !b.parts.length) return '';
+    var pinLine = b.parts.map(function (p, i) {
+      var c = PIN_COLORS[i % PIN_COLORS.length];
+      return '<span class="pv-pin-seg" style="color:' + c + ';border-color:' + c + '">' + esc(p.value) + '</span>';
+    }).join('<span class="pv-pin-sep">' + esc(b.separator) + '</span>');
+    var rows = b.parts.map(function (p, i) {
+      var c = PIN_COLORS[i % PIN_COLORS.length];
+      return '<li class="pv-pin-row">' +
+        '<span class="pv-pin-chip" style="background:' + c + '">' + esc(p.value) + '</span>' +
+        '<div class="pv-pin-meaning"><div class="pv-pin-name">' + esc(p.name) +
+          (p.extra ? ' <span class="pv-pin-extra">unmapped</span>' : '') + '</div>' +
+          (p.description ? '<div class="pv-pin-desc">' + esc(p.description) + '</div>' : '') +
+        '</div></li>';
+    }).join('');
+    return '<div class="pv-pin-break">' +
+      (b.intro ? '<p class="pv-pin-intro">' + esc(b.intro) + '</p>' : '') +
+      '<div class="pv-pin-line" aria-hidden="true">' + pinLine + '</div>' +
+      '<ul class="pv-pin-list">' + rows + '</ul></div>';
+  }
+
+  // Print/export variant — self-contained inline styles (the doc has its own
+  // stylesheet and won't see viewer.css classes).
+  function pinBreakdownDocHtml(b) {
+    if (!b || !b.parts || !b.parts.length) return '';
+    var rows = b.parts.map(function (p) {
+      return '<tr><td style="font-family:monospace;font-weight:700;white-space:nowrap;padding:4px 12px 4px 0;vertical-align:top">' + esc(p.value) + '</td>' +
+        '<td style="padding:4px 0"><strong>' + esc(p.name) + '</strong>' +
+        (p.description ? '<br><span class="cite">' + esc(p.description) + '</span>' : '') + '</td></tr>';
+    }).join('');
+    return '<h3>How to read the parcel number</h3>' +
+      (b.intro ? '<p>' + esc(b.intro) + '</p>' : '') +
+      '<table>' + rows + '</table>';
+  }
+
   var TPL =
     '<div class="pv-xp">' +
       '{{#lead}}<p class="pv-modal-lead">{{lead}}</p>{{/lead}}' +
@@ -221,6 +291,7 @@
         '{{#description_text}}<div class="pv-xp-desc">{{description_text}}</div>{{/description_text}}' +
         '{{^description_text}}<div class="pv-xp-desc pv-xp-desc-empty">No tax description is on record for this parcel.</div>{{/description_text}}' +
         '{{#type_label}}<div class="pv-xp-desc-type"><span class="pv-badge">{{type_label}}</span>{{#type_note}} {{type_note}}{{/type_note}}</div>{{/type_label}}' +
+        '{{{pin_breakdown_html}}}' +
       '</div>{{/is_taxdesc}}' +
 
       '{{#has_ai}}' +
@@ -275,6 +346,7 @@
       description_text: facts.description_text || '',
       type_label: facts.type_label || '',
       type_note: facts.type_note || '',
+      pin_breakdown_html: pinBreakdownHtml(facts.pin_breakdown),
     };
   }
 
@@ -345,7 +417,8 @@
     '{{#is_assessment}}<table>{{#figures}}<tr><th>{{label}}</th><td>{{value}}</td></tr>{{/figures}}</table>' +
     '{{#history_svg}}<div style="margin:4px 0 12px">{{{history_svg}}}</div>{{/history_svg}}{{/is_assessment}}' +
     '{{#is_taxdesc}}{{#description_text}}<div style="border:1px solid #e5e7eb;border-radius:6px;padding:10px 12px;margin-bottom:10px;font-size:13px;white-space:pre-wrap">{{description_text}}</div>{{/description_text}}' +
-      '{{#type_label}}<p class="cite">Detected type: {{type_label}}{{#type_note}} — {{type_note}}{{/type_note}}</p>{{/type_label}}{{/is_taxdesc}}' +
+      '{{#type_label}}<p class="cite">Detected type: {{type_label}}{{#type_note}} — {{type_note}}{{/type_note}}</p>{{/type_label}}' +
+      '{{{pin_breakdown_html}}}{{/is_taxdesc}}' +
     '{{#has_ai}}{{#summary_text}}<p>{{summary_text}}</p>{{/summary_text}}' +
     '{{#sections}}<h3>{{heading}}</h3><div>{{{body_html}}}</div>{{/sections}}' +
     '{{#has_statutes}}<h3>Michigan law</h3>{{#statutes}}<p><strong>{{name}}</strong> <span class="cite">{{citation}}</span><br>{{plain}}</p>{{/statutes}}{{/has_statutes}}' +
@@ -365,6 +438,7 @@
     var h = meta.header(facts);
     for (var k in h) { if (Object.prototype.hasOwnProperty.call(h, k)) d[k] = h[k]; }
     if (d.is_assessment) d.history_svg = historyChartSvg(facts, { doc: true });  // print-safe colors
+    if (d.is_taxdesc) d.pin_breakdown_html = pinBreakdownDocHtml(facts.pin_breakdown);  // doc-styled breakdown
     if (explanation) {
       d.summary_text = explanation.summary || '';
       d.sections = (explanation.sections || []).map(function (s) { return { heading: s.heading || '', body_html: paras(s.body) }; });
@@ -429,6 +503,7 @@
     assembleAssessmentFacts: assembleAssessmentFacts,
     assembleTaxDescriptionFacts: assembleTaxDescriptionFacts,
     classifyDescription: classifyDescription,
+    parsePinSegments: parsePinSegments,
     fetchExplanation: fetchExplanation,
     renderHtml: renderHtml,
     docHtml: docHtml,

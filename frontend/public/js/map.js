@@ -115,6 +115,15 @@
       getFormat: _coordFormat,
       formats: COORD_FORMATS.slice(),
     };
+
+    // Persistent zoom readout (DIC-514): tells you the current zoom so the
+    // "visible at zoom N+" layer hints make sense at a glance.
+    const zEl = document.getElementById("pv-zoom");
+    if (zEl) {
+      const renderZoom = () => { zEl.textContent = "z" + map.getZoom().toFixed(1); };
+      map.on("zoom", renderZoom);
+      renderZoom();
+    }
   }
 
   // ── Style ──────────────────────────────────────────────────────────────
@@ -152,7 +161,7 @@
       map.setFilter("parcels-selected-line", null);
       map.setPaintProperty("parcels-selected-line", "line-color", [
         "case",
-        ["boolean", ["feature-state", "activeInfo"], false], "#A3473B",
+        ["boolean", ["feature-state", "activeInfo"], false], mapAccent("accent", "#A3473B"),
         "#0b1220"
       ]);
       map.setPaintProperty("parcels-selected-line", "line-width", [
@@ -212,6 +221,24 @@
     }
   }
 
+  // ── Reactive cartography: focus/dim spotlight (DIC-508) ────────────────────
+  // When something is selected, the rest of the map recedes (rack-focus). Driven
+  // off the existing `selected` feature-state, so it fires for user AND AI/Map
+  // Buddy selections alike. The actual paint fn is assigned in init (it needs the
+  // layer toggles + resting opacity); this is the module-level handle + the
+  // effective-mode resolver.
+  let _spotlightFn = null;
+  function _effectiveReactions() {
+    let mode = "subtle";
+    try { mode = (window.PV_PREFS && PV_PREFS.getMapReactions && PV_PREFS.getMapReactions()) || "subtle"; } catch (_) {}
+    if (mode === "full") {
+      let reduced = false;
+      try { reduced = document.documentElement.classList.contains("pv-a11y-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (_) {}
+      if (reduced) mode = "subtle";   // a11y: reduced-motion never gets cinematics
+    }
+    return mode;
+  }
+
   function updateSelectionBadge() {
     // Notify listeners (Parcel Edits pane) whenever the selection set changes
     document.dispatchEvent(new CustomEvent("ps:selection-changed", {
@@ -219,6 +246,7 @@
     }));
     const selActions = document.getElementById("sel-actions");
     if (selActions) selActions.hidden = selectedPins.length === 0;
+    if (_spotlightFn) _spotlightFn();   // re-evaluate the focus/dim spotlight
   }
 
   // ── Full parcel record fetch (property card / selection payload) ───────
@@ -376,17 +404,20 @@
     return ch.transform === "classGroup" ? ["slice", get, 0, 1] : get;
   }
 
-  // Build the MapLibre fill-color expression for a choropleth config.
-  function choroplethFillExpr(ch) {
-    const fallback = ch.fallback || "#cccccc";
+  // Build the MapLibre fill-color expression for a choropleth config. Theme-aware
+  // (DIC-506): each category/stop may carry a `colorDark`; with no dark variant it
+  // falls back to its light `color`.
+  function choroplethFillExpr(ch, dark) {
+    const hue = (o) => (dark && o.colorDark) ? o.colorDark : o.color;
+    const fallback = (dark && ch.fallbackDark) || ch.fallback || "#cccccc";
     if (ch.mode === "graduated") {
       const stops = (ch.stops || []).slice().sort((a, b) => (a.min || 0) - (b.min || 0));
-      const expr = ["step", ["to-number", ["get", ch.attribute], 0], stops[0].color];
-      for (let i = 1; i < stops.length; i++) expr.push(stops[i].min, stops[i].color);
+      const expr = ["step", ["to-number", ["get", ch.attribute], 0], hue(stops[0])];
+      for (let i = 1; i < stops.length; i++) expr.push(stops[i].min, hue(stops[i]));
       return expr;
     }
     const expr = ["match", _choroKey(ch)];
-    ch.categories.forEach((c) => { expr.push(String(c.value), c.color); });
+    ch.categories.forEach((c) => { expr.push(String(c.value), hue(c)); });
     expr.push(fallback);
     return expr;
   }
@@ -403,12 +434,15 @@
   // stroke. Each setPaintProperty is guarded so layers not yet on the map are skipped.
   function applyLayerPaint(id, style, dark) {
     if (!style) return;
+    // Line/point layers are owned by pg-layers.js (casing, glow, dashes, radius
+    // — DIC-503). Skip them here so this fill/stroke pass doesn't clobber them.
+    if (style.line || style.point) return;
     const ids = mapLayersFor(id);
     const tone = ((style.paint && (dark ? style.paint.dark : style.paint.light)) || {});
     const ch = choroplethConfig(style);
     if (map.getLayer(ids.fill)) {
       map.setPaintProperty(ids.fill, "fill-color",
-        ch ? choroplethFillExpr(ch) : (tone.fill || (dark ? "#1e1a14" : "#FDF6E3")));
+        ch ? choroplethFillExpr(ch, dark) : (tone.fill || (dark ? "#1e1a14" : "#FDF6E3")));
     }
     if (ids.line && map.getLayer(ids.line)) {
       map.setPaintProperty(ids.line, "line-color", tone.stroke || (dark ? "#b8a97a" : "#8a7a55"));
@@ -453,8 +487,10 @@
     });
   }
 
-  // The legend sections for every choropleth-enabled styled layer.
-  function choroplethLegendSections(layers) {
+  // The legend sections for every choropleth-enabled styled layer. Theme-aware
+  // swatches (DIC-506): use each row's `colorDark` in dark mode when present.
+  function choroplethLegendSections(layers, dark) {
+    const hue = (o) => (dark && o.colorDark) ? o.colorDark : o.color;
     const ids = Object.keys(layers);
     return ids.map((id) => {
       const ch = choroplethConfig(layers[id]);
@@ -462,11 +498,52 @@
       const base = _choroTitle(ch);
       const title = ids.length > 1 ? ((layers[id].label || id) + " · " + base) : base;
       const rows = ch.mode === "graduated"
-        ? (ch.stops || []).map((s) => ({ color: s.color, label: s.label || ("≥ " + s.min) }))
-        : (ch.categories || []).map((c) => ({ color: c.color, label: c.label || c.value }));
+        ? (ch.stops || []).map((s) => ({ color: hue(s), label: s.label || ("≥ " + s.min) }))
+        : (ch.categories || []).map((c) => ({ color: hue(c), label: c.label || c.value }));
       return { title, rows };
     }).filter(Boolean);
   }
+
+  // Resolve a map accent token (DIC-505) off <html> for the active color scheme +
+  // theme. Falls back if the CSS var is missing (e.g. a stale cached stylesheet).
+  function mapAccent(role, fallback) {
+    try {
+      var v = getComputedStyle(document.documentElement).getPropertyValue("--map-" + role).trim();
+      return v || fallback;
+    } catch (_) { return fallback; }
+  }
+
+  // ── Map mood (DIC-509) ─────────────────────────────────────────────────────
+  // A "super-theme" above color schemes: a mood bundles typography / texture /
+  // stroke overrides ("antique" = parchment ground + hairline strokes). Applied
+  // as <html data-mood>; CSS does the ground/typography, here we set the attribute,
+  // ensure the parchment overlay element, and tune map strokes. Opt-in, never a
+  // county default. Generalizable to field/presentation/blueprint moods later.
+  function _ensureMoodOverlay() {
+    const host = document.getElementById("panel-map");
+    if (!host || document.getElementById("pv-mood-overlay")) return;
+    const el = document.createElement("div");
+    el.id = "pv-mood-overlay";
+    el.className = "pv-mood-overlay";
+    el.setAttribute("aria-hidden", "true");
+    host.appendChild(el);   // CSS reveals it only for moods that define a ground
+  }
+  function applyMapMood(mood) {
+    mood = mood || "none";
+    document.documentElement.setAttribute("data-mood", mood);
+    _ensureMoodOverlay();
+    // Hairline parcel strokes in antique; restore the style default otherwise.
+    // (Stroke WIDTH only — the spotlight owns line-opacity, so no conflict.)
+    if (map && map.getLayer("parcels-line")) {
+      try {
+        map.setPaintProperty("parcels-line", "line-width",
+          mood === "antique"
+            ? ["interpolate", ["linear"], ["zoom"], 11, 0.2, 14, 0.5, 17, 0.9]
+            : ["interpolate", ["linear"], ["zoom"], 11, 0.3, 14, 0.6, 17, 1.2, 19, 2]);
+      } catch (_) {}
+    }
+  }
+  window.PS_MAP_MOOD = { apply: applyMapMood, get: function () { return document.documentElement.getAttribute("data-mood") || "none"; } };
 
   function applyTheme(dark) {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
@@ -484,15 +561,28 @@
       const _layers = stylingLayers();
       Object.keys(_layers).forEach((id) => applyLayerPaint(id, _layers[id], dark));
 
-      // Parcels-specific UI chrome (hover outline + label colors) stays theme-driven.
-      if (map.getLayer("parcels-hover")) map.setPaintProperty("parcels-hover", "line-color", dark ? "#e2d8ce" : "#111827");
+      // Map accent chrome (DIC-505): the active color scheme drives selection,
+      // hover, and the resting parcel stroke lean. Re-read here so a scheme change
+      // ('pv-scheme-change' → applyTheme) re-tints the map live. SEMANTIC colors
+      // (resting fill / class wash) are never touched by the accent.
+      var _accent = mapAccent("accent", dark ? "#c9684f" : "#A3473B");
+      var _accentStroke = mapAccent("accent-stroke", dark ? "#b8a97a" : "#8a7a55");
+      if (map.getLayer("parcels-line")) map.setPaintProperty("parcels-line", "line-color", _accentStroke);
+      if (map.getLayer("parcels-hover")) map.setPaintProperty("parcels-hover", "line-color", _accent);
+      if (map.getLayer("parcels-selected-line")) {
+        map.setPaintProperty("parcels-selected-line", "line-color", [
+          "case", ["boolean", ["feature-state", "activeInfo"], false], _accent, "#0b1220",
+        ]);
+      }
+      // Label colors stay theme-driven (parcels-labels is hidden — DIC-504 — kept
+      // themed in case it's re-enabled).
       if (map.getLayer("parcels-labels")) {
         map.setPaintProperty("parcels-labels", "text-color", dark ? "#c8b89a" : "#1f2937");
         map.setPaintProperty("parcels-labels", "text-halo-color", dark ? "#111009" : "#ffffff");
       }
 
       // Legend: one section per choropleth-enabled layer.
-      updateChoroplethLegend(choroplethLegendSections(_layers));
+      updateChoroplethLegend(choroplethLegendSections(_layers, dark));
     }
     localStorage.setItem("pv-theme", dark ? "dark" : "light");
 
@@ -563,6 +653,16 @@
       // Expose map instance for drawing modules and MapControlAPI
       window.PS_MAP = map;
 
+      // Apply the saved map mood (DIC-509) now that the map is ready.
+      try { applyMapMood(window.PV_PREFS && PV_PREFS.getMapMood ? PV_PREFS.getMapMood() : "none"); } catch (_) {}
+
+      // Re-tint the map when the color scheme changes (DIC-505). admin-menu's
+      // setScheme() flips data-scheme then dispatches this; applyTheme re-reads
+      // the --map-* tokens for the new scheme.
+      window.addEventListener("pv-scheme-change", function () {
+        applyTheme(document.documentElement.getAttribute("data-theme") === "dark");
+      });
+
       setupSelectionLayers();
       setupBufferLayers();
       setupAnnotationLayers();
@@ -601,6 +701,41 @@
       const aerialToggle = document.getElementById("toggle-aerial");
       const zoningToggle = document.getElementById("toggle-zoning");
 
+      // Resting fill opacity (DIC-506): when the property-class wash (a choropleth
+      // on the parcels layer) is the resting fill, render it subtle (~0.16) so
+      // labels, selection, hover, and overlays read clearly on top. No wash → the
+      // original cream/dark opacity from the style.
+      function restingFillOpacity() {
+        const ch = choroplethConfig((stylingLayers().parcels) || {});
+        return (ch && ch.opacity != null) ? ch.opacity : origFillOpacity;
+      }
+
+      // Focus/dim spotlight painter (DIC-508). When a parcel is selected (user or
+      // AI), the non-selected parcels recede (fill + line) and the subject keeps
+      // its wash + accent outline. Subtle = instant; Full = animated transition
+      // (capped to instant under reduced-motion). Off = no dim.
+      _spotlightFn = function () {
+        if (!map || !map.getLayer("parcels-fill")) return;
+        const mode = _effectiveReactions();
+        const active = mode !== "off" && selectedPins.length > 0;
+        const dur = mode === "full" ? 320 : 0;
+        try {
+          map.setPaintProperty("parcels-fill", "fill-opacity-transition", { duration: dur });
+          map.setPaintProperty("parcels-line", "line-opacity-transition", { duration: dur });
+        } catch (_) {}
+        const normalFill = zoningToggle.checked && !aerialToggle.checked;
+        if (normalFill) {
+          map.setPaintProperty("parcels-fill", "fill-opacity",
+            active
+              ? ["case", ["boolean", ["feature-state", "selected"], false], Math.max(restingFillOpacity(), 0.24), 0.04]
+              : restingFillOpacity());
+        }
+        map.setPaintProperty("parcels-line", "line-opacity",
+          active
+            ? ["case", ["boolean", ["feature-state", "selected"], false], 1, 0.18]
+            : 0.85);
+      };
+
       function updateZoningOpacity() {
         const zoningOn = zoningToggle.checked;
         const aerialOn = aerialToggle.checked;
@@ -608,10 +743,18 @@
           map.setPaintProperty("parcels-fill", "fill-opacity", 0);
         } else if (aerialOn) {
           map.setPaintProperty("parcels-fill", "fill-opacity", 0.25);
-        } else {
-          map.setPaintProperty("parcels-fill", "fill-opacity", origFillOpacity);
         }
+        // Normal-mode resting fill + the focus/dim spotlight are owned by _spotlightFn.
+        _spotlightFn();
       }
+
+      // Programmatic / AI focus handle (DIC-508). Selecting parcels already
+      // triggers the spotlight via updateSelectionBadge; Map Buddy focuses by
+      // selecting (existing bridge). This re-applies on a "Map reactions" change.
+      window.PS_MAP_FOCUS = {
+        refresh: function () { if (_spotlightFn) _spotlightFn(); },
+        mode: function () { return _effectiveReactions(); },
+      };
 
       aerialToggle.addEventListener("change", (e) => {
         map.setLayoutProperty("mi-aerial", "visibility", e.target.checked ? "visible" : "none");
@@ -628,16 +771,21 @@
       } catch (_) {}
 
       zoningToggle.addEventListener("change", (e) => {
+        // Parcels checkbox controls only the parcel fill/line. Parcel LABELS are
+        // owned by the "Parcel Labels" tool (DIC-504) — the Parcels toggle no
+        // longer force-shows the legacy parcels-labels layer (kept hidden).
         if (e.target.checked) {
-          map.setPaintProperty("parcels-line", "line-color", origLineColor);
-          map.setLayoutProperty("parcels-labels", "visibility", "visible");
+          map.setPaintProperty("parcels-line", "line-color", mapAccent("accent-stroke", origLineColor));
         } else {
           map.setPaintProperty("parcels-line", "line-color", "rgba(255,255,255,0.65)");
-          map.setLayoutProperty("parcels-labels", "visibility", "none");
         }
         if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.zoning = e.target.checked;
         updateZoningOpacity();
       });
+
+      // Apply the resting fill opacity now (so the class wash loads subtle, not at
+      // the heavier default cream opacity — DIC-506).
+      updateZoningOpacity();
 
       const HOVER_MIN_ZOOM = 14;
 
@@ -758,6 +906,26 @@
     setCinematicOrbit: function (on) {
       try { localStorage.setItem("pv-cinematic-orbit", on ? "1" : "0"); } catch (_) {}
     },
+    // Reactive cartography (DIC-508): focus/dim spotlight + AI map reactions.
+    // 'off' | 'subtle' | 'full'. Default 'subtle'; reduced-motion caps Full→Subtle.
+    getMapReactions: function () {
+      try { var v = localStorage.getItem("pv-map-reactions"); return (v === "off" || v === "full") ? v : "subtle"; } catch (_) { return "subtle"; }
+    },
+    setMapReactions: function (v) {
+      if (v !== "off" && v !== "full") v = "subtle";
+      try { localStorage.setItem("pv-map-reactions", v); } catch (_) {}
+      try { if (window.PS_MAP_FOCUS) window.PS_MAP_FOCUS.refresh(); } catch (_) {}
+    },
+    // Map mood (DIC-509): super-theme above color schemes. 'none' | 'antique'.
+    // Opt-in; never a county default. Device-local.
+    getMapMood: function () {
+      try { var v = localStorage.getItem("pv-map-mood"); return v === "antique" ? v : "none"; } catch (_) { return "none"; }
+    },
+    setMapMood: function (v) {
+      if (v !== "antique") v = "none";
+      try { localStorage.setItem("pv-map-mood", v); } catch (_) {}
+      applyMapMood(v);
+    },
   };
 
   function collapseInfoPanel() {
@@ -817,11 +985,12 @@
   }
 
   if (infoClose) {
+    // The card's × deselects (DIC-508 follow-up): clears the selection so the
+    // focus/dim spotlight lifts and the map returns to normal. (Panel-vs-panel
+    // mutual exclusion still uses collapseInfoPanel, which keeps the selection.)
     infoClose.addEventListener("click", () => {
-      collapseInfoPanel();
-      // Move focus to the now-visible reopen tab so keyboard users keep their place.
-      if (infoReopenTab && !infoReopenTab.hidden) infoReopenTab.focus();
-      else if (_lastFocusBeforeInfo && document.contains(_lastFocusBeforeInfo)) _lastFocusBeforeInfo.focus();
+      clearSelectionAll();
+      if (_lastFocusBeforeInfo && document.contains(_lastFocusBeforeInfo)) _lastFocusBeforeInfo.focus();
     });
   }
 
@@ -1455,6 +1624,17 @@
 
   document.addEventListener("click", (e) => {
     if (!e.target.closest("#parcel-search")) hideResults();
+  });
+
+  // Escape clears the parcel selection (and lifts the focus/dim spotlight) when
+  // one is active — a universal "deselect" the map was missing. Ignored while
+  // typing in a field so it doesn't fight input/search Escape handling.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !selectedPins.length) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (searchResults && !searchResults.hidden) return;   // search owns Escape first
+    clearSelectionAll();
   });
 
   // ── Map Control Panel ──────────────────────────────────────────────────
@@ -2380,17 +2560,17 @@
         paint: { "line-color": "#0ea5e9", "line-width": 2, "line-dasharray": [4, 3] } }, before);
     }
     if (!map.getLayer("buffer-preview-parcels")) {
-      map.addLayer({ id: "buffer-preview-parcels", type: "fill", source: "parcels",
+      map.addLayer({ id: "buffer-preview-parcels", type: "fill", source: "parcels", "source-layer": SOURCE_LAYER,
         paint: { "fill-color": "#0ea5e9",
           "fill-opacity": ["case", ["boolean", ["feature-state", "bufferPreview"], false], 0.22, 0] } }, before);
     }
     if (!map.getLayer("buffer-seed-fill")) {
-      map.addLayer({ id: "buffer-seed-fill", type: "fill", source: "parcels",
+      map.addLayer({ id: "buffer-seed-fill", type: "fill", source: "parcels", "source-layer": SOURCE_LAYER,
         paint: { "fill-color": "#f97316",
           "fill-opacity": ["case", ["boolean", ["feature-state", "bufferSeed"], false], 0.40, 0] } }, before);
     }
     if (!map.getLayer("buffer-seed-line")) {
-      map.addLayer({ id: "buffer-seed-line", type: "line", source: "parcels",
+      map.addLayer({ id: "buffer-seed-line", type: "line", source: "parcels", "source-layer": SOURCE_LAYER,
         paint: { "line-color": "#ea580c",
           "line-width":   ["case", ["boolean", ["feature-state", "bufferSeed"], false], 3, 0],
           "line-opacity": ["case", ["boolean", ["feature-state", "bufferSeed"], false], 1, 0] } }, before);

@@ -148,6 +148,11 @@ dl.ac-grid input[type="number"].ac-input-sm { max-width: 90px; }
 .ac-table .ac-input-sm { max-width: 100%; width: 100%; }
 .ac-add-row { margin-top: 10px; }
 .ac-table input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+/* Parcel-number segment ordinal (DIC-501) — muted, not a code cell. */
+.ac-table td.ac-pn-ord { font-family: inherit; color: var(--ac-muted); text-align: center; }
+/* "Add a layer" pulldown row (DIC-502) */
+.ac-pick-row { display: flex; gap: 8px; align-items: center; }
+.ac-pick-row select { flex: 1 1 auto; max-width: 380px; }
 
 .ac-plan { margin: 4px 0 0; padding-left: 18px; line-height: 1.7; color: #4b5563; }
 .ac-plan li { margin-bottom: 3px; }
