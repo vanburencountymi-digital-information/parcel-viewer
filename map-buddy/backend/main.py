@@ -60,6 +60,8 @@ class MapState(BaseModel):
     bearing: float | None = None
     pitch: float | None = None
     visible_layers: list | None = None
+    # Live layer registry (DIC-327): [{id, label, type, visible, fields}, ...].
+    layers: list | None = None
 
 
 class ChatRequest(BaseModel):

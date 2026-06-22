@@ -26,6 +26,7 @@ _FEATURE_PROPS_SQL = """
     a.owner_name         AS owner_name,
     a.prop_street        AS "PCOMBINED",
     a.prop_class         AS prop_class,
+    a.school_dist        AS school_dist,
     a.assessed_value     AS assessed_value,
     a.taxable_value      AS taxable_value
 """
@@ -41,13 +42,21 @@ async def style_json():
         "zoom": 11,
         "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
         "sources": {
+            # Aerial basemap (DIC-526). Esri World Imagery — global XYZ, reliable,
+            # high-res, free WITH attribution. Replaces Michigan_imagery_2024,
+            # whose statewide mosaic has no Van Buren County coverage yet (phased
+            # capture). The ArcGIS tile scheme is /{z}/{y}/{x} (row before col).
+            #
+            # Served via the same-origin /aerial/ proxy (DIC-528) which caches the
+            # Esri tiles on disk (nginx) + sets a 7-day Cache-Control — so the
+            # cinematic fly/orbit pulls them in ~1 ms and repeats are instant, even
+            # when the browser cache is disabled.
             "mi-aerial": {
                 "type": "raster",
-                "tiles": [
-                    "https://imagery.michigan.gov/server/rest/services/Michigan_imagery_2024/ImageServer/exportImage?bbox={bbox-epsg-3857}&bboxSR=3857&size=256,256&imageSR=3857&format=jpg&pixelType=U8&noDataInterpretation=esriNoDataMatchAny&interpolation=+RSP_NearestNeighbor&f=image"
-                ],
+                "tiles": ["/aerial/{z}/{y}/{x}"],
                 "tileSize": 256,
-                "attribution": "Michigan DTMB / USDA NAIP 2024",
+                "maxzoom": 19,
+                "attribution": "Imagery © Esri, Maxar, Earthstar Geographics, USDA FSA, USGS, and the GIS user community",
             },
             "carto-positron": {
                 "type": "raster",
@@ -73,6 +82,11 @@ async def style_json():
             {
                 "id": "mi-aerial", "type": "raster", "source": "mi-aerial",
                 "minzoom": 0, "maxzoom": 19, "layout": {"visibility": "none"},
+                # raster-fade-duration 0 (DIC-528): the default 300 ms cross-fade
+                # makes aerial tiles shimmer/redraw during the cinematic fly-orbit
+                # as new tiles stream in. 0 = tiles appear crisply, no fade — much
+                # smoother cinematic, and arguably sharper on normal zoom too.
+                "paint": {"raster-fade-duration": 0},
             },
             {
                 "id": "parcels-fill", "type": "fill", "source": "parcels", "source-layer": "parcels",
@@ -148,7 +162,9 @@ async def parcels_bbox(
 
     sql = f"""
         SELECT {_FEATURE_PROPS_SQL},
-               ST_AsGeoJSON(ST_Transform(pg.geom, 4326), 7) AS geojson
+               -- 6 dp ~0.11 m: ample for parcel display/snapping, ~a tenth
+               -- smaller payload than 7 dp (DIC-528).
+               ST_AsGeoJSON(ST_Transform(pg.geom, 4326), 6) AS geojson
         FROM geo.parcel_geometry pg
         LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
         WHERE pg.archived_at IS NULL
@@ -159,6 +175,83 @@ async def parcels_bbox(
         rows = conn.execute(sql, (w, s, e, n, limit)).fetchall()
 
     return {"type": "FeatureCollection", "features": [_row_to_feature(r) for r in rows]}
+
+
+@router.get("/nearest-road")
+async def nearest_road(lng: float = Query(...), lat: float = Query(...)):
+    """Snap a point to the closest point on the nearest road (geo.reference_layers).
+
+    Street View was opening at the parcel centroid, which is usually mid-parcel
+    and yields "no view available" — Google only searches ~50 m for a panorama.
+    Snapping the viewpoint onto the nearest road fixes that. KNN (`<->`) finds the
+    nearest road via the spatial index; ST_ClosestPoint gives the exact point.
+    """
+    sql = """
+        SELECT ST_X(g) AS lng, ST_Y(g) AS lat
+        FROM (
+            SELECT ST_Transform(ST_ClosestPoint(geom, p), 4326) AS g
+            FROM geo.reference_layers,
+                 (SELECT ST_Transform(ST_SetSRID(ST_MakePoint(%s, %s), 4326), 2253) AS p) pt
+            WHERE feature_type = 'road'
+            ORDER BY geom <-> p
+            LIMIT 1
+        ) q
+    """
+    with pool.connection() as conn:
+        row = conn.execute(sql, (lng, lat)).fetchone()
+    if not row or row.get("lng") is None:
+        return {"lng": lng, "lat": lat, "snapped": False}
+    return {"lng": row["lng"], "lat": row["lat"], "snapped": True}
+
+
+@router.get("/streetview-target")
+async def streetview_target(id: int = Query(...)):
+    """Best Street View setup for a parcel: anchor on the parcel's ADDRESS POINT
+    (the structure, geo.address_points) when one exists, stand on the nearest
+    road to it, and look back at it. Falls back to the parcel's representative
+    point (ST_PointOnSurface) for parcels with no address point (vacant land).
+    Returns viewpoint (where the camera stands) + lookAt (what it faces)."""
+    sql = """
+        WITH p AS (
+            SELECT geom FROM geo.parcel_geometry WHERE id = %s AND archived_at IS NULL
+        ),
+        ap AS (
+            SELECT a.geom, a.full_address
+            FROM geo.address_points a, p
+            WHERE ST_Contains(p.geom, a.geom)
+            LIMIT 1
+        ),
+        anchor AS (
+            SELECT COALESCE((SELECT geom FROM ap), (SELECT ST_PointOnSurface(geom) FROM p)) AS g
+        ),
+        road AS (
+            SELECT ST_ClosestPoint(r.geom, (SELECT g FROM anchor)) AS g
+            FROM geo.reference_layers r
+            WHERE r.feature_type = 'road'
+            ORDER BY r.geom <-> (SELECT g FROM anchor)
+            LIMIT 1
+        )
+        SELECT
+            ST_X(ST_Transform((SELECT g FROM anchor), 4326)) AS anchor_lng,
+            ST_Y(ST_Transform((SELECT g FROM anchor), 4326)) AS anchor_lat,
+            ST_X(ST_Transform((SELECT g FROM road), 4326))   AS road_lng,
+            ST_Y(ST_Transform((SELECT g FROM road), 4326))   AS road_lat,
+            (SELECT full_address FROM ap)                    AS address,
+            ((SELECT geom FROM ap) IS NOT NULL)              AS has_address
+    """
+    with pool.connection() as conn:
+        row = conn.execute(sql, (id,)).fetchone()
+    if not row or row.get("anchor_lng") is None:
+        return {"ok": False}
+    view = [row["road_lng"], row["road_lat"]] if row.get("road_lng") is not None \
+        else [row["anchor_lng"], row["anchor_lat"]]
+    return {
+        "ok": True,
+        "viewpoint": view,
+        "lookAt": [row["anchor_lng"], row["anchor_lat"]],
+        "address": row.get("address"),
+        "hasAddress": bool(row.get("has_address")),
+    }
 
 
 @router.get("/search")

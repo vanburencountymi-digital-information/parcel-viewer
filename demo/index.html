@@ -200,9 +200,21 @@
               <input type="checkbox" id="toggle-aerial"> Aerial Imagery
             </label>
 
-            <label class="mcp-toggle-row">
-              <input type="checkbox" id="toggle-zoning" checked> Parcels
-            </label>
+            <!-- Parcels: toggle + choropleth view selector & legend (DIC-527) -->
+            <div class="lyr-row">
+              <div class="lyr-row-header">
+                <label class="mcp-toggle-row">
+                  <input type="checkbox" id="toggle-zoning" checked> Parcels
+                </label>
+                <button class="lyr-chevron" data-target="parcels-choro-body"
+                        aria-expanded="false" aria-label="Toggle parcel styling options">►</button>
+              </div>
+              <div class="lyr-legend-body" id="parcels-choro-body" hidden>
+                <div class="choro-view-label">Color parcels by</div>
+                <div class="choro-view-list" id="parcels-choro-views"></div>
+                <div id="parcels-choro-legend" class="choro-legend-inpanel" hidden></div>
+              </div>
+            </div>
 
             <!-- County PostGIS vector overlays (Martin MVT) -->
             <div class="overlay-divider"></div>
@@ -709,9 +721,14 @@
   <script src="/frontend/public/js/overlay-layers.js"></script>
   <script src="/frontend/public/js/county-layers.js"></script>
   <script src="/frontend/public/js/pg-layers.js"></script>
+  <!-- Live layer registry (DIC-327): feeds Map Buddy the current layer state.
+       Load after the overlay/pg registries it reads. -->
+  <script src="/frontend/public/js/layer-registry.js"></script>
   <script src="/frontend/public/js/legend-panel.js"></script>
   <script src="/frontend/public/js/wms-feature-info.js"></script>
   <script src="/frontend/public/js/admin-menu.js"></script>
+  <!-- Hint pills (DIC-529): loads after the tool/Map Buddy globals it triggers. -->
+  <script src="/frontend/public/js/hints.js"></script>
   <!-- Map Buddy AI assistant — remove these two lines to detach -->
   <script src="/map-buddy/js/map-buddy.js"></script>
   <script>

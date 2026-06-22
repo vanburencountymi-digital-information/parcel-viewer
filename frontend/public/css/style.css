@@ -1125,6 +1125,205 @@ input[type="checkbox"]:focus-visible {
   margin: -3px 0 4px 24px;
   line-height: 1.3;
 }
+/* Service-outage note on an overlay row (DIC-525): an external WMS server is
+   down, so the layer can't draw. Amber + a warning glyph, not red — it's a
+   transient upstream condition, not a user error. */
+.overlay-status {
+  font-style: normal;
+  color: #b45309;            /* amber-700 — readable on the light panel */
+  font-weight: 600;
+}
+.overlay-status::before {
+  content: "⚠ ";
+}
+[data-theme="dark"] .overlay-status {
+  color: #fbbf24;            /* amber-400 — lifts off the dark panel */
+}
+
+/* Parcel choropleth view selector + in-panel legend (DIC-527). The legend now
+   lives inside the Parcels row body instead of floating over the map (where the
+   parcel popup covered it). */
+.choro-view-label {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  margin: 2px 0 4px 24px;
+}
+.choro-view-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 6px 24px;
+}
+.choro-view-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.choro-view-row input { margin: 0; cursor: pointer; }
+.choro-legend-inpanel {
+  margin: 4px 0 4px 24px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border, rgba(0,0,0,0.08));
+}
+.choro-legend-inpanel .choropleth-legend-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 2px 0 3px;
+}
+.choro-legend-inpanel .choropleth-legend-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.choro-legend-inpanel .choropleth-legend-swatch {
+  width: 12px; height: 12px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
+}
+.choro-legend-inpanel .choropleth-legend-sep { height: 4px; }
+
+/* Hint pills (DIC-529): onboarding + contextual action pills docked bottom-center
+   of the map. Matches the Map Buddy suggestion-chip language; theme-aware. */
+.pv-hints {
+  position: absolute;
+  left: 50%;
+  bottom: 42px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  pointer-events: none;            /* container is click-through; pills opt back in */
+}
+/* Pill = a container holding the main action button + an optional "show me
+   where" button. Dismiss is a standalone round button. */
+.pv-hint-pill {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 999px;
+  background: #fff;
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.4));
+  box-shadow: 0 1px 5px rgba(0,0,0,0.16);
+  overflow: hidden;
+  transition: border-color 0.12s, transform 0.06s;
+}
+.pv-hint-main, .pv-hint-where, .pv-hint-dismiss {
+  pointer-events: auto;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--text-muted, #374151);
+  border: 0;
+}
+.pv-hint-main { padding: 8px 14px; }
+.pv-hint-main .ti { font-size: 16px; }
+.pv-hint-where {
+  padding: 8px 11px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ui-interactive-dk, #8B6535);
+  border-left: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.35));
+}
+.pv-hint-main:hover, .pv-hint-where:hover { background: var(--ui-interactive-bg, rgba(181,141,74,0.12)); }
+.pv-hint-pill:active { transform: translateY(1px); }
+.pv-hint-main:focus-visible, .pv-hint-where:focus-visible, .pv-hint-dismiss:focus-visible {
+  outline: 2px solid var(--ui-interactive, #b58d4a);
+  outline-offset: -2px;
+}
+/* Primary (highest-priority) hint leans on the interactive accent. */
+.pv-hint-pill--primary { background: var(--ui-interactive, #B58D4A); border-color: var(--ui-interactive, #B58D4A); }
+.pv-hint-pill--primary .pv-hint-main, .pv-hint-pill--primary .pv-hint-where { color: var(--ui-on-interactive, #2d1613); }
+.pv-hint-pill--primary .pv-hint-where { border-left-color: rgba(45,22,19,0.25); }
+.pv-hint-pill--primary .pv-hint-main:hover, .pv-hint-pill--primary .pv-hint-where:hover { background: rgba(0,0,0,0.10); }
+.pv-hint-dismiss {
+  pointer-events: auto;
+  padding: 8px; width: 32px; height: 32px; justify-content: center;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--text-muted, #6b7280);
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.4));
+  box-shadow: 0 1px 5px rgba(0,0,0,0.16);
+}
+.pv-hint-dismiss:hover { background: var(--ui-interactive-bg, rgba(181,141,74,0.12)); border-color: var(--ui-interactive, #b58d4a); }
+[data-theme="dark"] .pv-hint-pill, [data-theme="dark"] .pv-hint-dismiss { background: #1c1612; border-color: rgba(181,141,74,0.5); }
+[data-theme="dark"] .pv-hint-main, [data-theme="dark"] .pv-hint-where, [data-theme="dark"] .pv-hint-dismiss { color: #e8d8c4; }
+[data-theme="dark"] .pv-hint-pill--primary { background: var(--ui-interactive, #B58D4A); }
+[data-theme="dark"] .pv-hint-pill--primary .pv-hint-main, [data-theme="dark"] .pv-hint-pill--primary .pv-hint-where { color: #2d1613; }
+
+/* "Show me where" spotlight + coachmark (DIC-529). */
+.pv-coach-wrap { position: fixed; inset: 0; z-index: 9999; pointer-events: auto; }
+.pv-coach-hole {
+  position: fixed;
+  border-radius: 8px;
+  border: 2px solid var(--ui-interactive, #B58D4A);
+  box-shadow: 0 0 0 9999px rgba(15,18,22,0.46);
+  pointer-events: none;
+}
+.pv-coach-call {
+  position: fixed;
+  background: var(--surface, #fff);
+  color: var(--text-muted, #1f2937);
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.4));
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.28);
+  pointer-events: auto;
+}
+.pv-coach-title { font-size: 13.5px; font-weight: 700; color: #1f2937; margin-bottom: 4px; }
+.pv-coach-body { font-size: 12.5px; line-height: 1.5; color: var(--text-muted, #4b5563); }
+.pv-coach-row { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.pv-coach-act { font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 6px; cursor: pointer; background: var(--ui-interactive, #B58D4A); color: var(--ui-on-interactive, #2d1613); border: 0; }
+.pv-coach-act:hover { background: var(--ui-interactive-dk, #8B6535); }
+.pv-coach-got { font: inherit; font-size: 12.5px; padding: 6px 8px; border: 0; background: transparent; color: var(--text-muted, #6b7280); cursor: pointer; margin-left: auto; }
+.pv-coach-got:hover { color: #1f2937; }
+[data-theme="dark"] .pv-coach-call { background: #1c1612; }
+[data-theme="dark"] .pv-coach-title { color: #f1e9dc; }
+
+/* In-panel Street View embed (DIC-533). */
+.pv-sv-embed { width: 100%; aspect-ratio: 16 / 10; min-height: 300px; background: #000; }
+.pv-sv-iframe { width: 100%; height: 100%; border: 0; display: block; }
+.pv-sv-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 14px; font-size: 13px;
+}
+.pv-sv-addr { color: var(--text-muted, #4b5563); font-weight: 600; }
+.pv-sv-open { color: var(--ui-interactive-dk, #8B6535); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.pv-sv-open:hover { text-decoration: underline; }
+@media (max-width: 640px) { .pv-sv-embed { aspect-ratio: 4 / 3; } }
+.pv-hints-reset-btn {
+  margin-top: 8px; font: inherit; font-size: 12px; padding: 6px 12px;
+  border-radius: 6px; cursor: pointer;
+  background: transparent; color: var(--text-muted, #374151);
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.4));
+}
+.pv-hints-reset-btn:hover { background: var(--ui-interactive-bg, rgba(181,141,74,0.12)); border-color: var(--ui-interactive, #b58d4a); }
+@media (max-width: 640px) {
+  .pv-hints { bottom: 56px; gap: 6px; max-width: calc(100% - 16px); }
+  .pv-hint-main, .pv-hint-where, .pv-hint-dismiss { font-size: 12px; }
+  .pv-hint-main { padding: 7px 11px; }
+}
+
 .plbl-header-row {
   font-size: 11.5px;
   font-weight: 600;

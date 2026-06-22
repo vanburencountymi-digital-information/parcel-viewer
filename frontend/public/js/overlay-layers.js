@@ -183,6 +183,71 @@
 
   function _isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
 
+  // ── "Service unavailable" status (DIC-525) ───────────────────────────────
+  // External overlay servers (USFWS NWI, FEMA, USDA, USGS) go down or 500 from
+  // time to time. When that happens the raster tiles simply fail to load and the
+  // layer draws nothing — leaving the user to wonder whether they did something
+  // wrong. We watch MapLibre's tile events for our overlay sources and, when an
+  // enabled overlay's tiles error, surface a small note on its row in the Layers
+  // panel; a subsequent successful tile clears it.
+
+  function _isOurOverlay(id) {
+    for (var i = 0; i < OVERLAYS.length; i++) if (OVERLAYS[i].id === id) return true;
+    return false;
+  }
+
+  // The Layers-panel row container for an overlay (the toggle's `.lyr-row`, or
+  // the toggle label's parent as a fallback).
+  function _rowFor(id) {
+    var cb = document.getElementById(id + '-toggle');
+    if (!cb) return null;
+    var row = cb.closest ? cb.closest('.lyr-row') : null;
+    if (row) return row;
+    var label = cb.closest ? cb.closest('.mcp-toggle-row') : null;
+    return label ? label.parentNode : null;
+  }
+
+  // Show (msg) or clear (msg falsy) the unavailable note on an overlay's row.
+  function _setStatus(id, msg) {
+    var row = _rowFor(id);
+    if (!row) return;
+    var note = row.querySelector('.overlay-status');
+    if (!msg) { if (note) note.parentNode.removeChild(note); return; }
+    if (!note) {
+      note = document.createElement('div');
+      note.className = 'overlay-hint overlay-status';
+      note.setAttribute('role', 'status');
+      var header = row.querySelector('.lyr-row-header');
+      if (header && header.nextSibling) row.insertBefore(note, header.nextSibling);
+      else if (header) row.appendChild(note);
+      else row.insertBefore(note, row.firstChild);
+    }
+    note.textContent = msg;
+  }
+
+  var _UNAVAILABLE_MSG = 'Service not currently available — try again later.';
+
+  function _onTileError(id) {
+    // Only flag layers the user actually has on (tiles only load when visible,
+    // but guard anyway so a stale request can't surface a note on an off layer).
+    if (!_isOurOverlay(id) || !_state[id]) return;
+    _setStatus(id, _UNAVAILABLE_MSG);
+  }
+
+  // Wire MapLibre tile lifecycle → status note. `error` fires on a failed tile
+  // (HTTP error / non-image body); `sourcedata` with a loaded tile means the
+  // service recovered, so clear the note.
+  function _wireTileStatus(map) {
+    map.on('error', function (e) {
+      if (e && e.sourceId) _onTileError(e.sourceId);
+    });
+    map.on('sourcedata', function (e) {
+      if (!e || !e.sourceId || !_isOurOverlay(e.sourceId)) return;
+      if (e.tile && e.tile.state === 'errored') _onTileError(e.sourceId);
+      else if (e.tile && e.tile.state === 'loaded') _setStatus(e.sourceId, null);
+    });
+  }
+
   // Theme-appropriate hillshade-* paint for a DEM overlay.
   function _hillshadePaint(cfg) {
     var p = cfg.paintByTheme || {};
@@ -268,6 +333,11 @@
     _state[id] = !!on;
     _saveState();
 
+    // Clear any stale "unavailable" note on every toggle: turning off hides it,
+    // turning on gives the service a fresh chance (the tile-error handler will
+    // re-flag it if it still fails). DIC-525.
+    _setStatus(id, null);
+
     // Sync the checkbox in the Layers panel so the UI stays consistent
     // whether the toggle was triggered by the user or by the AI.
     var cb = document.getElementById(id + '-toggle');
@@ -331,6 +401,7 @@
   /** Poll for the map; when it's ready add any overlays the user had on. */
   function _waitForMap() {
     if (!_getMap()) { setTimeout(_waitForMap, 300); return; }
+    _wireTileStatus(_getMap());   // DIC-525: surface service outages on the row
     OVERLAYS.forEach(function (cfg) {
       if (_state[cfg.id]) {
         _addOverlay(cfg);

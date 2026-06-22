@@ -32,7 +32,13 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor 
 
 # Context you receive
 - The currently selected parcel (PIN, owner, address, acreage, municipality) plus its **centroid [lng, lat]** and **bbox**. Use the centroid as the anchor point for circles, buffers, structures, and labels on that parcel.
-- The **current map view**: center [lng, lat], zoom, bearing, pitch, and which overlay layers are visible. Use the map center when the user refers to "here" / "this area".
+- The **current map view**: center [lng, lat], zoom, bearing, pitch. Use the map center when the user refers to "here" / "this area".
+- The **live layer state**: every map layer, whether it's currently ON or OFF, and the fields each data layer carries. This is real-time — it reflects exactly what the user is looking at right now.
+
+# Use the live layer state
+- "What am I looking at?" / "What layers are on?" → answer from the live layer state, naming the layers currently ON.
+- Only claim data from a layer that is actually present. If answering needs a layer that's listed but OFF, turn it on (set_layer_visibility) or pulse_layer it, then answer — don't guess from memory.
+- If the user asks about data no listed layer provides, say it isn't loaded rather than inventing it. When a layer's fields are shown, you can speak to exactly those attributes.
 
 # Coordinate rules (important)
 - All coordinates are [longitude, latitude] in WGS84 decimal degrees.
@@ -41,7 +47,7 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor 
 # Tools at your disposal
 - Camera: fly_to_parcel (quick frame), cinematic_fly_to_parcel (tilt-fly-orbit-return — use for "show me / fly to / take me to a parcel"), fly_to_coordinates, zoom_to, zoom_by, set_pitch (3-D tilt 0-85°), set_bearing (rotate), reset_north, fit_map_to_parcel, fit_to_annotations.
 - Selection: select_parcel, highlight_parcel.
-- Layers: set_layer_visibility (flood, wetlands, soils, hillshade, contours).
+- Layers: set_layer_visibility (flood, wetlands, soils, hillshade, contours), pulse_layer (bloom a layer you're discussing — see Reactive cartography).
 - Drawing: draw_point, draw_line, draw_polygon, draw_circle, label_point, label_parcel_centroid, draw_parcel_buffer (inward = setback), place_structure_in_parcel, clear_annotations.
 - Measurement: measure_parcel, measure_area, measure_distance (results are shown to the user automatically).
 - Built-in viewer tools: set_parcel_labels (label every parcel by owner/PIN/address/value), dimension_parcel (surveyor-style side dimensions), activate_draw_tool (hand the user a draw tool), undo, redo.
@@ -52,6 +58,12 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor 
 # Answering environmental / risk questions
 For "is this in a floodplain / are there wetlands / what's the soil / is it buildable", call get_environmental_info with the selected parcel's centroid and answer from the REAL result — never guess. It's good to ALSO turn on the matching overlay (flood/wetlands/soils) so the user sees it.
 - Showcase: map_tour for a guided fly-through of several stops.
+
+# Reactive cartography — make the map follow your words
+The map reacts to focus, so what you *talk about* should light up:
+- When your reply singles out a specific parcel, make sure it's the selected parcel (call select_parcel with its id) — the viewer then blooms it and dims everything else, so "this parcel" on screen matches "this parcel" in your text.
+- When your reply mentions an overlay (floodplain, wetlands, soils, terrain, a county layer), call pulse_layer for it. That turns the layer on and gently pulses it so the eye lands where you're pointing. Use pulse_layer (not set_layer_visibility) when the goal is to draw attention to a layer you're describing.
+- These effects self-gate on the user's Map-reactions setting and reduced-motion, so just call them naturally — they stay quiet when the user has turned reactions off.
 
 # Style
 Be concise and conversational — this is a side panel, not a report. Do NOT use emojis, emoticons, or decorative icons anywhere in replies or suggestions. Keep Markdown simple and consistent so it renders cleanly: short paragraphs separated by a blank line, "-" for bullets, **bold** for a key term or a short label line. Don't use tables or nested lists. After you act on the map, a row of chips shows what you did — a one-line summary is plenty. If a request needs a parcel but none is selected and you can't find one, say so briefly."""
@@ -261,6 +273,10 @@ TOOLS = [
          "layer_id": {"type": "string", "enum": ["flood", "wetlands", "soils", "hillshade", "contours", "contours-5ft", "contours-2ft"],
                       "description": "flood = FEMA flood hazard, wetlands = USFWS NWI, soils = USDA SSURGO, hillshade = USGS terrain, contours = 10ft elevation contours"},
          "visible": {"type": "boolean"}}, "required": ["layer_id", "visible"]}},
+    {"name": "pulse_layer", "description": "Gently pulse an overlay to draw the eye to it WHILE you talk about it — call this whenever your reply references a layer ('this parcel is in the floodplain', 'the wetlands to the north'). It turns the layer on if needed and blooms it briefly. Prefer this over set_layer_visibility when the point is to direct attention to a layer you're discussing. The pulse self-gates on the user's Map-reactions setting, so always call it; it quietly no-ops when reactions are off.",
+     "input_schema": {"type": "object", "properties": {
+         "layer_id": {"type": "string", "description": "Layer to pulse: a federal overlay (flood, wetlands, soils, hillshade, contours) or a county PostGIS layer id"}},
+      "required": ["layer_id"]}},
 
     # ── Drawing ───────────────────────────────────────────────────────────────
     {"name": "draw_point", "description": "Drop a point marker. Optional label and hex color.",
@@ -389,8 +405,29 @@ def _build_user_message(
             ms_lines.append(f"  Bearing: {map_state['bearing']}°")
         if map_state.get("pitch") is not None:
             ms_lines.append(f"  Pitch: {map_state['pitch']}°")
-        layers = map_state.get("visible_layers") or []
-        ms_lines.append(f"  Visible overlays: {', '.join(layers) if layers else 'none'}")
+
+        # Live layer state (DIC-327): what's on the map right now + each layer's
+        # field schema, so answers reflect the actual view. Falls back to the
+        # legacy visible-overlay labels when the registry isn't present.
+        layers = map_state.get("layers")
+        if layers:
+            def _fmt(layer: dict) -> str:
+                fields = layer.get("fields") or []
+                schema = f" — fields: {', '.join(fields)}" if fields else ""
+                return f"    - {layer.get('label')} ({layer.get('type')}){schema}"
+
+            on = [l for l in layers if l.get("visible")]
+            off = [l for l in layers if not l.get("visible")]
+            ms_lines.append("  Layers currently ON (visible to the user):")
+            ms_lines.extend([_fmt(l) for l in on] or ["    (none)"])
+            if off:
+                ms_lines.append(
+                    "  Layers available but currently OFF: "
+                    + ", ".join(l.get("label") for l in off)
+                )
+        else:
+            vis = map_state.get("visible_layers") or []
+            ms_lines.append(f"  Visible overlays: {', '.join(vis) if vis else 'none'}")
         blocks.append("\n".join(ms_lines))
 
     content = ("\n\n".join(blocks) + "\n\n" + message) if blocks else message
@@ -580,6 +617,8 @@ def _tool_ack(name: str) -> str:
         return "Search ran; results are shown to the user, and a single match is auto-selected and centered."
     if name == "suggest_actions":
         return "Suggestions shown to the user."
+    if name == "pulse_layer":
+        return "Layer pulsed (or quietly skipped if the user has map reactions off)."
     return "Done — the map was updated."
 
 

@@ -31,6 +31,12 @@ window.COUNTY = {
     // MapBuddy AI backend (Cloud Run). null → fall back to the mount default.
     mapBuddy: "https://map-buddy-toaozre74a-uc.a.run.app",
   },
+  integrations: {
+    // Google Maps Embed API key for the in-panel Street View (DIC-533). Empty →
+    // Street View opens in a new Google Maps tab instead. Restrict the key by
+    // HTTP referrer to the county domain. Set per-county via the Admin Console.
+    googleMapsEmbedKey: "",
+  },
 
   // Parcel number (PIN) format — how THIS county encodes its parcel IDs. The Tax
   // Description explainer reads this to break a PIN into labeled parts. Every
@@ -146,32 +152,66 @@ window.COUNTY = {
         // prop_class via the classGroup transform). On by default at low opacity;
         // SEMANTIC — these hues carry meaning and are never re-tinted by the color
         // scheme (DIC-505). colorDark = the dark-basemap variant.
-        choropleth: {
-          enabled: true,
-          opacity: 0.16,
-          attribute: "prop_class",
-          fields: ["prop_class", "gis_acres", "municipality", "owner_name", "parcel_no"],
-          mode: "categorical",
-          transform: "classGroup",
-          fallback: "#d9d2c5", fallbackDark: "#2a251d",
-          categories: [
-            { value: "1", label: "Agricultural",  color: "#6FA84A", colorDark: "#8FCB6A" },
-            { value: "2", label: "Commercial",    color: "#D9594C", colorDark: "#E8786A" },
-            { value: "3", label: "Industrial",    color: "#8E5BA6", colorDark: "#B07FC8" },
-            { value: "4", label: "Residential",   color: "#E3C56B", colorDark: "#D9B85A" },
-            { value: "5", label: "Ag / Timber",   color: "#6B7A3A", colorDark: "#90A152" },
-            { value: "6", label: "Developmental", color: "#E08A3C", colorDark: "#EBA45E" },
-            { value: "7", label: "Exempt",        color: "#8A95A3", colorDark: "#9AA6B5" },
-          ],
-          // Used when mode === 'graduated' (e.g. attribute:'gis_acres', transform:null).
-          stops: [
-            { min: 0,   label: "< 5 ac",     color: "#fee5d9" },
-            { min: 5,   label: "5–40 ac",    color: "#fcae91" },
-            { min: 40,  label: "40–160 ac",  color: "#fb6a4a" },
-            { min: 160, label: "160–640 ac", color: "#de2d26" },
-            { min: 640, label: "≥ 640 ac",   color: "#a50f15" },
-          ],
-        },
+        // Choropleth VIEWS (DIC-527): a selectable menu of ways to color parcels,
+        // chosen from the Parcels row in the Layers panel. Config-as-data, so the
+        // Admin Console can curate them. The active view's config is mirrored to
+        // `.choropleth` at runtime by map.js, which the paint/legend pipeline reads.
+        //
+        //   engine 'tile'          → paints off a vector-tile attribute (["get"]).
+        //   engine 'feature-state' → paints off assessing data hydrated per-parcel
+        //                            from /parcels?bbox= via setFeatureState (DIC-527);
+        //                            colors parcels in the loaded viewport.
+        //   engine 'none'          → no fill (clean outline-only view over aerials).
+        //   dynamic:true           → categories built at runtime from the data.
+        choroplethViews: [
+          {
+            id: "class", label: "Property class", engine: "tile", default: true,
+            opacity: 0.16, attribute: "prop_class", mode: "categorical", transform: "classGroup",
+            fields: ["prop_class", "gis_acres", "municipality", "owner_name", "parcel_no"],
+            fallback: "#d9d2c5", fallbackDark: "#2a251d",
+            categories: [
+              { value: "1", label: "Agricultural",  color: "#6FA84A", colorDark: "#8FCB6A" },
+              { value: "2", label: "Commercial",    color: "#D9594C", colorDark: "#E8786A" },
+              { value: "3", label: "Industrial",    color: "#8E5BA6", colorDark: "#B07FC8" },
+              { value: "4", label: "Residential",   color: "#E3C56B", colorDark: "#D9B85A" },
+              { value: "5", label: "Ag / Timber",   color: "#6B7A3A", colorDark: "#90A152" },
+              { value: "6", label: "Developmental", color: "#E08A3C", colorDark: "#EBA45E" },
+              { value: "7", label: "Exempt",        color: "#8A95A3", colorDark: "#9AA6B5" },
+            ],
+          },
+          {
+            id: "acreage", label: "Parcel size (acres)", engine: "tile",
+            opacity: 0.40, attribute: "gis_acres", mode: "graduated", legendTitle: "Parcel size (acres)",
+            stops: [
+              { min: 0,   label: "< 5 ac",     color: "#fee5d9", colorDark: "#5c1f12" },
+              { min: 5,   label: "5–40 ac",    color: "#fcae91", colorDark: "#8a3417" },
+              { min: 40,  label: "40–160 ac",  color: "#fb6a4a", colorDark: "#b5451f" },
+              { min: 160, label: "160–640 ac", color: "#de2d26", colorDark: "#d65a3a" },
+              { min: 640, label: "≥ 640 ac",   color: "#a50f15", colorDark: "#e07a52" },
+            ],
+          },
+          {
+            // Assessing data (not on the tiles) → feature-state engine.
+            id: "tmv_acre", label: "Taxable value / acre", engine: "feature-state",
+            stateKey: "tmv_acre", compute: "tmv_per_acre", mode: "graduated",
+            opacity: 0.50, legendTitle: "Taxable value / acre ($)",
+            stops: [
+              { min: 0,      label: "< $2k/ac",     color: "#edf8fb", colorDark: "#10303a" },
+              { min: 2000,   label: "$2k–10k",      color: "#b2e2e2", colorDark: "#1d5a63" },
+              { min: 10000,  label: "$10k–30k",     color: "#66c2a4", colorDark: "#2f8a76" },
+              { min: 30000,  label: "$30k–80k",     color: "#2ca25f", colorDark: "#4fb07e" },
+              { min: 80000,  label: "≥ $80k/ac",    color: "#006d2c", colorDark: "#7fd39b" },
+            ],
+          },
+          {
+            id: "school", label: "School district", engine: "feature-state",
+            stateKey: "school_dist", attribute: "school_dist", mode: "categorical",
+            dynamic: true, opacity: 0.30, legendTitle: "School district",
+          },
+          {
+            id: "none", label: "Plain (no fill)", engine: "none",
+          },
+        ],
       },
 
       // PostGIS vector overlay paint (DIC-502). pg-layers.js reads paint per

@@ -479,6 +479,7 @@
     var orbitOn   = !(window.PV_PREFS && window.PV_PREFS.getCinematicOrbit) || window.PV_PREFS.getCinematicOrbit();
     var reactions = (window.PV_PREFS && window.PV_PREFS.getMapReactions && window.PV_PREFS.getMapReactions()) || "subtle";
     var mood      = (window.PV_PREFS && window.PV_PREFS.getMapMood && window.PV_PREFS.getMapMood()) || "none";
+    var hintsOn   = !(window.PS_HINTS && window.PS_HINTS.isEnabled) || window.PS_HINTS.isEnabled();
     function opt(v, label, cur) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + label + '</option>'; }
     var scheme = (window.PV_SCHEME && window.PV_SCHEME.get && window.PV_SCHEME.get()) || "terracotta";
     var SCHEME_META = [
@@ -522,6 +523,11 @@
           '<select class="pv-input" id="pv-set-mood">' +
             opt("none", "None", mood) + opt("antique", "Antique", mood) + '</select>' +
           '<span class="pv-range-hint">A cartographic mood above the color scheme. Antique = parchment ground &amp; hairline strokes (opt-in).</span>') +
+        field("Hints",
+          '<label class="pv-a11y-row" style="margin:0"><input type="checkbox" id="pv-set-hints"' + (hintsOn ? " checked" : "") + '>' +
+          '<span><span class="pv-a11y-lbl">Show hints</span>' +
+          '<span class="pv-a11y-desc">Tips and one-tap shortcuts on the map for getting around.</span></span></label>' +
+          '<button type="button" id="pv-hints-reset" class="pv-hints-reset-btn">Reset hints</button>') +
       '</div>',
       '<p class="pv-settings-h">Accessibility</p>',
       a11yControlsHtml(),
@@ -542,6 +548,10 @@
       if (rx) rx.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setMapReactions && window.PV_PREFS.setMapReactions(rx.value); });
       var md = bodyEl.querySelector("#pv-set-mood");
       if (md) md.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setMapMood && window.PV_PREFS.setMapMood(md.value); });
+      var hk = bodyEl.querySelector("#pv-set-hints");
+      if (hk) hk.addEventListener("change", function () { try { window.PS_HINTS && window.PS_HINTS.setEnabled(hk.checked); } catch (_) {} });
+      var hr = bodyEl.querySelector("#pv-hints-reset");
+      if (hr) hr.addEventListener("click", function () { try { window.PS_HINTS && window.PS_HINTS.reset(); } catch (_) {} if (hk) hk.checked = true; });
       var g = bodyEl.querySelector("#pv-set-glass");
       if (g) g.addEventListener("input", function () { var a = Math.max(0.4, Math.min(1, g.value / 100)); document.documentElement.style.setProperty("--glass-alpha", a); try { localStorage.setItem("pv-glass-alpha", String(a)); } catch (_) {} });
       [].forEach.call(bodyEl.querySelectorAll(".pv-scheme-swatch"), function (sw) {
@@ -1071,9 +1081,73 @@
       ].join(""));
       return;
     }
-    var url = "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=" +
-      encodeURIComponent(c[1] + "," + c[0]);
-    window.open(url, "_blank", "noopener");
+    var base = window.API_BASE || "";
+    var key  = "";
+    try { key = (window.COUNTY && COUNTY.integrations && COUNTY.integrations.googleMapsEmbedKey) || ""; } catch (_) {}
+
+    function heading(vp, lookAt) {
+      try {
+        if (typeof turf !== "undefined" && lookAt && (vp[0] !== lookAt[0] || vp[1] !== lookAt[1])) {
+          return Math.round(((turf.bearing([vp[0], vp[1]], [lookAt[0], lookAt[1]]) % 360) + 360) % 360);
+        }
+      } catch (_) {}
+      return null;
+    }
+    function mapsUrl(vp, lookAt) {
+      var h = heading(vp, lookAt);
+      return "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=" +
+        encodeURIComponent(vp[1] + "," + vp[0]) + (h != null ? "&heading=" + h : "");
+    }
+
+    // Resolve vp (where the camera stands) + lookAt (the structure) + address,
+    // preferring the parcel's address point, then centroid → nearest road.
+    function resolve(cb) {
+      function nearestRoad() {
+        fetch(base + "/nearest-road?lng=" + c[0] + "&lat=" + c[1])
+          .then(function (r) { return r.json(); })
+          .then(function (d) { cb(d && d.lng != null ? [d.lng, d.lat] : c, c, null); })
+          .catch(function () { cb(c, c, null); });
+      }
+      if (pc.id != null) {
+        var done = false;
+        fetch(base + "/streetview-target?id=" + pc.id)
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (done) return; done = true;
+            if (d && d.ok && d.viewpoint) cb(d.viewpoint, d.lookAt || c, d.address);
+            else nearestRoad();
+          })
+          .catch(function () { if (!done) { done = true; nearestRoad(); } });
+      } else { nearestRoad(); }
+    }
+
+    if (key) {
+      // In-panel embed (Maps Embed API — free, key referrer-restricted).
+      resolve(function (vp, lookAt, addr) {
+        var h = heading(vp, lookAt);
+        var embed = "https://www.google.com/maps/embed/v1/streetview?key=" + encodeURIComponent(key) +
+          "&location=" + encodeURIComponent(vp[1] + "," + vp[0]) +
+          (h != null ? "&heading=" + h : "") + "&pitch=0&fov=90";
+        var label = addr || pc.site_address || "this parcel";
+        var html =
+          '<div class="pv-sv-embed"><iframe class="pv-sv-iframe" src="' + escAttr(embed) + '" ' +
+            'loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade" ' +
+            'title="Street View of ' + escAttr(label) + '"></iframe></div>' +
+          '<div class="pv-sv-foot"><span class="pv-sv-addr">' + esc(label) + '</span>' +
+            '<a class="pv-sv-open" href="' + escAttr(mapsUrl(vp, lookAt)) + '" target="_blank" rel="noopener">' +
+            'Open in Google Maps <span aria-hidden="true">↗</span></a></div>';
+        openModal("Street View", html, null, { wide: true, flush: true });
+      });
+    } else {
+      // No key → full Google Maps in a new tab. Open now (within the click
+      // gesture) so it isn't popup-blocked; navigate once resolved.
+      var win = window.open("about:blank", "_blank");
+      try { if (win) win.opener = null; } catch (_) {}
+      resolve(function (vp, lookAt) {
+        var url = mapsUrl(vp, lookAt);
+        if (win) win.location.href = url; else window.open(url, "_blank", "noopener");
+      });
+    }
   }
 
   // Tax description info — for now the disclaimer + a teaser for the full

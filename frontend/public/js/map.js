@@ -249,6 +249,120 @@
     if (_spotlightFn) _spotlightFn();   // re-evaluate the focus/dim spotlight
   }
 
+  // ── Overlay pulse (DIC-515) ────────────────────────────────────────────
+  // The overlay half of reactive cartography (DIC-508). When Map Buddy
+  // *references* an overlay in conversation ("this parcel is in the
+  // floodplain"), `PS_pulseOverlay(id)` briefly blooms that layer so the eye
+  // goes there, then settles it back to its resting paint. Pairs with the
+  // focus/dim spotlight (which owns the parcel half via the selection bridge).
+  //
+  // `id` is tolerant: an exact overlay id ('overlay-flood' / a PostGIS layer
+  // id), the bare name ('flood'), or a label substring ('Flood'). It resolves
+  // across BOTH overlay registries — the federal WMS rasters
+  // (PS_OVERLAY_LAYERS) and the config-driven PostGIS vectors (PS_PG_LAYERS,
+  // DIC-502) — and pulses whichever MapLibre layers back it.
+  //
+  // Honors the "Map reactions" setting + reduced-motion exactly like the
+  // spotlight: Off = no-op; reduced-motion = ensure the layer is visible but
+  // never flash; Subtle = one gentle pulse; Full = two stronger pulses.
+  const _PULSE_SUFFIXES = ["-fill", "-line", "-circle", "-casing", "-glow"];
+
+  function _opacityProp(type) {
+    switch (type) {
+      case "raster":    return "raster-opacity";
+      case "fill":      return "fill-opacity";
+      case "line":      return "line-opacity";
+      case "circle":    return "circle-opacity";
+      case "hillshade": return "hillshade-exaggeration";  // relief has no opacity
+      default:          return null;
+    }
+  }
+
+  // Resolve a loose overlay reference to { enable, layerIds } across both
+  // registries, or null if nothing matches.
+  function _resolveOverlayPulse(ref) {
+    if (!window.PS_MAP || ref == null) return null;
+    const want = String(ref).toLowerCase().trim();
+    if (!want) return null;
+    const matches = (o) => {
+      const id = String(o.id).toLowerCase();
+      const label = String(o.label || "").toLowerCase();
+      return id === want ||
+        id === "overlay-" + want ||
+        id.replace(/^overlay-/, "") === want ||
+        (want.length >= 3 && (id.indexOf(want) !== -1 || label.indexOf(want) !== -1));
+    };
+    // WMS raster / hillshade overlays — one MapLibre layer, id === overlay id.
+    const wms = window.PS_OVERLAY_LAYERS;
+    if (wms && wms.overlays) {
+      const hit = wms.overlays.filter(matches)[0];
+      if (hit) return {
+        enable: () => { try { wms.setOverlay(hit.id, true); } catch (_) {} },
+        layerIds: [hit.id],
+      };
+    }
+    // PostGIS vector overlays — several MapLibre layers, id + suffix.
+    const pg = window.PS_PG_LAYERS;
+    if (pg && pg.overlays) {
+      const ov = typeof pg.overlays === "function" ? pg.overlays() : pg.overlays;
+      const hit = (ov || []).filter(matches)[0];
+      if (hit) return {
+        enable: () => { try { pg.setOverlay(hit.id, true); } catch (_) {} },
+        layerIds: _PULSE_SUFFIXES.map((s) => hit.id + s),
+      };
+    }
+    return null;
+  }
+
+  window.PS_pulseOverlay = function (id) {
+    const map = window.PS_MAP;
+    if (!map) return false;
+    const mode = _effectiveReactions();          // 'off' | 'subtle' | 'full'
+    if (mode === "off") return false;
+
+    const target = _resolveOverlayPulse(id);
+    if (!target) return false;
+
+    // Bring the overlay on — can't draw the eye to a hidden layer. The lazy
+    // add is synchronous when the map is ready, so the layers exist below.
+    target.enable();
+
+    let reduced = false;
+    try {
+      reduced = document.documentElement.classList.contains("pv-a11y-motion") ||
+        matchMedia("(prefers-reduced-motion: reduce)").matches;
+    } catch (_) {}
+    if (reduced) return true;                     // visible, but no flashing
+
+    const pulses = mode === "full" ? 2 : 1;
+    const toward = mode === "full" ? 0.85 : 0.55; // fraction of the way to full
+    const STEP = 360;                             // half-cycle (ms)
+
+    setTimeout(function () {                       // let a freshly-added layer mount
+      target.layerIds.forEach(function (lid) {
+        const ly = map.getLayer(lid);
+        if (!ly) return;
+        const prop = _opacityProp(ly.type);
+        if (!prop) return;
+        let rest = map.getPaintProperty(lid, prop);
+        if (typeof rest !== "number") rest = 1;
+        const peak = ly.type === "hillshade"
+          ? Math.min(rest * 1.6, 2)                // exaggerate relief, not opacity
+          : Math.min(rest + (1 - rest) * toward, 1);
+        try { map.setPaintProperty(lid, prop + "-transition", { duration: STEP }); } catch (_) {}
+        let n = 0;
+        (function cycle() {
+          try { map.setPaintProperty(lid, prop, peak); } catch (_) {}
+          setTimeout(function () {
+            try { map.setPaintProperty(lid, prop, rest); } catch (_) {}
+            if (++n < pulses) setTimeout(cycle, STEP);
+          }, STEP);
+        })();
+      });
+    }, 60);
+    return true;
+  };
+
   // ── Full parcel record fetch (property card / selection payload) ───────
   // Vector-tile features carry only the lightweight tile attributes and
   // tile-clipped geometry; the authoritative record comes from the API.
@@ -270,20 +384,40 @@
   // GET /parcels?bbox= for the current viewport. Replaces ZIP-POC's full
   // client-side parcels.geojson load.
   const PARCEL_INDEX_MIN_ZOOM = 12;
+  const PARCEL_INDEX_LIMIT = 4000;     // matches the /parcels API default cap
   let _hydrateTimer = null;
   let _hydrateController = null;
+  let _lastFetch = null;               // { w, s, e, n, capped } of the last padded fetch
 
   function scheduleParcelIndexRefresh() {
     clearTimeout(_hydrateTimer);
     _hydrateTimer = setTimeout(refreshParcelIndex, 350);
   }
 
-  function refreshParcelIndex() {
+  // True when the viewport is fully inside the last fetched (padded) bounds AND
+  // that fetch returned everything (not truncated) — so the index already covers
+  // what's on screen and we can skip the ~2 MB round-trip (DIC-528).
+  function _indexCoversViewport() {
+    if (!_lastFetch || _lastFetch.capped || !map) return false;
+    const b = map.getBounds();
+    return _lastFetch.w <= b.getWest() && _lastFetch.s <= b.getSouth() &&
+           _lastFetch.e >= b.getEast() && _lastFetch.n >= b.getNorth();
+  }
+
+  // `force` (used after an edit) refetches even when the viewport looks covered.
+  function refreshParcelIndex(force) {
     if (!map) return;
     if (map.getZoom() < PARCEL_INDEX_MIN_ZOOM) return;   // keep last index when zoomed out
+    if (force === true) _lastFetch = null;
+    if (_indexCoversViewport()) return;                  // already loaded this area
 
+    // Fetch a padded bbox (~20% beyond the viewport) so small pans stay inside it
+    // and don't trigger another fetch.
     const b = map.getBounds();
-    const bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
+    const w = b.getWest(), s = b.getSouth(), e = b.getEast(), n = b.getNorth();
+    const padX = (e - w) * 0.2, padY = (n - s) * 0.2;
+    const fw = w - padX, fs = s - padY, fe = e + padX, fn = n + padY;
+    const bbox = [fw, fs, fe, fn].join(",");
 
     if (_hydrateController) _hydrateController.abort();
     _hydrateController = new AbortController();
@@ -293,6 +427,7 @@
       .then(data => {
         parcelIndex = (data.features || []).filter(f => f.geometry);
         window.PS_PARCEL_INDEX = parcelIndex;
+        _lastFetch = { w: fw, s: fs, e: fe, n: fn, capped: parcelIndex.length >= PARCEL_INDEX_LIMIT };
         document.dispatchEvent(new CustomEvent("ps:parcel-index-updated"));
       })
       .catch(() => { /* aborted or transient network error — keep last index */ });
@@ -342,7 +477,7 @@
     }
 
     invalidateParcelCache();
-    refreshParcelIndex();
+    refreshParcelIndex(true);   // edit changed data — bypass the coverage skip
   }
   window.PS_refreshParcelTiles = refreshParcelTiles;
 
@@ -397,9 +532,19 @@
     return (hasCats || hasStops) ? ch : null;
   }
 
-  // The key the ramp reads: the raw attribute, or — with transform 'classGroup' —
-  // the first character of prop_class (Michigan major class: 1xx Ag, 4xx Res, …).
+  // Where a choropleth reads its value (DIC-527): a vector-tile attribute
+  // (engine 'tile') or per-parcel assessing data pushed onto feature-state
+  // (engine 'feature-state'). stateKey names the feature-state slot.
+  function _choroNumInput(ch) {
+    return ch.engine === "feature-state"
+      ? ["to-number", ["feature-state", ch.stateKey || ch.attribute], 0]
+      : ["to-number", ["get", ch.attribute], 0];
+  }
+  // The key a categorical ramp matches on: the raw attribute, or — with transform
+  // 'classGroup' — the first character of prop_class (Michigan major class: 1xx
+  // Ag, 4xx Res, …). Feature-state views read the hydrated slot instead.
   function _choroKey(ch) {
+    if (ch.engine === "feature-state") return ["to-string", ["feature-state", ch.stateKey || ch.attribute]];
     const get = ["to-string", ["get", ch.attribute]];
     return ch.transform === "classGroup" ? ["slice", get, 0, 1] : get;
   }
@@ -409,15 +554,19 @@
   // falls back to its light `color`.
   function choroplethFillExpr(ch, dark) {
     const hue = (o) => (dark && o.colorDark) ? o.colorDark : o.color;
-    const fallback = (dark && ch.fallbackDark) || ch.fallback || "#cccccc";
+    const fallback = (dark && ch.fallbackDark) || ch.fallback || (dark ? "#2a251d" : "#d9d2c5");
     if (ch.mode === "graduated") {
       const stops = (ch.stops || []).slice().sort((a, b) => (a.min || 0) - (b.min || 0));
-      const expr = ["step", ["to-number", ["get", ch.attribute], 0], hue(stops[0])];
-      for (let i = 1; i < stops.length; i++) expr.push(stops[i].min, hue(stops[i]));
-      return expr;
+      const ramp = ["step", _choroNumInput(ch), hue(stops[0])];
+      for (let i = 1; i < stops.length; i++) ramp.push(stops[i].min, hue(stops[i]));
+      // Feature-state values are absent until a parcel is hydrated from the bbox
+      // fetch; render those neutral instead of misreading them as the lowest bucket.
+      return ch.engine === "feature-state"
+        ? ["case", ["==", ["feature-state", ch.stateKey || ch.attribute], null], fallback, ramp]
+        : ramp;
     }
     const expr = ["match", _choroKey(ch)];
-    ch.categories.forEach((c) => { expr.push(String(c.value), hue(c)); });
+    (ch.categories || []).forEach((c) => { expr.push(String(c.value), hue(c)); });
     expr.push(fallback);
     return expr;
   }
@@ -428,6 +577,229 @@
     if (ch.attribute === "prop_class" || ch.transform === "classGroup") return "Property class";
     if (ch.attribute === "gis_acres") return "Parcel size (acres)";
     return ch.attribute;
+  }
+
+  // ── Parcel choropleth views (DIC-527) ──────────────────────────────────────
+  // A selectable menu of ways to color parcels (Property class, Parcel size,
+  // Taxable value/acre, School district, Plain). The active view's config is
+  // mirrored onto COUNTY.styling.layers.parcels.choropleth so the existing
+  // paint + legend pipeline reads it unchanged. Tile-attribute views paint
+  // directly off the vector tiles; assessing views ("feature-state") hydrate
+  // per-parcel values from PS_PARCEL_INDEX (the /parcels?bbox= data) onto the
+  // parcels source feature-state, keyed on pin (the tile promoteId).
+  const _CHORO_LS = "pv-parcel-choro";
+  let _activeChoroId = null;
+  let _refreshParcelFill = null;   // init assigns updateZoningOpacity (resting fill)
+
+  // Qualitative palette for dynamic categorical views (e.g. school district).
+  const _CHORO_DYN_PALETTE = [
+    { color: "#4E79A7", colorDark: "#7CA7D0" }, { color: "#F28E2B", colorDark: "#F4A85C" },
+    { color: "#59A14F", colorDark: "#7FC077" }, { color: "#B07AA1", colorDark: "#C79BBC" },
+    { color: "#E15759", colorDark: "#EC8284" }, { color: "#76B7B2", colorDark: "#9BD0CC" },
+    { color: "#EDC948", colorDark: "#E6CB6B" }, { color: "#FF9DA7", colorDark: "#FFB9C0" },
+    { color: "#9C755F", colorDark: "#BE9A86" }, { color: "#BAB0AC", colorDark: "#D2CAC6" },
+  ];
+
+  function _parcelChoroViews() {
+    try { return COUNTY.styling.layers.parcels.choroplethViews || []; } catch (_) { return []; }
+  }
+  function _findChoroView(id) {
+    const vs = _parcelChoroViews();
+    return vs.find((v) => v.id === id) || vs.find((v) => v.default) || vs[0] || null;
+  }
+  function _activeChoroView() { return _findChoroView(_activeChoroId); }
+  function _choroIsPlain() { const v = _activeChoroView(); return !!(v && v.engine === "none"); }
+
+  // Persistent value cache for feature-state views (DIC-527). Accumulates every
+  // parcel ever returned by /parcels?bbox= (PS_PARCEL_INDEX), keyed by pin, and is
+  // never cleared — so coverage grows as the user pans and revisits are instant.
+  // The original index-only hydration shaded only the current viewport and lagged
+  // the tiles by one move; this caches the values and applies them to whatever the
+  // tiles actually render (querySourceFeatures), which is the reliable join.
+  const _choroCache = new Map();   // "pin" -> { taxable_value, gis_acres, school_dist }
+  // Perf guards (DIC-527): only do hydration work when there's genuinely new data
+  // (`_choroDirty`), and never re-`setFeatureState` a parcel already painted for
+  // the active slot (`_choroApplied`). Without these, every map settle re-applied
+  // state to the whole rendered set — the jank on slower machines.
+  let _choroDirty = false;
+  const _choroApplied = new Set();   // pins already given feature-state for the active key
+
+  function _mergeChoroCache() {
+    const idx = window.PS_PARCEL_INDEX || [];
+    for (const f of idx) {
+      const p = f.properties || {};
+      const pin = p.pin || p.PIN;
+      if (pin == null) continue;
+      _choroCache.set(String(pin), {
+        taxable_value: p.taxable_value, gis_acres: p.gis_acres, school_dist: p.school_dist,
+      });
+    }
+  }
+
+  function _choroValue(ch, props) {
+    if (!props) return null;
+    if (ch.compute === "tmv_per_acre") {
+      const tv = +props.taxable_value, ac = +props.gis_acres;
+      return (tv > 0 && ac > 0) ? tv / ac : null;
+    }
+    const v = props[ch.attribute];
+    return (v == null || v === "") ? null : v;
+  }
+
+  // Build categories for a dynamic categorical view from every value seen so far
+  // (the cache), so the legend/colors stay stable as the user pans.
+  function _buildDynamicCategories(ch) {
+    if (!ch || !ch.dynamic) return;
+    const seen = [];
+    _choroCache.forEach((props) => {
+      const v = props && props[ch.attribute];
+      if (v == null || v === "") return;
+      const s = String(v);
+      if (seen.indexOf(s) === -1) seen.push(s);
+    });
+    seen.sort();
+    ch.categories = seen.map((v, i) => {
+      const p = _CHORO_DYN_PALETTE[i % _CHORO_DYN_PALETTE.length];
+      return { value: v, label: v, color: p.color, colorDark: p.colorDark };
+    });
+  }
+
+  // Apply feature-state to the parcels the tiles ACTUALLY render right now
+  // (querySourceFeatures), pulling values from the accumulating cache. This is
+  // what makes shading match what's on screen instead of trailing the viewport
+  // bbox. Cheap + idempotent, so it's safe to call on idle / index refresh.
+  function _hydrateChoroState(ch) {
+    if (!map || !ch || ch.engine !== "feature-state") return;
+    _choroDirty = false;
+    const key = ch.stateKey || ch.attribute;
+    let feats;
+    try { feats = map.querySourceFeatures("parcels", { sourceLayer: "parcels" }); }
+    catch (_) { feats = []; }
+    for (const f of feats) {
+      const pin = f.id != null ? f.id : (f.properties && (f.properties.pin || f.properties.PIN));
+      if (pin == null) continue;
+      const sp = String(pin);
+      if (_choroApplied.has(sp)) continue;       // already painted for this slot
+      const val = _choroValue(ch, _choroCache.get(sp));
+      if (val == null) continue;                 // not in cache yet → next refresh
+      _choroApplied.add(sp);
+      try { map.setFeatureState({ source: "parcels", sourceLayer: "parcels", id: pin }, { [key]: val }); }
+      catch (_) {}
+    }
+  }
+
+  // Mirror a view's config to `.choropleth` (null for Plain), preparing dynamic
+  // categories / feature-state as needed.
+  function _applyChoroConfig(v) {
+    const parcels = COUNTY.styling.layers.parcels;
+    if (!v || v.engine === "none") { parcels.choropleth = null; return; }
+    if (v.dynamic) _buildDynamicCategories(v);
+    v.enabled = true;                 // choroplethConfig() gate
+    parcels.choropleth = v;
+    if (v.engine === "feature-state") _hydrateChoroState(v);
+  }
+
+  // Switch the active parcel choropleth view: persist, re-prep, repaint + relegend.
+  function setParcelChoroView(id) {
+    const v = _findChoroView(id);
+    if (!v) return;
+    _activeChoroId = v.id;
+    try { localStorage.setItem(_CHORO_LS, v.id); } catch (_) {}
+    _choroApplied.clear();             // different view = different feature-state slot
+    _choroDirty = true;
+    if (v.engine === "feature-state") _mergeChoroCache();
+    _applyChoroConfig(v);
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (map) applyLayerPaint("parcels", COUNTY.styling.layers.parcels, dark);
+    updateChoroplethLegend(choroplethLegendSections(stylingLayers(), dark));
+    if (_refreshParcelFill) _refreshParcelFill();   // resting fill-opacity (incl. Plain → 0)
+    _syncChoroSelector();
+    // Pull values for the current view immediately so it shades without waiting
+    // for the next pan (refreshParcelIndex fires ps:parcel-index-updated → cache).
+    if (v.engine === "feature-state" && typeof refreshParcelIndex === "function") refreshParcelIndex();
+  }
+
+  // Pick the active view from localStorage (or the default) and prime `.choropleth`
+  // BEFORE the first paint, so the initial render matches the saved view.
+  function _initParcelChoro() {
+    let saved = null;
+    try { saved = localStorage.getItem(_CHORO_LS); } catch (_) {}
+    const v = _findChoroView(saved);
+    _activeChoroId = v ? v.id : null;
+    if (window.COUNTY && COUNTY.styling && COUNTY.styling.layers && COUNTY.styling.layers.parcels) {
+      _applyChoroConfig(v);
+    }
+  }
+  _initParcelChoro();   // runs at module load, before the map's first applyTheme
+
+  // Render the radio selector of views into the Parcels row body.
+  function _buildChoroSelector() {
+    const host = document.getElementById("parcels-choro-views");
+    if (!host) return;
+    host.textContent = "";
+    _parcelChoroViews().forEach((v) => {
+      const row = document.createElement("label");
+      row.className = "choro-view-row";
+      const input = document.createElement("input");
+      input.type = "radio";
+      input.name = "parcel-choro-view";
+      input.value = v.id;
+      input.checked = v.id === _activeChoroId;
+      input.addEventListener("change", function () { if (this.checked) setParcelChoroView(v.id); });
+      const txt = document.createElement("span");
+      txt.textContent = v.label || v.id;
+      row.appendChild(input);
+      row.appendChild(txt);
+      host.appendChild(row);
+    });
+  }
+  function _syncChoroSelector() {
+    const host = document.getElementById("parcels-choro-views");
+    if (!host) return;
+    host.querySelectorAll('input[name="parcel-choro-view"]').forEach((el) => {
+      el.checked = el.value === _activeChoroId;
+    });
+  }
+
+  // Build the selector + wire the Parcels-row chevron + keep feature-state views
+  // hydrated as the viewport's parcel index refreshes and new tiles load.
+  function _setupParcelChoroUI() {
+    _buildChoroSelector();
+    _syncChoroSelector();
+
+    // The Parcels-row chevron is toggled by legend-panel.js (the shared
+    // .lyr-chevron[data-target] handler) — no wiring needed here.
+
+    // New bbox data arrived (pan/zoom): grow the value cache, refresh dynamic
+    // categories, re-hydrate the rendered parcels, repaint + relegend.
+    document.addEventListener("ps:parcel-index-updated", function () {
+      const v = _activeChoroView();
+      if (!v || v.engine !== "feature-state") return;
+      const before = _choroCache.size;
+      _mergeChoroCache();
+      if (_choroCache.size !== before) _choroDirty = true;   // genuinely new values
+      if (v.dynamic) { _buildDynamicCategories(v); COUNTY.styling.layers.parcels.choropleth = v; }
+      _hydrateChoroState(v);
+      const dark = document.documentElement.getAttribute("data-theme") === "dark";
+      if (map) applyLayerPaint("parcels", COUNTY.styling.layers.parcels, dark);
+      updateChoroplethLegend(choroplethLegendSections(stylingLayers(), dark));
+    });
+
+    // A new parcels tile finished loading → its features start with empty feature-
+    // state, so mark dirty; the next 'idle' re-applies cached values to it.
+    if (map) map.on("sourcedata", function (e) {
+      if (e.sourceId === "parcels" && e.tile && e.tile.state === "loaded") _choroDirty = true;
+    });
+
+    // On settle, re-apply ONLY when something changed (new data/tiles) and a
+    // feature-state view is active — the applied-set keeps this near-free after
+    // warmup. 'idle' is self-debounced so it never fires mid-interaction.
+    if (map) map.on("idle", function () {
+      if (!_choroDirty) return;
+      const v = _activeChoroView();
+      if (v && v.engine === "feature-state") _hydrateChoroState(v);
+      else _choroDirty = false;
+    });
   }
 
   // Apply a layer's paint for the active theme: solid fill (or choropleth ramp) +
@@ -449,22 +821,18 @@
     }
   }
 
-  // Build (or tear down) the floating legend. One section per choropleth-enabled
-  // layer; sections = [{ title, rows:[{color,label}] }]. DOM-built so config
-  // labels/colors are inserted as text/style, never as HTML.
+  // Render the choropleth legend into the Parcels row body in the Layers panel
+  // (DIC-527 — was a floating overlay on the map that the parcel popup covered).
+  // sections = [{ title, rows:[{color,label}] }]. DOM-built so config labels/
+  // colors are inserted as text/style, never as HTML.
   function updateChoroplethLegend(sections) {
-    const mapEl = document.getElementById("map");
-    let el = document.getElementById("choropleth-legend");
-    if (!sections || !sections.length) { if (el) el.remove(); return; }
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "choropleth-legend";
-      el.className = "choropleth-legend";
-      el.setAttribute("role", "img");
-      if (mapEl) mapEl.appendChild(el);
-    }
-    el.setAttribute("aria-label", sections.map((s) => s.title).join("; ") + " legend");
+    const el = document.getElementById("parcels-choro-legend");
+    if (!el) return;                     // panel not present yet
     el.textContent = "";
+    if (!sections || !sections.length) { el.hidden = true; return; }
+    el.hidden = false;
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-label", sections.map((s) => s.title).join("; ") + " legend");
     sections.forEach((sec, i) => {
       if (i > 0) { const sep = document.createElement("div"); sep.className = "choropleth-legend-sep"; el.appendChild(sep); }
       const title = document.createElement("div");
@@ -634,6 +1002,9 @@
       zoom: cmap.zoom != null ? cmap.zoom : 9,
       preserveDrawingBuffer: true,
       boxZoom: false,  // we use our own box-select; default shift+drag zoom conflicts with shift-click
+      // Load more tiles concurrently (default 16) so aerial tiles arrive before
+      // the cinematic camera does — fewer mid-flight pop-ins (DIC-528).
+      maxParallelImageRequests: 32,
     });
 
     initCoordReadout();
@@ -706,6 +1077,7 @@
       // labels, selection, hover, and overlays read clearly on top. No wash → the
       // original cream/dark opacity from the style.
       function restingFillOpacity() {
+        if (_choroIsPlain()) return 0;   // DIC-527: clean outline-only view
         const ch = choroplethConfig((stylingLayers().parcels) || {});
         return (ch && ch.opacity != null) ? ch.opacity : origFillOpacity;
       }
@@ -742,11 +1114,13 @@
         if (!zoningOn) {
           map.setPaintProperty("parcels-fill", "fill-opacity", 0);
         } else if (aerialOn) {
-          map.setPaintProperty("parcels-fill", "fill-opacity", 0.25);
+          // Plain view stays outline-only even over aerial (DIC-527).
+          map.setPaintProperty("parcels-fill", "fill-opacity", _choroIsPlain() ? 0 : 0.25);
         }
         // Normal-mode resting fill + the focus/dim spotlight are owned by _spotlightFn.
         _spotlightFn();
       }
+      _refreshParcelFill = updateZoningOpacity;   // DIC-527: view switch re-applies fill
 
       // Programmatic / AI focus handle (DIC-508). Selecting parcels already
       // triggers the spotlight via updateSelectionBadge; Map Buddy focuses by
@@ -757,8 +1131,15 @@
       };
 
       aerialToggle.addEventListener("change", (e) => {
-        map.setLayoutProperty("mi-aerial", "visibility", e.target.checked ? "visible" : "none");
-        if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.aerial = e.target.checked;
+        const on = e.target.checked;
+        map.setLayoutProperty("mi-aerial", "visibility", on ? "visible" : "none");
+        // Stop loading the street basemap while aerial covers it (DIC-528). It's
+        // invisible under the opaque imagery, but MapLibre still fetches+decodes
+        // its tiles — ~half the tile traffic during a cinematic, competing with
+        // the aerial and causing tile aborts/redraw. Hide it → all bandwidth goes
+        // to the aerial. (Hillshade, when on, sits above the basemap, unaffected.)
+        if (map.getLayer("basemap")) map.setLayoutProperty("basemap", "visibility", on ? "none" : "visible");
+        if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.aerial = on;
         updateZoningOpacity();
       });
 
@@ -786,6 +1167,13 @@
       // Apply the resting fill opacity now (so the class wash loads subtle, not at
       // the heavier default cream opacity — DIC-506).
       updateZoningOpacity();
+
+      // Parcel choropleth views (DIC-527): build the selector, wire the chevron,
+      // and keep feature-state views hydrated. The initial paint already reflects
+      // the saved view (primed by _initParcelChoro before this load).
+      _setupParcelChoroUI();
+      updateChoroplethLegend(choroplethLegendSections(stylingLayers(),
+        document.documentElement.getAttribute("data-theme") === "dark"));
 
       const HOVER_MIN_ZOOM = 14;
 
@@ -1384,6 +1772,72 @@
     });
   };
 
+  // Pre-warm the browser cache with aerial tiles around `center` across the zoom
+  // span of the upcoming cinematic (DIC-528). MapLibre streams tiles in as the
+  // camera moves, so a fast multi-zoom fly shows them popping in ("redrawing").
+  // Fetching the destination's tile column ahead of time (in parallel with the
+  // fly) means those requests hit cache instead of Esri. No-op when aerial hidden.
+  function _prefetchAerial(center, zFrom, zTo) {
+    if (!map || !map.getLayer("mi-aerial")) return;
+    try { if (map.getLayoutProperty("mi-aerial", "visibility") !== "visible") return; } catch (_) { return; }
+    const src = map.getSource("mi-aerial");
+    let tmpl = src && src.tiles && src.tiles[0];
+    if (!tmpl) { try { tmpl = map.getStyle().sources["mi-aerial"].tiles[0]; } catch (_) {} }
+    if (!tmpl) return;
+    const lng = center[0], latRad = center[1] * Math.PI / 180;
+    const lo = Math.max(11, Math.floor(zFrom)), hi = Math.min(19, Math.ceil(zTo));
+    for (let z = lo; z <= hi; z++) {
+      const n = Math.pow(2, z);
+      const cx = Math.floor((lng + 180) / 360 * n);
+      const cy = Math.floor((1 - Math.asinh(Math.tan(latRad)) / Math.PI) / 2 * n);
+      // Widen the grid at the top zooms — the pitched 360° orbit sweeps a sizable
+      // footprint there, and those are the tiles that abort/redraw most.
+      const r = z >= hi ? 3 : (z >= hi - 1 ? 2 : 1);
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dy = -r; dy <= r; dy++) {
+          const x = cx + dx, y = cy + dy;
+          if (x < 0 || y < 0 || x >= n || y >= n) continue;
+          const url = tmpl.replace("{z}", z).replace("{x}", x).replace("{y}", y);
+          const img = new Image();
+          img.crossOrigin = "anonymous";   // match MapLibre's CORS raster fetch → shared cache
+          img.src = url;
+        }
+      }
+    }
+  }
+
+  // Reduce per-frame GPU work during the cinematic (DIC-528). Labels (symbol
+  // layers) and the regulatory/PostGIS overlays are the most expensive things
+  // MapLibre composites each frame, and they're unreadable/unnecessary while the
+  // camera spins — so hide them during the motion and restore on settle. Pure
+  // win: zero quality loss (you can't use them mid-spin), lighter on every
+  // device, biggest help on weak GPUs. Parcels themselves stay visible.
+  let _cineHidden = null;
+  function _reduceCinematicDetail(on) {
+    if (!map) return;
+    if (on) {
+      if (_cineHidden) return;                    // already reduced
+      const targets = new Set();
+      try { (map.getStyle().layers || []).forEach((ly) => { if (ly.type === "symbol") targets.add(ly.id); }); } catch (_) {}
+      try { ((window.PS_OVERLAY_LAYERS && PS_OVERLAY_LAYERS.overlays) || []).forEach((o) => targets.add(o.id)); } catch (_) {}
+      try {
+        const ov = window.PS_PG_LAYERS && PS_PG_LAYERS.overlays;
+        const list = typeof ov === "function" ? ov() : (ov || []);
+        (list || []).forEach((o) => ["-fill", "-line", "-circle", "-glow", "-casing"].forEach((s) => targets.add(o.id + s)));
+      } catch (_) {}
+      _cineHidden = [];
+      targets.forEach((id) => {
+        if (!map.getLayer(id)) return;
+        let vis; try { vis = map.getLayoutProperty(id, "visibility"); } catch (_) { return; }
+        if (vis !== "none") { _cineHidden.push(id); map.setLayoutProperty(id, "visibility", "none"); }
+      });
+    } else {
+      if (!_cineHidden) return;
+      _cineHidden.forEach((id) => { if (map.getLayer(id)) { try { map.setLayoutProperty(id, "visibility", "visible"); } catch (_) {} } });
+      _cineHidden = null;
+    }
+  }
+
   // Cinematic arrival: tilt into 3-D, fly in, orbit a full 360° around the
   // parcel, then settle back to flat north-up. Cancels on user interaction and
   // honors reduced-motion. Used by parcel search and MapBuddy's "fly to".
@@ -1398,6 +1852,10 @@
       const cfb = map.cameraForBounds && map.cameraForBounds(computeBounds(geometry), { padding: 140, maxZoom: 18 });
       z = cfb ? Math.min(cfb.zoom - 0.4, 18) : 17;
     }
+    // Warm aerial tiles for the destination across the fly's zoom span before/
+    // during the move, so they're cached when the camera arrives (DIC-528).
+    _prefetchAerial(center, map.getZoom(), z);
+
     let reduced = false;
     try { reduced = document.documentElement.classList.contains("pv-a11y-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
     _cancelCine();
@@ -1411,10 +1869,14 @@
 
     const userEvents = ["mousedown", "touchstart", "wheel"];
     function cleanup() { userEvents.forEach((ev) => map.off(ev, onInteract)); }
-    function onInteract() { _cancelCine(); cleanup(); }
+    function onInteract() { _cancelCine(); cleanup(); _reduceCinematicDetail(false); }
     userEvents.forEach((ev) => map.on(ev, onInteract));
 
+    _reduceCinematicDetail(true);   // hide labels/overlays for the fly + spin
     let started = false;
+    // Original snappy pace (DIC-528): the slowdown that compensated for tile
+    // redraw is no longer needed — basemap-hide, the same-origin aerial cache,
+    // and reduce-detail-during-motion carry the smoothness, so keep it brisk.
     map.flyTo({ center, zoom: z, pitch: 60, bearing: 0, speed: 0.85, curve: 1.5, essential: true });
     function orbit() {
       if (started) return; started = true;
@@ -1427,7 +1889,7 @@
         map.setCenter(center);
         map.setPitch(60);  // hold full tilt through the orbit (fly may not have finished tilting)
         if (k < 1) { _cineRAF = requestAnimationFrame(frame); }
-        else { _cineRAF = null; cleanup(); map.easeTo({ bearing: 0, pitch: 0, duration: 2600 }); }
+        else { _cineRAF = null; cleanup(); _reduceCinematicDetail(false); map.easeTo({ bearing: 0, pitch: 0, duration: 2600 }); }
       }
       _cineRAF = requestAnimationFrame(frame);
     }

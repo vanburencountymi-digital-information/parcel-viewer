@@ -1,16 +1,26 @@
 /**
- * wms-feature-info.js — Overlay feature info click popup.
+ * wms-feature-info.js — Unified overlay identify / click popup.
  *
- * Listens for map clicks.  When at least one queryable overlay is visible
- * it fires parallel queries to each visible service and displays the results
- * in a MapLibre popup anchored to the click point.
+ * Listens for map clicks and reports the NON-parcel layers under the cursor in
+ * one popup (parcels keep their dedicated rich info card). Two kinds of layer
+ * feed the same popup:
  *
- * Query strategy per service:
- *   Flood    FEMA NFHL       ArcGIS REST point query  (JSON natively)
- *   Wetlands USFWS NWI       ArcGIS REST point query  (JSON natively)
- *   Soils    USDA SSURGO     WMS GetFeatureInfo        (text/xml → DOMParser)
+ *   1. Regulatory WMS overlays (remote) — queried over the network:
+ *        Flood    FEMA NFHL       ArcGIS REST point query  (JSON natively)
+ *        Wetlands USFWS NWI       ArcGIS REST point query  (JSON natively)
+ *        Soils    USDA SSURGO     WMS GetFeatureInfo        (text/plain)
+ *      All routed through /wms-proxy to avoid CORS restrictions.
  *
- * All requests are routed through /wms-proxy to avoid CORS restrictions.
+ *   2. County PostGIS vector layers (DIC-517) — subdivisions, PLSS, roads,
+ *      drains, address points, etc. (registered via DIC-502). These are already
+ *      drawn as vector tiles, so we identify them locally with
+ *      queryRenderedFeatures against the `<id>-fill`/`-line`/`-circle` layers
+ *      and read each hit's attributes from the layer's configured `fields`.
+ *
+ * Only VISIBLE layers identify (a remote query needs the overlay on; a vector
+ * query only returns features MapLibre actually rendered, so layers below their
+ * minzoom contribute nothing). When a click overlaps several layers, every
+ * matching layer gets its own section.
  *
  * Exposes: window.PS_WMS_FEATURE_INFO  { getPopup }
  */
@@ -260,6 +270,12 @@
 
   // ── Popup HTML ───────────────────────────────────────────────────────────
 
+  function _esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
   function _attrRows(props, attrs) {
     var rows = [];
     attrs.forEach(function (a) {
@@ -268,8 +284,8 @@
       var display = a.fmt ? a.fmt(v) : v;
       if (display === null || display === undefined) return; // fmt returning null suppresses the row
       rows.push('<div class="wfi-attr-row">' +
-        '<span class="wfi-attr-label">' + a.label + '</span>' +
-        '<span class="wfi-attr-value">'  + display + '</span>' +
+        '<span class="wfi-attr-label">' + _esc(a.label) + '</span>' +
+        '<span class="wfi-attr-value">'  + _esc(display) + '</span>' +
         '</div>');
     });
     return rows.join('');
@@ -324,21 +340,112 @@
     return '<div class="wfi-popup">' + sections + '</div>';
   }
 
+  // ── County PostGIS vector identify (DIC-517) ─────────────────────────────
+  // These layers are already on the map as vector tiles, so identify is a local
+  // queryRenderedFeatures — no network call. Results are shaped to match the WMS
+  // `{ cfg, features }` contract so they flow through the same _buildHtml path.
+
+  var _PG_GEOM_SUFFIX = ['-fill', '-line', '-circle'];
+
+  // Default section dot when a layer's paint color can't be read.
+  var _PG_DEFAULT_COLOR = '#7A3B6B';
+
+  // "twp_range" / "area_sq_ft" → "Twp Range" / "Area Sq Ft". A future per-layer
+  // field-label config (DIC-502 discovery) can override these.
+  function _prettifyField(name) {
+    return String(name == null ? '' : name)
+      .replace(/[_-]+/g, ' ')
+      .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
+  // The registered PostGIS vector overlays (config-as-data, same source the
+  // pg-layers renderer reads).
+  function _vectorOverlays() {
+    var L = (window.COUNTY && window.COUNTY.layers) || {};
+    return (L.overlays || []).filter(function (o) {
+      return o && String(o.type || '').toLowerCase() === 'vector';
+    });
+  }
+
+  // Read the rendered paint color of a pg layer for the section dot. The suffix
+  // tells us which paint property holds the color.
+  function _pgColor(map, layerId) {
+    var prop = /-line$/.test(layerId) ? 'line-color'
+             : /-circle$/.test(layerId) ? 'circle-color'
+             : 'fill-color';
+    try { var c = map.getPaintProperty(layerId, prop); if (typeof c === 'string') return c; } catch (_) {}
+    return _PG_DEFAULT_COLOR;
+  }
+
+  function _queryPgLayers(map, point) {
+    var pg    = window.PS_PG_LAYERS;
+    var state = (pg && pg.getState) ? pg.getState() : {};
+    var out   = [];
+
+    _vectorOverlays().forEach(function (o) {
+      if (!state[o.id]) return;   // only identify layers the user has on
+
+      // The geometry layers that actually exist and are visible right now.
+      var layerIds = _PG_GEOM_SUFFIX
+        .map(function (s) { return o.id + s; })
+        .filter(function (lid) {
+          return map.getLayer(lid) && map.getLayoutProperty(lid, 'visibility') !== 'none';
+        });
+      if (!layerIds.length) return;
+
+      // Thin lines / points need a small pixel tolerance to be clickable;
+      // polygons identify at the exact point so we don't grab neighbors.
+      var g = (o.geomType || 'polygon').toLowerCase();
+      var query = (g === 'line' || g === 'point')
+        ? [[point.x - 6, point.y - 6], [point.x + 6, point.y + 6]]
+        : point;
+
+      var feats;
+      try { feats = map.queryRenderedFeatures(query, { layers: layerIds }); }
+      catch (_) { feats = []; }
+      if (!feats.length) return;
+
+      // One real feature can hit both -fill and -line; dedup on id + field values.
+      var seen = {}, uniq = [];
+      feats.forEach(function (f) {
+        var p = f.properties || {};
+        var key = (f.id != null ? f.id : '') + '|' +
+          (o.fields || []).map(function (k) { return p[k]; }).join('|');
+        if (seen[key]) return;
+        seen[key] = 1;
+        uniq.push(f);
+      });
+
+      var attrs = (o.fields || []).map(function (k) {
+        return { key: k, label: _prettifyField(k) };
+      });
+      out.push({
+        cfg: { label: o.label || o.id, color: _pgColor(map, layerIds[0]), attrs: attrs },
+        features: uniq,
+      });
+    });
+
+    return out;
+  }
+
   // ── Click handler ────────────────────────────────────────────────────────
 
   function _onClick(e) {
     var map = window.PS_MAP;
     if (!map) return;
 
-    var state   = window.PS_OVERLAY_LAYERS ? window.PS_OVERLAY_LAYERS.getState() : {};
-    var visible = QUERYABLE.filter(function (cfg) { return !!state[cfg.overlayId]; });
-    if (visible.length === 0) return;
+    var state      = window.PS_OVERLAY_LAYERS ? window.PS_OVERLAY_LAYERS.getState() : {};
+    var visibleWms = QUERYABLE.filter(function (cfg) { return !!state[cfg.overlayId]; });
+    var pgResults  = _queryPgLayers(map, e.point);   // synchronous, local
+    if (visibleWms.length === 0 && pgResults.length === 0) return;
 
     if (_popup) { _popup.remove(); _popup = null; }
 
-    Promise.all(visible.map(function (cfg) { return _fetchOne(cfg, map, e.point); }))
-      .then(function (results) {
-        var html = _buildHtml(results);
+    Promise.all(visibleWms.map(function (cfg) { return _fetchOne(cfg, map, e.point); }))
+      .then(function (wmsResults) {
+        // County vector hits first (precise local data the user just clicked),
+        // then the regulatory overlays.
+        var html = _buildHtml(pgResults.concat(wmsResults));
         if (html === null) return;
         _popup = new maplibregl.Popup({
           className:    'wfi-mgl-popup',
