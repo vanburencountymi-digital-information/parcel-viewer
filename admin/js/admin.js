@@ -38,6 +38,10 @@
     editing: false, draft: null,
     token: window.PV_ADMIN_TOKEN || '',   // interim write auth (DIC-463 replaces it)
   };
+  // Debug/test hook (mirrors the viewer's window handles like PS_MAP / PV_MAP_BUDDY):
+  // exposes the live console state so automated checks can drive round-trip flows the
+  // unprovisioned local store can't (e.g. seed a saved manifest). Not used by the UI.
+  window.PV_ADMIN = { getState: function () { return STATE; } };
   function loadConfig() {
     return fetch(API_BASE + '/config', { cache: 'no-cache' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
@@ -1056,15 +1060,29 @@
   // the SAME loadManifest() gate CI + the engine boot use (C2 / DIC-583). Surfaces:
   // a complete view of the manifest, the capability selection + per-capability AI
   // tri-state the manifest owns (no single module does), Export, and a validated
-  // raw-edit fallback (no one-way doors, §4.11). This increment is read/validate/
-  // export + raw-edit-validate; writing an edited manifest back to the config store
-  // (full bidirectional round-trip) is the follow-on increment.
+  // raw-edit fallback (no one-way doors, §4.11).
+  //
+  // Round-trip (inc 2): the manifest is CANONICAL (§4.11), persisted INSIDE the
+  // versioned config under a `manifest` key so it rides the existing draft/publish
+  // store (DIC-464/465/466) — no new endpoint. The module PREFERS the saved manifest
+  // on open, so open→edit→Save→reopen returns exactly what was saved (no loss).
+  // "Re-assemble from modules" regenerates from the live editor slices (the escape
+  // hatch — never a one-way door). When the writable store isn't provisioned, Save
+  // degrades to the same calm 503 notice every editable module shows.
   var COUNTY_IDFIELDS = { parcels: 'pin' };   // per-source idField hints (until §5 sources land in the store)
+  var _mfForceAssemble = false;               // next render regenerates from modules, ignoring the saved manifest
 
   function assembleCurrentManifest() {
     var asm = window.ISV_MANIFEST_ASSEMBLE;
     if (!asm) return null;
     return asm.assembleManifest(STATE.config || {}, { tenant: COUNTY_KEY, idFields: COUNTY_IDFIELDS });
+  }
+  // The manifest persisted in the store (draft wins over published) — the canonical
+  // artifact. Null until one has been saved.
+  function savedManifest() {
+    if (STATE.draft && STATE.draft.manifest) return STATE.draft.manifest;
+    if (STATE.config && STATE.config.manifest) return STATE.config.manifest;
+    return null;
   }
   function validateManifest(manifest) {
     var loader = window.ISV_LOAD_MANIFEST;
@@ -1079,6 +1097,23 @@
     document.body.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
   }
 
+  // Persist `manifest` into the versioned config draft (and optionally publish),
+  // reusing the exact draft/publish store plumbing the other modules use. The
+  // manifest lives under config.manifest so it round-trips through the same store.
+  function persistManifest(host, manifest, publish) {
+    if (!STATE.draft) STATE.draft = clone(STATE.config);
+    STATE.editing = true;
+    STATE.draft.manifest = manifest;
+    apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (r1) {
+      if (!r1.ok) { flash(host, 'err', writeErr(r1)); return; }
+      if (!publish) { flash(host, 'ok', 'Manifest saved to draft. Reopen to confirm it round-trips.'); renderManifest(host); return; }
+      apiWrite('POST', '/config/' + COUNTY_KEY + '/publish', { author: AUTHOR, note: 'Published theme manifest from console' }).then(function (res) {
+        if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
+        loadConfig().then(function () { STATE.editing = false; STATE.draft = null; renderManifest(host); flash(host, 'ok', 'Published version ' + res.body.version + '.'); });
+      });
+    });
+  }
+
   function renderManifest(host) {
     if (!window.ISV_MANIFEST_ASSEMBLE) {
       host.innerHTML = pageHead('Theme Manifest',
@@ -1086,10 +1121,17 @@
         '<div class="ac-banner ac-banner-edit"><span>⚠</span><div>The ISV engine bundle isn’t loaded on this page, so the manifest assembler is unavailable. Ensure the <code>/engine/</code> scripts are included.</div></div>';
       return;
     }
-    var manifest = assembleCurrentManifest();
+    // Prefer the SAVED (canonical) manifest on open; assemble only when none is stored
+    // or the user explicitly re-assembled. This is what makes Save→reopen lossless.
+    var saved = _mfForceAssemble ? null : savedManifest();
+    _mfForceAssemble = false;
+    var manifest = saved ? clone(saved) : assembleCurrentManifest();
     var res = validateManifest(manifest);
     var json = JSON.stringify(manifest, null, 2);
 
+    var sourceNote = saved
+      ? '<div class="ac-banner"><span>❖</span><div>Showing the <b>saved manifest</b> from the config store. Edit below and <b>Save to draft</b>, or <b>Re-assemble from modules</b> to regenerate from the current editor values.</div></div>'
+      : '<div class="ac-banner"><span>⚙</span><div>Assembled from the current module values (<b>not yet saved</b>). <b>Save to draft</b> to persist it as the canonical manifest.</div></div>';
     var status = res.ok
       ? '<div class="ac-banner"><span>✓</span><div><b>Schema-valid</b> theme manifest (v' + esc(manifest.manifestVersion) +
         ', tenant <code>' + esc(manifest.tenant || '—') + '</code>). Round-trips through the same <code>loadManifest()</code> gate CI and the engine boot use.</div></div>'
@@ -1106,33 +1148,40 @@
         '<h1 class="ac-page-title">Theme Manifest</h1>' +
         '<p class="ac-page-sub">One versioned, exportable manifest assembled from every module — the artifact the engine boots from.</p></div>' +
         '<div class="ac-toolbar">' +
-          '<button class="ac-btn ac-btn-primary" data-mf="export">Export manifest</button>' +
+          '<button class="ac-btn ac-btn-primary" data-mf="save">Save to draft</button>' +
+          '<button class="ac-btn ac-btn-primary" data-mf="publish">Publish</button>' +
+          '<button class="ac-btn" data-mf="export">Export</button>' +
           '<button class="ac-btn" data-mf="reassemble">Re-assemble from modules</button>' +
+          '<button class="ac-btn" data-mf="history">Version history</button>' +
         '</div></div>' +
-      '<div id="ac-flash"></div>' + status +
+      '<div id="ac-flash"></div>' + sourceNote + status +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Capabilities &amp; AI mode</h2>' +
         '<span class="ac-card-note">capability selection + per-capability AI tri-state — owned by the manifest, not any single module</span></div>' +
         '<table class="ac-table"><thead><tr><th>Capability</th><th>AI mode</th><th>Disclosure</th></tr></thead><tbody>' + capRows + '</tbody></table></div>' +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Manifest — complete view &amp; validated raw-edit</h2>' +
-        '<span class="ac-card-note">a complete, editable view of the manifest; edit the JSON and Validate (no one-way doors, §4.11)</span></div>' +
+        '<span class="ac-card-note">a complete, editable view of the manifest; edit the JSON, Validate, then Save (no one-way doors, §4.11)</span></div>' +
         '<textarea id="ac-mf-raw" class="ac-input" spellcheck="false" style="width:100%;min-height:340px;font-family:ui-monospace,Menlo,monospace;white-space:pre;tab-size:2">' + esc(json) + '</textarea>' +
         '<div class="ac-toolbar" style="margin-top:8px;align-items:center">' +
           '<button class="ac-btn ac-btn-primary" data-mf="validate">Validate</button>' +
           '<button class="ac-btn" data-mf="export-edited">Export edited</button>' +
           '<span id="ac-mf-result" class="ac-card-note"></span>' +
-        '</div></div>';
+        '</div></div>' +
+      '<div id="ac-history"></div>';
 
     if (host._mfWired) return;
     host._mfWired = true;
     host.addEventListener('click', function (ev) {
+      var rb = ev.target.closest('[data-rollback]');
+      if (rb) return doRollback(host, parseInt(rb.getAttribute('data-rollback'), 10), renderManifest);
       var b = ev.target.closest('[data-mf]'); if (!b) return;
       var act = b.getAttribute('data-mf');
-      if (act === 'reassemble') { return renderManifest(host); }
+      if (act === 'reassemble') { _mfForceAssemble = true; return renderManifest(host); }
+      if (act === 'history') { return loadHistory(host); }
       if (act === 'export') {
-        var mf = assembleCurrentManifest();
-        return downloadJson((mf && mf.id || 'theme') + '.manifest.json', mf);
+        var cur = savedManifest() || assembleCurrentManifest();
+        return downloadJson((cur && cur.id || 'theme') + '.manifest.json', cur);
       }
-      // raw-edit actions read the textarea.
+      // textarea-driven actions (validate / save / publish / export-edited).
       var ta = host.querySelector('#ac-mf-raw');
       var out = host.querySelector('#ac-mf-result');
       var parsed;
@@ -1145,6 +1194,13 @@
         out.innerHTML = r.ok
           ? '<span style="color:#2f6b4f">✓ Schema-valid' + (r.applied && r.applied.length ? ' (migrated ' + esc(r.applied.join(', ')) + ')' : '') + '</span>'
           : '<span style="color:#b11e2f">✗ ' + esc((r.errors || []).join('; ')) + '</span>';
+        return;
+      }
+      if (act === 'save' || act === 'publish') {
+        // Never persist an invalid manifest — validate at the same gate first.
+        var vr = validateManifest(parsed);
+        if (!vr.ok) { flash(host, 'err', 'Manifest is not schema-valid — fix it before saving: ' + (vr.errors || []).join('; ')); return; }
+        return persistManifest(host, vr.manifest || parsed, act === 'publish');
       }
     });
   }
