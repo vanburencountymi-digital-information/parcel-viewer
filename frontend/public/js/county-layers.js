@@ -15,6 +15,10 @@
   var _state  = {};
   var _added  = {};
 
+  function _county() {
+    return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {};
+  }
+
   function _martinBase() {
     var url = (window.PS_CONFIG && window.PS_CONFIG.MARTIN_URL) || '/tiles';
     if (/^https?:\/\//.test(url)) return url;
@@ -22,7 +26,8 @@
   }
 
   function _registry() {
-    var cfg = window.COUNTY && window.COUNTY.layers && window.COUNTY.layers.countyOverlays;
+    var layers = _county().layers || {};
+    var cfg = layers.countyOverlays;
     return Array.isArray(cfg) ? cfg : [];
   }
 

@@ -58,7 +58,14 @@
       var fn = formatters[name] || FORMATTERS[name] || FORMATTERS.text;
       // ctx carries labels + the WHOLE feature so a formatter can derive from sibling
       // fields (e.g. a mailing address built from street/city/state/zip).
-      return fn(value, { labels: labels, labelMap: field.labelMap, props: props, field: field });
+      return fn(value, {
+        labels: labels,
+        labelMap: field.labelMap,
+        props: props,
+        feature: feature || null,
+        geometry: feature && feature.geometry ? feature.geometry : null,
+        field: field,
+      });
     }
 
     return sections.map(function (sec) {
@@ -76,6 +83,7 @@
         var row = { label: f.label || f.field, field: f.field, raw: raw != null ? raw : null, value: fmt(f.format || 'text', raw, f) };
         if (f.tip) row.tip = f.tip;       // optional viewer tooltip (added only when present,
         if (f.style) row.style = f.style; // so unconfigured rows keep their lean shape)
+        if (f.skipEmpty) row.skipEmpty = true;
         return row;
       });
       return { section: sec.title || '', rows: rows };

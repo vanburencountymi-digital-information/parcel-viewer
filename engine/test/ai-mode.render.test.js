@@ -61,6 +61,8 @@ test('on + available → effective on (data-ai-mode=on, button pressed)', () => 
   assert.equal(sandbox.PV_AI_MODE.isEffective(), true);
   assert.equal(attrs()['data-ai-mode'], 'on');
   assert.equal(btn.getAttribute('aria-pressed'), 'true');
+  assert.equal(btn.classList._s['is-on'], 1);
+  assert.equal(btn.style.color, ''); // CSS owns icon contrast; no inline accent-on-accent.
 });
 
 test('B4 auto-fallback: on but UNAVAILABLE → degrade to facts WITHOUT changing the preference', () => {
@@ -70,6 +72,8 @@ test('B4 auto-fallback: on but UNAVAILABLE → degrade to facts WITHOUT changing
   assert.equal(sandbox.PV_AI_MODE.get(), 'on');        // preference unchanged
   assert.equal(sandbox.PV_AI_MODE.isEffective(), false);
   assert.equal(btn.getAttribute('aria-pressed'), 'true'); // button still shows user intent
+  assert.equal(btn.classList._s['is-degraded'], 1);
+  assert.equal(btn.style.color, '');
   // recovery re-enables automatically
   sandbox.PV_AI_MODE.setAvailable(true);
   assert.equal(attrs()['data-ai-mode'], 'on');

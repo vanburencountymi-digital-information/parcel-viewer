@@ -11,10 +11,10 @@
  * This is the engine seam reaching the live panel. The rich parcel panel (showParcelInfo
  * in map.js, with its AV chart + action buttons) is unchanged; this is additive and used
  * for non-parcel sources (and as the migration target for the parcel panel's field
- * sections). It is NOT wired to map clicks here — that (with click precedence) is the
- * next increment — so the parcel selection flow is untouched.
+ * sections). Vector source click wiring lives in wms-feature-info.js so click
+ * precedence stays close to the overlay identify path.
  *
- * Exposes: window.PV_FEATURE_INFO { renderHtml, show, autoConfig }
+ * Exposes: window.PV_FEATURE_INFO { renderHtml, show, select, autoConfig }
  */
 (function (root) {
   'use strict';
@@ -23,6 +23,10 @@
     return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
+  }
+
+  function countyConfig() {
+    return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {};
   }
 
   function rowsHtml(rows) {
@@ -58,6 +62,14 @@
     return html || '<div class="parcel-info-row"><span class="parcel-info-value">No details.</span></div>';
   }
 
+  function featureId(sourceConfig, feature) {
+    var props = (feature && feature.properties) || feature || {};
+    var idField = sourceConfig && sourceConfig.idField;
+    if (idField && props[idField] != null) return props[idField];
+    if (feature && feature.id != null) return feature.id;
+    return props.id != null ? props.id : null;
+  }
+
   // Render a source's feature into the shared info panel. opts.title sets the header,
   // opts.labels overrides the label maps (defaults to COUNTY.labels).
   function show(sourceConfig, feature, opts) {
@@ -65,12 +77,37 @@
     var panel = document.getElementById('parcel-info-panel');
     var body = panel && panel.querySelector('.parcel-info-body');
     if (!panel || !body) return false;
-    body.innerHTML = renderHtml(sourceConfig, feature, opts.labels || (root.COUNTY && root.COUNTY.labels));
+    body.innerHTML = renderHtml(sourceConfig, feature, opts.labels || countyConfig().labels);
     var titleEl = panel.querySelector('.parcel-info-title');
     if (titleEl && opts.title != null) titleEl.textContent = opts.title;
     panel.hidden = false;
     return true;
   }
 
-  root.PV_FEATURE_INFO = { renderHtml: renderHtml, show: show, autoConfig: autoConfig };
+  function select(sourceConfig, feature, opts) {
+    opts = opts || {};
+    var ok = show(sourceConfig, feature, opts);
+    if (!ok) return false;
+
+    var ref = {
+      sourceId: (sourceConfig && sourceConfig.id) || 'feature',
+      id: featureId(sourceConfig, feature),
+      properties: (feature && feature.properties) || feature || {},
+      geometry: feature && feature.geometry ? feature.geometry : null,
+    };
+
+    if (root.PS_SELECTION) {
+      root.PS_SELECTION.select(ref);
+      if (typeof root.PS_SELECTION.setActive === 'function') root.PS_SELECTION.setActive(ref);
+    } else if (root.PS_BUS) {
+      root.PS_BUS.emit('selection-changed', { ref: ref, previous: null });
+      root.PS_BUS.emit('active-feature-changed', { ref: ref, previous: null });
+    }
+    try {
+      root.dispatchEvent(new CustomEvent('pv:feature-selected', { detail: { ref: ref, source: sourceConfig, feature: feature } }));
+    } catch (_) {}
+    return true;
+  }
+
+  root.PV_FEATURE_INFO = { renderHtml: renderHtml, show: show, select: select, autoConfig: autoConfig };
 }(typeof window !== 'undefined' ? window : this));

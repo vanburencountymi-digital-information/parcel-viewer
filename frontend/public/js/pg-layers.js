@@ -26,6 +26,9 @@
     });
   }
   function getMap() { return window.PS_MAP || null; }
+  function countyConfig() {
+    return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {};
+  }
   function isDark() { return document.documentElement.getAttribute('data-theme') === 'dark'; }
   // Effective dark BACKGROUND for label legibility (DIC-519): dark theme OR aerial
   // imagery on. Used only for label text/halo — geometry paint stays theme-based.
@@ -42,14 +45,15 @@
 
   // The vector overlays registered in the county config (config-as-data).
   function vectorOverlays() {
-    var L = (window.COUNTY && window.COUNTY.layers) || {};
+    var L = countyConfig().layers || {};
     return (L.overlays || []).filter(function (o) {
       return o && String(o.type || '').toLowerCase() === 'vector';
     });
   }
 
   function styleEntry(id) {
-    var sl = (window.COUNTY && window.COUNTY.styling && window.COUNTY.styling.layers) || {};
+    var styling = countyConfig().styling || {};
+    var sl = styling.layers || {};
     return sl[id] || {};
   }
 

@@ -15,6 +15,10 @@
   var menu = document.getElementById("pv-admin-menu");
   if (!btn || !menu) return;
 
+  function countyConfig() {
+    return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {};
+  }
+
   // ── Dropdown open/close ────────────────────────────────────────────────────
   function openMenu() {
     menu.hidden = false;
@@ -332,7 +336,7 @@
   }
 
   function openAbout() {
-    var cc = window.COUNTY || {};
+    var cc = countyConfig();
     var countyName = cc.name || "Van Buren County";
     var place = countyName + (cc.state ? ", " + cc.state : "");
     openModal("About", [
@@ -605,7 +609,8 @@
   // when the user hasn't picked a scheme; falls back to terracotta.
   function _countyScheme() {
     try {
-      var c = window.COUNTY && COUNTY.styling && COUNTY.styling.colorScheme;
+      var styling = countyConfig().styling || {};
+      var c = styling.colorScheme;
       return PV_SCHEMES.indexOf(c) !== -1 ? c : "terracotta";
     } catch (_) { return "terracotta"; }
   }
@@ -1083,7 +1088,10 @@
     }
     var base = window.API_BASE || "";
     var key  = "";
-    try { key = (window.COUNTY && COUNTY.integrations && COUNTY.integrations.googleMapsEmbedKey) || ""; } catch (_) {}
+    try {
+      var integrations = countyConfig().integrations || {};
+      key = integrations.googleMapsEmbedKey || "";
+    } catch (_) {}
 
     function heading(vp, lookAt) {
       try {
@@ -1209,7 +1217,7 @@
     return "";
   }
 
-  var DATA_REQUEST_FORM_URL = (window.COUNTY && COUNTY.forms && COUNTY.forms.dataRequest) ||
+  var DATA_REQUEST_FORM_URL = ((countyConfig().forms || {}).dataRequest) ||
     "https://form.jotform.com/261544522974159";
 
   function openDataRequest() {

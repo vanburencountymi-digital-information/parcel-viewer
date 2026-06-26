@@ -19,6 +19,9 @@
   // Source-agnostic doc primitives live in the engine (ISV_DOC, A7b). We prefer them
   // and inject the map handle, rather than the engine reading globals.
   function engineDoc() { return root.ISV_DOC || null; }
+  function countyConfig() {
+    return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {};
+  }
 
   // ── Map image capture ──────────────────────────────────────────────────────
   // The map handle is injected (defaults to the viewer's PS_MAP global for the
@@ -75,7 +78,7 @@
   function parcelSummaryData(parcel, opts) {
     opts = opts || {};
     var p = parcel || {};
-    var county = (root.COUNTY && root.COUNTY.name) || 'County';
+    var county = countyConfig().name || 'County';
     var rows = [];
     function row(label, value) { if (value != null && value !== '') rows.push({ label: label, value: value }); }
     row('Owner', p.owner_name || p.owner);

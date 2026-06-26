@@ -24,7 +24,7 @@
 
   var _layers = {};   // id -> { id, label, type, visible, fields, geomType? }
 
-  function _county()  { return window.COUNTY || {}; }
+  function _county()  { return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {}; }
   function _checked(id) { var el = document.getElementById(id); return !!(el && el.checked); }
 
   // Parcel tile attributes (drives "what fields does this layer have").

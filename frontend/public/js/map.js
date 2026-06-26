@@ -16,15 +16,20 @@
  */
 
 (function () {
+  const ctx = window.PS_CONTEXT || null;
   const API_BASE = window.API_BASE || "";
   const MARTIN_URL = (window.PS_CONFIG && window.PS_CONFIG.MARTIN_URL) || "/tiles";
   const SOURCE_LAYER = "parcels";
 
+  function countyConfig() {
+    return (ctx && ctx.config) || window.COUNTY || {};
+  }
+
   // Stamp the county name into the topbar from the manifest (county-config.js).
-  if (window.COUNTY && COUNTY.name) {
+  if (countyConfig().name) {
     document.addEventListener("DOMContentLoaded", function () {
       var el = document.querySelector(".pv-brand-county");
-      if (el) el.textContent = COUNTY.name;
+      if (el) el.textContent = countyConfig().name;
     });
   }
 
@@ -198,7 +203,7 @@
     window.PS_BUS.on("active-feature-changed", function (e) {
       const r = e && e.ref;
       if (r && r.sourceId === "parcels" && r.properties) {
-        showParcelInfo(r.pin || r.id, r.properties, r.geometry);
+        showParcelInfo(r.pin || r.selectionKey || r.id, r.properties, r.geometry);
       }
     });
   }
@@ -221,7 +226,17 @@
     return true;
   }
 
-  function clearSelectionAll() {
+  function announceSelectionCleared() {
+    if (window.PS_SELECTION) {
+      window.PS_SELECTION.clear();
+      if (typeof window.PS_SELECTION.clearActive === "function") window.PS_SELECTION.clearActive();
+    } else if (window.PS_BUS) {
+      window.PS_BUS.emit("selection-changed", { ref: null, previous: null });
+      window.PS_BUS.emit("active-feature-changed", { ref: null, previous: null });
+    }
+  }
+
+  function resetSelectionStorage() {
     for (const pin of selectedPins) {
       setFS(pin, { selected: false, activeInfo: false });
     }
@@ -229,13 +244,17 @@
     selectedFeatureMap.clear();
     activeInfoPin = null;
     activeInfoIndex = 0;
+  }
+
+  function clearSelectionAll() {
+    resetSelectionStorage();
     updateSelectionBadge();
     hideInfoPanel();
     setStatusStrip(DEFAULT_STATUS);
     window.PS_STATE.parcel = null;
     // Announce the clear on the bus (A4 slice 2) — the select-side hook isn't called
     // on deselect, so this completes the selection-changed stream for subscribers.
-    if (window.PS_SELECTION) window.PS_SELECTION.clear();
+    announceSelectionCleared();
   }
 
   function setActiveInfoPin(pin) {
@@ -530,7 +549,7 @@
   // Back-compat: an older manifest with top-level styling.parcels / styling.choropleth
   // is normalized into a single 'parcels' entry.
   function stylingLayers() {
-    const st = (window.COUNTY && COUNTY.styling) || {};
+    const st = countyConfig().styling || {};
     if (st.layers && typeof st.layers === "object") return st.layers;
     if (st.parcels || st.choropleth) {
       return { parcels: { label: "Parcels", paint: st.parcels || {}, choropleth: st.choropleth || null } };
@@ -624,7 +643,7 @@
   ];
 
   function _parcelChoroViews() {
-    try { return COUNTY.styling.layers.parcels.choroplethViews || []; } catch (_) { return []; }
+    try { return countyConfig().styling.layers.parcels.choroplethViews || []; } catch (_) { return []; }
   }
   function _findChoroView(id) {
     const vs = _parcelChoroViews();
@@ -714,7 +733,7 @@
   // Mirror a view's config to `.choropleth` (null for Plain), preparing dynamic
   // categories / feature-state as needed.
   function _applyChoroConfig(v) {
-    const parcels = COUNTY.styling.layers.parcels;
+    const parcels = countyConfig().styling.layers.parcels;
     if (!v || v.engine === "none") { parcels.choropleth = null; return; }
     if (v.dynamic) _buildDynamicCategories(v);
     v.enabled = true;                 // choroplethConfig() gate
@@ -733,7 +752,7 @@
     if (v.engine === "feature-state") _mergeChoroCache();
     _applyChoroConfig(v);
     const dark = document.documentElement.getAttribute("data-theme") === "dark";
-    if (map) applyLayerPaint("parcels", COUNTY.styling.layers.parcels, dark);
+    if (map) applyLayerPaint("parcels", countyConfig().styling.layers.parcels, dark);
     updateChoroplethLegend(choroplethLegendSections(stylingLayers(), dark));
     if (_refreshParcelFill) _refreshParcelFill();   // resting fill-opacity (incl. Plain → 0)
     _syncChoroSelector();
@@ -749,7 +768,8 @@
     try { saved = localStorage.getItem(_CHORO_LS); } catch (_) {}
     const v = _findChoroView(saved);
     _activeChoroId = v ? v.id : null;
-    if (window.COUNTY && COUNTY.styling && COUNTY.styling.layers && COUNTY.styling.layers.parcels) {
+    const cfg = countyConfig();
+    if (cfg.styling && cfg.styling.layers && cfg.styling.layers.parcels) {
       _applyChoroConfig(v);
     }
   }
@@ -801,10 +821,10 @@
       const before = _choroCache.size;
       _mergeChoroCache();
       if (_choroCache.size !== before) _choroDirty = true;   // genuinely new values
-      if (v.dynamic) { _buildDynamicCategories(v); COUNTY.styling.layers.parcels.choropleth = v; }
+      if (v.dynamic) { _buildDynamicCategories(v); countyConfig().styling.layers.parcels.choropleth = v; }
       _hydrateChoroState(v);
       const dark = document.documentElement.getAttribute("data-theme") === "dark";
-      if (map) applyLayerPaint("parcels", COUNTY.styling.layers.parcels, dark);
+      if (map) applyLayerPaint("parcels", countyConfig().styling.layers.parcels, dark);
       updateChoroplethLegend(choroplethLegendSections(stylingLayers(), dark));
     });
 
@@ -985,7 +1005,8 @@
   // County default theme (COUNTY.styling.theme, DIC-460): 'light'/'dark' force it,
   // anything else (or unset) → the OS preference.
   function countyThemeDefault(prefersDark) {
-    const t = window.COUNTY && COUNTY.styling && COUNTY.styling.theme;
+    const cfg = countyConfig();
+    const t = cfg.styling && cfg.styling.theme;
     if (t === "dark") return true;
     if (t === "light") return false;
     return prefersDark;
@@ -1015,7 +1036,7 @@
   // ── Map init ───────────────────────────────────────────────────────────
   async function initMap() {
     const style = await resolveStyle();
-    const cmap = (window.COUNTY && COUNTY.map) || {};
+    const cmap = countyConfig().map || {};
     const EXTENT = cmap.extent || [[-86.33, 42.06], [-85.76, 42.43]];
 
     map = new maplibregl.Map({
@@ -1074,6 +1095,9 @@
         const feature = e.features[0];
         // Drawing tools handle their own click via map.on('click') in drawing-tools.js
         if (window.PS_STATE && window.PS_STATE.activeDrawTool) return;
+        if (window.PS_WMS_FEATURE_INFO &&
+            typeof window.PS_WMS_FEATURE_INFO.selectVectorFeatureAt === "function" &&
+            window.PS_WMS_FEATURE_INFO.selectVectorFeatureAt(e.point)) return;
         const shift = isShiftDown || !!(e.originalEvent && e.originalEvent.shiftKey);
         const id = feature.properties.id;
         if (id == null) return;
@@ -1314,7 +1338,8 @@
     // pv-ai-mode.js applies it (toggle state, Map Buddy visibility, degrade-to-facts).
     getAiMode: function () {
       try { var v = localStorage.getItem("pv-ai-mode"); if (v === "on" || v === "off") return v; } catch (_) {}
-      var d = (window.COUNTY && window.COUNTY.ai && window.COUNTY.ai.defaultMode) || "off";
+      var ai = countyConfig().ai || {};
+      var d = ai.defaultMode || "off";
       return d === "on" ? "on" : "off";
     },
     setAiMode: function (mode) {
@@ -1490,31 +1515,115 @@
 
   // ── Info display ───────────────────────────────────────────────────────
   // County-specific label maps now live in county-config.js (window.COUNTY).
-  const PROP_CLASS_LABELS  = (window.COUNTY && COUNTY.labels && COUNTY.labels.propClass)  || {};
-  const SCHOOL_DIST_LABELS = (window.COUNTY && COUNTY.labels && COUNTY.labels.schoolDist) || {};
+  const _countyLabels = countyConfig().labels || {};
+  const PROP_CLASS_LABELS  = _countyLabels.propClass || {};
+  const SCHOOL_DIST_LABELS = _countyLabels.schoolDist || {};
 
   // ── A5 (DIC-407): express parcel info SECTIONS through the engine renderer ──
-  // The "Owner" section is declared as source config + rendered by ISV_POPUP — the
-  // same source-agnostic renderer that draws any source. The rich Assessed-Values
-  // table + AV chart legitimately stay custom (domain rendering config can't express;
-  // the spec's plugin/escape-hatch tier). A safe inline fallback keeps PV green if the
-  // engine didn't load. This is the "hunt hardcoded fields → config" discipline, one
-  // verifiable section at a time.
-  const _PARCEL_OWNER_SOURCE = {
+  // Parcel panel sections are declared as source config + rendered by ISV_POPUP.
+  // Rich widgets (assessed-values table/chart, explain buttons, actions) stay as
+  // small viewer renderers fed by source-config rows. A safe inline fallback keeps
+  // PV green if the engine bundle is absent.
+  const _PARCEL_INFO_SOURCE = {
     id: "parcels", idField: "pin",
     popup: { sections: [
+      { title: "Parcel", fields: [
+        { label: "Address", field: "prop_street", format: "site_address" },
+        { label: "Area", field: "gis_acres", format: "area_units",
+          tip: "Parcel area calculated from the mapped boundary" },
+        { label: "Center", field: "_center", format: "center_point", skipEmpty: true,
+          tip: "A point inside the parcel boundary. Format follows the coordinate readout at bottom-right (click it to change)." },
+        { label: "Class", field: "prop_class", format: "class_display",
+          tip: "Michigan STC property classification code and description" },
+        { label: "School", field: "school_dist", format: "school_display",
+          tip: "School district code" },
+        { label: "Geometry", field: "source", format: "source_provenance", skipEmpty: true,
+          tip: "How this geometry row was created (COGO commit, split, merge, boundary adjustment, or original shapefile migration)" } ] },
       { title: "Owner", fields: [
         { label: "Name", field: "owner_name" },
         { label: "Mailing", field: "owner_street", format: "owner_mail",
           tip: "Owner's mailing address as recorded in the tax roll",
-          style: "white-space:normal;word-break:break-word" } ] } ] },
+          style: "white-space:normal;word-break:break-word" } ] },
+      { title: "Assessed Values", fields: [
+        { label: "AV", field: "assessed_value", format: "money",
+          tip: "Assessed Value - set by the assessor at 50% of estimated True Cash Value (TCV)" },
+        { label: "AV Prior", field: "prev_assessed_value", format: "money",
+          tip: "Prior year's Assessed Value" },
+        { label: "TV", field: "taxable_value", format: "money",
+          tip: "Taxable Value - the value taxes are actually levied on. Capped each year at the lesser of SEV or prior year TV plus the inflation rate (Michigan Proposal A)." },
+        { label: "TV Prior", field: "prev_taxable_value", format: "money",
+          tip: "Prior year's Taxable Value" },
+        { label: "TMV", field: "assessed_value", format: "true_market_value",
+          tip: "True Market Value (estimated) - calculated as 2x Assessed Value" },
+        { label: "TMV Prior", field: "prev_assessed_value", format: "true_market_value",
+          tip: "Prior estimated True Market Value - calculated as 2x prior Assessed Value" },
+        { label: "AV History", field: "assessed_value_yr0", format: "av_history",
+          tip: "5-year assessed value history (oldest to newest)" },
+        { label: "PRE", field: "homestead", format: "percent",
+          tip: "Principal Residence Exemption - reduces taxable value for the owner's primary home. 100% = full exemption; 0% = no exemption (rental, vacant, or non-homestead)" } ] },
+      { title: "Tax Description", fields: [
+        { label: "Description", field: "ps_legal_description", format: "tax_description" } ] } ] },
   };
   const _PARCEL_FORMATTERS = {
+    site_address: function (_v, ctx) {
+      const p = ctx.props || {};
+      return [p.prop_street || p.PCOMBINED, p.prop_city].filter(Boolean).join(", ") || null;
+    },
+    area_units: function (_v, ctx) {
+      const p = ctx.props || {};
+      const v = p.gis_acres != null ? p.gis_acres : p.acres;
+      if (v == null) return null;
+      const ac = parseFloat(v);
+      if (!ac) return null;
+      const sqft = Math.round(ac * 43560).toLocaleString();
+      let units = null;
+      try { units = localStorage.getItem("pv-area-units"); } catch (_) {}
+      if (units === "sqft") return sqft + " sq ft";
+      const acStr = ac.toFixed(2) + " ac";
+      return ac >= 1 ? acStr : acStr + " (" + sqft + " sq ft)";
+    },
+    center_point: function (_v, ctx) {
+      const repPt = representativePoint(ctx.geometry);
+      return repPt ? _formatLngLat({ lng: repPt[0], lat: repPt[1] }) : null;
+    },
+    class_display: function (_v, ctx) {
+      const p = ctx.props || {};
+      const code = p.prop_class ? String(p.prop_class).trim() : null;
+      const label = code && PROP_CLASS_LABELS[code];
+      return code ? (label ? code + " – " + label : code) : null;
+    },
+    school_display: function (_v, ctx) {
+      const p = ctx.props || {};
+      const code = p.school_dist ? String(p.school_dist).trim() : null;
+      const name = code && SCHOOL_DIST_LABELS[code];
+      return name || code || null;
+    },
+    source_provenance: function (v) {
+      return (v && v !== "migration") ? v : null;
+    },
     owner_mail: function (_v, ctx) {
       const p = ctx.props || {};
       return [p.owner_street || "",
               [p.owner_city || "", p.owner_state || ""].filter(Boolean).join(" "),
               p.owner_zip || ""].filter(Boolean).join(", ") || null;
+    },
+    true_market_value: function (v) {
+      const n = v != null && v !== "" ? parseInt(v) : null;
+      return n != null && !isNaN(n) ? "$" + (n * 2).toLocaleString() : null;
+    },
+    percent: function (v) {
+      const n = v != null && v !== "" ? parseFloat(v) : null;
+      return n != null && !isNaN(n) ? n + "%" : null;
+    },
+    av_history: function (_v, ctx) {
+      const p = ctx.props || {};
+      return [p.assessed_value_yr0, p.assessed_value_yr1, p.assessed_value_yr2,
+              p.assessed_value_yr3, p.assessed_value_yr4]
+        .map(function (v) { return v != null && v !== "" ? parseInt(v) : null; });
+    },
+    tax_description: function (_v, ctx) {
+      const p = ctx.props || {};
+      return p.ps_legal_description || p.legal_description || null;
     },
   };
   function _escHtml(s) {
@@ -1522,19 +1631,29 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
     });
   }
-  // Render a config section through ISV_POPUP into the parcel panel's row markup
-  // (showing "—" for empty, matching the inline rows). Returns null if the engine
-  // isn't loaded so the caller can fall back to inline HTML.
-  function _engineSectionHtml(cfg, formatters, props, title) {
+  function _parcelDisplayPin(selectionKey, props) {
+    const p = props || {};
+    return p.parcel_no || p.pin || p.PIN || selectionKey || p.id || "";
+  }
+  function _engineSectionRows(cfg, formatters, props, title, geometry) {
     if (!window.ISV_POPUP) return null;
     const labels = {
       propClass: (typeof PROP_CLASS_LABELS !== "undefined" ? PROP_CLASS_LABELS : {}),
       schoolDist: (typeof SCHOOL_DIST_LABELS !== "undefined" ? SCHOOL_DIST_LABELS : {}),
     };
-    const secs = window.ISV_POPUP.renderSections(cfg, { properties: props }, { labels: labels, formatters: formatters });
+    const secs = window.ISV_POPUP.renderSections(cfg, { properties: props, geometry: geometry }, { labels: labels, formatters: formatters });
     const sec = secs.filter(function (s) { return s.section === title; })[0];
-    if (!sec) return null;
-    const rows = sec.rows.map(function (r) {
+    return sec ? sec.rows : null;
+  }
+  // Render a config section through ISV_POPUP into the parcel panel's row markup
+  // (showing "—" for empty, matching the inline rows). Returns null if the engine
+  // isn't loaded so the caller can fall back to inline HTML.
+  function _engineSectionHtml(cfg, formatters, props, title, geometry) {
+    const sectionRows = _engineSectionRows(cfg, formatters, props, title, geometry);
+    if (!sectionRows) return null;
+    const rows = sectionRows.filter(function (r) {
+      return !(r.skipEmpty && (r.value == null || r.value === ""));
+    }).map(function (r) {
       const tip = r.tip ? ' data-tip="' + _escHtml(r.tip) + '"' : "";
       const style = r.style ? ' style="' + _escHtml(r.style) + '"' : "";
       const val = (r.value != null && r.value !== "") ? _escHtml(r.value) : "—";
@@ -1543,12 +1662,84 @@
     }).join("");
     return '<div class="parcel-info-section-title">' + _escHtml(title) + "</div>" + rows;
   }
+  function _assessedValuesHtml(props, pin, geometry) {
+    const rows = _engineSectionRows(_PARCEL_INFO_SOURCE, _PARCEL_FORMATTERS, props, "Assessed Values", geometry);
+    if (!rows) return null;
+    const byLabel = {};
+    rows.forEach(function (r) { byLabel[r.label] = r; });
+    const htmlVal = function (label) {
+      const r = byLabel[label];
+      return r && r.value != null && r.value !== "" ? _escHtml(r.value) : "&mdash;";
+    };
+    const tipAttr = function (label) {
+      const r = byLabel[label];
+      return r && r.tip ? ' data-tip="' + _escHtml(r.tip) + '"' : "";
+    };
+    const historyRow = byLabel["AV History"];
+    const histVals = historyRow && Array.isArray(historyRow.value) ? historyRow.value : [];
+    const avChartHtml = (function () {
+      const vals = histVals.slice().reverse();
+      const validVals = vals.filter(function (v) { return v != null; });
+      if (validVals.length === 0) {
+        return '<div class="parcel-info-row"><span class="parcel-info-label"' + tipAttr("AV History") + '>AV History</span><span class="parcel-info-value">&mdash;</span></div>';
+      }
+      const curYear = new Date().getFullYear();
+      const maxVal = Math.max.apply(null, validVals);
+      const W = 240, H = 74, labelH = 13, valueH = 11, barAreaH = H - labelH - valueH;
+      const colW = W / vals.length, barW = colW * 0.55;
+      const dark = document.documentElement.getAttribute("data-theme") === "dark";
+      const barTop = dark ? "#6b5a38" : "#CBAB7A";
+      const barBot = dark ? "#4a3e26" : "#B58D4A";
+      const lblClr = dark ? "#b09a7a" : "#6D5C52";
+      const yrClr  = dark ? "#b9bdc4" : "#4b5563";
+      const bars = vals.map(function (v, i) {
+        const cx = colW * i + colW / 2;
+        const yr = curYear - (vals.length - 1 - i);
+        if (v == null) return '<text x="' + cx + '" y="' + (H - 2) + '" text-anchor="middle" font-size="9" fill="' + yrClr + '">' + yr + '</text>';
+        const bh = Math.max(3, Math.round((v / maxVal) * barAreaH));
+        const bx = cx - barW / 2, by = valueH + barAreaH - bh;
+        const lbl = "$" + Math.round(v / 1000) + "k";
+        return '<rect x="' + bx.toFixed(1) + '" y="' + by.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + bh.toFixed(1) + '" fill="url(#av-bar-grad)" rx="2"/>' +
+               '<text x="' + cx + '" y="' + (by - 2).toFixed(1) + '" text-anchor="middle" font-size="9" fill="' + lblClr + '">' + lbl + '</text>' +
+               '<text x="' + cx + '" y="' + (H - 2) + '" text-anchor="middle" font-size="9" fill="' + yrClr + '">' + yr + '</text>';
+      }).join("");
+      const defs = '<defs><linearGradient id="av-bar-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + barTop + '"/><stop offset="100%" stop-color="' + barBot + '"/></linearGradient></defs>';
+      return '<div style="margin-top:6px"><span class="parcel-info-label"' + tipAttr("AV History") + '>AV History</span>' +
+             '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;margin-top:3px" aria-label="AV history chart">' + defs + bars + '</svg></div>';
+    })();
+
+    return '<div class="parcel-info-section-title">Assessed Values' +
+        '<button class="pv-info-btn" data-info="assess" data-pin="' + _escHtml(pin) + '" data-tip="About property assessment" aria-label="About property assessment">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' +
+        '</button></div>' +
+      '<table class="parcel-info-table">' +
+      '<thead><tr><th></th><th>Current</th><th>Prior</th></tr></thead>' +
+      '<tbody>' +
+      '<tr><td' + tipAttr("AV") + '>AV</td><td>' + htmlVal("AV") + '</td><td>' + htmlVal("AV Prior") + '</td></tr>' +
+      '<tr><td' + tipAttr("TV") + '>TV</td><td>' + htmlVal("TV") + '</td><td>' + htmlVal("TV Prior") + '</td></tr>' +
+      '<tr><td' + tipAttr("TMV") + '>TMV</td><td>' + htmlVal("TMV") + '</td><td>' + htmlVal("TMV Prior") + '</td></tr>' +
+      '</tbody></table>' +
+      avChartHtml +
+      '<div class="parcel-info-row" style="margin-top:6px"><span class="parcel-info-label"' + tipAttr("PRE") + '>PRE</span><span class="parcel-info-value">' + htmlVal("PRE") + '</span></div>';
+  }
+  function _taxDescriptionHtml(props, pin, geometry) {
+    const rows = _engineSectionRows(_PARCEL_INFO_SOURCE, _PARCEL_FORMATTERS, props, "Tax Description", geometry);
+    if (!rows) return null;
+    const row = rows[0] || {};
+    const desc = row.value != null && row.value !== "" ? row.value : null;
+    return '<div class="parcel-info-section-title">Tax Description' +
+        '<button class="pv-info-btn" data-info="tax" data-pin="' + _escHtml(pin) + '" data-tip="About this tax description" aria-label="About this tax description">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' +
+        '</button></div>' +
+      '<div class="parcel-info-desc">' + (desc ? _escHtml(desc) : "&mdash;") + '</div>';
+  }
 
   // Field layout matches the geo.parcels / assessing.vbc_parcels payload
   // returned by GET /parcel/{id}.
   function showParcelInfo(pin, p, geometry) {
     if (!infoPanel || !infoBody) return;
     _lastParcelArgs = { pin, p, geometry };   // for re-render on theme toggle
+    const displayPin = _parcelDisplayPin(pin, p);
 
     // Representative interior point (lng/lat), formatted to the active readout
     // format (DD / DMS / State Plane).
@@ -1628,33 +1819,36 @@
       return `<div style="margin-top:6px"><span class="parcel-info-label" data-tip="5-year assessed value history (oldest to newest)">AV History</span>` +
              `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block;margin-top:3px" aria-label="AV history chart">${defs}${bars}</svg></div>`;
     })();
+    const assessedValuesHtml = _assessedValuesHtml(p, displayPin, geometry);
+    const taxDescriptionHtml = _taxDescriptionHtml(p, displayPin, geometry);
 
     const provenance = p.source && p.source !== "migration"
       ? `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="How this geometry row was created (COGO commit, split, merge, boundary adjustment, or original shapefile migration)">Geometry</span><span class="parcel-info-value">${dash(p.source)}</span></div>`
       : "";
 
     infoBody.innerHTML =
-      `<div class="parcel-info-pin">${pin}</div>` +
+      `<div class="parcel-info-pin">${_escHtml(displayPin)}</div>` +
       `<div class="parcel-info-zoning">${dash(p.municipality)}</div>` +
       `<hr class="parcel-info-divider">` +
 
-      `<div class="parcel-info-section-title">Parcel</div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label">Address</span><span class="parcel-info-value">${dash(siteAddr)}</span></div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Parcel area calculated from the mapped boundary">Area</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
-      coordRow +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Michigan STC property classification code and description">Class</span><span class="parcel-info-value">${classDisplay}</span></div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="${schoolTip}">School</span><span class="parcel-info-value">${schoolDisplay}</span></div>` +
-      provenance +
+      (_engineSectionHtml(_PARCEL_INFO_SOURCE, _PARCEL_FORMATTERS, p, "Parcel", geometry) ||
+        (`<div class="parcel-info-section-title">Parcel</div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label">Address</span><span class="parcel-info-value">${dash(siteAddr)}</span></div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Parcel area calculated from the mapped boundary">Area</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
+         coordRow +
+         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Michigan STC property classification code and description">Class</span><span class="parcel-info-value">${classDisplay}</span></div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="${schoolTip}">School</span><span class="parcel-info-value">${schoolDisplay}</span></div>` +
+         provenance)) +
       `<hr class="parcel-info-divider">` +
 
-      (_engineSectionHtml(_PARCEL_OWNER_SOURCE, _PARCEL_FORMATTERS, p, "Owner") ||
+      (_engineSectionHtml(_PARCEL_INFO_SOURCE, _PARCEL_FORMATTERS, p, "Owner") ||
         (`<div class="parcel-info-section-title">Owner</div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label">Name</span><span class="parcel-info-value">${dash(p.owner_name)}</span></div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>`)) +
       `<hr class="parcel-info-divider">` +
 
-      `<div class="parcel-info-section-title">Assessed Values` +
-        `<button class="pv-info-btn" data-info="assess" data-pin="${pin}" data-tip="About property assessment" aria-label="About property assessment">` +
+      (assessedValuesHtml || (`<div class="parcel-info-section-title">Assessed Values` +
+        `<button class="pv-info-btn" data-info="assess" data-pin="${_escHtml(displayPin)}" data-tip="About property assessment" aria-label="About property assessment">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>` +
         `</button></div>` +
       `<table class="parcel-info-table">` +
@@ -1665,14 +1859,14 @@
       `<tr><td data-tip="True Market Value (estimated) — calculated as 2× Assessed Value">TMV</td><td>${fmt(av0 != null ? av0 * 2 : null)}</td><td>${fmt(av1 != null ? av1 * 2 : null)}</td></tr>` +
       `</tbody></table>` +
       avChartHtml +
-      `<div class="parcel-info-row" style="margin-top:6px"><span class="parcel-info-label" data-tip="Principal Residence Exemption — reduces taxable value for the owner's primary home. 100% = full exemption; 0% = no exemption (rental, vacant, or non-homestead)">PRE</span><span class="parcel-info-value">${homestead != null ? homestead + "%" : "—"}</span></div>` +
+      `<div class="parcel-info-row" style="margin-top:6px"><span class="parcel-info-label" data-tip="Principal Residence Exemption — reduces taxable value for the owner's primary home. 100% = full exemption; 0% = no exemption (rental, vacant, or non-homestead)">PRE</span><span class="parcel-info-value">${homestead != null ? homestead + "%" : "—"}</span></div>`)) +
       `<hr class="parcel-info-divider">` +
 
-      `<div class="parcel-info-section-title">Tax Description` +
-        `<button class="pv-info-btn" data-info="tax" data-pin="${pin}" data-tip="About this tax description" aria-label="About this tax description">` +
+      (taxDescriptionHtml || (`<div class="parcel-info-section-title">Tax Description` +
+        `<button class="pv-info-btn" data-info="tax" data-pin="${_escHtml(displayPin)}" data-tip="About this tax description" aria-label="About this tax description">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>` +
         `</button></div>` +
-      `<div class="parcel-info-desc">${dash(legalDesc)}</div>` +
+      `<div class="parcel-info-desc">${dash(legalDesc)}</div>`)) +
 
       // Parcel actions — handled by the .pv-ptool / [data-bm-toggle] delegation in admin-menu.js
       `<div class="parcel-info-actions">` +
@@ -1734,12 +1928,15 @@
     updateInfoPanelNav();
 
     const p = entry.props;
+    const displayPin = _parcelDisplayPin(pin, p);
     // A4 (DIC-569): build the feature ref once, drive the SelectionManager (→
     // 'selection-changed' on the bus), and emit 'active-feature-changed' so the info
     // panel subscriber renders. Direct fallback if the engine/bus didn't load.
-    const _ref = { sourceId: "parcels", id: (p.id != null ? p.id : pin), pin: pin, properties: p, geometry: entry.geometry };
+    const _ref = { sourceId: "parcels", id: (p.id != null ? p.id : pin), pin: displayPin, selectionKey: pin, properties: p, geometry: entry.geometry };
     if (window.PS_SELECTION) window.PS_SELECTION.select(_ref);
-    if (window.PS_BUS) {
+    if (window.PS_SELECTION && typeof window.PS_SELECTION.setActive === "function") {
+      window.PS_SELECTION.setActive(_ref);
+    } else if (window.PS_BUS) {
       window.PS_BUS.emit("active-feature-changed", { ref: _ref });
     } else {
       showParcelInfo(pin, p, entry.geometry);
@@ -1750,7 +1947,9 @@
 
     window.PS_STATE.parcel = {
       id:           p.id ?? null,
-      pin,
+      pin:          displayPin,
+      parcel_no:    p.parcel_no || displayPin,
+      selectionKey: pin,
       acres:        p.gis_acres != null ? parseFloat(p.gis_acres) : (p.acres != null ? parseFloat(p.acres) : null),
       owner_name:   p.owner_name || null,
       site_address: p.prop_street || p.PCOMBINED || null,
@@ -1765,8 +1964,8 @@
     const n = selectedPins.length;
     const acresStr = window.PS_STATE.parcel.acres != null ? window.PS_STATE.parcel.acres.toFixed(2) : "?";
     setStatusStrip(n > 1
-      ? `${n} parcels selected — viewing ${pin}`
-      : `Parcel ${pin} · ${p.owner_name || "unknown owner"} · ${acresStr} acres`);
+      ? `${n} parcels selected — viewing ${displayPin}`
+      : `Parcel ${displayPin} · ${p.owner_name || "unknown owner"} · ${acresStr} acres`);
 
     flyToActiveParcel(false);
 
@@ -1775,7 +1974,7 @@
 
   // ── selectParcel ───────────────────────────────────────────────────────
   function selectParcel(props, geometry, shiftKey) {
-    const pin = props.pin || props.PIN;
+    const pin = props.pin || props.PIN || props.parcel_no || props.id;
 
     if (shiftKey) {
       if (selectedPins.includes(pin)) {
@@ -1790,6 +1989,7 @@
           hideInfoPanel();
           setStatusStrip(DEFAULT_STATUS);
           window.PS_STATE.parcel = null;
+          announceSelectionCleared();
           return;
         }
 
@@ -1807,13 +2007,7 @@
       }
     } else {
       // Replace entire selection
-      for (const p of selectedPins) {
-        if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: p }, { selected: false, activeInfo: false });
-      }
-      selectedPins = [];
-      selectedFeatureMap.clear();
-      activeInfoPin = null;
-      activeInfoIndex = 0;
+      resetSelectionStorage();
 
       addToSelection(pin, props, geometry);
       updateSelectionBadge();
@@ -1848,13 +2042,7 @@
     opts = opts || {};
     return fetchParcel(id).then((feature) => {
       const pin = feature.properties.pin || feature.properties.parcel_no;
-      for (const p of selectedPins) {
-        map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: p }, { selected: false, activeInfo: false });
-      }
-      selectedPins = [];
-      selectedFeatureMap.clear();
-      activeInfoPin = null;
-      activeInfoIndex = 0;
+      resetSelectionStorage();
 
       addToSelection(pin, feature.properties, feature.geometry);
       updateSelectionBadge();
@@ -2245,8 +2433,8 @@
     // until the user opts in via the tab-strip toggle; the choice persists.
     (function () {
       const advToggle = document.getElementById("mcp-advanced-toggle");
-      const advCfg = (window.COUNTY && COUNTY.tools && Array.isArray(COUNTY.tools.advanced))
-        ? COUNTY.tools.advanced : null;
+      const toolsCfg = countyConfig().tools || {};
+      const advCfg = Array.isArray(toolsCfg.advanced) ? toolsCfg.advanced : null;
       if (advCfg) {
         tabs.forEach(t => t.toggleAttribute("data-advanced", advCfg.indexOf(t.dataset.tab) !== -1));
       }
@@ -2504,6 +2692,7 @@
           hideInfoPanel();
           setStatusStrip(DEFAULT_STATUS);
           window.PS_STATE.parcel = null;
+          announceSelectionCleared();
         } else if (!selectedPins.includes(activeInfoPin)) {
           showParcelAtIndex(0);
         } else {
@@ -2765,6 +2954,7 @@
           hideInfoPanel();
           setStatusStrip(DEFAULT_STATUS);
           window.PS_STATE.parcel = null;
+          announceSelectionCleared();
         } else {
           // keep activeInfoPin if it survived; otherwise reset to first
           if (!selectedPins.includes(activeInfoPin)) {

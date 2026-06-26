@@ -8,6 +8,7 @@ Surfaced, not resolved. "AI proposes, human disposes" (§4.12) — including me.
 |---|---|---|
 | D1 | Contract + harness home | **In-repo `parcel-viewer/engine/`** (incremental; extract to a shared package once a 2nd viewer consumes it). |
 | D2 | Harness runtime | **Node `node:test` (JS cores) + stdlib `unittest` (Python `run_explain`)**, one CI workflow, zero third-party deps. (You deferred this to me.) |
+| D4 | ZIP `knowledge_chunks` embedding provider | **Keep OpenAI `text-embedding-3-small`** for A6. This preserves the current ZIP vector-search shape and keeps OpenAI as the known embedding dependency rather than re-embedding or replacing vector search during the rewrite. |
 | D3 | AI-off explainer behavior | **Facts + curated statute links, no prose** (§4.5). Baked into the engine core's provenance + harness; UI surfacing is A7a (see O1). |
 
 ## Open decisions — need the team (BLOCKING the work they gate)
@@ -15,10 +16,10 @@ Surfaced, not resolved. "AI proposes, human disposes" (§4.12) — including me.
 | # | Decision | Why it's blocking | Options |
 |---|---|---|---|
 | **A6-a** | ZIP DB cross-GCP boundary (`dbapi-473618` vs `core-db-475718`) | `KnowledgeStore` interface shape depends on it; largest A6 lift | (a) migrate ZIP DB into the DICE project; (b) federate at the app layer with two credential sets |
-| **A6-b** | ZIP `knowledge_chunks` embedding provider (OpenAI `text-embedding-3-small` — the only OpenAI dep in the stack) | gates the `KnowledgeStore` implementation | keep OpenAI; re-embed with a hosted/open model; replace vector search |
 | **O1** | Engine-serving for the browser | the live `pv-explain.js` can't `require` `engine/` — nginx serves only `frontend/public`. Needed before A7a wires the live UI to the cores. | **(a) CHOSEN (provisional default, revisit at A7a):** add a volume + `location /engine/` mount so `engine/` stays the single canonical home. (b) relocate browser bundles under `frontend/public/js/engine/`. |
 
-I am **not** picking A6-a/A6-b (your explicit instruction). O1 resolved to **(a)** —
+I am **not** picking A6-a (your explicit instruction). A6-b resolved to **keep OpenAI
+`text-embedding-3-small`**. O1 resolved to **(a)** —
 fully reversible (~2 infra lines + script-src paths; only one consumer, no blast
 radius), revisit at A7a if it feels wrong.
 
@@ -54,9 +55,24 @@ path), and a CI **guard** (`test/guard-globals.test.js`) that fails if any engin
 reintroduces a PS_*/ZIP_* global. Harness: **57 tests** (49 JS + 8 Py).
 
 Remaining A3: migrate the ~175 global reads file-by-file per MIGRATION.md (start with
-`COUNTY`→`ctx.config`). The `PS_STATE` migration IS A4.
+`COUNTY`→`ctx.config`). Active viewer reads now route through `PS_CONTEXT.config`
+with a `window.COUNTY` fallback across `map.js`, covered `pv-*` consumers
+(`pv-explain`, `pv-doc`, `pv-feature-info`, `pv-ai-health`), and the layer/control
+modules (`admin-menu`, `county-layers`, `pg-layers`, `overlay-layers`,
+`wms-feature-info`, `layer-registry`). The remaining `window.COUNTY` writes/reads
+are the config bootstrap/preview files plus fallback accessors. The `PS_STATE`
+migration IS A4.
 
 ## In progress — A4 (SelectionManager, the keystone & riskiest)
+
+**Slice 4 DONE** (commit pending): selection replacement paths in `map.js` now clear
+selection highlights through the source-agnostic highlighter wrapper (`setFS`) via a
+single `resetSelectionStorage()` helper, instead of bypassing it with direct
+`map.setFeatureState` calls. Empty-selection paths now announce both selection and
+active-feature clears on the bus. `showParcelAtIndex()` now routes active feature
+changes through `PS_SELECTION.setActive(ref)` when the SelectionManager is present,
+with the old bus emit as fallback. Parcel-studio globals remain intact:
+`PS_STATE.parcel`, `PS_selectParcel*`, and `PS_onParcelSelect()` are still exposed.
 
 **Slice 2 DONE** (commit pending): `engine/feature-highlight.js` — source-agnostic
 MapLibre feature-state highlighter (`set(id,state)` + `bindActive(bus,{stateKey})`,
@@ -102,5 +118,37 @@ Remaining A4 slices (need their own checkpoints — they cut into map.js):
 
 ## Not started (next up)
 
-A4 slices 2–3 → A5 (source abstraction); A6 (gated on A6-a/A6-b); B* (AI toggle / Theme
-Composer); C* (hardening).
+## In progress — A5 (source abstraction)
+
+**Slice 1 DONE** (commit pending): the live parcel info panel now renders both the
+`Parcel` and `Owner` sections through the source-agnostic `ISV_POPUP` renderer, with
+inline fallbacks preserved if the engine bundle is absent. `engine/popup.js` gained two
+generic affordances needed by real panels: formatter context now receives the whole
+feature/geometry, and configured rows may carry a `skipEmpty` hint. Custom parcel
+sections that are richer than config (`Assessed Values` chart/actions, tax explainer
+button) remain as-is for now.
+
+**Slice 2 DONE** (commit pending): PostGIS vector overlays can now behave as
+first-class selected/detail sources. `PV_FEATURE_INFO.select(source, feature)` renders
+the shared info panel and emits source-aware `selection-changed` /
+`active-feature-changed` events. `wms-feature-info.js` promotes clicked vector overlay
+hits into that path and exposes `selectVectorFeatureAt(point)` so the parcel click
+handler can give visible non-parcel sources precedence over parcel selection. WMS
+raster overlays remain popup-based.
+
+**Slice 3 DONE** (commit pending): the parcel panel's `Assessed Values` field
+definitions (labels, source fields, tooltips, money/percent/TMV/history formatters)
+now live in `_PARCEL_INFO_SOURCE` and flow through `ISV_POPUP.renderSections`. The
+rich table/chart renderer remains viewer-specific, but it now consumes source-config
+rows instead of hardcoding the field contract in the HTML build.
+
+**Slice 4 DONE** (commit pending): `Tax Description` now also has its field contract
+in `_PARCEL_INFO_SOURCE`, with a formatter that prefers `ps_legal_description` and
+falls back to `legal_description`. The viewer keeps the tax-description explain button
+and description styling, but the selected source config now owns which parcel field
+feeds that detail section.
+
+## Not started (next up)
+
+A5 remaining sections/source-click wiring; A6 (gated on A6-a); B* (AI toggle /
+Theme Composer); C* (hardening).

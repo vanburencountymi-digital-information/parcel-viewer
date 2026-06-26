@@ -350,6 +350,10 @@
   // Default section dot when a layer's paint color can't be read.
   var _PG_DEFAULT_COLOR = '#7A3B6B';
 
+  function _county() {
+    return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {};
+  }
+
   // "twp_range" / "area_sq_ft" → "Twp Range" / "Area Sq Ft". A future per-layer
   // field-label config (DIC-502 discovery) can override these.
   function _prettifyField(name) {
@@ -358,10 +362,25 @@
       .replace(/\b\w/g, function (c) { return c.toUpperCase(); });
   }
 
+  function _sourceConfigForOverlay(o) {
+    var fields = Array.isArray(o.fields) ? o.fields : [];
+    var idField = o.idField || fields[0] || 'id';
+    return {
+      id: o.id,
+      idField: idField,
+      popup: {
+        sections: [{
+          title: o.label || o.id,
+          fields: fields.map(function (k) { return { label: _prettifyField(k), field: k }; }),
+        }],
+      },
+    };
+  }
+
   // The registered PostGIS vector overlays (config-as-data, same source the
   // pg-layers renderer reads).
   function _vectorOverlays() {
-    var L = (window.COUNTY && window.COUNTY.layers) || {};
+    var L = _county().layers || {};
     return (L.overlays || []).filter(function (o) {
       return o && String(o.type || '').toLowerCase() === 'vector';
     });
@@ -420,12 +439,22 @@
         return { key: k, label: _prettifyField(k) };
       });
       out.push({
-        cfg: { label: o.label || o.id, color: _pgColor(map, layerIds[0]), attrs: attrs },
+        cfg: { label: o.label || o.id, color: _pgColor(map, layerIds[0]), attrs: attrs, source: _sourceConfigForOverlay(o) },
         features: uniq,
       });
     });
 
     return out;
+  }
+
+  function _selectPgFeatureAt(map, point) {
+    if (!map || !window.PV_FEATURE_INFO || typeof window.PV_FEATURE_INFO.select !== 'function') return false;
+    var pgResults = _queryPgLayers(map, point);
+    if (!pgResults.length) return false;
+    var first = pgResults[0];
+    var feature = first.features && first.features[0];
+    if (!feature) return false;
+    return window.PV_FEATURE_INFO.select(first.cfg.source, feature, { title: first.cfg.label });
   }
 
   // ── Click handler ────────────────────────────────────────────────────────
@@ -439,13 +468,15 @@
     var pgResults  = _queryPgLayers(map, e.point);   // synchronous, local
     if (visibleWms.length === 0 && pgResults.length === 0) return;
 
+    _selectPgFeatureAt(map, e.point);
+
+    if (visibleWms.length === 0) return;
+
     if (_popup) { _popup.remove(); _popup = null; }
 
     Promise.all(visibleWms.map(function (cfg) { return _fetchOne(cfg, map, e.point); }))
       .then(function (wmsResults) {
-        // County vector hits first (precise local data the user just clicked),
-        // then the regulatory overlays.
-        var html = _buildHtml(pgResults.concat(wmsResults));
+        var html = _buildHtml(wmsResults);
         if (html === null) return;
         _popup = new maplibregl.Popup({
           className:    'wfi-mgl-popup',
@@ -471,6 +502,7 @@
   // ── Export ───────────────────────────────────────────────────────────────
 
   window.PS_WMS_FEATURE_INFO = {
-    getPopup: function () { return _popup; }
+    getPopup: function () { return _popup; },
+    selectVectorFeatureAt: function (point) { return _selectPgFeatureAt(window.PS_MAP, point); }
   };
 }());

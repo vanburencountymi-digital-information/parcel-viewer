@@ -88,6 +88,20 @@ test('rich fields support tooltips, per-field style, and computed (sibling) form
   assert.equal('tip' in out[0].rows[0], true);
 });
 
+test('formatters receive the whole feature and rows can carry skip-empty hints', () => {
+  const cfg = { id: 'feature', idField: 'id', popup: { sections: [
+    { title: 'Location', fields: [
+      { label: 'Center', field: '_center', format: 'center', skipEmpty: true },
+    ] },
+  ] } };
+  const formatters = {
+    center: (_v, ctx) => ctx.geometry && ctx.geometry.type,
+  };
+  const out = POPUP.renderSections(cfg, { properties: {}, geometry: { type: 'Point', coordinates: [0, 0] } }, { formatters });
+  assert.equal(out[0].rows[0].value, 'Point');
+  assert.equal(out[0].rows[0].skipEmpty, true);
+});
+
 test('the source registry + popup renderer are source-agnostic (§4.1)', () => {
   ['../source.js', '../popup.js'].forEach((rel) => {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');

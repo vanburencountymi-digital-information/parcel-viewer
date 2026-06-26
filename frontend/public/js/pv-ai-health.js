@@ -19,11 +19,16 @@
   var TIMEOUT_MS = 4000;
   var _timer = null;
 
+  function countyConfig() {
+    return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {};
+  }
+
   // Same resolution pv-explain uses, so we health-check the service the explainer/
   // Map Buddy actually call.
   function mapBuddyBase() {
     var isLocal = /^(localhost|127\.0\.0\.1)$/.test(root.location.hostname);
-    return (root.COUNTY && root.COUNTY.endpoints && root.COUNTY.endpoints.mapBuddy) ||
+    var endpoints = countyConfig().endpoints || {};
+    return endpoints.mapBuddy ||
       root.MAP_BUDDY_API ||
       (isLocal && '/map-buddy-api') ||
       'https://map-buddy-toaozre74a-uc.a.run.app';

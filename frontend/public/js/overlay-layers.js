@@ -170,6 +170,10 @@
   var _state  = {};    // { id: true/false } — what user wants
   var _added  = {};    // { id: true/false } — what's on the map
 
+  function _county() {
+    return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {};
+  }
+
   function _findById(id) {
     for (var i = 0; i < OVERLAYS.length; i++) {
       if (OVERLAYS[i].id === id) return OVERLAYS[i];
@@ -374,8 +378,9 @@
     // code edit — for when the in-house DEM tiles land. A stored user pref wins.
     var defaults = {};
     try {
-      if (window.COUNTY && COUNTY.styling && COUNTY.styling.hillshade) {
-        defaults['overlay-hillshade'] = !!COUNTY.styling.hillshade.defaultOn;
+      var styling = _county().styling || {};
+      if (styling.hillshade) {
+        defaults['overlay-hillshade'] = !!styling.hillshade.defaultOn;
       }
     } catch (_) {}
     OVERLAYS.forEach(function (cfg) {

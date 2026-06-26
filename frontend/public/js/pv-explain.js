@@ -18,6 +18,9 @@
 
   var T = root.PV_TEMPLATE;
   function esc(s) { return T ? T.escape(s) : String(s == null ? '' : s); }
+  function countyConfig() {
+    return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {};
+  }
 
   // ── Service endpoints ──────────────────────────────────────────────────────
   function apiBase() { return root.API_BASE || (root.PS_CONFIG && root.PS_CONFIG.API_BASE) || '/api'; }
@@ -26,7 +29,8 @@
   // the explainer talks to the same Cloud Run service (one key, one rate-limiter).
   function explainBase() {
     var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-    return (root.COUNTY && root.COUNTY.endpoints && root.COUNTY.endpoints.mapBuddy) ||
+    var endpoints = countyConfig().endpoints || {};
+    return endpoints.mapBuddy ||
       root.MAP_BUDDY_API ||
       (isLocal && '/map-buddy-api') ||
       'https://map-buddy-toaozre74a-uc.a.run.app';
@@ -82,7 +86,8 @@
   function resolveLabel(mapKey, code, style) {
     code = code != null ? String(code).trim() : null;
     if (!code) return null;
-    var name = (root.COUNTY && root.COUNTY.labels && root.COUNTY.labels[mapKey] && root.COUNTY.labels[mapKey][code]) || null;
+    var labels = countyConfig().labels || {};
+    var name = (labels[mapKey] && labels[mapKey][code]) || null;
     if (!name) return code;
     return style === 'code-name' ? (code + ' – ' + name) : name;
   }
@@ -106,7 +111,7 @@
       .then(function (feat) {
         var p = (feat && feat.properties) || {};
         var c = core();
-        if (c) return c.buildAssessmentFacts(p, { labels: root.COUNTY && root.COUNTY.labels, pinFallback: parcel && parcel.pin });
+        if (c) return c.buildAssessmentFacts(p, { labels: countyConfig().labels, pinFallback: parcel && parcel.pin });
         // Inline fallback (transitional — mirrors engine/capabilities/explainer.core.js):
         var av = num(p.assessed_value);
         // DB stores assessed_value_yr0..yr4 newest-first (see map.js showParcelInfo).
@@ -164,7 +169,7 @@
   // separator and zip each part to its segment definition. Extra parts (beyond
   // the configured segments) are kept and flagged, never silently dropped — and
   // segments with no matching part are dropped, so a short PIN degrades cleanly.
-  function pinConfig() { return (root.COUNTY && root.COUNTY.parcelNumber) || null; }
+  function pinConfig() { return countyConfig().parcelNumber || null; }
   function parsePinSegments(pin) {
     var c = core();
     if (c) return c.parsePinSegments(pin, pinConfig());
@@ -494,7 +499,7 @@
   function docHtml(facts, explanation, topic, statutes) {
     if (!T) return '';
     var meta = TOPICS[topic] || TOPICS.assessment;
-    var county = (root.COUNTY && root.COUNTY.name) || 'County';
+    var county = countyConfig().name || 'County';
     var d = {
       county: county, pin: facts.pin || '', docSubtitle: meta.docSubtitle,
       has_ai: !!explanation,

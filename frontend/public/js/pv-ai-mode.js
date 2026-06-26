@@ -82,7 +82,7 @@
       btn.title = userOn ? (effective ? 'AI mode: on' : 'AI mode: on (service unavailable — showing facts)') : 'AI mode: off';
       btn.classList.toggle('is-on', userOn);
       btn.classList.toggle('is-degraded', userOn && !_available);
-      btn.style.color = effective ? 'var(--ui-interactive, #B58D4A)' : '';
+      btn.style.color = '';
     }
     notice(userOn && !_available);
   }
