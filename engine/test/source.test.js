@@ -70,6 +70,24 @@ test('legacy string sections still render (back-compat with engine-smoke)', () =
   ]);
 });
 
+test('rich fields support tooltips, per-field style, and computed (sibling) formatters', () => {
+  const cfg = { id: 'p', idField: 'id', popup: { sections: [
+    { title: 'Owner', fields: [
+      { label: 'Name', field: 'owner_name', tip: 'Owner name' },
+      { label: 'Mailing', field: 'owner_street', format: 'mail', style: 'white-space:normal', tip: 'Mailing address' } ] } ] } };
+  const formatters = { mail: (v, ctx) => {
+    const p = ctx.props || {};
+    return [p.owner_street, [p.owner_city, p.owner_state].filter(Boolean).join(' '), p.owner_zip].filter(Boolean).join(', ') || null;
+  } };
+  const out = POPUP.renderSections(cfg, { properties: { owner_name: 'DOE', owner_street: '1 Main', owner_city: 'Paw Paw', owner_state: 'MI', owner_zip: '49079' } }, { formatters });
+  assert.equal(out[0].rows[0].tip, 'Owner name');
+  assert.equal(out[0].rows[0].value, 'DOE');
+  assert.equal(out[0].rows[1].value, '1 Main, Paw Paw MI, 49079');   // computed from sibling fields
+  assert.equal(out[0].rows[1].style, 'white-space:normal');
+  // Unconfigured rows stay lean (no tip/style keys).
+  assert.equal('tip' in out[0].rows[0], true);
+});
+
 test('the source registry + popup renderer are source-agnostic (§4.1)', () => {
   ['../source.js', '../popup.js'].forEach((rel) => {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');

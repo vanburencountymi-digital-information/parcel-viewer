@@ -1479,6 +1479,57 @@
   const PROP_CLASS_LABELS  = (window.COUNTY && COUNTY.labels && COUNTY.labels.propClass)  || {};
   const SCHOOL_DIST_LABELS = (window.COUNTY && COUNTY.labels && COUNTY.labels.schoolDist) || {};
 
+  // ── A5 (DIC-407): express parcel info SECTIONS through the engine renderer ──
+  // The "Owner" section is declared as source config + rendered by ISV_POPUP — the
+  // same source-agnostic renderer that draws any source. The rich Assessed-Values
+  // table + AV chart legitimately stay custom (domain rendering config can't express;
+  // the spec's plugin/escape-hatch tier). A safe inline fallback keeps PV green if the
+  // engine didn't load. This is the "hunt hardcoded fields → config" discipline, one
+  // verifiable section at a time.
+  const _PARCEL_OWNER_SOURCE = {
+    id: "parcels", idField: "pin",
+    popup: { sections: [
+      { title: "Owner", fields: [
+        { label: "Name", field: "owner_name" },
+        { label: "Mailing", field: "owner_street", format: "owner_mail",
+          tip: "Owner's mailing address as recorded in the tax roll",
+          style: "white-space:normal;word-break:break-word" } ] } ] },
+  };
+  const _PARCEL_FORMATTERS = {
+    owner_mail: function (_v, ctx) {
+      const p = ctx.props || {};
+      return [p.owner_street || "",
+              [p.owner_city || "", p.owner_state || ""].filter(Boolean).join(" "),
+              p.owner_zip || ""].filter(Boolean).join(", ") || null;
+    },
+  };
+  function _escHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  // Render a config section through ISV_POPUP into the parcel panel's row markup
+  // (showing "—" for empty, matching the inline rows). Returns null if the engine
+  // isn't loaded so the caller can fall back to inline HTML.
+  function _engineSectionHtml(cfg, formatters, props, title) {
+    if (!window.ISV_POPUP) return null;
+    const labels = {
+      propClass: (typeof PROP_CLASS_LABELS !== "undefined" ? PROP_CLASS_LABELS : {}),
+      schoolDist: (typeof SCHOOL_DIST_LABELS !== "undefined" ? SCHOOL_DIST_LABELS : {}),
+    };
+    const secs = window.ISV_POPUP.renderSections(cfg, { properties: props }, { labels: labels, formatters: formatters });
+    const sec = secs.filter(function (s) { return s.section === title; })[0];
+    if (!sec) return null;
+    const rows = sec.rows.map(function (r) {
+      const tip = r.tip ? ' data-tip="' + _escHtml(r.tip) + '"' : "";
+      const style = r.style ? ' style="' + _escHtml(r.style) + '"' : "";
+      const val = (r.value != null && r.value !== "") ? _escHtml(r.value) : "—";
+      return '<div class="parcel-info-row"><span class="parcel-info-label"' + tip + ">" + _escHtml(r.label) +
+        '</span><span class="parcel-info-value"' + style + ">" + val + "</span></div>";
+    }).join("");
+    return '<div class="parcel-info-section-title">' + _escHtml(title) + "</div>" + rows;
+  }
+
   // Field layout matches the geo.parcels / assessing.vbc_parcels payload
   // returned by GET /parcel/{id}.
   function showParcelInfo(pin, p, geometry) {
@@ -1582,9 +1633,10 @@
       provenance +
       `<hr class="parcel-info-divider">` +
 
-      `<div class="parcel-info-section-title">Owner</div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label">Name</span><span class="parcel-info-value">${dash(p.owner_name)}</span></div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>` +
+      (_engineSectionHtml(_PARCEL_OWNER_SOURCE, _PARCEL_FORMATTERS, p, "Owner") ||
+        (`<div class="parcel-info-section-title">Owner</div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label">Name</span><span class="parcel-info-value">${dash(p.owner_name)}</span></div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>`)) +
       `<hr class="parcel-info-divider">` +
 
       `<div class="parcel-info-section-title">Assessed Values` +

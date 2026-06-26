@@ -54,9 +54,11 @@
     var sections = (source && source.popup && source.popup.sections) || [];
     var fieldMap = (source && source.popup && source.popup.sectionFields) || null;
 
-    function fmt(name, value, labelMap) {
+    function fmt(name, value, field) {
       var fn = formatters[name] || FORMATTERS[name] || FORMATTERS.text;
-      return fn(value, { labels: labels, labelMap: labelMap });
+      // ctx carries labels + the WHOLE feature so a formatter can derive from sibling
+      // fields (e.g. a mailing address built from street/city/state/zip).
+      return fn(value, { labels: labels, labelMap: field.labelMap, props: props, field: field });
     }
 
     return sections.map(function (sec) {
@@ -68,10 +70,13 @@
           rows: fields.map(function (f) { return { field: f, value: props[f] != null ? props[f] : null }; }),
         };
       }
-      // Rich section → { title, fields:[{label, field, format, labelMap}] }.
+      // Rich section → { title, fields:[{label, field, format, labelMap, tip?, style?}] }.
       var rows = (sec.fields || []).map(function (f) {
         var raw = props[f.field];
-        return { label: f.label || f.field, field: f.field, raw: raw != null ? raw : null, value: fmt(f.format || 'text', raw, f.labelMap) };
+        var row = { label: f.label || f.field, field: f.field, raw: raw != null ? raw : null, value: fmt(f.format || 'text', raw, f) };
+        if (f.tip) row.tip = f.tip;       // optional viewer tooltip (added only when present,
+        if (f.style) row.style = f.style; // so unconfigured rows keep their lean shape)
+        return row;
       });
       return { section: sec.title || '', rows: rows };
     });
