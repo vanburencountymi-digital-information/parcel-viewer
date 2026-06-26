@@ -42,6 +42,14 @@
   <!-- The live county manifest (current source of truth). The console reads it
        today; a runtime /config API (DIC-465) replaces this bake later. -->
   <script src="/frontend/public/js/county-config.js"></script>
+  <!-- ISV engine (C2 + B2): the Theme Manifest module assembles the editor slices into
+       one §5 manifest and validates it through the SAME loadManifest() gate CI uses.
+       Same modules the harness tests; engine dir is volume-mounted at /engine/. -->
+  <script src="/engine/manifest-version.js"></script>
+  <script src="/engine/validate-manifest.js"></script>
+  <script src="/engine/load-manifest.js"></script>
+  <script src="/engine/capability-catalog.js"></script>
+  <script src="/engine/manifest-assemble.js"></script>
   <script src="/admin/js/admin.js"></script>
 </body>
 </html>

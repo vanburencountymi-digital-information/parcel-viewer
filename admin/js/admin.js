@@ -1051,6 +1051,104 @@
     wireEditHost(host);
   }
 
+  // ── Theme Manifest module (B2 manual builder · DIC-578) ─────────────────────
+  // Unifies every editor slice into ONE §5 theme manifest and validates it through
+  // the SAME loadManifest() gate CI + the engine boot use (C2 / DIC-583). Surfaces:
+  // a complete view of the manifest, the capability selection + per-capability AI
+  // tri-state the manifest owns (no single module does), Export, and a validated
+  // raw-edit fallback (no one-way doors, §4.11). This increment is read/validate/
+  // export + raw-edit-validate; writing an edited manifest back to the config store
+  // (full bidirectional round-trip) is the follow-on increment.
+  var COUNTY_IDFIELDS = { parcels: 'pin' };   // per-source idField hints (until §5 sources land in the store)
+
+  function assembleCurrentManifest() {
+    var asm = window.ISV_MANIFEST_ASSEMBLE;
+    if (!asm) return null;
+    return asm.assembleManifest(STATE.config || {}, { tenant: COUNTY_KEY, idFields: COUNTY_IDFIELDS });
+  }
+  function validateManifest(manifest) {
+    var loader = window.ISV_LOAD_MANIFEST;
+    if (!loader || !manifest) return { ok: false, errors: ['ISV engine load-manifest.js not loaded'] };
+    return loader.loadManifest(manifest);
+  }
+  function downloadJson(name, obj) {
+    var blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    document.body.removeChild(a); setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function renderManifest(host) {
+    if (!window.ISV_MANIFEST_ASSEMBLE) {
+      host.innerHTML = pageHead('Theme Manifest',
+        'One versioned, exportable theme manifest assembled from every module.') +
+        '<div class="ac-banner ac-banner-edit"><span>⚠</span><div>The ISV engine bundle isn’t loaded on this page, so the manifest assembler is unavailable. Ensure the <code>/engine/</code> scripts are included.</div></div>';
+      return;
+    }
+    var manifest = assembleCurrentManifest();
+    var res = validateManifest(manifest);
+    var json = JSON.stringify(manifest, null, 2);
+
+    var status = res.ok
+      ? '<div class="ac-banner"><span>✓</span><div><b>Schema-valid</b> theme manifest (v' + esc(manifest.manifestVersion) +
+        ', tenant <code>' + esc(manifest.tenant || '—') + '</code>). Round-trips through the same <code>loadManifest()</code> gate CI and the engine boot use.</div></div>'
+      : '<div class="ac-banner ac-banner-edit"><span>⚠</span><div><b>Not yet schema-valid:</b><ul>' +
+        (res.errors || []).map(function (e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>';
+
+    var caps = manifest.capabilities || {};
+    var capRows = Object.keys(caps).map(function (id) {
+      return '<tr><td>' + esc(id) + '</td><td><code>' + esc(caps[id].ai || 'no-ai') + '</code></td><td>' + esc(caps[id].disclosure || '—') + '</td></tr>';
+    }).join('') || '<tr><td colspan="3" class="ac-readonly">No capabilities enabled.</td></tr>';
+
+    host.innerHTML =
+      '<div class="ac-page-head ac-page-head-row"><div>' +
+        '<h1 class="ac-page-title">Theme Manifest</h1>' +
+        '<p class="ac-page-sub">One versioned, exportable manifest assembled from every module — the artifact the engine boots from.</p></div>' +
+        '<div class="ac-toolbar">' +
+          '<button class="ac-btn ac-btn-primary" data-mf="export">Export manifest</button>' +
+          '<button class="ac-btn" data-mf="reassemble">Re-assemble from modules</button>' +
+        '</div></div>' +
+      '<div id="ac-flash"></div>' + status +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Capabilities &amp; AI mode</h2>' +
+        '<span class="ac-card-note">capability selection + per-capability AI tri-state — owned by the manifest, not any single module</span></div>' +
+        '<table class="ac-table"><thead><tr><th>Capability</th><th>AI mode</th><th>Disclosure</th></tr></thead><tbody>' + capRows + '</tbody></table></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Manifest — complete view &amp; validated raw-edit</h2>' +
+        '<span class="ac-card-note">a complete, editable view of the manifest; edit the JSON and Validate (no one-way doors, §4.11)</span></div>' +
+        '<textarea id="ac-mf-raw" class="ac-input" spellcheck="false" style="width:100%;min-height:340px;font-family:ui-monospace,Menlo,monospace;white-space:pre;tab-size:2">' + esc(json) + '</textarea>' +
+        '<div class="ac-toolbar" style="margin-top:8px;align-items:center">' +
+          '<button class="ac-btn ac-btn-primary" data-mf="validate">Validate</button>' +
+          '<button class="ac-btn" data-mf="export-edited">Export edited</button>' +
+          '<span id="ac-mf-result" class="ac-card-note"></span>' +
+        '</div></div>';
+
+    if (host._mfWired) return;
+    host._mfWired = true;
+    host.addEventListener('click', function (ev) {
+      var b = ev.target.closest('[data-mf]'); if (!b) return;
+      var act = b.getAttribute('data-mf');
+      if (act === 'reassemble') { return renderManifest(host); }
+      if (act === 'export') {
+        var mf = assembleCurrentManifest();
+        return downloadJson((mf && mf.id || 'theme') + '.manifest.json', mf);
+      }
+      // raw-edit actions read the textarea.
+      var ta = host.querySelector('#ac-mf-raw');
+      var out = host.querySelector('#ac-mf-result');
+      var parsed;
+      try { parsed = JSON.parse(ta.value); }
+      catch (e) { if (out) out.innerHTML = '<span style="color:#b11e2f">✗ Invalid JSON: ' + esc(e.message) + '</span>'; return; }
+      if (act === 'export-edited') { return downloadJson((parsed.id || 'theme') + '.manifest.json', parsed); }
+      if (act === 'validate') {
+        var r = validateManifest(parsed);
+        if (!out) return;
+        out.innerHTML = r.ok
+          ? '<span style="color:#2f6b4f">✓ Schema-valid' + (r.applied && r.applied.length ? ' (migrated ' + esc(r.applied.join(', ')) + ')' : '') + '</span>'
+          : '<span style="color:#b11e2f">✗ ' + esc((r.errors || []).join('; ')) + '</span>';
+      }
+    });
+  }
+
   // ── Module registry ─────────────────────────────────────────────────────────
   var MODULES = [
     { id: 'county', label: 'County Configuration', icon: '◆', render: renderCounty },
@@ -1058,6 +1156,7 @@
     { id: 'styling', label: 'Styling', icon: '◑', render: renderStyling },
     { id: 'data', label: 'Data & Layers', icon: '▤', render: renderData },
     { id: 'access', label: 'Access & Ops', icon: '◈', render: renderAccess },
+    { id: 'manifest', label: 'Theme Manifest', icon: '❖', render: renderManifest },
   ];
 
   // ── Shell wiring ────────────────────────────────────────────────────────────

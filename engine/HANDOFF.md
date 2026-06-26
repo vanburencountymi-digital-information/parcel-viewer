@@ -14,7 +14,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 
 - **Repo:** `github.com/vanburencountymi-digital-information/parcel-viewer`
 - **Branch/commit:** `main` @ `ffc825a` — **pushed to origin** (CI: `.github/workflows/isv-harness.yml`).
-- **Tests:** 109 green (101 Node `node:test` + 8 Python `unittest`). Run: `bash engine/run-harness.sh`.
+- **Tests:** 117 green (109 Node `node:test` + 8 Python `unittest`). Run: `bash engine/run-harness.sh`.
 - **Linear:** project **Intelligent Spatial Viewer (ISV)** — `intelligent-spatial-viewer-isv-cd0a9c4c0f9e`. Each DIC ticket has commit-referenced progress comments.
 
 ## What's done (status per spec)
@@ -32,6 +32,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 | 4 | B1 AI-mode toggle (opt-in, degrade-to-facts) | 571 | in progress (toggle done; ai-required-theme hide pending) |
 | 4 | B4 runtime AI auto-fallback | 580 | in progress (viewer side done; console side pending) |
 | 5 | A8 single source of truth for the 5 shared PV/ZIP drawing files | 575 | in progress (source-of-truth + drift guard; runtime-share pending) |
+| 5 | B2 Theme Composer — manual builder (assemble editors → one §5 manifest) | 578 | in progress (assembler + capability catalog + **Theme Manifest** console module: assemble→validate→export + raw-edit, live-verified; store write-back pending) |
 | 6 | C2 manifest schema versioning + migration | 583 | in progress (migration engine + **migrate-on-load seam** done & live-verified; Ajv swap deferred) |
 | 6 | C5 AI-quality eval (citation-accuracy + grounding) | 586 | in progress (deterministic floor done; golden sets + LLM-judge pending) |
 
@@ -45,6 +46,7 @@ Engine (source-agnostic, no domain noun — enforced by `engine/test/engine-smok
 - `engine/feature-highlight.js` — MapLibre feature-state highlighter (map injected).
 - `engine/source.js` + `engine/popup.js` — source-config registry + source-driven section renderer (formatters: money/acres/label/code-label; tip/style/computed fields).
 - `engine/validate-manifest.js` + `engine/schema/manifest.schema.json` + `engine/manifest-version.js` + `engine/load-manifest.js` — manifest validation, schema versioning/migration, and the canonical `loadManifest()` migrate-on-load seam (migrate→validate in one place).
+- `engine/manifest-assemble.js` + `engine/capability-catalog.js` — B2 manual builder: assemble a §5 theme manifest from the console editor slices (source-agnostic; noun-free, in the §4.1 guard) + the capability vocabulary/default AI tri-state (data module).
 - `engine/ai-quality.js` — citation-accuracy + grounding checks (C5).
 - `engine/drawing/` — canonical master of the shared drawing stack + `generate.mjs` (→ PV verbatim, ZIP via word-boundary `PS_→ZIP_`).
 
@@ -78,7 +80,7 @@ Viewer bridges (`frontend/public/js/`, the only place that knows `PS_*` / `COUNT
 ## What's next (recommended order)
 
 1. **Finish the in-flight increments** where cheap: A4 (extract `showParcelInfo`'s remaining HTML into the source renderer), A5 (more sections / backend per-source endpoints), B1 (hide toggle for `ai-required` themes — needs manifest→runtime wiring), B4 (console-side fallback + shared health module), A8 (runtime-share the drawing stack via AppContext), C2 (**migrate-on-load done**; Ajv swap still deferred — see DECISIONS).
-2. **Step 5 themes:** **B2** manual Theme Composer (integrate the existing Admin Console module-editors into one versioned manifest — `parcel-viewer/admin/`), then **B3** AI autoconfigure. Unblocked now by C2's versioned schema.
+2. **Step 5 themes:** **B2** manual Theme Composer — **inc 1 done** (engine assembler + capability catalog + "Theme Manifest" console module; assemble→validate→export + validated raw-edit, live-verified at `/admin/`). **B2 inc 2 next:** write the edited/assembled manifest back to the config store for a full open→edit→save→reopen round-trip (the assembler is forward-only today; the raw-edit validates but doesn't persist). Then **B3** AI autoconfigure (feeds the same Theme Manifest editor).
 3. **Step 6 hardening gates (before any public multi-county launch):** **C1** tenant isolation (Urgent — row-level scoping, tenant-scoped AI, prompt-injection defense), **C3** AI cost governance (per-tenant quotas + result caching keyed on capability+typed input), **C4** ops/release (canary, per-tenant flags, rollback, monitoring).
 4. **A6** only after A6-a is decided.
 
