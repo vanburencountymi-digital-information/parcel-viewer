@@ -1,0 +1,13 @@
+{
+  "_comment": "An OLD (v0.9) stored manifest: capabilities is a flat list of enabled ids, before the per-capability AI tri-state existed. The engine must auto-upgrade this to v1.0 and still render it (C2 acceptance).",
+  "manifestVersion": "0.9",
+  "id": "parcel-viewer-vanburen",
+  "tenant": "vanburen",
+  "branding": { "name": "Van Buren County" },
+  "map": { "center": [-86.03, 42.24], "zoom": 11 },
+  "sources": [
+    { "id": "parcels", "type": "vector", "idField": "pin" }
+  ],
+  "capabilities": ["search", "parcelInfo", "explainer", "ledger", "mapBuddy"],
+  "persona": { "audience": "public" }
+}
