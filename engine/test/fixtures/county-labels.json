@@ -1,0 +1,18 @@
+{
+  "_comment": "Subset of COUNTY.labels + COUNTY.parcelNumber (from frontend/public/js/county-config.js) needed by the explainer core. Config, not code — passed in as typed input.",
+  "labels": {
+    "propClass": { "401": "Residential", "201": "Commercial", "101": "Agricultural" },
+    "schoolDist": { "80150": "Mattawan Consolidated Schools", "80160": "Paw Paw Public Schools" }
+  },
+  "parcelNumber": {
+    "separator": "-",
+    "intro": "Van Buren County parcel numbers encode a parcel's location and lineage in dash-separated parts:",
+    "segments": [
+      { "name": "County code", "description": "Van Buren County’s state identifying code." },
+      { "name": "Local unit", "description": "Two-digit code for the local unit." },
+      { "name": "Section / subdivision", "description": "Section number (01–36) or platted-subdivision code." },
+      { "name": "Parcel identifier", "description": "Unique number for this parcel within its section." },
+      { "name": "Child parcel", "description": "Split/child suffix (00 if none)." }
+    ]
+  }
+}

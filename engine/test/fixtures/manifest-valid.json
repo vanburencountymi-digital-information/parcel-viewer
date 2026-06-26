@@ -1,0 +1,41 @@
+{
+  "manifestVersion": "1.0",
+  "id": "parcel-viewer-vanburen",
+  "tenant": "vanburen",
+  "branding": {
+    "name": "Van Buren County",
+    "attribution": "Van Buren County GIS",
+    "theme": { "--ui-interactive": "#B58D4A" }
+  },
+  "map": { "center": [-86.03, 42.24], "zoom": 11 },
+  "sources": [
+    {
+      "id": "parcels",
+      "type": "vector",
+      "tiles": "https://tiles/parcels/{z}/{x}/{y}",
+      "idField": "pin",
+      "search": { "fields": ["pin", "owner_name", "address"], "endpoint": "/api/search" },
+      "popup": { "sections": ["Identity", "Owner", "Assessed Values"] },
+      "hover": { "enabled": true, "fields": ["pin", "owner_name"] },
+      "detail": { "endpoint": "/api/parcel/{id}" }
+    },
+    {
+      "id": "zoning",
+      "type": "vector",
+      "tiles": "https://tiles/zoning/{z}/{x}/{y}",
+      "idField": "zone_id",
+      "search": { "fields": ["zone_id", "district"], "endpoint": "/api/zoning/search" },
+      "popup": { "sections": ["District", "Allowed Uses"] },
+      "hover": { "enabled": true, "fields": ["district"] },
+      "detail": { "endpoint": "/api/zoning/{id}" }
+    }
+  ],
+  "capabilities": {
+    "search": { "ai": "no-ai", "disclosure": "basic" },
+    "explainer": { "ai": "ai-optional", "disclosure": "basic" },
+    "ledger": { "ai": "no-ai", "disclosure": "advanced" },
+    "mapBuddy": { "ai": "ai-optional" }
+  },
+  "persona": { "voice": "warm, plain-language", "audience": "public" },
+  "plugins": []
+}

@@ -1,0 +1,12 @@
+{
+  "_comment": "INVALID on purpose: missing required `tenant`, a source missing `type`, and an illegal capability ai tri-state. CI must reject it (an invalid manifest cannot publish, §5.2).",
+  "manifestVersion": "1.0",
+  "id": "broken-viewer",
+  "map": { "center": [-86.03, 42.24], "zoom": 11 },
+  "sources": [
+    { "id": "parcels", "tiles": "https://tiles/parcels/{z}/{x}/{y}" }
+  ],
+  "capabilities": {
+    "explainer": { "ai": "sometimes" }
+  }
+}

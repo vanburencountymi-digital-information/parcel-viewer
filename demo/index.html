@@ -714,9 +714,28 @@
   <script src="/frontend/public/js/drawing/drawing-tools.js"></script>
   <script src="/frontend/public/js/drawing/measure-tool.js"></script>
   <script src="/frontend/public/js/pv-template.js"></script>
+  <!-- ISV engine (A1 contract + capability cores + source-agnostic doc utils).
+       Loaded before its consumers (pv-doc, pv-explain, pv-ledger) so the browser runs
+       the SAME modules the CI harness tests. Progressive enhancement: each consumer
+       feature-detects these and falls back to its inline path if absent. -->
+  <script src="/engine/capability.js"></script>
+  <script src="/engine/app-context.js"></script>
+  <script src="/engine/selection.js"></script>
+  <script src="/engine/doc.js"></script>
+  <script src="/engine/capabilities/explainer.core.js"></script>
+  <script src="/engine/capabilities/ledger.core.js"></script>
+  <script src="/engine/capabilities/register.js"></script>
+  <!-- AppContext bridge (A3): builds window.PS_CONTEXT from the live PS_* globals via
+       lazy getters. Strangler-fig — old global reads keep working unchanged. -->
+  <script src="/frontend/public/js/pv-app-context.js"></script>
   <script src="/frontend/public/js/pv-doc.js"></script>
   <script src="/frontend/public/js/pv-explain.js"></script>
+  <script src="/frontend/public/js/pv-ledger.js"></script>
   <script src="/frontend/public/js/map.js"></script>
+  <!-- Selection bridge (A4 slice 1): mirrors the map's selection onto PS_BUS by
+       intercepting PS_onParcelSelect (preserving any downstream handler). Loads AFTER
+       map.js. Additive — no map.js changes. -->
+  <script src="/frontend/public/js/pv-selection.js"></script>
   <script src="/frontend/public/js/parcel-labels.js"></script>
   <script src="/frontend/public/js/overlay-layers.js"></script>
   <script src="/frontend/public/js/county-layers.js"></script>

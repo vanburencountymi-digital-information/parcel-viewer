@@ -32,6 +32,36 @@
       'https://map-buddy-toaozre74a-uc.a.run.app';
   }
 
+  // ── ISV engine bridge (A7a / DIC-572) ──────────────────────────────────────
+  // The deterministic fact assembly + classifier now live in the shared engine core
+  // (engine/capabilities/explainer.core.js), loaded before this file (demo/index.html).
+  // We PREFER it so the viewer runs the same code the CI harness tests; the inline
+  // fallbacks below keep the explainer working if the engine script didn't load
+  // (progressive enhancement — PV stays green).
+  // TODO(A7a cleanup): once /engine/ is guaranteed served everywhere, drop the inline
+  // fallbacks and hard-depend on the core to remove the duplication (DECISIONS R1).
+  function core() { return root.ISV_EXPLAINER_CORE || null; }
+
+  // Curated MI tax-statute corpus — the AI-OFF citation links AND the AI-on citable
+  // universe (the same set; §4.6). Fetched once from the engine; [] if unavailable.
+  var _statutesCache = null;
+  function loadStatutes() {
+    if (_statutesCache) return _statutesCache;
+    _statutesCache = fetch('/engine/data/mi-tax-statutes.json', { cache: 'force-cache' })
+      .then(function (r) { return r.ok ? r.json() : { statutes: [] }; })
+      .then(function (j) { return (j && j.statutes) || []; })
+      .catch(function () { return []; });
+    return _statutesCache;
+  }
+
+  // AI mode (§4.4a default off/opt-in arrives with B1). Until the toggle exists, keep
+  // today's behavior (attempt AI) unless a pref explicitly turns it off — so B1 only
+  // has to set PV_PREFS.aiMode and this already honors it.
+  function aiEnabled() {
+    var pref = root.PV_PREFS && root.PV_PREFS.aiMode;
+    return !(pref === 'off' || pref === false);
+  }
+
   // ── Formatting helpers ─────────────────────────────────────────────────────
   function num(v) { if (v == null || v === '') return null; var n = Number(v); return isNaN(n) ? null : n; }
   function money(v) {
@@ -70,6 +100,9 @@
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
       .then(function (feat) {
         var p = (feat && feat.properties) || {};
+        var c = core();
+        if (c) return c.buildAssessmentFacts(p, { labels: root.COUNTY && root.COUNTY.labels, pinFallback: parcel && parcel.pin });
+        // Inline fallback (transitional — mirrors engine/capabilities/explainer.core.js):
         var av = num(p.assessed_value);
         // DB stores assessed_value_yr0..yr4 newest-first (see map.js showParcelInfo).
         var histNewestFirst = [p.assessed_value_yr0, p.assessed_value_yr1, p.assessed_value_yr2,
@@ -104,6 +137,8 @@
   // Deterministic classifier (NO AI): which kind of description is this? Used to
   // pick a render hint and to frame the AI explanation. It never parses geometry.
   function classifyDescription(text) {
+    var c = core();
+    if (c) return c.classifyDescription(text);
     var t = (text || '').toUpperCase();
     if (!t.trim()) return { type: 'unknown', label: null, note: '' };
     var hasMB = /\b(COM|COMM|BEG|POB|TH|THENCE)\b/.test(t) ||
@@ -126,6 +161,8 @@
   // segments with no matching part are dropped, so a short PIN degrades cleanly.
   function pinConfig() { return (root.COUNTY && root.COUNTY.parcelNumber) || null; }
   function parsePinSegments(pin) {
+    var c = core();
+    if (c) return c.parsePinSegments(pin, pinConfig());
     var cfg = pinConfig();
     if (!cfg || !pin) return null;
     var sep = cfg.separator || '-';
@@ -149,6 +186,9 @@
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
       .then(function (feat) {
         var p = (feat && feat.properties) || {};
+        var c = core();
+        if (c) return c.buildTaxDescriptionFacts(p, { parcelNumber: pinConfig(), pinFallback: parcel && parcel.pin });
+        // Inline fallback (transitional — mirrors engine/capabilities/explainer.core.js):
         var text = p.ps_legal_description || p.legal_description || '';
         var cls = classifyDescription(text);
         var pin = p.pin || p.parcel_no || (parcel && parcel.pin) || '';
@@ -273,6 +313,23 @@
       '<table>' + rows + '</table>';
   }
 
+  // AI-OFF citation links (§4.5 degrade-to-facts): the curated MI statute corpus
+  // rendered as references — the SAME statutes the AI narrates from when on (§4.6),
+  // shown here as links instead of prose. Reuses the AI-on statutes styling.
+  function statuteLinksHtml(statutes) {
+    if (!statutes || !statutes.length) return '';
+    var items = statutes.map(function (s) {
+      var nm = esc(s.name || '');
+      var name = s.url
+        ? '<a class="pv-xp-stat-name" href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer">' + nm + '</a>'
+        : '<span class="pv-xp-stat-name">' + nm + '</span>';
+      var plain = s.plain ? '<span class="pv-xp-stat-plain">' + esc(s.plain) + '</span>' : '';
+      return '<li>' + name + ' <span class="pv-xp-stat-cite">' + esc(s.citation || '') + '</span>' + plain + '</li>';
+    }).join('');
+    return '<section class="pv-xp-section"><h3 class="pv-xp-h">Michigan law</h3>' +
+      '<ul class="pv-xp-statutes">' + items + '</ul></section>';
+  }
+
   var TPL =
     '<div class="pv-xp">' +
       '{{#lead}}<p class="pv-modal-lead">{{lead}}</p>{{/lead}}' +
@@ -303,9 +360,8 @@
       '{{/has_ai}}' +
 
       '{{^has_ai}}' +
-        '{{#fallback_items}}<div class="pv-help-item"><div class="pv-help-h">{{term}}</div><div class="pv-help-p">{{definition}}</div></div>{{/fallback_items}}' +
-        '{{#fallback_teaser}}<div class="pv-teaser"><div class="pv-teaser-title"><span class="pv-badge">Offline</span> Live explainer unavailable</div>' +
-          '<p class="pv-teaser-body">{{fallback_teaser}}</p></div>{{/fallback_teaser}}' +
+        '{{{statute_links_html}}}' +
+        '{{#fallback_note}}<p class="pv-modal-note">{{fallback_note}}</p>{{/fallback_note}}' +
       '{{/has_ai}}' +
 
       '<div class="pv-xp-actions">' +
@@ -370,7 +426,7 @@
     },
   };
 
-  function buildData(facts, explanation, topic) {
+  function buildData(facts, explanation, topic, statutes) {
     var meta = TOPICS[topic] || TOPICS.assessment;
     var data = { pin: facts.pin || '', lead: meta.lead, has_ai: !!explanation };
     var h = meta.header(facts);
@@ -386,16 +442,19 @@
       data.has_statutes = !!(explanation.statutes && explanation.statutes.length);
       data.disclaimer = explanation.disclaimer || '';
     } else {
-      data.fallback_items = FALLBACK_ITEMS[topic] || FALLBACK_ITEMS.assessment;
-      // Suppress the "offline" teaser when there's simply no content to explain.
-      var emptyDesc = topic === 'tax_description' && !facts.description_text;
-      if (!emptyDesc) data.fallback_teaser = meta.fallbackTeaser;
+      // AI off / unreachable → degrade to facts: the recorded figures (already in the
+      // header) + the curated statute links, no prose (§4.5). Same statutes the AI
+      // narrates from when on (§4.6).
+      data.statute_links_html = statuteLinksHtml(statutes);
+      data.fallback_note = (statutes && statutes.length)
+        ? "AI walkthrough is off — showing this parcel's recorded figures and the Michigan statutes they're based on."
+        : '';
     }
     return data;
   }
 
-  function renderHtml(facts, explanation, topic) {
-    return T ? T.render(TPL, buildData(facts, explanation, topic)) : '';
+  function renderHtml(facts, explanation, topic, statutes) {
+    return T ? T.render(TPL, buildData(facts, explanation, topic, statutes)) : '';
   }
 
   // ── Print / export document ────────────────────────────────────────────────
@@ -423,10 +482,11 @@
     '{{#sections}}<h3>{{heading}}</h3><div>{{{body_html}}}</div>{{/sections}}' +
     '{{#has_statutes}}<h3>Michigan law</h3>{{#statutes}}<p><strong>{{name}}</strong> <span class="cite">{{citation}}</span><br>{{plain}}</p>{{/statutes}}{{/has_statutes}}' +
     '{{#disclaimer}}<p class="cite">{{disclaimer}}</p>{{/disclaimer}}{{/has_ai}}' +
+    '{{^has_ai}}{{#has_doc_statutes}}<h3>Michigan law</h3>{{#doc_statutes}}<p><strong>{{name}}</strong> <span class="cite">{{citation}}</span><br>{{plain}}</p>{{/doc_statutes}}{{/has_doc_statutes}}{{/has_ai}}' +
     '<footer class="foot">Generated {{generated}} · {{county}} Parcel Viewer · Educational use only.</footer>' +
     '</div></body></html>';
 
-  function docHtml(facts, explanation, topic) {
+  function docHtml(facts, explanation, topic, statutes) {
     if (!T) return '';
     var meta = TOPICS[topic] || TOPICS.assessment;
     var county = (root.COUNTY && root.COUNTY.name) || 'County';
@@ -445,6 +505,10 @@
       d.statutes = explanation.statutes || [];
       d.has_statutes = !!(explanation.statutes && explanation.statutes.length);
       d.disclaimer = explanation.disclaimer || '';
+    } else {
+      // AI-off print parity: include the curated statute links in the document too.
+      d.doc_statutes = statutes || [];
+      d.has_doc_statutes = !!(statutes && statutes.length);
     }
     return T.render(DOC_TPL, d);
   }
@@ -463,30 +527,33 @@
       '<p class="pv-modal-note">' + esc(msg || 'Please try again.') + '</p>';
   }
 
-  function wireActions(bodyEl, facts, explanation, topic, meta) {
+  function wireActions(bodyEl, facts, explanation, topic, meta, statutes) {
     var pr = bodyEl.querySelector('[data-xp="print"]');
     var dl = bodyEl.querySelector('[data-xp="download"]');
-    if (pr && root.PV_DOC) pr.addEventListener('click', function () { root.PV_DOC.print(docHtml(facts, explanation, topic)); });
-    if (dl && root.PV_DOC) dl.addEventListener('click', function () { root.PV_DOC.downloadHtml(docHtml(facts, explanation, topic), meta.docSlug + '-' + pinSlug(facts) + '.html'); });
+    if (pr && root.PV_DOC) pr.addEventListener('click', function () { root.PV_DOC.print(docHtml(facts, explanation, topic, statutes)); });
+    if (dl && root.PV_DOC) dl.addEventListener('click', function () { root.PV_DOC.downloadHtml(docHtml(facts, explanation, topic, statutes), meta.docSlug + '-' + pinSlug(facts) + '.html'); });
   }
 
   // Generic opener. host = { openModal, closeModal } from admin-menu (modal owner).
+  // Two front doors over one core (§6.2): the deterministic facts are assembled the
+  // same way regardless of AI; narration is layered on only when AI is on and reachable.
   function openExplainer(topic, parcel, host) {
     var meta = TOPICS[topic] || TOPICS.assessment;
     var title = meta.label + (parcel && parcel.pin ? ' — ' + parcel.pin : '');
     host.openModal(title, loadingHtml(meta), function (bodyEl) {
-      meta.assemble(parcel)
-        .then(function (facts) {
-          // No description on record → skip the AI call; show header + notes.
-          if (topic === 'tax_description' && !facts.description_text) {
-            bodyEl.innerHTML = renderHtml(facts, null, topic);
-            wireActions(bodyEl, facts, null, topic, meta);
-            return;
+      Promise.all([meta.assemble(parcel), loadStatutes()])
+        .then(function (res) {
+          var facts = res[0], statutes = res[1];
+          function show(explanation) {
+            bodyEl.innerHTML = renderHtml(facts, explanation, topic, statutes);
+            wireActions(bodyEl, facts, explanation, topic, meta, statutes);
           }
-          return fetchExplanation(facts, topic).then(function (explanation) {
-            bodyEl.innerHTML = renderHtml(facts, explanation, topic);
-            wireActions(bodyEl, facts, explanation, topic, meta);
-          });
+          // Degrade-to-facts (§4.5) when AI is off, or there's nothing to narrate.
+          var emptyDesc = topic === 'tax_description' && !facts.description_text;
+          if (emptyDesc || !aiEnabled()) { show(null); return; }
+          // AI on: narration over the IDENTICAL facts. fetchExplanation returns null
+          // on any failure → show(null) → auto-fallback to facts + links (§4.4b).
+          return fetchExplanation(facts, topic).then(show);
         })
         .catch(function (err) { bodyEl.innerHTML = errorHtml(meta, err && err.message); });
     });

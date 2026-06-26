@@ -16,11 +16,19 @@
 (function (root) {
   'use strict';
 
+  // Source-agnostic doc primitives live in the engine (ISV_DOC, A7b). We prefer them
+  // and inject the map handle, rather than the engine reading globals.
+  function engineDoc() { return root.ISV_DOC || null; }
+
   // ── Map image capture ──────────────────────────────────────────────────────
-  function captureMapImage() {
+  // The map handle is injected (defaults to the viewer's PS_MAP global for the
+  // existing callers); the engine capture helper never reads a global itself.
+  function captureMapImage(map) {
+    var handle = map || root.PS_MAP;
+    var d = engineDoc();
+    if (d) return d.captureCanvasImage(handle);
     try {
-      var map = root.PS_MAP;
-      if (map && map.getCanvas) return map.getCanvas().toDataURL('image/png');
+      if (handle && handle.getCanvas) return handle.getCanvas().toDataURL('image/png');
     } catch (e) { /* tainted canvas / no map */ }
     return null;
   }
@@ -90,14 +98,18 @@
     return root.PV_TEMPLATE.render(PARCEL_SUMMARY_TPL, parcelSummaryData(parcel, opts));
   }
 
-  // ── Output ────────────────────────────────────────────────────────────────
+  // ── Output ──────────────────────────────────────────────────────────────────
+  // Delegate to the source-agnostic engine primitives (ISV_DOC); keep an inline
+  // fallback so the viewer prints/downloads even if the engine script didn't load.
   function print(html) {
+    var d = engineDoc();
+    if (d) return d.print(html);
     var f = document.createElement('iframe');
     f.setAttribute('aria-hidden', 'true');
     f.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
     document.body.appendChild(f);
-    var d = f.contentWindow.document;
-    d.open(); d.write(html); d.close();
+    var fd = f.contentWindow.document;
+    fd.open(); fd.write(html); fd.close();
     setTimeout(function () {
       try { f.contentWindow.focus(); f.contentWindow.print(); } catch (e) {}
       setTimeout(function () { if (f.parentNode) f.parentNode.removeChild(f); }, 1000);
@@ -105,6 +117,8 @@
   }
 
   function downloadHtml(html, filename) {
+    var d = engineDoc();
+    if (d) return d.downloadHtml(html, filename);
     var blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     var url = URL.createObjectURL(blob);
     var a = document.createElement('a');

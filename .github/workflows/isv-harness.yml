@@ -1,0 +1,44 @@
+# ISV eval/test harness (A2 / DIC-576) — runs on every push/PR.
+# Deterministic capability-core tests, the contract/engine smoke, manifest schema
+# validation, the facts-parity check, and the Python explainer narration contract.
+# No live model is ever called; no secrets are required.
+name: ISV harness
+
+on:
+  push:
+    paths:
+      - 'engine/**'
+      - 'frontend/public/js/pv-explain.js'
+      - 'map-buddy/backend/agent.py'
+      - '.github/workflows/isv-harness.yml'
+  pull_request:
+    paths:
+      - 'engine/**'
+      - 'frontend/public/js/pv-explain.js'
+      - 'map-buddy/backend/agent.py'
+      - '.github/workflows/isv-harness.yml'
+  workflow_dispatch:
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: JS — capability cores + contract + facts-parity + schema (node --test)
+        working-directory: engine
+        run: node --test
+
+      - name: Python — run_explain structured-output contract (stdlib unittest, no SDK)
+        working-directory: engine
+        run: python -m unittest test.run_explain_contract_test -v
