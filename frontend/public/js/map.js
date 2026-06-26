@@ -1309,6 +1309,20 @@
         applyTheme(v === "dark");
       }
     },
+    // AI mode (B1 / DIC-571). Default OFF / opt-in (§4.4a); a county manifest may set
+    // COUNTY.ai.defaultMode. 'on' | 'off'. setAiMode dispatches 'pv-ai-mode-change';
+    // pv-ai-mode.js applies it (toggle state, Map Buddy visibility, degrade-to-facts).
+    getAiMode: function () {
+      try { var v = localStorage.getItem("pv-ai-mode"); if (v === "on" || v === "off") return v; } catch (_) {}
+      var d = (window.COUNTY && window.COUNTY.ai && window.COUNTY.ai.defaultMode) || "off";
+      return d === "on" ? "on" : "off";
+    },
+    setAiMode: function (mode) {
+      var m = mode === "on" ? "on" : "off";
+      try { localStorage.setItem("pv-ai-mode", m); } catch (_) {}
+      try { window.dispatchEvent(new CustomEvent("pv-ai-mode-change", { detail: { mode: m } })); } catch (_) {}
+      return m;
+    },
     // Cinematic "orbit" after a search arrival. Default on; power users can
     // disable the 360° spin (kept fly-in) in Settings. See PS_cinematicFlyTo.
     getCinematicOrbit: function () {

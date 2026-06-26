@@ -58,7 +58,9 @@
   // today's behavior (attempt AI) unless a pref explicitly turns it off — so B1 only
   // has to set PV_PREFS.aiMode and this already honors it.
   function aiEnabled() {
-    var pref = root.PV_PREFS && root.PV_PREFS.aiMode;
+    // B1: AI mode is opt-in via PV_PREFS.getAiMode() ('on'|'off', default off).
+    if (root.PV_PREFS && typeof root.PV_PREFS.getAiMode === 'function') return root.PV_PREFS.getAiMode() === 'on';
+    var pref = root.PV_PREFS && root.PV_PREFS.aiMode;   // legacy fallback
     return !(pref === 'off' || pref === false);
   }
 
