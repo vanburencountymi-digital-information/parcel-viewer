@@ -10,6 +10,7 @@ Surfaced, not resolved. "AI proposes, human disposes" (§4.12) — including me.
 | D2 | Harness runtime | **Node `node:test` (JS cores) + stdlib `unittest` (Python `run_explain`)**, one CI workflow, zero third-party deps. (You deferred this to me.) |
 | D4 | ZIP `knowledge_chunks` embedding provider | **Keep OpenAI `text-embedding-3-small`** for A6. This preserves the current ZIP vector-search shape and keeps OpenAI as the known embedding dependency rather than re-embedding or replacing vector search during the rewrite. |
 | D3 | AI-off explainer behavior | **Facts + curated statute links, no prose** (§4.5). Baked into the engine core's provenance + harness; UI surfacing is A7a (see O1). |
+| D5 | C2 manifest validation engine | **Defer Ajv; ship migrate-on-load on the zero-dep validator** (`validate-manifest.js`). Pulling Ajv cuts against the zero-dep harness + no-build-tool frontend ethos; the JSON Schema (`schema/manifest.schema.json`) stays the source-of-truth doc. The Ajv swap is an isolated later decision that only touches `validate-manifest.js` — the `loadManifest()` seam contract is stable across it. |
 
 ## Open decisions — need the team (BLOCKING the work they gate)
 

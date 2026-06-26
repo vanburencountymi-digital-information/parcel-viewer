@@ -734,6 +734,12 @@
   <script src="/engine/capabilities/explainer.core.js"></script>
   <script src="/engine/capabilities/ledger.core.js"></script>
   <script src="/engine/capabilities/register.js"></script>
+  <!-- Manifest schema versioning + migrate-on-load seam (C2 / DIC-583). load-manifest.js
+       composes migrate (manifest-version.js) THEN validate (validate-manifest.js) into the
+       one loadManifest() entry point B2/console/boot call. Same modules the CI harness runs. -->
+  <script src="/engine/manifest-version.js"></script>
+  <script src="/engine/validate-manifest.js"></script>
+  <script src="/engine/load-manifest.js"></script>
   <!-- AppContext bridge (A3): builds window.PS_CONTEXT from the live PS_* globals via
        lazy getters. Strangler-fig — old global reads keep working unchanged. -->
   <script src="/frontend/public/js/pv-app-context.js"></script>
@@ -752,6 +758,9 @@
   <script src="/frontend/public/js/pv-ai-mode.js"></script>
   <!-- AI-availability auto-fallback (B4): polls Map Buddy health; unreachable → AI-off + notice. -->
   <script src="/frontend/public/js/pv-ai-health.js"></script>
+  <!-- Manifest bridge (C2): exposes PV_MANIFEST.load (migrate-on-load) to the browser.
+       Additive no-op unless an explicit theme manifest is present (COUNTY isn't one yet). -->
+  <script src="/frontend/public/js/pv-manifest.js"></script>
   <script src="/frontend/public/js/parcel-labels.js"></script>
   <script src="/frontend/public/js/overlay-layers.js"></script>
   <script src="/frontend/public/js/county-layers.js"></script>

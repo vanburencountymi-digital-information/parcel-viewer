@@ -14,7 +14,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 
 - **Repo:** `github.com/vanburencountymi-digital-information/parcel-viewer`
 - **Branch/commit:** `main` @ `ffc825a` — **pushed to origin** (CI: `.github/workflows/isv-harness.yml`).
-- **Tests:** 103 green (95 Node `node:test` + 8 Python `unittest`). Run: `bash engine/run-harness.sh`.
+- **Tests:** 109 green (101 Node `node:test` + 8 Python `unittest`). Run: `bash engine/run-harness.sh`.
 - **Linear:** project **Intelligent Spatial Viewer (ISV)** — `intelligent-spatial-viewer-isv-cd0a9c4c0f9e`. Each DIC ticket has commit-referenced progress comments.
 
 ## What's done (status per spec)
@@ -32,7 +32,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 | 4 | B1 AI-mode toggle (opt-in, degrade-to-facts) | 571 | in progress (toggle done; ai-required-theme hide pending) |
 | 4 | B4 runtime AI auto-fallback | 580 | in progress (viewer side done; console side pending) |
 | 5 | A8 single source of truth for the 5 shared PV/ZIP drawing files | 575 | in progress (source-of-truth + drift guard; runtime-share pending) |
-| 6 | C2 manifest schema versioning + migration | 583 | in progress (migration engine done; migrate-on-load pending) |
+| 6 | C2 manifest schema versioning + migration | 583 | in progress (migration engine + **migrate-on-load seam** done & live-verified; Ajv swap deferred) |
 | 6 | C5 AI-quality eval (citation-accuracy + grounding) | 586 | in progress (deterministic floor done; golden sets + LLM-judge pending) |
 
 ## Architecture map (the seams)
@@ -44,7 +44,7 @@ Engine (source-agnostic, no domain noun — enforced by `engine/test/engine-smok
 - `engine/selection.js` — feature-agnostic SelectionManager.
 - `engine/feature-highlight.js` — MapLibre feature-state highlighter (map injected).
 - `engine/source.js` + `engine/popup.js` — source-config registry + source-driven section renderer (formatters: money/acres/label/code-label; tip/style/computed fields).
-- `engine/validate-manifest.js` + `engine/schema/manifest.schema.json` + `engine/manifest-version.js` — manifest validation + schema versioning/migration.
+- `engine/validate-manifest.js` + `engine/schema/manifest.schema.json` + `engine/manifest-version.js` + `engine/load-manifest.js` — manifest validation, schema versioning/migration, and the canonical `loadManifest()` migrate-on-load seam (migrate→validate in one place).
 - `engine/ai-quality.js` — citation-accuracy + grounding checks (C5).
 - `engine/drawing/` — canonical master of the shared drawing stack + `generate.mjs` (→ PV verbatim, ZIP via word-boundary `PS_→ZIP_`).
 
@@ -54,6 +54,7 @@ Viewer bridges (`frontend/public/js/`, the only place that knows `PS_*` / `COUNT
 - `pv-feature-info.js` → `PV_FEATURE_INFO.show/select` (renders any source into `#parcel-info-panel`).
 - `pv-explain.js` (explainer, consumes the core), `pv-doc.js` (consumes `ISV_DOC`), `pv-ledger.js`.
 - `pv-ai-mode.js` (`PV_AI_MODE`) + `pv-ai-health.js` (`PV_AI_HEALTH`) — AI toggle + auto-fallback.
+- `pv-manifest.js` (`PV_MANIFEST`) — surfaces the engine's `loadManifest()` to the browser; boot is a no-op until a real theme manifest exists (COUNTY isn't one), then migrates-on-load → `PS_MANIFEST_LOADED`.
 - `map.js` — drives `PS_SELECTION`, emits bus events, `_PARCEL_INFO_SOURCE` config for panel sections; `wms-feature-info.js` promotes clicked PostGIS overlays into `PV_FEATURE_INFO.select` (non-parcel sources are selectable; parcel click yields).
 
 ## How to run + verify (IMPORTANT — read before testing)
@@ -76,7 +77,7 @@ Viewer bridges (`frontend/public/js/`, the only place that knows `PS_*` / `COUNT
 
 ## What's next (recommended order)
 
-1. **Finish the in-flight increments** where cheap: A4 (extract `showParcelInfo`'s remaining HTML into the source renderer), A5 (more sections / backend per-source endpoints), B1 (hide toggle for `ai-required` themes — needs manifest→runtime wiring), B4 (console-side fallback + shared health module), A8 (runtime-share the drawing stack via AppContext), C2 (migrate-on-load + Ajv).
+1. **Finish the in-flight increments** where cheap: A4 (extract `showParcelInfo`'s remaining HTML into the source renderer), A5 (more sections / backend per-source endpoints), B1 (hide toggle for `ai-required` themes — needs manifest→runtime wiring), B4 (console-side fallback + shared health module), A8 (runtime-share the drawing stack via AppContext), C2 (**migrate-on-load done**; Ajv swap still deferred — see DECISIONS).
 2. **Step 5 themes:** **B2** manual Theme Composer (integrate the existing Admin Console module-editors into one versioned manifest — `parcel-viewer/admin/`), then **B3** AI autoconfigure. Unblocked now by C2's versioned schema.
 3. **Step 6 hardening gates (before any public multi-county launch):** **C1** tenant isolation (Urgent — row-level scoping, tenant-scoped AI, prompt-injection defense), **C3** AI cost governance (per-tenant quotas + result caching keyed on capability+typed input), **C4** ops/release (canary, per-tenant flags, rollback, monitoring).
 4. **A6** only after A6-a is decided.
