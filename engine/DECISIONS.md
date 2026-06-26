@@ -58,6 +58,18 @@ Remaining A3: migrate the ~175 global reads file-by-file per MIGRATION.md (start
 
 ## In progress — A4 (SelectionManager, the keystone & riskiest)
 
+**Slice 2 DONE** (commit pending): `engine/feature-highlight.js` — source-agnostic
+MapLibre feature-state highlighter (`set(id,state)` + `bindActive(bus,{stateKey})`,
+map injectable lazily). map.js's 5 inline `setFeatureState` sites now delegate to it via
+a `setFS()` helper (behavior-identical, inline fallback so PV can't regress); source/
+sourceLayer are config, removing that hardcoding (feeds A5). `clearSelectionAll()` now
+emits `PS_SELECTION.clear()` → completes the bus stream with selection clears (slice 1
+mirrored selects only). Unit-tested (`engine/test/feature-highlight.test.js`) + browser-
+verified (highlighter drives feature-state off the live bus; clear emits null-ref). Caveat:
+`PS_MAP` doesn't init in the static preview (no tiles), so the live on-map selection flow
+needs the dockerized stack to runtime-verify; the map.js change is a behavior-identical
+refactor (syntax-checked, fallback-guarded).
+
 **Slice 1 DONE & browser-verified** (additive, ZERO map.js edits): `engine/selection.js`
 (feature-agnostic SelectionManager — select/clear/setActive on `{sourceId,id,properties}`,
 emits `selection-changed`/`active-feature-changed` on the bus) + `frontend/public/js/pv-selection.js`

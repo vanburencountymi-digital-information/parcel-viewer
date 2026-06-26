@@ -179,12 +179,23 @@
     }
   }
 
+  // Feature-state highlight delegated to the source-agnostic engine helper
+  // (A4 slice 2 / DIC-569). Behavior-identical; falls back to a direct
+  // setFeatureState if the engine isn't loaded, so PV can't regress.
+  const _highlighter = (window.ISV_HIGHLIGHT)
+    ? window.ISV_HIGHLIGHT.createFeatureHighlighter({ map: () => map, sourceId: "parcels", sourceLayer: SOURCE_LAYER })
+    : null;
+  function setFS(id, state) {
+    if (_highlighter) _highlighter.set(id, state);
+    else if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: id }, state);
+  }
+
   // ── Selection management ───────────────────────────────────────────────
   function addToSelection(pin, props, geometry) {
     if (selectedPins.includes(pin)) return false;
     selectedPins.push(pin);
     selectedFeatureMap.set(pin, { props, geometry });
-    if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: true });
+    setFS(pin, { selected: true });
     return true;
   }
 
@@ -193,13 +204,13 @@
     if (idx === -1) return false;
     selectedPins.splice(idx, 1);
     selectedFeatureMap.delete(pin);
-    if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: false, activeInfo: false });
+    setFS(pin, { selected: false, activeInfo: false });
     return true;
   }
 
   function clearSelectionAll() {
     for (const pin of selectedPins) {
-      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: false, activeInfo: false });
+      setFS(pin, { selected: false, activeInfo: false });
     }
     selectedPins = [];
     selectedFeatureMap.clear();
@@ -209,16 +220,15 @@
     hideInfoPanel();
     setStatusStrip(DEFAULT_STATUS);
     window.PS_STATE.parcel = null;
+    // Announce the clear on the bus (A4 slice 2) — the select-side hook isn't called
+    // on deselect, so this completes the selection-changed stream for subscribers.
+    if (window.PS_SELECTION) window.PS_SELECTION.clear();
   }
 
   function setActiveInfoPin(pin) {
-    if (activeInfoPin && map) {
-      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: activeInfoPin }, { activeInfo: false });
-    }
+    if (activeInfoPin) setFS(activeInfoPin, { activeInfo: false });
     activeInfoPin = pin;
-    if (pin && map) {
-      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { activeInfo: true });
-    }
+    if (pin) setFS(pin, { activeInfo: true });
   }
 
   // ── Reactive cartography: focus/dim spotlight (DIC-508) ────────────────────

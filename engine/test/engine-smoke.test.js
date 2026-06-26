@@ -29,7 +29,7 @@ test('a NON-parcel source renders through the same popup engine', () => {
 
 test('the engine modules contain no "parcel" assumption (§4.1)', () => {
   // The contract seam, validator, and popup engine must not mention parcels.
-  ['../capability.js', '../validate-manifest.js', '../popup.js', '../doc.js', '../app-context.js', '../selection.js'].forEach((rel) => {
+  ['../capability.js', '../validate-manifest.js', '../popup.js', '../doc.js', '../app-context.js', '../selection.js', '../feature-highlight.js'].forEach((rel) => {
     const src = fs.readFileSync(path.join(__dirname, rel), 'utf8');
     assert.ok(!/\bparcel/i.test(src), rel + ' must not mention "parcel" (source-agnostic engine)');
   });
