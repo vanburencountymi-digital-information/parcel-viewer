@@ -1,29 +1,41 @@
 'use strict';
-// AI-mode controller (B1 / DIC-571) — verifies the deterministic bits of the real
-// pv-ai-mode.js against a minimal DOM stub: it reads PV_PREFS.getAiMode, and apply()
-// reflects the mode onto <html data-ai-mode> and the toggle button. (The event-driven
-// path + Map Buddy CSS are covered by live verification on the dockerized map.)
+// AI-mode controller (B1 / DIC-571) + availability auto-fallback (B4 / DIC-580).
+// Verifies the deterministic logic of the real pv-ai-mode.js against a DOM stub: it
+// reads PV_PREFS.getAiMode, reflects the EFFECTIVE state (wanted AND available) onto
+// <html data-ai-mode> + the button, and degrades to facts without changing the
+// preference when the service is unavailable. (The live Map Buddy CSS + the health
+// poll are covered by on-map verification.)
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
+function el() {
+  return {
+    _a: {}, style: {}, className: '', textContent: '',
+    classList: { _s: {}, add: function (c) { this._s[c] = 1; }, remove: function (c) { delete this._s[c]; }, toggle: function (c, on) { if (on) this._s[c] = 1; else delete this._s[c]; } },
+    setAttribute: function (k, v) { this._a[k] = v; }, getAttribute: function (k) { return this._a[k]; },
+    addEventListener: function () {}, appendChild: function () {},
+  };
+}
+
 function load(initialMode) {
   var attrs = {};
-  var btn = { _a: {}, style: {}, classList: { toggle: function () {} }, addEventListener: function () {},
-    setAttribute: function (k, v) { this._a[k] = v; }, getAttribute: function (k) { return this._a[k]; } };
+  var btn = el();
   var sandbox = {};
   sandbox.window = sandbox;
   sandbox.console = console;
   sandbox.CustomEvent = function (t, o) { return { type: t, detail: o && o.detail }; };
   sandbox.addEventListener = function () {};
+  sandbox.dispatchEvent = function () {};
   sandbox.document = {
     readyState: 'complete',
-    documentElement: { setAttribute: function (k, v) { attrs[k] = v; }, getAttribute: function (k) { return attrs[k]; } },
+    documentElement: { setAttribute: function (k, v) { attrs[k] = v; }, getAttribute: function (k) { return attrs[k]; }, appendChild: function () {} },
+    body: { appendChild: function () {} },
     head: { appendChild: function () {} },
     getElementById: function (id) { return id === 'pv-ai-toggle' ? btn : null; },
-    createElement: function () { return { style: {}, setAttribute: function () {}, appendChild: function () {} }; },
+    createElement: function () { return el(); },
     addEventListener: function () {},
   };
   var store = { m: initialMode || 'off' };
@@ -36,19 +48,32 @@ function load(initialMode) {
   return { sandbox, attrs: function () { return attrs; }, btn: btn };
 }
 
-test('default off: get() reads PV_PREFS, apply reflects onto <html> + button', () => {
+test('default off: effective off, button unpressed', () => {
   const { sandbox, attrs, btn } = load('off');
-  assert.equal(sandbox.PV_AI_MODE.get(), 'off');
   assert.equal(sandbox.PV_AI_MODE.isOn(), false);
-  assert.equal(attrs()['data-ai-mode'], 'off');      // applied on wire()
+  assert.equal(sandbox.PV_AI_MODE.isEffective(), false);
+  assert.equal(attrs()['data-ai-mode'], 'off');
   assert.equal(btn.getAttribute('aria-pressed'), 'false');
 });
 
-test('apply("on") sets data-ai-mode=on and presses the button', () => {
-  const { sandbox, attrs, btn } = load('off');
-  sandbox.PV_AI_MODE.apply('on');
+test('on + available → effective on (data-ai-mode=on, button pressed)', () => {
+  const { sandbox, attrs, btn } = load('on');
+  assert.equal(sandbox.PV_AI_MODE.isEffective(), true);
   assert.equal(attrs()['data-ai-mode'], 'on');
   assert.equal(btn.getAttribute('aria-pressed'), 'true');
+});
+
+test('B4 auto-fallback: on but UNAVAILABLE → degrade to facts WITHOUT changing the preference', () => {
+  const { sandbox, attrs, btn } = load('on');
+  sandbox.PV_AI_MODE.setAvailable(false);
+  assert.equal(attrs()['data-ai-mode'], 'off');        // effective off
+  assert.equal(sandbox.PV_AI_MODE.get(), 'on');        // preference unchanged
+  assert.equal(sandbox.PV_AI_MODE.isEffective(), false);
+  assert.equal(btn.getAttribute('aria-pressed'), 'true'); // button still shows user intent
+  // recovery re-enables automatically
+  sandbox.PV_AI_MODE.setAvailable(true);
+  assert.equal(attrs()['data-ai-mode'], 'on');
+  assert.equal(sandbox.PV_AI_MODE.isEffective(), true);
 });
 
 test('set/toggle update PV_PREFS and isOn', () => {
@@ -57,10 +82,4 @@ test('set/toggle update PV_PREFS and isOn', () => {
   assert.equal(sandbox.PV_AI_MODE.get(), 'on');
   sandbox.PV_AI_MODE.toggle();
   assert.equal(sandbox.PV_AI_MODE.get(), 'off');
-});
-
-test('starting on: get() reflects it', () => {
-  const { sandbox, attrs } = load('on');
-  assert.equal(sandbox.PV_AI_MODE.isOn(), true);
-  assert.equal(attrs()['data-ai-mode'], 'on');
 });

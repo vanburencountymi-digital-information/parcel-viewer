@@ -25,6 +25,20 @@
   }
   function isOn() { return get() === 'on'; }
 
+  // Availability (B4 / DIC-580) is SEPARATE from the user's preference: if the user
+  // wants AI on but the service is unreachable, we degrade to facts WITHOUT changing
+  // their choice, then re-enable on recovery. Effective AI = wanted AND available.
+  var _available = true;
+  function isAvailable() { return _available; }
+  function isEffective() { return isOn() && _available; }
+  function setAvailable(avail) {
+    var a = !!avail;
+    if (a === _available) return;
+    _available = a;
+    apply();
+    try { root.dispatchEvent(new CustomEvent('pv-ai-availability-change', { detail: { available: a } })); } catch (_) {}
+  }
+
   // Inject the degrade-to-facts CSS once. Keying on data-ai-mode hides AI surfaces
   // (Map Buddy) even when they're built lazily — no timing dependence.
   function ensureStyle() {
@@ -35,27 +49,49 @@
     (doc.head || doc.documentElement).appendChild(s);
   }
 
-  function apply(mode) {
-    var on = mode === 'on';
-    ensureStyle();
-    if (doc.documentElement) doc.documentElement.setAttribute('data-ai-mode', on ? 'on' : 'off');
+  // A calm, persistent notice while AI is wanted but unavailable (§4.4b). Reuses the
+  // existing .pv-toast styling.
+  function notice(show) {
+    var el = doc.getElementById('pv-ai-notice');
+    if (show && !el) {
+      el = doc.createElement('div');
+      el.id = 'pv-ai-notice';
+      el.className = 'pv-toast';
+      el.setAttribute('role', 'status');
+      el.textContent = 'AI is unavailable right now — showing facts. Retrying…';
+      (doc.body || doc.documentElement).appendChild(el);
+      if (root.requestAnimationFrame) root.requestAnimationFrame(function () { el.classList.add('pv-toast--show'); });
+      else el.classList.add('pv-toast--show');
+    } else if (!show && el) {
+      el.classList.remove('pv-toast--show');
+      setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 320);
+    }
+  }
 
-    // Toggle button state.
+  // Reflect the EFFECTIVE state (no arg — always recomputed from preference +
+  // availability). data-ai-mode follows effective; the button shows user intent.
+  function apply() {
+    ensureStyle();
+    var userOn = isOn();
+    var effective = userOn && _available;
+    if (doc.documentElement) doc.documentElement.setAttribute('data-ai-mode', effective ? 'on' : 'off');
+
     var btn = doc.getElementById('pv-ai-toggle');
     if (btn) {
-      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-      btn.title = 'AI mode: ' + (on ? 'on' : 'off');
-      btn.classList.toggle('is-on', on);
-      // Accent when on so state is legible without bespoke CSS.
-      btn.style.color = on ? 'var(--ui-interactive, #B58D4A)' : '';
+      btn.setAttribute('aria-pressed', userOn ? 'true' : 'false');
+      btn.title = userOn ? (effective ? 'AI mode: on' : 'AI mode: on (service unavailable — showing facts)') : 'AI mode: off';
+      btn.classList.toggle('is-on', userOn);
+      btn.classList.toggle('is-degraded', userOn && !_available);
+      btn.style.color = effective ? 'var(--ui-interactive, #B58D4A)' : '';
     }
+    notice(userOn && !_available);
   }
 
   function set(mode) {
     var p = prefs();
     var m = (mode === 'on') ? 'on' : 'off';
-    if (p && typeof p.setAiMode === 'function') p.setAiMode(m); // persists + dispatches
-    else apply(m);
+    if (p && typeof p.setAiMode === 'function') p.setAiMode(m); // persists + dispatches → apply()
+    else apply();
     return m;
   }
   function toggle() { return set(isOn() ? 'off' : 'on'); }
@@ -66,15 +102,16 @@
       btn._pvAiWired = true;
       btn.addEventListener('click', function () { toggle(); });
     }
-    // Re-apply whenever the mode changes (from the button, settings, or B4 fallback).
-    root.addEventListener('pv-ai-mode-change', function (e) {
-      apply((e && e.detail && e.detail.mode) || get());
-    });
-    apply(get());
+    // Re-apply whenever the mode changes (button, settings, or the B4 fallback).
+    root.addEventListener('pv-ai-mode-change', function () { apply(); });
+    apply();
   }
 
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', wire);
   else wire();
 
-  root.PV_AI_MODE = { get: get, set: set, isOn: isOn, toggle: toggle, apply: apply };
+  root.PV_AI_MODE = {
+    get: get, set: set, isOn: isOn, toggle: toggle, apply: apply,
+    isAvailable: isAvailable, isEffective: isEffective, setAvailable: setAvailable,
+  };
 }(typeof window !== 'undefined' ? window : this));

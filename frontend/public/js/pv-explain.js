@@ -58,7 +58,10 @@
   // today's behavior (attempt AI) unless a pref explicitly turns it off — so B1 only
   // has to set PV_PREFS.aiMode and this already honors it.
   function aiEnabled() {
-    // B1: AI mode is opt-in via PV_PREFS.getAiMode() ('on'|'off', default off).
+    // B1/B4: AI is opt-in (getAiMode) AND must be reachable (auto-fallback). Prefer the
+    // effective state when the AI-mode controller is present, so a known-down service
+    // skips the call and degrades to facts immediately rather than failing per-request.
+    if (root.PV_AI_MODE && typeof root.PV_AI_MODE.isEffective === 'function') return root.PV_AI_MODE.isEffective();
     if (root.PV_PREFS && typeof root.PV_PREFS.getAiMode === 'function') return root.PV_PREFS.getAiMode() === 'on';
     var pref = root.PV_PREFS && root.PV_PREFS.aiMode;   // legacy fallback
     return !(pref === 'off' || pref === false);
