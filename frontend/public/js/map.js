@@ -190,6 +190,19 @@
     else if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: id }, state);
   }
 
+  // Info panel renders from the bus (A4 slice 3 / DIC-569): the selection code emits
+  // 'active-feature-changed'; the panel subscribes HERE instead of being called inline
+  // from selection. showParcelInfo's internals are unchanged — only WHO triggers it is
+  // decoupled. (Falls back to a direct call at the emit site if the bus is absent.)
+  if (window.PS_BUS) {
+    window.PS_BUS.on("active-feature-changed", function (e) {
+      const r = e && e.ref;
+      if (r && r.sourceId === "parcels" && r.properties) {
+        showParcelInfo(r.pin || r.id, r.properties, r.geometry);
+      }
+    });
+  }
+
   // ── Selection management ───────────────────────────────────────────────
   function addToSelection(pin, props, geometry) {
     if (selectedPins.includes(pin)) return false;
@@ -1655,7 +1668,16 @@
     updateInfoPanelNav();
 
     const p = entry.props;
-    showParcelInfo(pin, p, entry.geometry);
+    // A4 (DIC-569): build the feature ref once, drive the SelectionManager (→
+    // 'selection-changed' on the bus), and emit 'active-feature-changed' so the info
+    // panel subscriber renders. Direct fallback if the engine/bus didn't load.
+    const _ref = { sourceId: "parcels", id: (p.id != null ? p.id : pin), pin: pin, properties: p, geometry: entry.geometry };
+    if (window.PS_SELECTION) window.PS_SELECTION.select(_ref);
+    if (window.PS_BUS) {
+      window.PS_BUS.emit("active-feature-changed", { ref: _ref });
+    } else {
+      showParcelInfo(pin, p, entry.geometry);
+    }
 
     const [cLng, cLat] = entry.geometry ? computeCentroid(entry.geometry) : [null, null];
     const pBounds      = entry.geometry ? computeBounds(entry.geometry) : [[null,null],[null,null]];

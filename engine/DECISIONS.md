@@ -70,6 +70,23 @@ verified (highlighter drives feature-state off the live bus; clear emits null-re
 needs the dockerized stack to runtime-verify; the map.js change is a behavior-identical
 refactor (syntax-checked, fallback-guarded).
 
+**Slice 3 DONE & verified on the REAL dockerized map** (commit pending): the info panel
+is now event-driven — map.js emits `active-feature-changed` at the selection site and a
+subscriber renders `showParcelInfo` (its internals unchanged; only WHO triggers it is
+decoupled). map.js also drives `PS_SELECTION.select(ref)` explicitly → `selection-changed`.
+
+**Bug found by live verification + fixed:** the slice-1 `PS_onParcelSelect` accessor
+interception **infinitely recursed against hints.js** (which also wraps that hook) on the
+real map — a regression invisible in the static preview. Replaced with explicit driving
+from map.js; the interception is gone, so parcel-studio's `PS_onParcelSelect` is now
+completely untouched (safer than before). Verified: 0 console errors across repeated
+selects, panels render, selection/active events fire. Lesson: monkeypatching a shared
+global is fragile; drive the bus explicitly.
+
+**Tooling:** fixed a gzip bug in `tools/a11y-proxy.py` (it stripped `content-encoding`
+but forwarded compressed bytes) so the preview can drive the full dockerized viewer
+(8091 → docker 8080) — this is what made on-map verification possible.
+
 **Slice 1 DONE & browser-verified** (additive, ZERO map.js edits): `engine/selection.js`
 (feature-agnostic SelectionManager — select/clear/setActive on `{sourceId,id,properties}`,
 emits `selection-changed`/`active-feature-changed` on the bus) + `frontend/public/js/pv-selection.js`
