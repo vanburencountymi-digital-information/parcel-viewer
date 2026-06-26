@@ -18,7 +18,10 @@ function engineSourceFiles() {
       const p = path.join(dir, name);
       const st = fs.statSync(p);
       if (st.isDirectory()) {
-        if (name === 'test' || name === 'node_modules') continue;   // tests/deps excluded
+        // tests/deps excluded; `drawing/` holds the namespace-templated shared drawing
+        // stack (A8 / DIC-575) — the PS_ master is transformed to PS_/ZIP_ copies by
+        // engine/drawing/generate.mjs, so it legitimately carries the namespace prefix.
+        if (name === 'test' || name === 'node_modules' || name === 'drawing') continue;
         walk(p);
       } else if (name.endsWith('.js')) {
         out.push(p);
