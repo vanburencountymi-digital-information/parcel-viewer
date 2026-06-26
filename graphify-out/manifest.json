@@ -1,0 +1,277 @@
+{
+  ".claude/launch.json": {
+    "mtime": 1782273874.4019291,
+    "ast_hash": "8a60190779be2bfb9f94cfd9ea2a2acc",
+    "semantic_hash": "8a60190779be2bfb9f94cfd9ea2a2acc"
+  },
+  ".claude/settings.local.json": {
+    "mtime": 1782312108.756425,
+    "ast_hash": "6953388d81a3b3609fefb0f238f4b6c7",
+    "semantic_hash": "6953388d81a3b3609fefb0f238f4b6c7"
+  },
+  "admin/js/admin.js": {
+    "mtime": 1782273874.4049292,
+    "ast_hash": "5a9a28f22104982b86d48ba3de901798",
+    "semantic_hash": "5a9a28f22104982b86d48ba3de901798"
+  },
+  "backend/app/main.py": {
+    "mtime": 1782273874.405929,
+    "ast_hash": "bf7919adf18f160dda68dbf186c507be",
+    "semantic_hash": "bf7919adf18f160dda68dbf186c507be"
+  },
+  "backend/migrations/0001_config_store.sql": {
+    "mtime": 1782273874.405929,
+    "ast_hash": "4fd25c26cdbd4a5795d578a32e62cc50",
+    "semantic_hash": "4fd25c26cdbd4a5795d578a32e62cc50"
+  },
+  "backend/parcel_viewer/__init__.py": {
+    "mtime": 1781268308.5202272,
+    "ast_hash": "83239ddfcc7607d9e24482abe2e65e59",
+    "semantic_hash": "83239ddfcc7607d9e24482abe2e65e59"
+  },
+  "backend/parcel_viewer/config.py": {
+    "mtime": 1782273874.406929,
+    "ast_hash": "66a3ff2810e1e174790e61f468b39ec0",
+    "semantic_hash": "66a3ff2810e1e174790e61f468b39ec0"
+  },
+  "backend/parcel_viewer/config_store.py": {
+    "mtime": 1782273874.408026,
+    "ast_hash": "b1b1a79407389e3cbc70839a4caf4569",
+    "semantic_hash": "b1b1a79407389e3cbc70839a4caf4569"
+  },
+  "backend/parcel_viewer/county_configs/vanburen.json": {
+    "mtime": 1782273874.408026,
+    "ast_hash": "b15128fd5bbde6ce29e2f8c81b9e6929",
+    "semantic_hash": "b15128fd5bbde6ce29e2f8c81b9e6929"
+  },
+  "backend/parcel_viewer/db.py": {
+    "mtime": 1781268308.5202272,
+    "ast_hash": "cee1d80972242818aed5a63ea02faa5f",
+    "semantic_hash": "cee1d80972242818aed5a63ea02faa5f"
+  },
+  "backend/parcel_viewer/routers/__init__.py": {
+    "mtime": 1781268308.5202272,
+    "ast_hash": "72f75646b1fcbaf70018ce823ec53c48",
+    "semantic_hash": "72f75646b1fcbaf70018ce823ec53c48"
+  },
+  "backend/parcel_viewer/routers/feedback.py": {
+    "mtime": 1782273874.4090261,
+    "ast_hash": "be81f341c349cc68e598ebecc5dd5ecb",
+    "semantic_hash": "be81f341c349cc68e598ebecc5dd5ecb"
+  },
+  "backend/parcel_viewer/routers/parcels.py": {
+    "mtime": 1782273874.410026,
+    "ast_hash": "de0748892aedb0bc0fc4671e1967ca03",
+    "semantic_hash": "de0748892aedb0bc0fc4671e1967ca03"
+  },
+  "frontend/public/changelog.json": {
+    "mtime": 1782273874.4131277,
+    "ast_hash": "8c9f7a300d75467de94edfdecf59470a",
+    "semantic_hash": "8c9f7a300d75467de94edfdecf59470a"
+  },
+  "frontend/public/js/admin-menu.js": {
+    "mtime": 1782273874.4171278,
+    "ast_hash": "806a18502c87bab589d152600ef0ac98",
+    "semantic_hash": "806a18502c87bab589d152600ef0ac98"
+  },
+  "frontend/public/js/county-config.js": {
+    "mtime": 1782273874.4171278,
+    "ast_hash": "2a666de9c6731c77a20273af6cd4f817",
+    "semantic_hash": "2a666de9c6731c77a20273af6cd4f817"
+  },
+  "frontend/public/js/county-layers.js": {
+    "mtime": 1782273874.418128,
+    "ast_hash": "ad7c2aaef6f869e56b32069b356dc438",
+    "semantic_hash": "ad7c2aaef6f869e56b32069b356dc438"
+  },
+  "frontend/public/js/drawing/annotation-store.js": {
+    "mtime": 1781268308.5358515,
+    "ast_hash": "4e2577d698cde7b2b1b9d7058cc74907",
+    "semantic_hash": "4e2577d698cde7b2b1b9d7058cc74907"
+  },
+  "frontend/public/js/drawing/drawing-tools.js": {
+    "mtime": 1781268308.5358515,
+    "ast_hash": "30a9f2aad5cea9372864c701dc195856",
+    "semantic_hash": "30a9f2aad5cea9372864c701dc195856"
+  },
+  "frontend/public/js/drawing/map-control-api.js": {
+    "mtime": 1781268308.5358515,
+    "ast_hash": "aa54db97d138eb2231a738042f4d2a55",
+    "semantic_hash": "aa54db97d138eb2231a738042f4d2a55"
+  },
+  "frontend/public/js/drawing/measure-tool.js": {
+    "mtime": 1782273874.419128,
+    "ast_hash": "d6bc294a493d3c881ab97eabb5755a8f",
+    "semantic_hash": "d6bc294a493d3c881ab97eabb5755a8f"
+  },
+  "frontend/public/js/drawing/snapping-engine.js": {
+    "mtime": 1781268308.5358515,
+    "ast_hash": "ab50bbac780433682d2eaf2267c0b660",
+    "semantic_hash": "ab50bbac780433682d2eaf2267c0b660"
+  },
+  "frontend/public/js/drawing/undo-redo.js": {
+    "mtime": 1781268308.5358515,
+    "ast_hash": "eecd5549ad9e7bba854e227275935f17",
+    "semantic_hash": "eecd5549ad9e7bba854e227275935f17"
+  },
+  "frontend/public/js/hints.js": {
+    "mtime": 1782273874.419128,
+    "ast_hash": "1d1c1dac409f0f0d4bbd7ec5b23db9d6",
+    "semantic_hash": "1d1c1dac409f0f0d4bbd7ec5b23db9d6"
+  },
+  "frontend/public/js/layer-registry.js": {
+    "mtime": 1782273874.420128,
+    "ast_hash": "cb466018d17a57bd97368daac679789b",
+    "semantic_hash": "cb466018d17a57bd97368daac679789b"
+  },
+  "frontend/public/js/legend-panel.js": {
+    "mtime": 1781268308.5358515,
+    "ast_hash": "6d96c6c752effc264ee13e6b12b07bd6",
+    "semantic_hash": "6d96c6c752effc264ee13e6b12b07bd6"
+  },
+  "frontend/public/js/map.js": {
+    "mtime": 1782273874.421128,
+    "ast_hash": "2d04b61334966332b09770f25116ffe4",
+    "semantic_hash": "2d04b61334966332b09770f25116ffe4"
+  },
+  "frontend/public/js/overlay-layers.js": {
+    "mtime": 1782273874.4221282,
+    "ast_hash": "bcaa92d072ad5c1ee22574a022bd908b",
+    "semantic_hash": "bcaa92d072ad5c1ee22574a022bd908b"
+  },
+  "frontend/public/js/parcel-labels.js": {
+    "mtime": 1782273874.4231281,
+    "ast_hash": "8ecda99b3b5a3ceeb74d559aaff7caa9",
+    "semantic_hash": "8ecda99b3b5a3ceeb74d559aaff7caa9"
+  },
+  "frontend/public/js/pg-layers.js": {
+    "mtime": 1782273874.4231281,
+    "ast_hash": "e4ce2f75661a9dac0185e5306b0fc9ec",
+    "semantic_hash": "e4ce2f75661a9dac0185e5306b0fc9ec"
+  },
+  "frontend/public/js/pv-doc.js": {
+    "mtime": 1782273874.4241283,
+    "ast_hash": "e796d9fc341c4a46e8554fa7913ee475",
+    "semantic_hash": "e796d9fc341c4a46e8554fa7913ee475"
+  },
+  "frontend/public/js/pv-explain.js": {
+    "mtime": 1782273874.4241283,
+    "ast_hash": "ad912eab09ac5f13539b14ac9689444b",
+    "semantic_hash": "ad912eab09ac5f13539b14ac9689444b"
+  },
+  "frontend/public/js/pv-template.js": {
+    "mtime": 1782273874.425128,
+    "ast_hash": "717f62e6fc3d57c532e06b54ca921094",
+    "semantic_hash": "717f62e6fc3d57c532e06b54ca921094"
+  },
+  "frontend/public/js/style-preview.js": {
+    "mtime": 1782273874.425128,
+    "ast_hash": "afd69d27eab163799f01cf415c086293",
+    "semantic_hash": "afd69d27eab163799f01cf415c086293"
+  },
+  "frontend/public/js/wms-feature-info.js": {
+    "mtime": 1782273874.426128,
+    "ast_hash": "ae4e326c922cf2c0e9aa7eeda0de02a8",
+    "semantic_hash": "ae4e326c922cf2c0e9aa7eeda0de02a8"
+  },
+  "infra/compose.ps1": {
+    "mtime": 1781268308.5358515,
+    "ast_hash": "fdf4dfd7b7a206803246f4b32027b053",
+    "semantic_hash": "fdf4dfd7b7a206803246f4b32027b053"
+  },
+  "map-buddy/backend/agent.py": {
+    "mtime": 1782273874.4291284,
+    "ast_hash": "4da40a7af5bfdb308a51559c42b65b0d",
+    "semantic_hash": "4da40a7af5bfdb308a51559c42b65b0d"
+  },
+  "map-buddy/backend/main.py": {
+    "mtime": 1782273874.430128,
+    "ast_hash": "3e54c41aa6b5f364d39a5f6c3fbb7be1",
+    "semantic_hash": "3e54c41aa6b5f364d39a5f6c3fbb7be1"
+  },
+  "map-buddy/deploy.sh": {
+    "mtime": 1781317866.8460636,
+    "ast_hash": "71c7f010f6148497176415e141301984",
+    "semantic_hash": "71c7f010f6148497176415e141301984"
+  },
+  "map-buddy/js/map-buddy.js": {
+    "mtime": 1782273874.4322045,
+    "ast_hash": "6e3cbeaca07f01f861c4605bdca0c9df",
+    "semantic_hash": "6e3cbeaca07f01f861c4605bdca0c9df"
+  },
+  "scripts/apply_config_migration.ps1": {
+    "mtime": 1782273874.4322045,
+    "ast_hash": "05fc3b332ea300b485b37a51f964da46",
+    "semantic_hash": "05fc3b332ea300b485b37a51f964da46"
+  },
+  "scripts/build_demo.py": {
+    "mtime": 1781268308.5358515,
+    "ast_hash": "da97bd24c93b0f0a5cb302d64d0f2036",
+    "semantic_hash": "da97bd24c93b0f0a5cb302d64d0f2036"
+  },
+  "tools/a11y-proxy.py": {
+    "mtime": 1782273874.4332054,
+    "ast_hash": "f1cc61b5d843bbdf09e094d2fbfababc",
+    "semantic_hash": "f1cc61b5d843bbdf09e094d2fbfababc"
+  },
+  "HANDOFF.md": {
+    "mtime": 1782273874.4019291,
+    "ast_hash": "7f9c0eb998b49dd27798d135e5e0e3ba",
+    "semantic_hash": "7f9c0eb998b49dd27798d135e5e0e3ba"
+  },
+  "README.md": {
+    "mtime": 1781268308.5202272,
+    "ast_hash": "77c0903a1b9fbf6c255bd9565ad38608",
+    "semantic_hash": "77c0903a1b9fbf6c255bd9565ad38608"
+  },
+  "admin/index.html": {
+    "mtime": 1782273874.403929,
+    "ast_hash": "6bb2e06a653e5f5633d2a3f7f6d52381",
+    "semantic_hash": "6bb2e06a653e5f5633d2a3f7f6d52381"
+  },
+  "backend/requirements.txt": {
+    "mtime": 1782273874.410026,
+    "ast_hash": "51f8093e847f52f8d5b5c98f0aa1f434",
+    "semantic_hash": "51f8093e847f52f8d5b5c98f0aa1f434"
+  },
+  "demo/index.html": {
+    "mtime": 1782273874.411026,
+    "ast_hash": "8b142c9b7e4617d0491f8c9298a2701b",
+    "semantic_hash": "8b142c9b7e4617d0491f8c9298a2701b"
+  },
+  "docs/HANDOFF.md": {
+    "mtime": 1781268308.5202272,
+    "ast_hash": "af32a5f51c77d53734b4c38b9797638e",
+    "semantic_hash": "af32a5f51c77d53734b4c38b9797638e"
+  },
+  "docs/SESSION-HANDOFF.md": {
+    "mtime": 1782273874.412128,
+    "ast_hash": "9a62bd7b53a6f4fa9d2eba63a61290a1",
+    "semantic_hash": "9a62bd7b53a6f4fa9d2eba63a61290a1"
+  },
+  "docs/admin-console-provisioning.md": {
+    "mtime": 1782273874.412128,
+    "ast_hash": "27cf96bb3565becd6f0cfbc0ea1501df",
+    "semantic_hash": "27cf96bb3565becd6f0cfbc0ea1501df"
+  },
+  "frontend/public/design/spatial-glass-concept.html": {
+    "mtime": 1782273874.416128,
+    "ast_hash": "c802d2cd9f9e82e639cdd387c5cd9509",
+    "semantic_hash": "c802d2cd9f9e82e639cdd387c5cd9509"
+  },
+  "infra/docker-compose.viewer.yml": {
+    "mtime": 1782273874.427128,
+    "ast_hash": "5d0bd1c9c2ca0bd6d37c3b391a1811fb",
+    "semantic_hash": "5d0bd1c9c2ca0bd6d37c3b391a1811fb"
+  },
+  "infra/martin/martin.yaml": {
+    "mtime": 1782273874.4281275,
+    "ast_hash": "f366804099f5615487585041b9eacefc",
+    "semantic_hash": "f366804099f5615487585041b9eacefc"
+  },
+  "map-buddy/backend/requirements.txt": {
+    "mtime": 1781296080.7487788,
+    "ast_hash": "f85e32b68f909499b79832398303f8b7",
+    "semantic_hash": "f85e32b68f909499b79832398303f8b7"
+  }
+}
