@@ -22,7 +22,10 @@ class Proxy(http.server.BaseHTTPRequestHandler):
         url = UPSTREAM + self.path
         req = urllib.request.Request(url, data=body, method=self.command)
         for k, v in self.headers.items():
-            if k.lower() in ("host", "content-length"):
+            # Drop Accept-Encoding so upstream returns identity — otherwise nginx
+            # gzips and we'd forward compressed bytes without the content-encoding
+            # header (which is in HOP), leaving the browser unable to decode them.
+            if k.lower() in ("host", "content-length", "accept-encoding"):
                 continue
             req.add_header(k, v)
         try:

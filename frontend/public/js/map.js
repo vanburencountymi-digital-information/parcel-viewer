@@ -179,12 +179,36 @@
     }
   }
 
+  // Feature-state highlight delegated to the source-agnostic engine helper
+  // (A4 slice 2 / DIC-569). Behavior-identical; falls back to a direct
+  // setFeatureState if the engine isn't loaded, so PV can't regress.
+  const _highlighter = (window.ISV_HIGHLIGHT)
+    ? window.ISV_HIGHLIGHT.createFeatureHighlighter({ map: () => map, sourceId: "parcels", sourceLayer: SOURCE_LAYER })
+    : null;
+  function setFS(id, state) {
+    if (_highlighter) _highlighter.set(id, state);
+    else if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: id }, state);
+  }
+
+  // Info panel renders from the bus (A4 slice 3 / DIC-569): the selection code emits
+  // 'active-feature-changed'; the panel subscribes HERE instead of being called inline
+  // from selection. showParcelInfo's internals are unchanged — only WHO triggers it is
+  // decoupled. (Falls back to a direct call at the emit site if the bus is absent.)
+  if (window.PS_BUS) {
+    window.PS_BUS.on("active-feature-changed", function (e) {
+      const r = e && e.ref;
+      if (r && r.sourceId === "parcels" && r.properties) {
+        showParcelInfo(r.pin || r.id, r.properties, r.geometry);
+      }
+    });
+  }
+
   // ── Selection management ───────────────────────────────────────────────
   function addToSelection(pin, props, geometry) {
     if (selectedPins.includes(pin)) return false;
     selectedPins.push(pin);
     selectedFeatureMap.set(pin, { props, geometry });
-    if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: true });
+    setFS(pin, { selected: true });
     return true;
   }
 
@@ -193,13 +217,13 @@
     if (idx === -1) return false;
     selectedPins.splice(idx, 1);
     selectedFeatureMap.delete(pin);
-    if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: false, activeInfo: false });
+    setFS(pin, { selected: false, activeInfo: false });
     return true;
   }
 
   function clearSelectionAll() {
     for (const pin of selectedPins) {
-      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { selected: false, activeInfo: false });
+      setFS(pin, { selected: false, activeInfo: false });
     }
     selectedPins = [];
     selectedFeatureMap.clear();
@@ -209,16 +233,15 @@
     hideInfoPanel();
     setStatusStrip(DEFAULT_STATUS);
     window.PS_STATE.parcel = null;
+    // Announce the clear on the bus (A4 slice 2) — the select-side hook isn't called
+    // on deselect, so this completes the selection-changed stream for subscribers.
+    if (window.PS_SELECTION) window.PS_SELECTION.clear();
   }
 
   function setActiveInfoPin(pin) {
-    if (activeInfoPin && map) {
-      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: activeInfoPin }, { activeInfo: false });
-    }
+    if (activeInfoPin) setFS(activeInfoPin, { activeInfo: false });
     activeInfoPin = pin;
-    if (pin && map) {
-      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { activeInfo: true });
-    }
+    if (pin) setFS(pin, { activeInfo: true });
   }
 
   // ── Reactive cartography: focus/dim spotlight (DIC-508) ────────────────────
@@ -1286,6 +1309,20 @@
         applyTheme(v === "dark");
       }
     },
+    // AI mode (B1 / DIC-571). Default OFF / opt-in (§4.4a); a county manifest may set
+    // COUNTY.ai.defaultMode. 'on' | 'off'. setAiMode dispatches 'pv-ai-mode-change';
+    // pv-ai-mode.js applies it (toggle state, Map Buddy visibility, degrade-to-facts).
+    getAiMode: function () {
+      try { var v = localStorage.getItem("pv-ai-mode"); if (v === "on" || v === "off") return v; } catch (_) {}
+      var d = (window.COUNTY && window.COUNTY.ai && window.COUNTY.ai.defaultMode) || "off";
+      return d === "on" ? "on" : "off";
+    },
+    setAiMode: function (mode) {
+      var m = mode === "on" ? "on" : "off";
+      try { localStorage.setItem("pv-ai-mode", m); } catch (_) {}
+      try { window.dispatchEvent(new CustomEvent("pv-ai-mode-change", { detail: { mode: m } })); } catch (_) {}
+      return m;
+    },
     // Cinematic "orbit" after a search arrival. Default on; power users can
     // disable the 360° spin (kept fly-in) in Settings. See PS_cinematicFlyTo.
     getCinematicOrbit: function () {
@@ -1456,6 +1493,57 @@
   const PROP_CLASS_LABELS  = (window.COUNTY && COUNTY.labels && COUNTY.labels.propClass)  || {};
   const SCHOOL_DIST_LABELS = (window.COUNTY && COUNTY.labels && COUNTY.labels.schoolDist) || {};
 
+  // ── A5 (DIC-407): express parcel info SECTIONS through the engine renderer ──
+  // The "Owner" section is declared as source config + rendered by ISV_POPUP — the
+  // same source-agnostic renderer that draws any source. The rich Assessed-Values
+  // table + AV chart legitimately stay custom (domain rendering config can't express;
+  // the spec's plugin/escape-hatch tier). A safe inline fallback keeps PV green if the
+  // engine didn't load. This is the "hunt hardcoded fields → config" discipline, one
+  // verifiable section at a time.
+  const _PARCEL_OWNER_SOURCE = {
+    id: "parcels", idField: "pin",
+    popup: { sections: [
+      { title: "Owner", fields: [
+        { label: "Name", field: "owner_name" },
+        { label: "Mailing", field: "owner_street", format: "owner_mail",
+          tip: "Owner's mailing address as recorded in the tax roll",
+          style: "white-space:normal;word-break:break-word" } ] } ] },
+  };
+  const _PARCEL_FORMATTERS = {
+    owner_mail: function (_v, ctx) {
+      const p = ctx.props || {};
+      return [p.owner_street || "",
+              [p.owner_city || "", p.owner_state || ""].filter(Boolean).join(" "),
+              p.owner_zip || ""].filter(Boolean).join(", ") || null;
+    },
+  };
+  function _escHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+  // Render a config section through ISV_POPUP into the parcel panel's row markup
+  // (showing "—" for empty, matching the inline rows). Returns null if the engine
+  // isn't loaded so the caller can fall back to inline HTML.
+  function _engineSectionHtml(cfg, formatters, props, title) {
+    if (!window.ISV_POPUP) return null;
+    const labels = {
+      propClass: (typeof PROP_CLASS_LABELS !== "undefined" ? PROP_CLASS_LABELS : {}),
+      schoolDist: (typeof SCHOOL_DIST_LABELS !== "undefined" ? SCHOOL_DIST_LABELS : {}),
+    };
+    const secs = window.ISV_POPUP.renderSections(cfg, { properties: props }, { labels: labels, formatters: formatters });
+    const sec = secs.filter(function (s) { return s.section === title; })[0];
+    if (!sec) return null;
+    const rows = sec.rows.map(function (r) {
+      const tip = r.tip ? ' data-tip="' + _escHtml(r.tip) + '"' : "";
+      const style = r.style ? ' style="' + _escHtml(r.style) + '"' : "";
+      const val = (r.value != null && r.value !== "") ? _escHtml(r.value) : "—";
+      return '<div class="parcel-info-row"><span class="parcel-info-label"' + tip + ">" + _escHtml(r.label) +
+        '</span><span class="parcel-info-value"' + style + ">" + val + "</span></div>";
+    }).join("");
+    return '<div class="parcel-info-section-title">' + _escHtml(title) + "</div>" + rows;
+  }
+
   // Field layout matches the geo.parcels / assessing.vbc_parcels payload
   // returned by GET /parcel/{id}.
   function showParcelInfo(pin, p, geometry) {
@@ -1559,9 +1647,10 @@
       provenance +
       `<hr class="parcel-info-divider">` +
 
-      `<div class="parcel-info-section-title">Owner</div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label">Name</span><span class="parcel-info-value">${dash(p.owner_name)}</span></div>` +
-      `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>` +
+      (_engineSectionHtml(_PARCEL_OWNER_SOURCE, _PARCEL_FORMATTERS, p, "Owner") ||
+        (`<div class="parcel-info-section-title">Owner</div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label">Name</span><span class="parcel-info-value">${dash(p.owner_name)}</span></div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>`)) +
       `<hr class="parcel-info-divider">` +
 
       `<div class="parcel-info-section-title">Assessed Values` +
@@ -1645,7 +1734,16 @@
     updateInfoPanelNav();
 
     const p = entry.props;
-    showParcelInfo(pin, p, entry.geometry);
+    // A4 (DIC-569): build the feature ref once, drive the SelectionManager (→
+    // 'selection-changed' on the bus), and emit 'active-feature-changed' so the info
+    // panel subscriber renders. Direct fallback if the engine/bus didn't load.
+    const _ref = { sourceId: "parcels", id: (p.id != null ? p.id : pin), pin: pin, properties: p, geometry: entry.geometry };
+    if (window.PS_SELECTION) window.PS_SELECTION.select(_ref);
+    if (window.PS_BUS) {
+      window.PS_BUS.emit("active-feature-changed", { ref: _ref });
+    } else {
+      showParcelInfo(pin, p, entry.geometry);
+    }
 
     const [cLng, cLat] = entry.geometry ? computeCentroid(entry.geometry) : [null, null];
     const pBounds      = entry.geometry ? computeBounds(entry.geometry) : [[null,null],[null,null]];

@@ -44,6 +44,12 @@
           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="7.2" r="1.1" fill="currentColor" stroke="none"/><path d="M5.5 9.5c2 0.9 4.2 1.4 6.5 1.4s4.5-.5 6.5-1.4"/><path d="M12 11v3.4l-2.3 4.1M12 14.4l2.3 4.1"/></svg>
         </button>
 
+        <!-- AI mode toggle (B1 / DIC-571): AI is opt-in. Off = degrade to facts;
+             hides Map Buddy, explainers show facts + statute links. -->
+        <button id="pv-ai-toggle" class="pv-a11y-btn pv-ai-toggle" title="AI mode: off" aria-label="Toggle AI mode" aria-pressed="false">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6z"/><path d="M19 13l.8 2.2L22 16l-2.2.8L19 19l-.8-2.2L16 16l2.2-.8z"/></svg>
+        </button>
+
         <!-- Administrative tools menu -->
         <div id="pv-admin" class="pv-admin">
           <button id="pv-admin-btn" class="pv-admin-btn" title="Help &amp; tools" aria-label="Help and tools" aria-haspopup="true" aria-expanded="false">
@@ -714,9 +720,38 @@
   <script src="/frontend/public/js/drawing/drawing-tools.js"></script>
   <script src="/frontend/public/js/drawing/measure-tool.js"></script>
   <script src="/frontend/public/js/pv-template.js"></script>
+  <!-- ISV engine (A1 contract + capability cores + source-agnostic doc utils).
+       Loaded before its consumers (pv-doc, pv-explain, pv-ledger) so the browser runs
+       the SAME modules the CI harness tests. Progressive enhancement: each consumer
+       feature-detects these and falls back to its inline path if absent. -->
+  <script src="/engine/capability.js"></script>
+  <script src="/engine/app-context.js"></script>
+  <script src="/engine/selection.js"></script>
+  <script src="/engine/feature-highlight.js"></script>
+  <script src="/engine/source.js"></script>
+  <script src="/engine/popup.js"></script>
+  <script src="/engine/doc.js"></script>
+  <script src="/engine/capabilities/explainer.core.js"></script>
+  <script src="/engine/capabilities/ledger.core.js"></script>
+  <script src="/engine/capabilities/register.js"></script>
+  <!-- AppContext bridge (A3): builds window.PS_CONTEXT from the live PS_* globals via
+       lazy getters. Strangler-fig — old global reads keep working unchanged. -->
+  <script src="/frontend/public/js/pv-app-context.js"></script>
   <script src="/frontend/public/js/pv-doc.js"></script>
   <script src="/frontend/public/js/pv-explain.js"></script>
+  <script src="/frontend/public/js/pv-ledger.js"></script>
   <script src="/frontend/public/js/map.js"></script>
+  <!-- Selection bridge (A4 slice 1): mirrors the map's selection onto PS_BUS by
+       intercepting PS_onParcelSelect (preserving any downstream handler). Loads AFTER
+       map.js. Additive — no map.js changes. -->
+  <script src="/frontend/public/js/pv-selection.js"></script>
+  <!-- Generic source-agnostic feature info panel (A5): showFeatureInfo for any source.
+       Additive; not wired to clicks yet, so the parcel flow is untouched. -->
+  <script src="/frontend/public/js/pv-feature-info.js"></script>
+  <!-- AI-mode toggle controller (B1): opt-in AI; off hides Map Buddy + degrades to facts. -->
+  <script src="/frontend/public/js/pv-ai-mode.js"></script>
+  <!-- AI-availability auto-fallback (B4): polls Map Buddy health; unreachable → AI-off + notice. -->
+  <script src="/frontend/public/js/pv-ai-health.js"></script>
   <script src="/frontend/public/js/parcel-labels.js"></script>
   <script src="/frontend/public/js/overlay-layers.js"></script>
   <script src="/frontend/public/js/county-layers.js"></script>

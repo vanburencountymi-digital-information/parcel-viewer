@@ -1,0 +1,44 @@
+{
+  "_comment": "Two real source configs proving the engine renders 'a source', not 'parcels'. The parcels source expresses the live info panel's structure declaratively (formatters + label lookups); the roads source is a non-parcel source rendered through the SAME engine.",
+  "parcels": {
+    "id": "parcels",
+    "idField": "pin",
+    "search": { "fields": ["pin", "owner_name", "prop_street"], "endpoint": "/search" },
+    "detail": { "endpoint": "/parcel/{id}" },
+    "hover": { "enabled": true, "fields": ["pin", "owner_name"] },
+    "popup": {
+      "sections": [
+        { "title": "Parcel", "fields": [
+          { "label": "Address", "field": "prop_street" },
+          { "label": "Area", "field": "gis_acres", "format": "acres" },
+          { "label": "Class", "field": "prop_class", "format": "code-label", "labelMap": "propClass" }
+        ]},
+        { "title": "Owner", "fields": [
+          { "label": "Name", "field": "owner_name" }
+        ]},
+        { "title": "Assessed Values", "fields": [
+          { "label": "Assessed Value", "field": "assessed_value", "format": "money" },
+          { "label": "Taxable Value", "field": "taxable_value", "format": "money" }
+        ]}
+      ]
+    },
+    "legend": "Parcels"
+  },
+  "roads": {
+    "id": "roads",
+    "idField": "road_id",
+    "search": { "fields": ["name"], "endpoint": "/roads/search" },
+    "detail": { "endpoint": "/roads/{id}" },
+    "hover": { "enabled": true, "fields": ["name"] },
+    "popup": {
+      "sections": [
+        { "title": "Road", "fields": [
+          { "label": "Name", "field": "name" },
+          { "label": "Surface", "field": "surface" },
+          { "label": "Jurisdiction", "field": "jurisdiction" }
+        ]}
+      ]
+    },
+    "legend": "Road centerlines"
+  }
+}

@@ -1,0 +1,128 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://dice.vanburencountymi.gov/isv/manifest.schema.json",
+  "title": "ISV Theme Manifest",
+  "description": "The versioned, declarative document that defines one viewer (ISV_BUILD_SPEC §5). The platform's public API. PROVISIONAL v1 (A1/C2): the shape is expected to grow; manifestVersion versions THIS shape. Source-agnostic: describes 'sources', never 'parcels'.",
+  "type": "object",
+  "required": ["manifestVersion", "id", "tenant", "map", "sources", "capabilities"],
+  "additionalProperties": true,
+  "properties": {
+    "manifestVersion": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$",
+      "description": "SCHEMA version of the manifest shape (engine declares which it supports + migrates older). Distinct from config-instance versioning."
+    },
+    "id": { "type": "string", "minLength": 1 },
+    "tenant": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Tenant/county scoping key (§4.13 tenant isolation is security)."
+    },
+    "branding": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string" },
+        "logo": { "type": "string" },
+        "attribution": { "type": "string" },
+        "theme": {
+          "type": "object",
+          "description": "CSS custom-property tokens.",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "map": {
+      "type": "object",
+      "required": ["center", "zoom"],
+      "additionalProperties": true,
+      "properties": {
+        "style": { "type": "string" },
+        "center": {
+          "type": "array",
+          "items": { "type": "number" },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        "zoom": { "type": "number", "minimum": 0, "maximum": 24 },
+        "extent": { "type": "array" }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Vector/raster sources the engine renders. The engine reads 'a source with an idField, search, popup, hover, styling' — never 'parcels'.",
+      "items": {
+        "type": "object",
+        "required": ["id", "type"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "enum": ["vector", "raster", "wms", "geojson"] },
+          "tiles": { "type": "string" },
+          "url": { "type": "string" },
+          "idField": { "type": "string" },
+          "search": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "fields": { "type": "array", "items": { "type": "string" } },
+              "endpoint": { "type": "string" }
+            }
+          },
+          "popup": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "sections": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "hover": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "enabled": { "type": "boolean" },
+              "fields": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": { "endpoint": { "type": "string" } }
+          },
+          "style": { "type": "object" },
+          "legend": { "type": "string" }
+        }
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "description": "Per-capability config. Each value carries an AI tri-state (§4.7) and an optional disclosure level.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "ai": { "type": "string", "enum": ["no-ai", "ai-optional", "ai-required"] },
+          "disclosure": { "type": "string", "enum": ["basic", "advanced", "hidden"] }
+        }
+      }
+    },
+    "persona": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "voice": { "type": "string" },
+        "audience": { "type": "string", "enum": ["public", "staff"] }
+      }
+    },
+    "mapBuddy": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "apiBase": { "type": "string" },
+        "knowledge": { "type": "string" }
+      }
+    },
+    "plugins": { "type": "array", "items": { "type": "string" } }
+  }
+}

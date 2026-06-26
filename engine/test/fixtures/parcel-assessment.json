@@ -1,0 +1,19 @@
+{
+  "_comment": "Authoritative parcel properties as returned by GET /parcel/{id} (feature.properties). Frozen fixture — the deterministic explainer core must produce identical facts from this every run.",
+  "pin": "80-08-032-002-00",
+  "parcel_no": "80-08-032-002-00",
+  "owner_name": "DOE JANE",
+  "municipality": "Antwerp Township",
+  "school_dist": "80150",
+  "prop_class": "401",
+  "homestead": 100,
+  "assessed_value": 98000,
+  "prev_assessed_value": 94500,
+  "taxable_value": 72340,
+  "prev_taxable_value": 70980,
+  "assessed_value_yr0": 98000,
+  "assessed_value_yr1": 94500,
+  "assessed_value_yr2": 91200,
+  "assessed_value_yr3": 88000,
+  "assessed_value_yr4": 85100
+}

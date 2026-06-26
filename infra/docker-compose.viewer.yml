@@ -64,6 +64,10 @@ services:
       - ../demo:/usr/share/nginx/html/demo:ro
       - ../map-buddy:/usr/share/nginx/html/map-buddy:ro
       - ../admin:/usr/share/nginx/html/admin:ro
+      # ISV engine: capability contract + cores + curated corpora, served at /engine/
+      # so the browser loads the SAME modules the harness tests (O1-a). Canonical home
+      # stays parcel-viewer/engine/.
+      - ../engine:/usr/share/nginx/html/engine:ro
     ports:
       - "${PV_HTTP_PORT:-8080}:80"
     depends_on:
