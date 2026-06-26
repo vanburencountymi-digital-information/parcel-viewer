@@ -13,7 +13,7 @@ echo "== ISV harness: JS capability cores + contract (node --test) =="
 node --test
 
 echo
-echo "== ISV harness: Python explainer narration contract (unittest) =="
+echo "== ISV harness: Python explainer contract + KnowledgeStore seam (unittest) =="
 # Prefer a modern python (agent.py uses 3.10+ union syntax).
 PY="${PYTHON:-}"
 if [ -z "$PY" ]; then
@@ -21,7 +21,7 @@ if [ -z "$PY" ]; then
     if command -v "$c" >/dev/null 2>&1; then PY="$c"; break; fi
   done
 fi
-"$PY" -m unittest test.run_explain_contract_test -v
+"$PY" -m unittest test.run_explain_contract_test test.run_knowledge_store_test -v
 
 echo
 echo "ISV harness: PASS"

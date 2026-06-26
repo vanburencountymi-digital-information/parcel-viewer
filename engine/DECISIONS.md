@@ -16,13 +16,22 @@ Surfaced, not resolved. "AI proposes, human disposes" (§4.12) — including me.
 
 | # | Decision | Why it's blocking | Options |
 |---|---|---|---|
-| **A6-a** | ZIP DB cross-GCP boundary (`dbapi-473618` vs `core-db-475718`) | `KnowledgeStore` interface shape depends on it; largest A6 lift | (a) migrate ZIP DB into the DICE project; (b) federate at the app layer with two credential sets |
 | **O1** | Engine-serving for the browser | the live `pv-explain.js` can't `require` `engine/` — nginx serves only `frontend/public`. Needed before A7a wires the live UI to the cores. | **(a) CHOSEN (provisional default, revisit at A7a):** add a volume + `location /engine/` mount so `engine/` stays the single canonical home. (b) relocate browser bundles under `frontend/public/js/engine/`. |
 
-I am **not** picking A6-a (your explicit instruction). A6-b resolved to **keep OpenAI
-`text-embedding-3-small`**. O1 resolved to **(a)** —
-fully reversible (~2 infra lines + script-src paths; only one consumer, no blast
-radius), revisit at A7a if it feels wrong.
+**A6-a RESOLVED (2026-06-26) → option (a): migrate ZIP DB into the DICE project.**
+Drake migrated ZIP's `knowledge_chunks` → **`knowledge.chunks`** in db-dice
+(`core-db-475718`): 657 rows, pgvector enabled, new `jurisdiction` column (default
+`lockport-township`), `text`→`content`, `(section_id, jurisdiction)` unique
+(`county-data-services` `39296c5`; DIC-570 comment). The **KnowledgeStore half is
+unblocked** and now built (see Done). The **ParcelStore half stays blocked** — the
+Lockport parcel geometry/assessment/zoning data is **not yet in db-dice**; Drake
+deferred it pending a team DB-shape decision (`assessing.sjc_parcels` vs a generalized
+`assessing.parcels` w/ county discriminator), a `zoning.parcel_zones` schema, and the
+Lockport ETL from `repos/zip-poc/data/`.
+
+O1 resolved to **(a)** — fully reversible (~2 infra lines + script-src paths; only one
+consumer, no blast radius), revisit at A7a if it feels wrong. A6-b resolved to **keep
+OpenAI `text-embedding-3-small`**.
 
 ## Risks / watch-items
 
