@@ -21,7 +21,7 @@ if [ -z "$PY" ]; then
     if command -v "$c" >/dev/null 2>&1; then PY="$c"; break; fi
   done
 fi
-"$PY" -m unittest test.run_explain_contract_test test.run_knowledge_store_test test.run_parcel_store_test -v
+"$PY" -m unittest test.run_explain_contract_test test.run_knowledge_store_test test.run_parcel_store_test test.run_pv_parcel_store_test -v
 
 echo
 echo "ISV harness: PASS"

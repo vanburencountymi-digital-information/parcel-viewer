@@ -10,8 +10,13 @@ from fastapi import APIRouter, HTTPException, Query
 
 from .. import config
 from ..db import pool
+from ..stores.parcel_store import make_parcel_store
 
 router = APIRouter()
+
+# ParcelStore seam (A6 / DIC-570): the /parcel route reads through this instead of
+# inline SQL, decoupling it from the hardcoded geo.parcel_geometry/vbc_parcels schema.
+_PARCEL_STORE = make_parcel_store()
 
 _FEATURE_PROPS_SQL = """
     pg.id                AS id,
@@ -326,28 +331,13 @@ async def search(q: str = Query(..., min_length=2), limit: int = Query(10, le=50
 
 @router.get("/parcel/{parcel_id}")
 async def get_parcel(parcel_id: int):
-    sql = """
-        SELECT pg.id, pg.parcel_no, pg.county, pg.municipality, pg.acres, pg.area,
-               ST_Area(ST_Transform(pg.geom, 4326)::geography) / 4046.8564224 AS computed_acres,
-               pg.source, pg.source_file, pg.cogo_legs, pg.legal_description AS ps_legal_description,
-               pg.tax_description, pg.created_at, pg.updated_at,
-               a.owner_name, a.prop_street, a.prop_city, a.prop_state, a.prop_zip,
-               a.owner_street, a.owner_city, a.owner_state, a.owner_zip,
-               a.school_dist, a.prop_class, a.homestead, a.qual_ag,
-               a.frontage, a.avg_depth,
-               a.assessed_value, a.taxable_value, a.prev_assessed_value, a.prev_taxable_value,
-               a.assessed_value_yr0, a.assessed_value_yr1, a.assessed_value_yr2,
-               a.assessed_value_yr3, a.assessed_value_yr4,
-               a.legal_description,
-               ST_AsGeoJSON(ST_Transform(pg.geom, 4326), 7) AS geojson
-        FROM geo.parcel_geometry pg
-        LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
-        WHERE pg.id = %s
-    """
-    with pool.connection() as conn:
-        row = conn.execute(sql, (parcel_id,)).fetchone()
-    if not row:
+    # The schema-coupled SQL now lives in the ParcelStore seam (A6 / DIC-570); the route
+    # formats the raw row into its GeoJSON Feature exactly as before. `canonical` is the
+    # cross-backend normalized record, available to other callers.
+    result = _PARCEL_STORE.get_parcel(parcel_id)
+    if not result:
         raise HTTPException(status_code=404, detail="Parcel not found")
+    row = result["raw"]
 
     row["pin"] = row["parcel_no"]
     row["gis_acres"] = row["computed_acres"] if row.get("computed_acres") else row["acres"]
