@@ -110,10 +110,66 @@
     return { ok: citations.ok && grounding.ok, citations: citations, grounding: grounding };
   }
 
+  // ── Generic §6.4 citation-envelope check (any capability, not just the explainer) ──
+  var ENVELOPE_STATES = { resolves: 1, coarse: 1, none: 1 };
+
+  // Validate provenance emitted in the shared citation envelope (§6.4):
+  //   { source_id, anchor, span, state: 'resolves'|'coarse'|'none' }
+  // `validSources` (optional array) is the set a 'resolves' citation may point at; a
+  // 'resolves' citation to an unknown source is a HALLUCINATED source. A 'none' state is
+  // an uncitable claim — freelancing (§6.4), a violation. 'coarse' is honest degradation.
+  function checkEnvelope(citations, validSources) {
+    var allow = null;
+    if (Array.isArray(validSources)) {
+      allow = {};
+      validSources.forEach(function (s) { allow[s] = 1; });
+    }
+    var violations = [];
+    (citations || []).forEach(function (c, i) {
+      var at = (c && c.anchor) || ('#' + i);
+      if (!c || !c.source_id) { violations.push({ anchor: at, reason: 'missing source_id' }); return; }
+      if (!c.span) violations.push({ anchor: at, reason: 'missing span' });
+      if (!ENVELOPE_STATES[c.state]) { violations.push({ anchor: at, reason: 'invalid state: ' + c.state }); return; }
+      if (c.state === 'none') { violations.push({ anchor: at, reason: 'uncitable claim (state none = freelancing)' }); return; }
+      if (allow && c.state === 'resolves' && !allow[c.source_id]) {
+        violations.push({ anchor: at, source_id: c.source_id, reason: 'cited source not in the allowed set' });
+      }
+    });
+    return { ok: violations.length === 0, violations: violations };
+  }
+
+  // Quality gate for the theme-composer (B3): the draft must be fully GROUNDED — every
+  // enabled capability and the persona trace to a provenance entry (no capability
+  // appears without a documented reason), and the provenance envelope is well-formed.
+  function evaluateComposer(output, opts) {
+    opts = opts || {};
+    var facts = (output && output.facts) || {};
+    var manifest = facts.draftManifest || {};
+    var prov = (output && output.provenance) || [];
+
+    var envelope = checkEnvelope(prov, opts.validSources || ['brief']);
+
+    var anchored = {};
+    prov.forEach(function (c) { if (c && c.anchor) anchored[c.anchor] = 1; });
+    var violations = [];
+    Object.keys(manifest.capabilities || {}).forEach(function (id) {
+      if (!anchored['capabilities.' + id]) {
+        violations.push({ capability: id, reason: 'enabled but no provenance — ungrounded' });
+      }
+    });
+    if (manifest.persona && !anchored['persona.audience']) {
+      violations.push({ reason: 'persona set but no provenance' });
+    }
+    var grounding = { ok: violations.length === 0, violations: violations };
+    return { ok: envelope.ok && grounding.ok, envelope: envelope, grounding: grounding };
+  }
+
   return {
     checkCitations: checkCitations,
     checkGrounding: checkGrounding,
     evaluateExplanation: evaluateExplanation,
+    checkEnvelope: checkEnvelope,
+    evaluateComposer: evaluateComposer,
     mclCores: mclCores,
     dollarsIn: dollarsIn,
   };

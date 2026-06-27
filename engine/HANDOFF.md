@@ -14,7 +14,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 
 - **Repo:** `github.com/vanburencountymi-digital-information/parcel-viewer`
 - **Branch/commit:** `main` @ `ffc825a` — **pushed to origin** (CI: `.github/workflows/isv-harness.yml`).
-- **Tests:** 163 green (117 Node `node:test` + 46 Python `unittest`). Run: `bash engine/run-harness.sh`.
+- **Tests:** 169 green (123 Node `node:test` + 46 Python `unittest`). Run: `bash engine/run-harness.sh`.
 - **Linear:** project **Intelligent Spatial Viewer (ISV)** — `intelligent-spatial-viewer-isv-cd0a9c4c0f9e`. Each DIC ticket has commit-referenced progress comments.
 
 ## What's done (status per spec)
@@ -36,7 +36,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 | — | A6 backend convergence — **KnowledgeStore + ParcelStore** (decouple knowledge + parcel access; DICE + ZIP-local backends) | 570 | in progress (KnowledgeStore + ParcelStore built & harness-verified; A6-a resolved. **PV `/parcel/{id}` route now reads through `DiceVbcParcelStore` — live-verified on the dockerized viewer.** ZIP/Lockport parcel DATA still not migrated; cross-repo store dedup is a packaging decision) |
 | 6 | C1 tenant isolation (Urgent) | 582 | in progress (inc 1: **fail-closed tenant scoping** in KnowledgeStore; **prompt-injection defense** `kb_guard.py`. inc 2: **wired into the live agent loop** — `agent.py` returns KB tool results via `kb_guard.guard_tool_result` (fenced as DATA); all other tools byte-identical. inc 3: **row-level ParcelStore tenant scoping** — `parcel_contract.tenant_predicate` (single-sourced) + opt-in `tenant_column`/`tenant` on the VBC stores, fail-closed when configured; PV single-tenant route unchanged (live-verified). DB-layer roles + cross-tenant E2E pending the writable store) |
 | 6 | C2 manifest schema versioning + migration | 583 | in progress (migration engine + **migrate-on-load seam** done & live-verified; Ajv swap deferred) |
-| 6 | C5 AI-quality eval (citation-accuracy + grounding) | 586 | in progress (deterministic floor done; golden sets + LLM-judge pending) |
+| 6 | C5 AI-quality eval (citation-accuracy + grounding) | 586 | in progress (explainer citation/grounding floor done; **generalized to the §6.4 envelope** (`checkEnvelope`) + a **theme-composer grounding gate** (`evaluateComposer` — every enabled capability/persona must trace to provenance). Golden sets + live LLM-judge pending) |
 
 ## Architecture map (the seams)
 
