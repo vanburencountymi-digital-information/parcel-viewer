@@ -244,6 +244,30 @@
   background: rgba(181,141,74,0.18); color: #e8d8c4; border-color: rgba(181,141,74,0.42);
 }
 
+/* Cited sources — clickable §6.4 citations that open the Sources panel (DIC-522). */
+.mb-sources {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed rgba(0,0,0,0.10);
+}
+.mb-sources-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--text-muted, #8a7a60);
+}
+.mb-source {
+  font-size: 11px; font-weight: 600; line-height: 1.4;
+  padding: 2px 8px; border-radius: 999px; cursor: pointer;
+  background: var(--ui-interactive-bg, rgba(181,141,74,0.12));
+  color: var(--ui-interactive-dk, #8a6a2f);
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.30));
+  text-decoration: none; white-space: nowrap;
+}
+.mb-source:hover { background: var(--ui-interactive-bd, rgba(181,141,74,0.30)); }
+[data-theme="dark"] .mb-sources { border-top-color: rgba(255,255,255,0.12); }
+[data-theme="dark"] .mb-source {
+  background: rgba(181,141,74,0.18); color: #e8d8c4; border-color: rgba(181,141,74,0.42);
+}
+
 /* Secondary info / result bubbles (measurements, search, tour notes). */
 .mb-msg-info { background: #f7f5f2; border: 1px dashed #e0d8cc; }
 [data-theme="dark"] .mb-msg-info { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.14); }

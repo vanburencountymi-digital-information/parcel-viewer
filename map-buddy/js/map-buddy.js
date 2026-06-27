@@ -545,6 +545,9 @@
               if (evt.commands && evt.commands.length) {
                 _appendActionChips(aiEl, _runCommands(evt.commands));
               }
+              if (evt.citations && evt.citations.length) {
+                _appendSources(aiEl, evt.citations);
+              }
             } else if (evt.type === 'error') {
               thinkEl.remove();
               _appendAiMsg('Sorry, something went wrong: ' + evt.message);
@@ -1215,6 +1218,31 @@
       c.textContent = _deIcon(chips[i]);
       row.appendChild(c);
     }
+    aiEl.appendChild(row);
+    _scrollBottom();
+  }
+
+  // Render the §6.4 citations an answer cited as clickable "Sources" (DIC-522). Each
+  // carries the data-cite-* envelope the viewer's Citation Renderer already listens for
+  // (pv-citations.js delegated handler) → clicking resolves it against the KB and opens
+  // the synchronized Sources panel with the full statute text + passage highlight. This is
+  // the AI side of the 3-way sync (answer ↔ source ↔ map). Skipped when the citations
+  // capability is gated off, so we never show an inert source.
+  function _appendSources(aiEl, citations) {
+    if (!aiEl || !citations || !citations.length) return;
+    if (root.PV_CITATIONS && root.PV_CITATIONS.isEnabled && !root.PV_CITATIONS.isEnabled()) return;
+    var row = document.createElement('div');
+    row.className = 'mb-sources';
+    var html = '<span class="mb-sources-label">Sources</span>';
+    for (var i = 0; i < citations.length; i++) {
+      var c = citations[i] || {};
+      html += '<button type="button" class="pv-cite-trigger mb-source"' +
+        ' data-cite-source="' + _escHtml(c.source_id || '') + '"' +
+        ' data-cite-anchor="' + _escHtml(c.anchor || '') + '"' +
+        ' data-cite-span="' + _escHtml(c.span || '') + '">' +
+        _escHtml(c.source_id || c.span || 'Source') + '</button>';
+    }
+    row.innerHTML = html;
     aiEl.appendChild(row);
     _scrollBottom();
   }

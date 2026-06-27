@@ -7,6 +7,8 @@ import urllib.parse
 import urllib.request
 import anthropic
 
+from citations import extract_citations  # §6.4 envelope extraction (DIC-522)
+
 _client = None
 
 def _get_client():
@@ -58,6 +60,9 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor 
 # Answering environmental / risk questions
 For "is this in a floodplain / are there wetlands / what's the soil / is it buildable", call get_environmental_info with the selected parcel's centroid and answer from the REAL result — never guess. It's good to ALSO turn on the matching overlay (flood/wetlands/soils) so the user sees it.
 - Showcase: map_tour for a guided fly-through of several stops.
+
+# Citing Michigan law (assessment / tax questions)
+When you explain how Michigan's assessment or property-tax system works (assessed vs. taxable value, Proposal A and the cap, uncapping, the Principal Residence Exemption, classification, equalization/SEV, appeals to the Board of Review or Tax Tribunal), cite the governing statute inline by its MCL number — e.g. "(MCL 211.27a)" — drawing ONLY from the "Michigan property-tax statutes" reference block below. Never write an MCL number that isn't in that list; if a point isn't covered there, explain it without a citation rather than guessing one. These MCL citations become clickable Sources the user can open and verify against the full statute text — so cite the specific section, not a vague reference.
 
 # Reactive cartography — make the map follow your words
 The map reacts to focus, so what you *talk about* should light up:
@@ -688,7 +693,15 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
     if commands and not response_text.strip():
         response_text = "Done — updated the map."
 
-    yield {"type": "done", "response_text": response_text, "commands": commands}
+    # §6.4 citation envelopes for any vetted MCLs the answer cites (DIC-522): the viewer
+    # renders them as clickable sources into the KB-backed Sources panel. Citation-first —
+    # only statutes in the vetted corpus are surfaced, so a clickable source is always real.
+    yield {
+        "type": "done",
+        "response_text": response_text,
+        "commands": commands,
+        "citations": extract_citations(response_text),
+    }
 
 
 # ── Explainer engine (DIC-370) ────────────────────────────────────────────────
@@ -715,6 +728,16 @@ _MI_TAX_STATUTES = """\
 - March Board of Review — MCL 211.30: the first level of appeal for assessment, taxable value, or classification disputes.
 - Michigan Tax Tribunal — MCL 205.731: appeals beyond the Board of Review; residential/agricultural appeals follow the Board of Review, commercial/industrial may go directly by May 31.
 """
+
+# Inject the vetted statute reference into the CHAT system prompt too (not just the
+# explainer), so assessment/tax answers cite real MCLs from the list — which the
+# Citation Renderer then surfaces into the Sources panel (DIC-522). Appended after the
+# env override so a custom MAP_BUDDY_SYSTEM_PROMPT still gets the grounding block.
+SYSTEM_PROMPT = (
+    SYSTEM_PROMPT
+    + "\n\n# Michigan property-tax statutes (cite ONLY from this list; never invent an MCL)\n"
+    + _MI_TAX_STATUTES
+)
 
 _ASSESSMENT_SYSTEM = """You are the Assessment Explainer for the Van Buren County, Michigan parcel viewer — a focused educational assistant that explains a single parcel's property assessment in plain, friendly language for a general audience.
 
