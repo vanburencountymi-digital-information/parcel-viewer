@@ -34,6 +34,12 @@
   var MV = req('./manifest-version.js', 'ISV_MANIFEST_VERSION');
   var CATALOG = req('./capability-catalog.js', 'ISV_CAPABILITY_CATALOG');
 
+  // Generic layer-config keys copied verbatim onto a manifest source entry (source-agnostic
+  // — these are layer vocabulary, not domain nouns). `source` = the tile-function/provider
+  // name; `geomType` = polygon|line|point; `dbSource` = provenance note; `fields` = queryable
+  // attributes; `default` = on-by-default. (`source` is ALSO mapped to `legend` for back-compat.)
+  var SOURCE_PASSTHROUGH = ['source', 'geomType', 'dbSource', 'fields', 'default'];
+
   function isObj(v) { return v != null && typeof v === 'object' && !Array.isArray(v); }
   function slug(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
@@ -63,6 +69,8 @@
     var seen = {};
     var sources = [];
 
+    var styleByLayer = (config.styling && config.styling.layers) || {};
+
     function push(entry, defaultType) {
       if (!entry || !entry.id || seen[entry.id]) return;
       seen[entry.id] = true;
@@ -73,6 +81,14 @@
       if (mz != null) src.minZoom = mz;
       if (entry.source) src.legend = entry.source;       // editor's human source note → legend
       if (idFields[entry.id]) src.idField = idFields[entry.id];
+      // Carry the remaining GENERIC layer-config keys verbatim (no domain nouns — §4.1) so a
+      // renderer can drive the source entirely from the manifest: the tile-function name,
+      // geometry kind, db provenance, queryable fields, and the default-on flag. Plus the
+      // per-layer styling block (styling.layers[id]: paint/line/point/labels) as `style`.
+      SOURCE_PASSTHROUGH.forEach(function (k) {
+        if (entry[k] !== undefined && src[k] === undefined) src[k] = entry[k];
+      });
+      if (styleByLayer[entry.id] !== undefined && src.style === undefined) src.style = styleByLayer[entry.id];
       sources.push(src);
     }
 

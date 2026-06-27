@@ -90,8 +90,16 @@
             "additionalProperties": true,
             "properties": { "endpoint": { "type": "string" } }
           },
-          "style": { "type": "object" },
-          "legend": { "type": "string" }
+          "style": { "type": "object", "description": "Per-source rendering config (paint/line/point/labels), per theme. Source-agnostic; the renderer maps it to MapLibre paint." },
+          "legend": { "type": "string" },
+          "label": { "type": "string" },
+          "sourceLayer": { "type": "string", "description": "The vector tile source-layer name within the tileset." },
+          "minZoom": { "type": "number", "minimum": 0, "maximum": 24 },
+          "source": { "type": "string", "description": "Tile-function / provider name (e.g. a Martin function) or a human source note." },
+          "geomType": { "type": "string", "enum": ["polygon", "line", "point"] },
+          "dbSource": { "type": "string", "description": "Provenance note: the backing table/dataset." },
+          "fields": { "type": "array", "items": { "type": "string" }, "description": "Queryable/displayable attribute names for this source." },
+          "default": { "type": "boolean", "description": "Whether this source/overlay is on by default." }
         }
       }
     },

@@ -23,6 +23,9 @@ function countyConfig() {
         { id: 'terracotta', label: 'Terracotta', accent: '#A3473B', interactive: '#B58D4A' },
         { id: 'forest', label: 'Forest', accent: '#2F6B4F', interactive: '#4E9A6B' },
       ],
+      layers: {
+        subdivisions: { paint: { light: { fill: '#7A3B6B', stroke: '#553c5a' } }, labels: { enabled: true, field: 'name' } },
+      },
     },
     // The Data & Layers editor stores arrays under `layers` (county-config.js shape).
     layers: {
@@ -31,7 +34,8 @@ function countyConfig() {
         { id: 'aerial', label: 'Aerial imagery', type: 'raster', source: 'State imagery' },
       ],
       overlays: [
-        { id: 'subdivisions', label: 'Subdivisions', type: 'vector', sourceLayer: 'subdivisions', minZoom: 12, source: 'geo.subdivisions' },
+        { id: 'subdivisions', label: 'Subdivisions', type: 'vector', source: 'subdivisions_tiles', sourceLayer: 'subdivisions',
+          geomType: 'polygon', minZoom: 12, default: false, dbSource: 'geo.subdivisions', fields: ['name', 'unit'] },
         { id: 'wetlands', label: 'Wetlands', type: 'WMS', source: 'USFWS NWI', minZoom: 12 },
       ],
     },
@@ -67,6 +71,23 @@ test('sources are collected from base layers + overlays, types normalized', () =
   assert.equal(byId.subdivisions.sourceLayer, 'subdivisions');
   assert.equal(byId.subdivisions.minZoom, 12);
   assert.equal(byId.wetlands.type, 'wms');          // 'WMS' → 'wms' (schema enum)
+});
+
+test('overlay sources carry the full layer config + per-layer style (Phase 3 B1)', () => {
+  const manifest = assembleManifest(countyConfig(), { tenant: 'vanburen', idFields: { parcels: 'pin' } });
+  const byId = Object.fromEntries(manifest.sources.map(s => [s.id, s]));
+  const sub = byId.subdivisions;
+  // generic layer-config keys carried verbatim so a renderer can drive the source
+  assert.equal(sub.source, 'subdivisions_tiles');   // Martin tile-function name
+  assert.equal(sub.geomType, 'polygon');
+  assert.equal(sub.dbSource, 'geo.subdivisions');
+  assert.deepEqual(sub.fields, ['name', 'unit']);
+  assert.equal(sub.default, false);
+  // per-layer styling (styling.layers[id]) attached as `style`
+  assert.equal(sub.style.paint.light.fill, '#7A3B6B');
+  assert.equal(sub.style.labels.field, 'name');
+  // still schema-valid with the grown shape
+  assert.equal(loadManifest(manifest).ok, true);
 });
 
 test('capabilities default to the catalog with per-capability AI tri-state', () => {
