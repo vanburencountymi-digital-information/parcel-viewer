@@ -100,8 +100,13 @@
           "dbSource": { "type": "string", "description": "Provenance note: the backing table/dataset." },
           "fields": { "type": "array", "items": { "type": "string" }, "description": "Queryable/displayable attribute names for this source." },
           "default": { "type": "boolean", "description": "Whether this source/overlay is on by default." },
-          "role": { "type": "string", "enum": ["base", "overlay"], "description": "Base layer vs. toggleable overlay — lets a renderer select the overlay set." },
-          "outlineOnly": { "type": "boolean", "description": "Render polygons as outline only (no fill)." }
+          "role": { "type": "string", "enum": ["base", "overlay", "county-overlay"], "description": "Base layer vs. toggleable overlay vs. county PostGIS overlay — lets a renderer select the right set." },
+          "outlineOnly": { "type": "boolean", "description": "Render polygons as outline only (no fill)." },
+          "martin": { "type": "string", "description": "County-overlay Martin tile-function name." },
+          "geom": { "type": "string", "enum": ["polygon", "line", "point"], "description": "County-overlay geometry kind (legacy key)." },
+          "minzoom": { "type": "number", "minimum": 0, "maximum": 24, "description": "County-overlay min zoom (legacy lowercase key)." },
+          "paint": { "type": "object", "description": "County-overlay inline paint overrides (fill/line/circle)." },
+          "beforeLayer": { "type": "string", "description": "Insert the overlay before this map layer id." }
         }
       }
     },

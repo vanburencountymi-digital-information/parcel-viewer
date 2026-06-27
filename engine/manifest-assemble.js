@@ -38,7 +38,10 @@
   // — these are layer vocabulary, not domain nouns). `source` = the tile-function/provider
   // name; `geomType` = polygon|line|point; `dbSource` = provenance note; `fields` = queryable
   // attributes; `default` = on-by-default. (`source` is ALSO mapped to `legend` for back-compat.)
-  var SOURCE_PASSTHROUGH = ['source', 'geomType', 'dbSource', 'fields', 'default', 'outlineOnly'];
+  var SOURCE_PASSTHROUGH = ['source', 'geomType', 'dbSource', 'fields', 'default', 'outlineOnly',
+    // county-overlay (legacy `countyOverlays`) vocabulary, carried verbatim: `martin` = tile
+    // function, `geom` = geometry kind, `minzoom` (lowercase), inline `paint`, `beforeLayer`.
+    'martin', 'geom', 'minzoom', 'paint', 'beforeLayer'];
 
   function isObj(v) { return v != null && typeof v === 'object' && !Array.isArray(v); }
   function slug(s) {
@@ -95,6 +98,10 @@
 
     (data.baseLayers || []).forEach(function (b) { push(b, 'vector', 'base'); });
     (data.overlays || []).forEach(function (o) { push(o, 'vector', 'overlay'); });
+    // The county PostGIS overlays (legacy `countyOverlays` list — Drains/Roads/PLSS/etc.),
+    // carried as role 'county-overlay' so the renderer keeps them distinct from the
+    // primary `overlays` set.
+    (data.countyOverlays || []).forEach(function (o) { push(o, 'vector', 'county-overlay'); });
     return sources;
   }
 

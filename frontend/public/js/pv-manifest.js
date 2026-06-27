@@ -87,8 +87,14 @@
     for (var i = 0; i < ss.length; i++) if (ss[i] && ss[i].id === id) return ss[i];
     return null;
   }
+  // Sources carrying a given role ('base' | 'overlay' | 'county-overlay'). Null (not [])
+  // when no manifest, so callers can distinguish "no manifest" → use COUNTY.
+  function sourcesByRole(role) {
+    var ss = sources();
+    if (!ss) return null;
+    return ss.filter(function (s) { return s && s.role === role; });
+  }
   // The toggleable vector overlays (role 'overlay', type vector) — the set pg-layers renders.
-  // Null (not []) when no manifest, so callers can distinguish "no manifest" → use COUNTY.
   function vectorOverlays() {
     var ss = sources();
     if (!ss) return null;
@@ -99,7 +105,7 @@
 
   root.PV_MANIFEST = {
     load: load, loadBootManifest: loadBootManifest, assembleFromCounty: assembleFromCounty,
-    sources: sources, source: source, vectorOverlays: vectorOverlays,
+    sources: sources, source: source, vectorOverlays: vectorOverlays, sourcesByRole: sourcesByRole,
   };
 
   // Assemble EAGERLY at parse time: this script now loads after county-config.js + the engine

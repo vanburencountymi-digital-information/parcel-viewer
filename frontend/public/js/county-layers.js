@@ -25,7 +25,13 @@
     return window.location.origin + url;
   }
 
+  // Phase 3 (DIC-407): prefer the manifest's county-overlay sources (role 'county-overlay',
+  // carrying martin/geom/minzoom/sourceLayer/paint verbatim), falling back to
+  // COUNTY.layers.countyOverlays. Identical entry shape → the layer-building code below is
+  // unchanged.
   function _registry() {
+    var fromManifest = window.PV_MANIFEST && window.PV_MANIFEST.sourcesByRole && window.PV_MANIFEST.sourcesByRole('county-overlay');
+    if (fromManifest && fromManifest.length) return fromManifest;
     var layers = _county().layers || {};
     var cfg = layers.countyOverlays;
     return Array.isArray(cfg) ? cfg : [];

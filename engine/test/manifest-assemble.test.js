@@ -38,6 +38,9 @@ function countyConfig() {
           geomType: 'polygon', minZoom: 12, default: false, outlineOnly: true, dbSource: 'geo.subdivisions', fields: ['name', 'unit'] },
         { id: 'wetlands', label: 'Wetlands', type: 'WMS', source: 'USFWS NWI', minZoom: 12 },
       ],
+      countyOverlays: [
+        { id: 'county-drains', label: 'Drains', martin: 'reference_drains_tiles', sourceLayer: 'reference_drains', geom: 'line', minzoom: 12 },
+      ],
     },
     access: { model: 'Public — no sign-in' },
   };
@@ -96,6 +99,20 @@ test('overlay sources carry the full layer config + per-layer style (Phase 3 B1)
   assert.equal(loadManifest(manifest).ok, true);
 });
 
+test('county PostGIS overlays are collected with role county-overlay + legacy keys (Phase 3 C)', () => {
+  const manifest = assembleManifest(countyConfig(), { tenant: 'vanburen' });
+  const byId = Object.fromEntries(manifest.sources.map(s => [s.id, s]));
+  const drains = byId['county-drains'];
+  assert.equal(drains.role, 'county-overlay');
+  assert.equal(drains.martin, 'reference_drains_tiles');   // tile-function name (legacy key)
+  assert.equal(drains.geom, 'line');                       // legacy geometry key
+  assert.equal(drains.minzoom, 12);                        // legacy lowercase minzoom preserved
+  assert.equal(drains.sourceLayer, 'reference_drains');
+  // distinct from the role 'overlay' set (so renderers don't conflate them)
+  assert.equal(byId.subdivisions.role, 'overlay');
+  assert.equal(loadManifest(manifest).ok, true);
+});
+
 test('capabilities default to the catalog with per-capability AI tri-state', () => {
   const manifest = assembleManifest(countyConfig(), { tenant: 'vanburen' });
   assert.equal(manifest.capabilities.search.ai, 'no-ai');
@@ -121,7 +138,7 @@ test('`data` is accepted as an alias for the `layers` block', () => {
   const cfg = countyConfig();
   cfg.data = cfg.layers; delete cfg.layers;
   const manifest = assembleManifest(cfg, { tenant: 'vanburen' });
-  assert.deepEqual(manifest.sources.map(s => s.id).sort(), ['aerial', 'parcels', 'subdivisions', 'wetlands']);
+  assert.deepEqual(manifest.sources.map(s => s.id).sort(), ['aerial', 'county-drains', 'parcels', 'subdivisions', 'wetlands']);
   assert.equal(loadManifest(manifest).ok, true);
 });
 
