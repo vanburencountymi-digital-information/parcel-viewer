@@ -1072,6 +1072,37 @@
   var COUNTY_IDFIELDS = { parcels: 'pin' };   // per-source idField hints (until §5 sources land in the store)
   var _mfForceAssemble = false;               // next render regenerates from modules, ignoring the saved manifest
 
+  // Console-side AI-availability auto-fallback (B4 / DIC-580). Mirrors the viewer's
+  // pv-ai-health: poll the AI service; when it's unreachable the console drops to
+  // manual-only — the B3 autoconfigure card degrades to its deterministic baseline (no AI
+  // refinement) with a calm notice, and the manual editor is unaffected. No data loss.
+  var AI_HEALTH = { available: true, checked: false };
+  var _aiHealthTimer = null;
+
+  function aiReachable() { return AI_HEALTH.available; }
+
+  function _paintAiHealth() {
+    var el = document.getElementById('ac-ac-health');
+    if (!el) return;
+    el.innerHTML = (AI_HEALTH.checked && !AI_HEALTH.available)
+      ? '<span style="color:#9a6700">⚠ AI service unreachable — autoconfigure runs in deterministic baseline mode; the manual builder below is unaffected.</span>'
+      : '';
+  }
+
+  function checkAiHealth() {
+    var ctrl = ('AbortController' in window) ? new AbortController() : null;
+    var to = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (_) {} }, 4000) : null;
+    return fetch(explainBase() + '/health', { signal: ctrl ? ctrl.signal : undefined, cache: 'no-store' })
+      .then(function (r) { AI_HEALTH.available = !!(r && r.ok); })
+      .catch(function () { AI_HEALTH.available = false; })
+      .then(function () { if (to) clearTimeout(to); AI_HEALTH.checked = true; _paintAiHealth(); });
+  }
+
+  function startAiHealth() {
+    checkAiHealth();
+    if (!_aiHealthTimer) _aiHealthTimer = setInterval(checkAiHealth, 30000);
+  }
+
   function assembleCurrentManifest() {
     var asm = window.ISV_MANIFEST_ASSEMBLE;
     if (!asm) return null;
@@ -1165,6 +1196,7 @@
               '<dt>Topic</dt><dd><input class="ac-input" id="ac-ac-topic" value="parcels, assessment and tax" placeholder="e.g. parcels, zoning and tax"></dd>' +
               '<dt>Intent</dt><dd><select class="ac-input" id="ac-ac-intent"><option value="public">Public</option><option value="staff">Staff</option><option value="staff analysis">Staff analysis</option></select></dd>' +
               '<dt>AI assistant</dt><dd><input type="checkbox" id="ac-ac-ai" checked> <span class="ac-card-note">include Map Buddy</span></dd></dl>' +
+              '<div id="ac-ac-health" class="ac-card-note"></div>' +
               '<div class="ac-toolbar" style="margin-top:8px;align-items:center">' +
                 '<button class="ac-btn ac-btn-primary" data-mf="autoconfigure">Generate draft</button>' +
                 '<span id="ac-ac-result" class="ac-card-note"></span></div>'
@@ -1179,6 +1211,11 @@
           '<span id="ac-mf-result" class="ac-card-note"></span>' +
         '</div></div>' +
       '<div id="ac-history"></div>';
+
+    // B4: reflect the last known AI-health state immediately, then (re)start polling so
+    // the autoconfigure card degrades/recovers without a full re-render.
+    _paintAiHealth();
+    startAiHealth();
 
     if (host._mfWired) return;
     host._mfWired = true;
@@ -1214,8 +1251,11 @@
         var rawEl = host.querySelector('#ac-mf-raw');
         if (rawEl) rawEl.value = JSON.stringify(draft, null, 2);   // into the review editor
         var vr = validateManifest(draft);
+        // B4: when AI is unreachable the deterministic draft still works (degrade-to-facts);
+        // note that AI refinement was skipped so the operator knows what they're reviewing.
+        var aiNote = aiReachable() ? '' : ' (AI refinement skipped — service unreachable)';
         if (acOut) acOut.innerHTML = (vr.ok
-          ? '<span style="color:#2f6b4f">✓ schema-valid draft</span> · '
+          ? '<span style="color:#2f6b4f">✓ schema-valid draft' + esc(aiNote) + '</span> · '
           : '<span style="color:#b11e2f">✗ ' + esc((vr.errors || []).join('; ')) + '</span> · ') + esc(result.facts.rationale);
         return;
       }

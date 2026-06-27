@@ -30,7 +30,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 | 3 | A4 SelectionManager + feature-highlighter + event-driven info panel | 569 | done through slice 4 (In Review) |
 | 3 | A5 source-config registry + source-driven popup; non-parcel sources selectable | 407 | in progress (parcel panel sections migrated; overlays selectable) |
 | 4 | B1 AI-mode toggle (opt-in, degrade-to-facts) | 571 | in progress (toggle done; ai-required-theme hide pending) |
-| 4 | B4 runtime AI auto-fallback | 580 | in progress (viewer side done; console side pending) |
+| 4 | B4 runtime AI auto-fallback | 580 | viewer side done; **console side done** — `admin.js` polls AI health; when unreachable the B3 autoconfigure card degrades to its deterministic baseline (calm notice, manual builder unaffected) and recovers automatically. Live-verified both directions. |
 | 5 | A8 single source of truth for the 5 shared PV/ZIP drawing files | 575 | in progress (source-of-truth + drift guard; runtime-share pending) |
 | 5 | B2 Theme Composer — manual builder (assemble editors → one §5 manifest) | 578 | in progress (assembler + capability catalog + **Theme Manifest** console module: assemble→validate→export + raw-edit + **save/publish round-trip** through the versioned config store, live-verified; only the live store provisioning (DIC-464/400) is external) |
 | — | A6 backend convergence — **KnowledgeStore + ParcelStore** (decouple knowledge + parcel access; DICE + ZIP-local backends) | 570 | in progress (KnowledgeStore + ParcelStore built & harness-verified; A6-a resolved. **PV `/parcel/{id}` route now reads through `DiceVbcParcelStore` — live-verified on the dockerized viewer.** ZIP/Lockport parcel DATA still not migrated; cross-repo store dedup is a packaging decision) |
