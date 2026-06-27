@@ -47,12 +47,13 @@ read changes nothing at runtime.
 
 ## Suggested order (most-referenced first, lowest risk first)
 
-1. `COUNTY` → `ctx.config` (read-only config; ~32 refs, no behavior risk). **Start here.**
-2. `PV_PREFS` → `ctx.prefs`.
-3. `PS_PARCEL_INDEX` → `ctx.sourceIndex`.
-4. `PS_STATE` → `ctx.state` + bus events — **this is A4** (SelectionManager); the
+1. ✅ **DONE** `COUNTY` → `ctx.config` (read-only config; ~32 refs). Effectively complete — all real readers go through a ctx-aware `countyConfig()`/`_county()` helper; remaining `window.COUNTY` reads are those helper fallbacks + the config bootstrap (`county-config`/`pv-manifest`/`style-preview`).
+2. ✅ **DONE** `PV_PREFS` → `ctx.prefs` (Phase 4 inc 1, commit `8a36fd1`) — `prefs()` helper in `map.js` + `admin-menu.js`; the `window.PV_PREFS` definition + bridge getter stay.
+3. ✅ **DONE (non-drawing readers)** `PS_PARCEL_INDEX` → `ctx.sourceIndex` (Phase 4 inc 2, commit `1d81874`) — `sourceIndex()` helper in `map.js` + `parcel-labels.js`. The WRITES (map.js source-of-truth) + the drawing-stack reads (snapping-engine/measure-tool/map-control-api, A8) stay on the global.
+4. ⏳ `PS_STATE` → `ctx.state` + bus events — **this is A4** (SelectionManager); the
    selection state machine is extracted there, not by a blind find-replace.
-5. `PS_MAP` → `ctx.map` (touches 11 files; do after A4 so the bus is the seam).
+5. ⏳ `PS_MAP` → `ctx.map` (touches 11 files; do after A4 so the bus is the seam).
 
 `PS_MAP`/`PS_STATE`/`PS_DRAWING_TOOLS` are the parcel-studio contract — migrate those
-last and in lockstep with the submodule.
+last and **in lockstep with the submodule** (needs parcel-studio checked out + its
+integration re-run per batch). The non-contract read-grind (1–3) is essentially complete.
