@@ -274,7 +274,11 @@ window.COUNTY = {
   layers: {
     tileServer: { provider: "Martin", url: "/tiles" },
     baseLayers: [
-      { id: "parcels", label: "Parcels", source: "County PostGIS (vector tiles via Martin)", default: true },
+      // `popup.sections` (§5): the ordered section NAMES the parcel info panel shows. The
+      // rich per-field config + formatters stay viewer-owned (engine/DECISIONS.md D7); the
+      // manifest declares the section list (carried onto manifest.sources['parcels'].popup).
+      { id: "parcels", label: "Parcels", source: "County PostGIS (vector tiles via Martin)", default: true,
+        idField: "pin", popup: { sections: ["Parcel", "Owner", "Assessed Values", "Tax Description"] } },
       { id: "aerial", label: "Aerial imagery", source: "County / state imagery", default: false },
     ],
     overlays: [

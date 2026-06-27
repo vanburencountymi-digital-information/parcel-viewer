@@ -184,7 +184,8 @@
   "layers": {
     "tileServer": { "provider": "Martin", "url": "/tiles" },
     "baseLayers": [
-      { "id": "parcels", "label": "Parcels", "source": "County PostGIS (vector tiles via Martin)", "default": true },
+      { "id": "parcels", "label": "Parcels", "source": "County PostGIS (vector tiles via Martin)", "default": true,
+        "idField": "pin", "popup": { "sections": ["Parcel", "Owner", "Assessed Values", "Tax Description"] } },
       { "id": "aerial", "label": "Aerial imagery", "source": "County / state imagery", "default": false }
     ],
     "overlays": [

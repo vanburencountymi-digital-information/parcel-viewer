@@ -30,7 +30,8 @@ function countyConfig() {
     // The Data & Layers editor stores arrays under `layers` (county-config.js shape).
     layers: {
       baseLayers: [
-        { id: 'parcels', label: 'Parcels', source: 'County PostGIS', default: true },
+        { id: 'parcels', label: 'Parcels', source: 'County PostGIS', default: true,
+          idField: 'pin', popup: { sections: ['Parcel', 'Owner', 'Assessed Values', 'Tax Description'] } },
         { id: 'aerial', label: 'Aerial imagery', type: 'raster', source: 'State imagery' },
       ],
       overlays: [
@@ -111,6 +112,14 @@ test('county PostGIS overlays are collected with role county-overlay + legacy ke
   // distinct from the role 'overlay' set (so renderers don't conflate them)
   assert.equal(byId.subdivisions.role, 'overlay');
   assert.equal(loadManifest(manifest).ok, true);
+});
+
+test('parcel source carries the §5 popup section-name list + entry idField (Phase 3 D7)', () => {
+  const manifest = assembleManifest(countyConfig(), { tenant: 'vanburen' });   // no opts.idFields
+  const parcels = manifest.sources.find(s => s.id === 'parcels');
+  assert.deepEqual(parcels.popup.sections, ['Parcel', 'Owner', 'Assessed Values', 'Tax Description']);
+  assert.equal(parcels.idField, 'pin');   // idField declared on the entry (not via opts)
+  assert.equal(loadManifest(manifest).ok, true);   // string-array sections are §5-valid
 });
 
 test('capabilities default to the catalog with per-capability AI tri-state', () => {

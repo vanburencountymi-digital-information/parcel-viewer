@@ -41,7 +41,10 @@
   var SOURCE_PASSTHROUGH = ['source', 'geomType', 'dbSource', 'fields', 'default', 'outlineOnly',
     // county-overlay (legacy `countyOverlays`) vocabulary, carried verbatim: `martin` = tile
     // function, `geom` = geometry kind, `minzoom` (lowercase), inline `paint`, `beforeLayer`.
-    'martin', 'geom', 'minzoom', 'paint', 'beforeLayer'];
+    'martin', 'geom', 'minzoom', 'paint', 'beforeLayer',
+    // `popup` = the §5 section-NAME list (the rich per-field config + formatters stay
+    // viewer-owned — engine/DECISIONS.md D7).
+    'popup'];
 
   function isObj(v) { return v != null && typeof v === 'object' && !Array.isArray(v); }
   function slug(s) {
@@ -85,6 +88,7 @@
       if (mz != null) src.minZoom = mz;
       if (entry.source) src.legend = entry.source;       // editor's human source note → legend
       if (idFields[entry.id]) src.idField = idFields[entry.id];
+      else if (entry.idField) src.idField = entry.idField;   // id field declared on the entry
       // Carry the remaining GENERIC layer-config keys verbatim (no domain nouns — §4.1) so a
       // renderer can drive the source entirely from the manifest: the tile-function name,
       // geometry kind, db provenance, queryable fields, and the default-on flag. Plus the

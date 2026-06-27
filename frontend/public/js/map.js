@@ -40,8 +40,14 @@
   const _parcelSrc = _manifestSourceById("parcels");
   const SOURCE_LAYER = (_parcelSrc && _parcelSrc.sourceLayer) || "parcels";
   const PARCEL_ID_FIELD = (_parcelSrc && _parcelSrc.idField) || "pin";
+  // The §5 parcel popup section-NAME list from the manifest (D7): the manifest declares
+  // which sections + order; the rich per-field config + render stay viewer-owned below.
+  const PARCEL_POPUP_SECTIONS = (_parcelSrc && _parcelSrc.popup && Array.isArray(_parcelSrc.popup.sections))
+    ? _parcelSrc.popup.sections.slice()
+    : ["Parcel", "Owner", "Assessed Values", "Tax Description"];
   // Expose the resolved parcel-source identity (read-only) for other modules / diagnostics.
-  window.PV_PARCEL_SOURCE = { id: "parcels", sourceLayer: SOURCE_LAYER, idField: PARCEL_ID_FIELD, fromManifest: !!_parcelSrc };
+  window.PV_PARCEL_SOURCE = { id: "parcels", sourceLayer: SOURCE_LAYER, idField: PARCEL_ID_FIELD,
+    popupSections: PARCEL_POPUP_SECTIONS, fromManifest: !!_parcelSrc };
 
   function countyConfig() {
     return (ctx && ctx.config) || window.COUNTY || {};

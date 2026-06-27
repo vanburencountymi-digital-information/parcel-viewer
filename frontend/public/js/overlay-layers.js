@@ -62,6 +62,10 @@
   }
 
   // ── Overlay registry ─────────────────────────────────────────────────────
+  // These are FEDERATED EXTERNAL SERVICES (USFWS / FEMA / USDA / USGS / AWS) — national
+  // datasets identical for every county. Their request mechanics are platform defaults,
+  // NOT per-county manifest data, so they stay module-owned (engine/DECISIONS.md D6; §12).
+  // The manifest still lists them as informational source stubs; rendering lives here.
 
   var _dep3Url = 'https://elevation.nationalmap.gov/arcgis/services/3DEPElevation/ImageServer/WMSServer';
   var _dep3Attr = '<a href="https://www.usgs.gov/3d-elevation-program" target="_blank" rel="noopener">USGS 3D Elevation Program</a>';
