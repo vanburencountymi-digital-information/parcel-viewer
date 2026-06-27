@@ -12,15 +12,14 @@ const path = require('node:path');
 test('engine drawing masters match the checked-in PV (+ ZIP) copies — no drift', async () => {
   const gen = await import('../drawing/generate.mjs');
   const masterDir = path.resolve(__dirname, '..', 'drawing');
-  const repo = path.resolve(__dirname, '..', '..');
-  const claude = path.resolve(repo, '..');
 
   for (const f of gen.SHARED_FILES) {
     const master = fs.readFileSync(path.join(masterDir, f + '.js'), 'utf8');
-    const pv = fs.readFileSync(path.join(repo, 'frontend', 'public', 'js', 'drawing', f + '.js'), 'utf8');
+    // Per-file targets (legend-panel lives outside drawing/) come from the generator itself.
+    const pv = fs.readFileSync(gen.pvTarget(f), 'utf8');
     assert.equal(pv, master, f + '.js: PV copy drifted from the master — run `node engine/drawing/generate.mjs`');
 
-    const zipPath = path.join(claude, 'ZIP', 'zip-poc', 'frontend', 'drawing', f + '.js');
+    const zipPath = gen.zipTarget(f);
     if (fs.existsSync(zipPath)) {
       const zip = fs.readFileSync(zipPath, 'utf8');
       assert.equal(zip, gen.toZipNamespace(master), f + '.js: ZIP copy drifted from the master — re-run the generator');
