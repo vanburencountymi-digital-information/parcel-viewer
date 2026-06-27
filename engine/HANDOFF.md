@@ -44,6 +44,12 @@ Harness **230→237 green**. Live-verified (answer cited 211.27a/211.34/211.7cc 
 1. ~~**KB-backed citation resolver**~~ — ✅ DONE (`7e92a34`).
 2. ~~**More citation emitters (Map Buddy → Sources)**~~ — ✅ DONE (`32dd5c8`).
 3. **A new capability** — keep validating "build-forward" mode on PV (now the top pick).
+   **`view-describe` (vision) is planned** — see `DECISIONS.md` D8–D12 + Linear DIC-555 (refined
+   plan): a G1 capability (`core()`=deterministic identify, `narrate()`=vision over an on-demand
+   offscreen capture), Map Buddy tool + ADA "Describe this view" mounts, both AI-optional. ⚠ Two
+   things need owner sign-off before coding: **AI-default-ON + first-run pill** (reverses §4 #4 /
+   DIC-571 — see DECISIONS "OPEN"), and confirm build-order. Honesty rule: NO numbers from the
+   vision model (grounding only); §6.4 state `none`; vision = ADA enhancement, never the compliance backbone.
 4. **ZIP-onto-engine** (DIC-523) — boot ZIP's frontend from `engine/themes/lockport-township.json`
    on the shared engine; needs ZIP's stack runnable locally + the DIC-575 *runtime*-share.
 5. **Unblock the KB**: ingest the VBC statute corpus into `knowledge.chunks` + `KB_BACKEND=dice`
