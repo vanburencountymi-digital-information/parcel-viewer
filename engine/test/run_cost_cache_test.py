@@ -69,6 +69,11 @@ class ResultCacheTest(unittest.TestCase):
         self.assertIsInstance(C.enabled(), bool)
         self.assertIs(C.get_cache(), C.get_cache())   # stable singleton
 
+    def test_stats_shape_for_monitoring(self):
+        s = C.stats()   # C4 /status payload
+        self.assertEqual(set(s), {"enabled", "size", "max_size", "ttl_seconds"})
+        self.assertIsInstance(s["size"], int)
+
 
 if __name__ == "__main__":
     unittest.main()

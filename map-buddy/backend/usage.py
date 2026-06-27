@@ -108,3 +108,19 @@ def record(tenant):
     """Count a real (non-cached) AI call against the tenant's quota."""
     if enabled():
         _counter.record(tenant or "default")
+
+
+def snapshot() -> dict:
+    """Per-tenant usage snapshot for the /status monitoring endpoint (C4 / DIC-585)."""
+    tenants = {}
+    for tenant in list(_counter._events.keys()):
+        used = _counter.count(tenant)
+        if used:
+            tenants[tenant] = {"used": used, "limit": _quota.limit_for(tenant)}
+    return {
+        "enabled": enabled(),
+        "window_seconds": _counter.window,
+        "default_limit": _quota.default_limit,
+        "overrides": dict(_quota.overrides),
+        "tenants": tenants,
+    }

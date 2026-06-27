@@ -70,6 +70,11 @@ class QuotaTest(unittest.TestCase):
         self.assertEqual(U._parse_overrides("vbc=1000, sjc=500"), {"vbc": 1000, "sjc": 500})
         self.assertEqual(U._parse_overrides(""), {})
 
+    def test_snapshot_shape_for_monitoring(self):
+        s = U.snapshot()   # C4 /status payload
+        self.assertEqual(set(s), {"enabled", "window_seconds", "default_limit", "overrides", "tenants"})
+        self.assertIsInstance(s["tenants"], dict)
+
 
 if __name__ == "__main__":
     unittest.main()

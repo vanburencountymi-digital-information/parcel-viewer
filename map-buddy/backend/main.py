@@ -121,6 +121,19 @@ async def health():
     return {"status": "ok"}
 
 
+@app.get("/status")
+async def status():
+    """Operational health for monitoring (C4 / DIC-585): AI availability, result-cache
+    stats, and per-tenant quota usage. No secrets — counts + config only, safe to scrape."""
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "ai_available": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "cache": result_cache.stats(),
+        "quota": ai_usage.snapshot(),
+    }
+
+
 @app.get("/config")
 async def config():
     return {"version": "0.1.0", "capabilities": ["chat", "map_commands"]}

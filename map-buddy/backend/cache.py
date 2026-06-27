@@ -79,3 +79,13 @@ def enabled() -> bool:
 
 def get_cache() -> ResultCache:
     return _cache
+
+
+def stats() -> dict:
+    """Operational snapshot for the /status monitoring endpoint (C4 / DIC-585)."""
+    return {
+        "enabled": _ENABLED,
+        "size": len(_cache),
+        "max_size": _cache.max_size,
+        "ttl_seconds": _cache.ttl,
+    }
