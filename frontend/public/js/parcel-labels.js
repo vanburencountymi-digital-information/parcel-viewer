@@ -904,6 +904,8 @@
   // ── MapLibre layer management ─────────────────────────────────────────────
 
   function getMap() { return window.PS_MAP || null; }
+  // A3 (DIC-568): the viewport parcel index via the injected context, global as fallback.
+  function sourceIndex() { return (window.PS_CONTEXT && window.PS_CONTEXT.sourceIndex) || window.PS_PARCEL_INDEX || null; }
 
   // ── Background-aware label paint (DIC-519) ─────────────────────────────────
   // Labels sit over the basemap (the parcel wash is mostly transparent), so the
@@ -1045,7 +1047,7 @@
   // ── Public actions ────────────────────────────────────────────────────────
 
   function activate() {
-    var parcelIndex = window.PS_PARCEL_INDEX;
+    var parcelIndex = sourceIndex();
     if (!parcelIndex || !parcelIndex.length || !getMap()) {
       setTimeout(activate, 400);
       return;
@@ -1168,7 +1170,7 @@
 
   if (_active) {
     var _tryActivate = function () {
-      if (window.PS_MAP && window.PS_PARCEL_INDEX) { activate(); }
+      if (window.PS_MAP && sourceIndex()) { activate(); }
       else { setTimeout(_tryActivate, 300); }
     };
     _tryActivate();

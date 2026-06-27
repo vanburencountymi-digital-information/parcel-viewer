@@ -59,6 +59,13 @@
     return (ctx && ctx.prefs) || window.PV_PREFS || null;
   }
 
+  // A3 (DIC-568): the viewport parcel index via the injected context (ctx.sourceIndex ===
+  // window.PS_PARCEL_INDEX). map.js still WRITES the global (the source of truth the drawing
+  // stack + parcel-studio read); READS route through the context.
+  function sourceIndex() {
+    return (ctx && ctx.sourceIndex) || window.PS_PARCEL_INDEX || [];
+  }
+
   // Phase 1 (manifest-driven boot): read migrated fields from the assembled theme manifest
   // (window.PS_MANIFEST, published by pv-manifest.js BEFORE this script) with a COUNTY
   // fallback. This is the read-migration pattern the rest of A3 follows — additive, so a
@@ -721,7 +728,7 @@
   const _choroApplied = new Set();   // pins already given feature-state for the active key
 
   function _mergeChoroCache() {
-    const idx = window.PS_PARCEL_INDEX || [];
+    const idx = sourceIndex();
     for (const f of idx) {
       const p = f.properties || {};
       const pin = p.pin || p.PIN;
