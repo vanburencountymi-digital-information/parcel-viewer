@@ -1,0 +1,69 @@
+{
+  "_comment": "Fixture County Knowledge Base for the KB-backed citation resolver (DIC-522). Mirrors the curated MI tax-statute corpus (engine/data/mi-tax-statutes.json) reshaped into knowledge.chunks-style rows so the PV Sources panel can resolve a citation to FULL section text + a precise passage highlight WITHOUT db-dice/Drake (dice live-smoke is gated; VBC statutes are not yet ingested into knowledge.chunks). section_id == the MCL anchor the explainer emits (data-cite-anchor), so an anchor lookup resolves precisely ('resolves' state). `highlight` is a key passage substring of `text` the panel marks. Jurisdiction = vanburen (canonical tenant, engine/tenant.js).",
+  "jurisdiction": "vanburen",
+  "chunks": [
+    {
+      "section_id": "211.1",
+      "section_title": "General Property Tax Act",
+      "source_name": "MCL 211.1",
+      "domain": "assessing",
+      "url": "http://www.legislature.mi.gov/Laws/MCL?objectName=mcl-211-1",
+      "highlight": "All property, real and personal, within the jurisdiction of this state, not expressly exempted, is subject to taxation.",
+      "text": "1893 PA 206, the General Property Tax Act, is the framework for assessing and taxing real property in Michigan. All property, real and personal, within the jurisdiction of this state, not expressly exempted, is subject to taxation. The Act establishes how property is assessed, the duties of the assessor and the boards of review, and the process by which taxes are levied and collected by local units of government."
+    },
+    {
+      "section_id": "211.27a",
+      "section_title": "Assessed Value, Taxable Value & Proposal A (MCL 211.27a)",
+      "source_name": "MCL 211.27a",
+      "domain": "assessing",
+      "url": "http://www.legislature.mi.gov/Laws/MCL?objectName=mcl-211-27a",
+      "highlight": "the taxable value of each parcel of property is the lesser of 5% or the inflation rate multiplier applied to the prior year's taxable value, until ownership of the property is transferred.",
+      "text": "Assessed Value (AV) is half of a property's True Cash (market) Value, consistent with the constitutional 50% standard. Under Proposal A, the taxable value of each parcel of property is the lesser of 5% or the inflation rate multiplier applied to the prior year's taxable value, until ownership of the property is transferred. The year after a transfer of ownership, the taxable value 'uncaps' and resets to that year's State Equalized Value. Taxable Value, not Assessed Value, is the base against which millage rates are applied to compute the tax bill."
+    },
+    {
+      "section_id": "211.34",
+      "section_title": "State Equalized Value (SEV) & equalization",
+      "source_name": "MCL 211.34",
+      "domain": "assessing",
+      "url": "http://www.legislature.mi.gov/Laws/MCL?objectName=mcl-211-34",
+      "highlight": "County and state equalization confirm that assessments sit uniformly at the 50% level",
+      "text": "County and state equalization confirm that assessments sit uniformly at the 50% level across assessing units. The county board of commissioners examines the assessment rolls and equalizes them among the local units; the State Tax Commission then equalizes among the counties. State Equalized Value (SEV) is the Assessed Value after this equalization process is applied."
+    },
+    {
+      "section_id": "211.7cc",
+      "section_title": "Principal Residence Exemption (PRE)",
+      "source_name": "MCL 211.7cc",
+      "domain": "assessing",
+      "url": "http://www.legislature.mi.gov/Laws/MCL?objectName=mcl-211-7cc",
+      "highlight": "A principal residence is exempt from the tax levied by a local school district for school operating purposes up to 18 mills",
+      "text": "A principal residence is exempt from the tax levied by a local school district for school operating purposes up to 18 mills if an owner of that principal residence files an affidavit claiming the exemption. The exemption applies only to an owner-occupied principal residence and must be claimed by the statutory deadline. MCL 211.7dd defines 'owner' and 'principal residence' for purposes of the exemption."
+    },
+    {
+      "section_id": "211.34c",
+      "section_title": "Property classification",
+      "source_name": "MCL 211.34c",
+      "domain": "assessing",
+      "url": "http://www.legislature.mi.gov/Laws/MCL?objectName=mcl-211-34c",
+      "highlight": "the assessor shall classify every parcel of real property and every item of personal property",
+      "text": "For purposes of assessment, the assessor shall classify every parcel of real property and every item of personal property according to its present use. The State Tax Commission classes for real property are agricultural, commercial, developmental, industrial, residential, and timber-cutover. Classification determines which equalization study a parcel falls into and can affect appeal routing."
+    },
+    {
+      "section_id": "211.30",
+      "section_title": "March Board of Review",
+      "source_name": "MCL 211.30",
+      "domain": "assessing",
+      "url": "http://www.legislature.mi.gov/Laws/MCL?objectName=mcl-211-30",
+      "highlight": "The board of review shall meet to hear and decide protests of assessed value, taxable value, and classification.",
+      "text": "The board of review of each township and city shall meet in March. The board of review shall meet to hear and decide protests of assessed value, taxable value, and classification. This is the first level of appeal for a property owner who disputes the assessor's determination; for residential and agricultural property, a protest to the Board of Review is a prerequisite to a further appeal."
+    },
+    {
+      "section_id": "205.731",
+      "section_title": "Michigan Tax Tribunal — jurisdiction",
+      "source_name": "MCL 205.731",
+      "domain": "assessing",
+      "url": "http://www.legislature.mi.gov/Laws/MCL?objectName=mcl-205-731",
+      "highlight": "exclusive and original jurisdiction over a proceeding for direct review of a final decision relating to assessment, valuation, or equalization",
+      "text": "The Michigan Tax Tribunal has exclusive and original jurisdiction over a proceeding for direct review of a final decision relating to assessment, valuation, or equalization under the property tax laws of this state. Residential and agricultural appeals must first go to the local Board of Review; commercial and industrial property may appeal directly to the tribunal by May 31 of the tax year."
+    }
+  ]
+}

@@ -4552,7 +4552,9 @@ input[type="checkbox"]:focus-visible {
 .pv-doc-body { padding: 10px; overflow: auto; flex: 1 1 auto; }
 .pv-doc-h { margin: 0 0 4px; font-size: 13px; color: var(--ui-accent); }
 .pv-doc-cite { font-size: 11px; color: var(--text-muted, #777); margin-bottom: 6px; }
-.pv-doc-passage { line-height: 1.5; }
+.pv-doc-passage { line-height: 1.5; white-space: pre-wrap; }
+/* The precise passage a KB-resolved citation pinned (true 'resolves' state, DIC-522). */
+.pv-doc-hl { background: var(--ui-accent-soft, rgba(255, 214, 102, 0.4)); border-radius: 2px; padding: 0 1px; }
 .pv-doc-source-link { display: inline-block; margin-top: 8px; color: var(--ui-interactive); }
 .pv-doc-none { color: var(--text-muted, #777); font-style: italic; }
 /* The explainer statute name is now a button-as-link; keep its inline link look. */

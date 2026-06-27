@@ -18,6 +18,18 @@ from slowapi.util import get_remote_address
 from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, run_grounding_judge, explainer_profiles_public
 import cache as result_cache
 import usage as ai_usage
+import kb_resolver
+
+# KB-backed Citation Renderer resolver (DIC-522 / §6.4): reads through the A6 KnowledgeStore
+# seam so the viewer's Sources panel can resolve a citation to full section text + a precise
+# passage. Built lazily/fail-soft — citations are facts (not AI), so a KB outage must degrade
+# (the viewer falls back to its curated-statute resolver), never 500. Default backend is a
+# local JSON fixture (live-verifiable without db-dice/Drake; the dice live-smoke is gated).
+try:
+    _KB_STORE = kb_resolver.build_kb_store()
+except Exception as _kb_err:  # noqa: BLE001 — never block boot on KB wiring
+    _KB_STORE = None
+    print(f"[kb] resolver disabled at boot: {_kb_err}")
 
 
 def _quota_block(tenant):
@@ -114,6 +126,15 @@ class JudgeRequest(BaseModel):
     # ship — not a per-request hot path.
     output: str = ""
     grounding: dict = {}
+
+
+class KbResolveRequest(BaseModel):
+    # DIC-522 / §6.4: a citation envelope to resolve against the County Knowledge Base.
+    # `envelope` = { source_id, anchor, span, highlight_text? }. `jurisdiction` overrides the
+    # store's default tenant (fail-closed); `domain` narrows the KB ('assessing'/'zoning').
+    envelope: dict = {}
+    jurisdiction: str | None = None
+    domain: str | None = None
 
 
 @app.get("/health")
@@ -247,6 +268,33 @@ async def judge(request: Request, body: JudgeRequest):
         return {"ok": True, "verdict": verdict, "cached": False}
     except Exception as e:  # noqa: BLE001 — clean message; caller degrades
         return {"ok": False, "error": f"judge failed: {e}"}
+
+
+@app.post("/kb/resolve")
+@limiter.limit(os.getenv("KB_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "120/minute")))
+async def kb_resolve(request: Request, body: KbResolveRequest):
+    """Resolve a §6.4 citation envelope against the County Knowledge Base (DIC-522), so the
+    viewer's Sources panel can show full section text + a precise passage. NOT AI — pure
+    retrieval, so there is NO ANTHROPIC_API_KEY gate (citations must work AI-off). Returns
+    {ok, doc} on a hit, {ok:false} when the KB is unavailable or has nothing citable — the
+    viewer then degrades to its curated-statute resolver (honest 'coarse'/'none')."""
+    store = _KB_STORE
+    # A request may scope to a different tenant than the default store (fail-closed inside
+    # the store if the jurisdiction is unknown/empty). Rebuild only when it differs.
+    if body.jurisdiction and (store is None or getattr(store, "jurisdiction", None) != body.jurisdiction):
+        try:
+            store = kb_resolver.build_kb_store(jurisdiction=body.jurisdiction)
+        except Exception:  # noqa: BLE001 — degrade, don't 500
+            store = None
+    if store is None:
+        return {"ok": False, "error": "knowledge base unavailable"}
+    try:
+        doc = kb_resolver.resolve_envelope(store, body.envelope or {}, domain=body.domain)
+    except Exception as e:  # noqa: BLE001 — clean message; viewer falls back
+        return {"ok": False, "error": f"kb resolve failed: {e}"}
+    if not doc:
+        return {"ok": False, "error": "no citable source in the knowledge base"}
+    return {"ok": True, "doc": doc}
 
 
 @app.get("/explainers")

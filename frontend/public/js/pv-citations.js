@@ -7,9 +7,12 @@
  * DOCUMENT RESOLVER and renders the cited source into #pv-doc-panel — scrolled/focused,
  * with the honest degradation state (resolves / coarse / none).
  *
- * v1 resolver = the curated MI tax-statute corpus (the same provenance universe the
- * explainer cites). The resolver is the ONLY statute-aware piece; swap in a KnowledgeStore/
- * KB resolver later ("anything in the KB") and nothing else changes — that's the seam.
+ * Resolver = the County Knowledge Base (A6 KnowledgeStore, via map-buddy POST /kb/resolve),
+ * which surfaces FULL section text + a precise passage highlight ("anything in the KB",
+ * DIC-522). When the KB is unreachable or has nothing citable (e.g. VBC statutes not yet
+ * ingested, or prod Cloud Run without the route), it degrades to the curated MI tax-statute
+ * corpus (honest 'coarse') and then to 'none' — citations always render honestly, AI-off.
+ * The resolver is the ONLY piece that changes; the engine state machine is untouched.
  *
  * Capability-gated: only active when manifest.capabilities.citations is enabled (PV_CAPS).
  * Bus-driven (not a detached window) so the map + AI + docs stay interrelated.
@@ -31,7 +34,32 @@
     });
   }
 
-  // ── Document resolver (v1: curated statute corpus) ──────────────────────────
+  // ── KB resolver (primary): the County Knowledge Base via map-buddy /kb/resolve ──
+  function countyConfig() { return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {}; }
+  // Resolve the Map Buddy base the same way the explainer does (one service, one key).
+  // MAP_BUDDY_API wins so a local override (window.MAP_BUDDY_API='/map-buddy-api') can point
+  // at the bundled map-buddy that actually carries the /kb/resolve route.
+  function kbBase() {
+    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+    var endpoints = countyConfig().endpoints || {};
+    return root.MAP_BUDDY_API || endpoints.mapBuddy ||
+      (isLocal && '/map-buddy-api') || 'https://map-buddy-toaozre74a-uc.a.run.app';
+  }
+  // Fetch a KB-resolved doc for an envelope. Returns the raw doc {id,title,citation,body,url,
+  // anchorResolved,highlight?} or null (KB unreachable / nothing citable → caller falls back).
+  function kbResolve(env) {
+    var juris = countyConfig().tenant || null;
+    return fetch(kbBase() + '/kb/resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ envelope: env, jurisdiction: juris, domain: 'assessing' }),
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return j && j.ok && j.doc ? j.doc : null; })
+      .catch(function () { return null; });
+  }
+
+  // ── Document resolver (fallback: curated statute corpus) ────────────────────
   var _corpus = null;   // statutes array, lazy-loaded
   function loadCorpus() {
     if (_corpus) return Promise.resolve(_corpus);
@@ -61,7 +89,22 @@
     none: 'No citable source',
   };
 
-  function renderOne(rendered) {
+  // Render the body, marking a precise passage when the KB located one (offsets into the
+  // SAME body string the engine passed through). Escapes each segment, so the <mark> is the
+  // only injected tag. Falls back to a plain escaped body when there is no highlight.
+  function renderBody(text, hl) {
+    if (!text) return '';
+    if (hl && typeof hl.start === 'number' && typeof hl.end === 'number' &&
+        hl.start >= 0 && hl.end <= text.length && hl.end > hl.start) {
+      return '<div class="pv-doc-passage">' +
+        esc(text.slice(0, hl.start)) +
+        '<mark class="pv-doc-hl">' + esc(text.slice(hl.start, hl.end)) + '</mark>' +
+        esc(text.slice(hl.end)) + '</div>';
+    }
+    return '<div class="pv-doc-passage">' + esc(text) + '</div>';
+  }
+
+  function renderOne(rendered, highlight) {
     var stateEl = el('pv-doc-state'), body = el('pv-doc-body');
     if (!body) return;
     if (stateEl) {
@@ -77,13 +120,17 @@
     }
     var title = esc(rendered.title || rendered.citation || 'Source');
     var cite = rendered.citation ? '<div class="pv-doc-cite">' + esc(rendered.citation) + '</div>' : '';
-    var passage = rendered.body ? '<div class="pv-doc-passage">' + esc(rendered.body) + '</div>' : '';
+    // Only mark the passage when the source actually resolved precisely (true 'resolves').
+    var passage = renderBody(rendered.body, rendered.state === 'resolves' ? highlight : null);
     var link = rendered.url
       ? '<a class="pv-doc-source-link" href="' + esc(rendered.url) + '" target="_blank" rel="noopener noreferrer">View official source ↗</a>'
       : '';
     body.innerHTML = '<article class="pv-doc-entry"><h3 class="pv-doc-h">' + title + '</h3>' +
       cite + passage + link + '</article>';
-    body.scrollTop = 0;
+    // Scroll the marked passage into view when present (synchronized doc, not just top).
+    var mark = body.querySelector && body.querySelector('mark.pv-doc-hl');
+    if (mark && mark.scrollIntoView) { try { mark.scrollIntoView({ block: 'center' }); } catch (_) { body.scrollTop = 0; } }
+    else body.scrollTop = 0;
   }
 
   // ── Open / close ──────────────────────────────────────────────────────────
@@ -95,15 +142,31 @@
     if (on && panel && panel.focus) { try { panel.focus({ preventScroll: true }); } catch (_) { } }
   }
 
-  // Resolve + render one envelope into the panel.
+  // Render via the curated statute corpus (the fallback resolver). Always 'coarse'/'none'.
+  function activateFromCorpus(envelope) {
+    var eng = engine();
+    if (!eng) return;
+    loadCorpus().then(function () {
+      renderOne(eng.resolveCitation(envelope, statuteResolver));
+      showPanel(true);
+    });
+  }
+
+  // Resolve + render one envelope into the panel. KB first ("anything in the KB" — full text
+  // + precise passage → true 'resolves'); on a KB miss/outage, degrade to the curated corpus.
   function activate(envelope) {
     if (!enabled() || !envelope) return;
     var eng = engine();
     if (!eng) return;
-    loadCorpus().then(function () {
-      var rendered = eng.resolveCitation(envelope, statuteResolver);
-      renderOne(rendered);
-      showPanel(true);
+    kbResolve(envelope).then(function (kbDoc) {
+      if (kbDoc) {
+        // The engine resolver stays synchronous: hand it the already-fetched doc.
+        var rendered = eng.resolveCitation(envelope, function () { return kbDoc; });
+        renderOne(rendered, kbDoc.highlight);
+        showPanel(true);
+        return;
+      }
+      activateFromCorpus(envelope);   // KB unreachable / nothing citable → honest fallback
     });
   }
 
