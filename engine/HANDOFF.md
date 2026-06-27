@@ -14,8 +14,8 @@ engine, N themes": the live viewer still boots from `window.COUNTY` (not a manif
 global bus isn't killed, and ZIP isn't a theme yet. **That spine is the larger remaining
 half, and it's mostly unblocked** — Phase 0 (manifest exists at runtime) is the first cut, done.
 
-- **Repos (all `main`):** parcel-viewer `1d81874` (keystone Phases 1–3 + Phase 3 depth + Phase 4 non-contract read-grind landed this session; **push pending**) · ZIP/zip-poc `17ff90d` · county-data-services `0838fd5`. CI: `.github/workflows/isv-harness.yml`.
-- **Tests:** 215 green (146 Node `node:test` + 69 Python `unittest`). Run: `bash engine/run-harness.sh`. (Drift guard now covers all 7 shared drawing files.)
+- **Repos (all `main`):** parcel-viewer `98bae8a` (keystone Phases 1–3+depth, Phase 4 non-contract read-grind, Phase 5 slice 1, DIC-575 codegen, **Citation Renderer DIC-522** landed this session; **push pending**) · ZIP/zip-poc `17ff90d` (+ local `d29d16a` measure-tool) · county-data-services `0838fd5`. CI: `.github/workflows/isv-harness.yml`.
+- **Tests:** 221 green (152 Node `node:test` + 69 Python `unittest`). Run: `bash engine/run-harness.sh`. (Drift guard covers all 7 shared drawing files.)
 - **Big session 2026-06-27:** finished B3 (live AI transport), C1 (DB RLS, verified on throwaway postgres), C3 (cache+quotas), C4 (/status + feature-flags), C5 (LLM-judge + golden corpus), and started the keystone (Phase 0 manifest-boot). Worked around the weekend blockers — see gotchas below.
 
 ## ⚠ Honest status map (what's REAL vs. scaffolding — orient here first)
@@ -75,6 +75,7 @@ Engine (source-agnostic, no domain noun — enforced by `engine/test/engine-smok
 - `engine/validate-manifest.js` + `engine/schema/manifest.schema.json` + `engine/manifest-version.js` + `engine/load-manifest.js` — manifest validation, schema versioning/migration, and the canonical `loadManifest()` migrate-on-load seam (migrate→validate in one place).
 - `engine/manifest-assemble.js` + `engine/capability-catalog.js` — B2 manual builder: assemble a §5 theme manifest from the console editor slices (source-agnostic; noun-free, in the §4.1 guard) + the capability vocabulary/default AI tri-state (data module).
 - `engine/ai-quality.js` — citation-accuracy + grounding checks (C5).
+- `engine/citation.js` (`ISV_CITATION`) — **Citation Renderer core (DIC-522 / §6.4)**: `resolveCitation(envelope, resolver)` → render-ready doc + honest degradation (resolves/coarse/none, never over-claims). Resolver injected (PV statutes now; KB later). Viewer surface = `frontend/.../pv-citations.js` (`PV_CITATIONS`) → in-app `#pv-doc-panel`, bus event `citation-activated`, capability-gated. Explainer statute links emit the envelope (in-app, not new window). Same renderer will serve ZIP's ordinance.
 - `engine/drawing/` — canonical master of the shared drawing stack + `generate.mjs` (→ PV verbatim, ZIP via word-boundary `PS_→ZIP_`).
 
 Viewer bridges (`frontend/public/js/`, the only place that knows `PS_*` / `COUNTY`):
