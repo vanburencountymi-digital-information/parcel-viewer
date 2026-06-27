@@ -1,20 +1,33 @@
-# ISV — Handoff (2026-06-26)
+# ISV — Handoff (2026-06-27)
 
 Pick-up doc for the **Intelligent Spatial Viewer** engine work. The authoritative spec is
 `Desktop/Claude/ISV_BUILD_SPEC.md` (v1.1); decisions/risk log is `engine/DECISIONS.md`;
 the engine contract is `engine/README.md`. This file is the "where are we / how do I
 continue" summary.
 
-## TL;DR
+## TL;DR (read the honest status map below before assuming completeness)
 
-A source-agnostic engine + capability registry has been extracted from the Parcel Viewer,
-the global-bus → AppContext decouple is well underway, AI is optional two ways, and the
-first hardening gates are in. **All additive — Parcel Viewer and parcel-studio stay green.**
-Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
+The **capability contract, the data-abstraction stores, the manifest+Theme-Composer stack,
+the AI capabilities, and ALL FIVE hardening gates (C1–C5)** are built and verified (harness
+and/or live). What is **NOT done** is the integration spine that makes it actually "one
+engine, N themes": the live viewer still boots from `window.COUNTY` (not a manifest), the
+global bus isn't killed, and ZIP isn't a theme yet. **That spine is the larger remaining
+half, and it's mostly unblocked** — Phase 0 (manifest exists at runtime) is the first cut, done.
 
-- **Repo:** `github.com/vanburencountymi-digital-information/parcel-viewer`
-- **Branch/commit:** `main` @ `ffc825a` — **pushed to origin** (CI: `.github/workflows/isv-harness.yml`).
+- **Repos (all `main`, all pushed):** parcel-viewer `52fc8f8` · ZIP/zip-poc `17ff90d` · county-data-services `0838fd5`. CI: `.github/workflows/isv-harness.yml`.
 - **Tests:** 204 green (135 Node `node:test` + 69 Python `unittest`). Run: `bash engine/run-harness.sh`.
+- **Big session 2026-06-27:** finished B3 (live AI transport), C1 (DB RLS, verified on throwaway postgres), C3 (cache+quotas), C4 (/status + feature-flags), C5 (LLM-judge + golden corpus), and started the keystone (Phase 0 manifest-boot). Worked around the weekend blockers — see gotchas below.
+
+## ⚠ Honest status map (what's REAL vs. scaffolding — orient here first)
+
+- **🟢 Integrated & live (local dockerized stack):** A2 harness · A7 explainer/ledger/doc · A4/A5 partial (event-driven selection, source-config popup) · A6 ParcelStore→PV `/parcel` route · A8 drawing · B1 toggle · B4 fallback (viewer+console) · B2/B3 Theme Composer + autoconfigure **at `/admin/`** (incl. live AI refinement) · C3 cache+quota / C4 `/status` / C5 `/judge` **on the local map-buddy** · Phase 0 manifest-at-boot.
+- **🟡 Built & tested but NOT wired into the live viewer runtime:** A1 `invoke()`/registry seam · C2 migrate-on-load (console only) · KnowledgeStore + `kb_guard` agent wiring (ZIP not running) · ParcelStore tenant scoping (opt-in, PV passes no tenant) · `feature-flags.js` (nothing consumes it) · `ai-quality.js` deterministic checks (harness-only) · **the whole manifest pipeline — nothing at viewer runtime reads `PS_MANIFEST` yet** (Phase 0 only makes it exist).
+- **🔴 Not started / substantially incomplete (mostly UNBLOCKED):** A3 kill-the-bus (most ~175 globals unmigrated; parcel-studio depends on them) · A4/A5 full source abstraction · **manifest-driven viewer boot** (Phases 1–4) · **ZIP-as-a-theme** · A6 execution-layer merge.
+- **⛔ Blocked (Drake / ZIP / Cloud Run / prod):** apply RLS migration 015 + cross-tenant E2E (writable store DIC-464/400) · A6 `dice` live-smoke + Lockport data migration · deploy map-buddy `/autoconfigure`+`/judge`+`/status`+cache/quota to **Cloud Run** (prod AI routes there, not the bundled one) · cache/quota → DIC-400 shared store · C4 canary deploy + engine rollback · ZIP runnable locally for the merge.
+
+## Open decision for the NEXT session (Phase 2 depends on it)
+
+**Canonical tenant key.** Three spellings exist: the manifest assembler slugs `COUNTY.name` → `van-buren-county`; the Admin Console uses `vanburen` (`COUNTY_KEY`); the DB/RLS uses `VBC` (the `county` column). Nothing consumes the tenant yet, so it's harmless TODAY, but Phase 2 (wire `feature-flags.js`/quotas per tenant) and the C1 RLS (`SET app.current_tenant`) need ONE canonical key + a mapping to the DB `county` value. Pick it before wiring per-tenant behavior.
 
 ## Keystone work — manifest-driven boot (the integration spine)
 
@@ -78,6 +91,8 @@ Viewer bridges (`frontend/public/js/`, the only place that knows `PS_*` / `COUNT
 - **Drive it with the preview MCP:** launch.json config **`a11y-proxy`** (port 8091 → proxies to docker 8080; `tools/a11y-proxy.py`, whose gzip bug is fixed). `PS_selectParcelById(id)` selects by DB id (e.g. 45154 = KELLY/Covert, 45628 = Covert Twp). Roads layer: `PS_PG_LAYERS.setOverlay('reference_roads', true)`, layer id `reference_roads-line`, needs zoom ~15.
 - **⚠ Preview cache gotcha:** the browser caches `.js` per-file; `location.href='/demo/?x='+Date.now()` busts the HTML but NOT always the cached `.js`. For a clean run, **`preview_stop` then `preview_start`** (fresh context), and/or `fetch(file,{cache:'reload'})` to compare served vs. live. The preview console buffer is a 500-cap ring that does NOT clear on navigation — to test for NEW errors, count `console.error` calls during an action (don't read the stale buffer).
 - **⚠ Verify on the real map, not just the static preview** — `PS_MAP` only initializes against the backend (8080), and live verification has already caught bugs the static preview missed (a `PS_onParcelSelect` recursion against `hints.js`).
+- **AI paths ARE live-verifiable locally** (no Drake needed): `parcel-viewer/.env` has an Anthropic key, but the compose `environment:` interpolates `ANTHROPIC_API_KEY` from the host shell (empty) and overrides the env_file — so bring map-buddy up WITH the file: `docker compose -f infra/docker-compose.viewer.yml --env-file .env up -d map-buddy`. The console/viewer resolve the AI base to `COUNTY.endpoints.mapBuddy` = **Cloud Run** (which lacks the new `/autoconfigure`,`/judge`,`/status` + cache/quota); to exercise the LOCAL map-buddy in the browser set `window.MAP_BUDDY_API='/map-buddy-api'` (highest precedence in `explainBase`/`mapBuddyBase`). map-buddy is bind-mounted with `--reload`, so .py edits hot-reload (no rebuild). The PV `api` service is a BUILT image — rebuild it for backend changes: `... up -d --build api`.
+- **DB work without db-dice** (Drake gated): prove SQL/policies against a throwaway container — see `county-data-services/scripts/test_tenant_rls.sh` (spins up `postgres:16-alpine`, applies migration 015's policy, asserts cross-tenant isolation + fail-closed). `~/bin/cloud-sql-proxy.exe` exists if you DO want db-dice (Avast Web Shield off during migrations; do NOT run prod DDL unattended).
 
 ## A6 gate — UPDATED 2026-06-26
 
@@ -91,10 +106,17 @@ Viewer bridges (`frontend/public/js/`, the only place that knows `PS_*` / `COUNT
 
 ## What's next (recommended order)
 
-1. **Finish the in-flight increments** where cheap: A4 (extract `showParcelInfo`'s remaining HTML into the source renderer), A5 (more sections / backend per-source endpoints), B1 (hide toggle for `ai-required` themes — needs manifest→runtime wiring), B4 (console-side fallback + shared health module), A8 (runtime-share the drawing stack via AppContext), C2 (**migrate-on-load done**; Ajv swap still deferred — see DECISIONS).
-2. **Step 5 themes:** **B3 AI autoconfigure (DIC-579) — inc 1 done:** `engine/capabilities/theme-composer.core.js` (registered, `ai-optional`) turns a brief → a **deterministic, schema-valid draft manifest + rationale + provenance** (facts-parity: draft is identical AI-on/off; AI only adds prose rationale via the `fetchComposerNarration` narrate seam). Reuses the B2 assembler + catalog. Admin Console "Theme Manifest" module has an **AI autoconfigure** card (brief → draft into the editor for review; works with no AI). **B3 inc 2 (live transport) done:** map-buddy `/autoconfigure` (`run_autoconfigure`, forced `propose_theme_refinement` tool call — narrates over the deterministic draft, never originates it) + the console posts to it when AI is reachable and shows the AI rationale + suggested tweaks over the draft. **Live-verified with the real model** at `/admin/` (point the console at the local map-buddy via `window.MAP_BUDDY_API='/map-buddy-api'`; prod uses `COUNTY.endpoints.mapBuddy` = Cloud Run, which needs the endpoint deployed). 4 contract tests (no live model) in `run_explain_contract_test.py`. **B2** manual Theme Composer — **inc 1 + inc 2 done** (engine assembler + capability catalog + "Theme Manifest" console module; assemble→validate→export + validated raw-edit + **Save/Publish round-trip** — the manifest is persisted as the canonical `config.manifest` through the existing draft/publish store and PREFERRED on reopen, so open→edit→save→reopen is lossless; "Re-assemble from modules" is the no-one-way-door escape; validate-before-save guard). Live-verified at `/admin/` (the live writable store DIC-464/400 is the only external dep; Save degrades to the standard 503 notice until then). Remaining B2 polish: structured (non-raw) editors for capabilities/persona; reconcile the assembled manifest with module edits made AFTER a manifest was saved. Then **B3** AI autoconfigure (drafts into the same Theme Manifest editor).
-3. **Step 6 hardening gates (before any public multi-county launch):** **C1** tenant isolation (Urgent — row-level scoping, tenant-scoped AI, prompt-injection defense), **C3** AI cost governance (per-tenant quotas + result caching keyed on capability+typed input), **C4** ops/release (canary, per-tenant flags, rollback, monitoring).
-4. **A6** — A6-a resolved (option a). **KnowledgeStore + ParcelStore done** (`ZIP/zip-poc/backend/{knowledge_store,parcel_store}.py`; `tools.py` delegates behavior-identically; harness-tested incl. a `zip_legacy_view` parity oracle). ParcelStore canonical record normalizes both ZIP-local (flat `parcels`) and DICE/VBC (`geo.parcel_geometry ⋈ assessing.vbc_parcels`). **PV `/parcel/{id}` now reads through `DiceVbcParcelStore`** (`backend/parcel_viewer/stores/parcel_store.py`): store owns the schema-coupled SQL, route formats the `raw` row → identical Feature; `canonical` is the cross-backend record. **Live-verified** (rebuild `api`, `/api/parcel/45154` + on-map select, 0 errors). **D1 store-contract dedup DONE:** the canonical-parcel record shape is now defined ONCE in `engine/stores/parcel_contract.py` (master) and generated verbatim into both backends (`node engine/stores/generate.mjs`), with a drift-guard (`engine/test/parcel-contract-sync.test.js`) — same single-source pattern as the A8 drawing stack. Both ParcelStore impls (PV psycopg3 / ZIP psycopg2) build via the shared `canonical_parcel()`; the impls stay per-backend (drivers differ), only the shape is shared. Next A6 steps: (a) wire db-dice creds + live-smoke `ZIP_KNOWLEDGE_BACKEND=dice` / `ZIP_PARCEL_BACKEND=dice-vbc`; (b) `ParcelStore` ZIP/Lockport DATA migration (blocked on Drake + the `assessing.sjc_parcels`-vs-generalized decision); (c) the map-buddy↔ZIP execution-layer merge (the A6 body).
+**THE path forward is the keystone phases (see the Keystone section near the top).** The
+contract, stores, manifest/Theme-Composer, AI capabilities, and all five hardening gates
+are built (status map above). The remaining work is the integration spine:
+
+1. **Phase 1 — route branding + map reads through `PS_MANIFEST`** (COUNTY fallback). First slice that CONSUMES the manifest; establishes the read-migration pattern. **Decide the canonical tenant key first** (see "Open decision" above).
+2. **Phase 2 — capability gating from `manifest.capabilities` + wire `feature-flags.js`.** Highest leverage: lights up the built-but-unwired B2/B3/C4 stack in the live viewer.
+3. **Phase 3 — sources from `manifest.sources`** (the A5 depth, riskiest — hunt remaining parcel-hardcoded render paths). **Phase 4 — finish the A3 read-migration grind** (file-by-file, parcel-studio re-verified per batch).
+4. **Phase 5 — ZIP-as-a-theme** (gated on ZIP runnable locally) — and the **A6 execution-layer merge** (map-buddy↔ZIP tool loops).
+5. **Monday/Drake/infra (the ⛔ blocked set):** apply RLS migration 015 + cross-tenant E2E; deploy the new map-buddy endpoints to Cloud Run; A6 dice live-smoke + Lockport data migration; C4 canary deploy + engine rollback.
+
+*Detail on every completed increment is in the per-DIC Linear comments (commit-referenced) and the git log; the status map + Keystone section above are the orientation.*
 
 ## Working agreement (kept throughout)
 
