@@ -43,15 +43,24 @@
     return /^https?:\/\//.test(m) ? m : window.location.origin + m;
   }
 
-  // The vector overlays registered in the county config (config-as-data).
+  // The vector overlays to render (Phase 3 / DIC-407): prefer the manifest's overlay
+  // sources (role 'overlay', type vector — carrying source/sourceLayer/geomType/minZoom/
+  // default/outlineOnly via the assembler), falling back to COUNTY.layers.overlays. The
+  // entry shape is identical either way, so the downstream tile/paint code is unchanged.
   function vectorOverlays() {
+    var fromManifest = window.PV_MANIFEST && window.PV_MANIFEST.vectorOverlays && window.PV_MANIFEST.vectorOverlays();
+    if (fromManifest && fromManifest.length) return fromManifest;
     var L = countyConfig().layers || {};
     return (L.overlays || []).filter(function (o) {
       return o && String(o.type || '').toLowerCase() === 'vector';
     });
   }
 
+  // Per-layer styling: prefer the manifest source's `style` block (= styling.layers[id]
+  // carried by the assembler), falling back to COUNTY.styling.layers[id].
   function styleEntry(id) {
+    var src = window.PV_MANIFEST && window.PV_MANIFEST.source && window.PV_MANIFEST.source(id);
+    if (src && src.style) return src.style;
     var styling = countyConfig().styling || {};
     var sl = styling.layers || {};
     return sl[id] || {};

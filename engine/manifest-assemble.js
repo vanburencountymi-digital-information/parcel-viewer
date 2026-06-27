@@ -38,7 +38,7 @@
   // — these are layer vocabulary, not domain nouns). `source` = the tile-function/provider
   // name; `geomType` = polygon|line|point; `dbSource` = provenance note; `fields` = queryable
   // attributes; `default` = on-by-default. (`source` is ALSO mapped to `legend` for back-compat.)
-  var SOURCE_PASSTHROUGH = ['source', 'geomType', 'dbSource', 'fields', 'default'];
+  var SOURCE_PASSTHROUGH = ['source', 'geomType', 'dbSource', 'fields', 'default', 'outlineOnly'];
 
   function isObj(v) { return v != null && typeof v === 'object' && !Array.isArray(v); }
   function slug(s) {
@@ -71,10 +71,11 @@
 
     var styleByLayer = (config.styling && config.styling.layers) || {};
 
-    function push(entry, defaultType) {
+    function push(entry, defaultType, role) {
       if (!entry || !entry.id || seen[entry.id]) return;
       seen[entry.id] = true;
       var src = { id: entry.id, type: normType(entry.type || defaultType) };
+      if (role) src.role = role;            // 'base' | 'overlay' — lets the renderer pick the overlay set
       if (entry.label) src.label = entry.label;
       if (entry.sourceLayer) src.sourceLayer = entry.sourceLayer;
       var mz = (entry.minZoom != null) ? entry.minZoom : entry.minzoom;
@@ -92,8 +93,8 @@
       sources.push(src);
     }
 
-    (data.baseLayers || []).forEach(function (b) { push(b, 'vector'); });
-    (data.overlays || []).forEach(function (o) { push(o, 'vector'); });
+    (data.baseLayers || []).forEach(function (b) { push(b, 'vector', 'base'); });
+    (data.overlays || []).forEach(function (o) { push(o, 'vector', 'overlay'); });
     return sources;
   }
 

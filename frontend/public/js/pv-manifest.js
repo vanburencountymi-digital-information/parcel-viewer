@@ -75,7 +75,32 @@
     return res;
   }
 
-  root.PV_MANIFEST = { load: load, loadBootManifest: loadBootManifest, assembleFromCounty: assembleFromCounty };
+  // ── Source accessors (Phase 3): the single read-point for manifest sources, reused by the
+  //    layer modules (pg-layers, layer-registry) with a COUNTY fallback at the call site. ──
+  function sources() {
+    var m = root.PS_MANIFEST;
+    return (m && Array.isArray(m.sources)) ? m.sources : null;
+  }
+  function source(id) {
+    var ss = sources();
+    if (!ss) return null;
+    for (var i = 0; i < ss.length; i++) if (ss[i] && ss[i].id === id) return ss[i];
+    return null;
+  }
+  // The toggleable vector overlays (role 'overlay', type vector) — the set pg-layers renders.
+  // Null (not []) when no manifest, so callers can distinguish "no manifest" → use COUNTY.
+  function vectorOverlays() {
+    var ss = sources();
+    if (!ss) return null;
+    return ss.filter(function (s) {
+      return s && s.role === 'overlay' && String(s.type || '').toLowerCase() === 'vector';
+    });
+  }
+
+  root.PV_MANIFEST = {
+    load: load, loadBootManifest: loadBootManifest, assembleFromCounty: assembleFromCounty,
+    sources: sources, source: source, vectorOverlays: vectorOverlays,
+  };
 
   // Assemble EAGERLY at parse time: this script now loads after county-config.js + the engine
   // modules but BEFORE map.js, so window.PS_MANIFEST is published before initMap() reads it

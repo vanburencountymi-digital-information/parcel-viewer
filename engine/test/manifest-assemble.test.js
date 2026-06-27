@@ -35,7 +35,7 @@ function countyConfig() {
       ],
       overlays: [
         { id: 'subdivisions', label: 'Subdivisions', type: 'vector', source: 'subdivisions_tiles', sourceLayer: 'subdivisions',
-          geomType: 'polygon', minZoom: 12, default: false, dbSource: 'geo.subdivisions', fields: ['name', 'unit'] },
+          geomType: 'polygon', minZoom: 12, default: false, outlineOnly: true, dbSource: 'geo.subdivisions', fields: ['name', 'unit'] },
         { id: 'wetlands', label: 'Wetlands', type: 'WMS', source: 'USFWS NWI', minZoom: 12 },
       ],
     },
@@ -83,6 +83,12 @@ test('overlay sources carry the full layer config + per-layer style (Phase 3 B1)
   assert.equal(sub.dbSource, 'geo.subdivisions');
   assert.deepEqual(sub.fields, ['name', 'unit']);
   assert.equal(sub.default, false);
+  assert.equal(sub.outlineOnly, true);
+  // base vs overlay role (lets the renderer pick the overlay set, excluding the parcel base)
+  assert.equal(byId.parcels.role, 'base');
+  assert.equal(byId.aerial.role, 'base');
+  assert.equal(sub.role, 'overlay');
+  assert.equal(byId.wetlands.role, 'overlay');
   // per-layer styling (styling.layers[id]) attached as `style`
   assert.equal(sub.style.paint.light.fill, '#7A3B6B');
   assert.equal(sub.style.labels.field, 'name');

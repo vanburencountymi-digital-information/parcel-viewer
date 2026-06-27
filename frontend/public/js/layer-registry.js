@@ -37,7 +37,11 @@
     return [];
   }
 
+  // Vector overlays for the AI/registry snapshot (Phase 3): prefer the manifest's overlay
+  // sources, falling back to COUNTY.layers.overlays (same shape, same fields/geomType).
   function _vectorOverlays() {
+    var fromManifest = window.PV_MANIFEST && window.PV_MANIFEST.vectorOverlays && window.PV_MANIFEST.vectorOverlays();
+    if (fromManifest && fromManifest.length) return fromManifest;
     var L = _county().layers || {};
     return (L.overlays || []).filter(function (o) {
       return o && String(o.type || '').toLowerCase() === 'vector';
