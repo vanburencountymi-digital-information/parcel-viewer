@@ -22,6 +22,11 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
+try:
+    from .parcel_contract import ParcelStore, canonical_parcel
+except ImportError:   # standalone load (harness): the stores dir is on sys.path
+    from parcel_contract import ParcelStore, canonical_parcel
+
 # The full /parcel/{id} projection. Kept verbatim from the route so `raw` reproduces the
 # exact Feature the viewer expects (geometry + every property it renders).
 _PARCEL_SQL = """
@@ -45,40 +50,30 @@ _PARCEL_SQL = """
 
 
 def _to_canonical(r: dict) -> dict:
-    """Map a VBC joined row (dict) to the cross-backend canonical parcel record."""
-    return {
-        "id": r.get("id"),
-        "pin": r.get("parcel_no"),
-        "county": r.get("county"),
-        "municipality": r.get("municipality"),
-        "gis_acres": r.get("computed_acres") if r.get("computed_acres") else r.get("acres"),
-        "owner": {
-            "name": r.get("owner_name"), "address": r.get("owner_street"),
-            "city": r.get("owner_city"), "state": r.get("owner_state"), "zip": r.get("owner_zip"),
+    """Map a VBC joined row (dict) to the cross-backend canonical parcel record. The shape
+    is owned by parcel_contract.canonical_parcel (shared with the ZIP backend)."""
+    return canonical_parcel(
+        id=r.get("id"),
+        pin=r.get("parcel_no"),
+        county=r.get("county"),
+        municipality=r.get("municipality"),
+        gis_acres=r.get("computed_acres") if r.get("computed_acres") else r.get("acres"),
+        owner={"name": r.get("owner_name"), "address": r.get("owner_street"),
+               "city": r.get("owner_city"), "state": r.get("owner_state"), "zip": r.get("owner_zip")},
+        site={"address": r.get("prop_street"), "city": r.get("prop_city"),
+              "state": r.get("prop_state"), "zip": r.get("prop_zip")},
+        school=r.get("school_dist"),
+        prop_class=r.get("prop_class"),
+        zoning=None,                                      # VBC parcels carry no parcel zoning
+        pre={"current": r.get("homestead")},
+        legal_description=r.get("ps_legal_description") or r.get("legal_description"),
+        assessment_current={"assessed": r.get("assessed_value"), "taxable": r.get("taxable_value")},
+        assessment_detail={
+            "previous": {"assessed": r.get("prev_assessed_value"), "taxable": r.get("prev_taxable_value")},
+            "rolling": [r.get(f"assessed_value_yr{i}") for i in range(5)],
         },
-        "site": {
-            "address": r.get("prop_street"), "city": r.get("prop_city"),
-            "state": r.get("prop_state"), "zip": r.get("prop_zip"),
-        },
-        "school": r.get("school_dist"),
-        "prop_class": r.get("prop_class"),
-        "zoning": None,                                   # VBC parcels carry no parcel zoning
-        "pre": {"current": r.get("homestead"), "previous": None},
-        "legal_description": r.get("ps_legal_description") or r.get("legal_description"),
-        "assessment": {
-            "current": {"assessed": r.get("assessed_value"), "sev": None, "taxable": r.get("taxable_value")},
-            "detail": {
-                "previous": {"assessed": r.get("prev_assessed_value"), "taxable": r.get("prev_taxable_value")},
-                "rolling": [r.get(f"assessed_value_yr{i}") for i in range(5)],
-            },
-        },
-        "source_backend": "dice-vbc",
-    }
-
-
-class ParcelStore:
-    def get_parcel(self, parcel_id) -> Optional[dict]:
-        raise NotImplementedError
+        source_backend="dice-vbc",
+    )
 
 
 class DiceVbcParcelStore(ParcelStore):

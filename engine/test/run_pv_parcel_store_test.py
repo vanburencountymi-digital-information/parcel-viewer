@@ -9,13 +9,16 @@ Proves WITHOUT a live DB (the row fetch is injected):
     (facts-parity, §4.6) — the shared cross-backend contract.
 """
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
 # Load under a unique module name — the ZIP backend also has a `parcel_store.py`, so a
-# plain `import parcel_store` would collide in sys.modules depending on test order.
-_PV_STORE = Path(__file__).resolve().parents[2] / "backend" / "parcel_viewer" / "stores" / "parcel_store.py"
-_spec = importlib.util.spec_from_file_location("pv_parcel_store", _PV_STORE)
+# plain `import parcel_store` would collide in sys.modules depending on test order. The
+# stores dir is put on sys.path so parcel_store's flat-import fallback finds parcel_contract.
+_STORES_DIR = Path(__file__).resolve().parents[2] / "backend" / "parcel_viewer" / "stores"
+sys.path.insert(0, str(_STORES_DIR))
+_spec = importlib.util.spec_from_file_location("pv_parcel_store", _STORES_DIR / "parcel_store.py")
 _mod = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_mod)
 make_parcel_store, _to_canonical = _mod.make_parcel_store, _mod._to_canonical
