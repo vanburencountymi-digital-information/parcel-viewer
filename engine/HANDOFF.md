@@ -14,7 +14,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 
 - **Repo:** `github.com/vanburencountymi-digital-information/parcel-viewer`
 - **Branch/commit:** `main` @ `ffc825a` — **pushed to origin** (CI: `.github/workflows/isv-harness.yml`).
-- **Tests:** 147 green (110 Node `node:test` + 37 Python `unittest`). Run: `bash engine/run-harness.sh`.
+- **Tests:** 152 green (110 Node `node:test` + 42 Python `unittest`). Run: `bash engine/run-harness.sh`.
 - **Linear:** project **Intelligent Spatial Viewer (ISV)** — `intelligent-spatial-viewer-isv-cd0a9c4c0f9e`. Each DIC ticket has commit-referenced progress comments.
 
 ## What's done (status per spec)
@@ -34,7 +34,7 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 | 5 | A8 single source of truth for the 5 shared PV/ZIP drawing files | 575 | in progress (source-of-truth + drift guard; runtime-share pending) |
 | 5 | B2 Theme Composer — manual builder (assemble editors → one §5 manifest) | 578 | in progress (assembler + capability catalog + **Theme Manifest** console module: assemble→validate→export + raw-edit + **save/publish round-trip** through the versioned config store, live-verified; only the live store provisioning (DIC-464/400) is external) |
 | — | A6 backend convergence — **KnowledgeStore + ParcelStore** (decouple knowledge + parcel access; DICE + ZIP-local backends) | 570 | in progress (KnowledgeStore + ParcelStore built & harness-verified; A6-a resolved. **PV `/parcel/{id}` route now reads through `DiceVbcParcelStore` — live-verified on the dockerized viewer.** ZIP/Lockport parcel DATA still not migrated; cross-repo store dedup is a packaging decision) |
-| 6 | C1 tenant isolation (Urgent) | 582 | in progress (inc 1: **fail-closed tenant scoping** in KnowledgeStore — scoped backend can't run without a tenant; **prompt-injection defense** `kb_guard.py` — untrusted KB docs fenced as DATA + injection detection. Both harness-tested. Row-level scoping on ParcelStore + agent-side wiring pending) |
+| 6 | C1 tenant isolation (Urgent) | 582 | in progress (inc 1: **fail-closed tenant scoping** in KnowledgeStore; **prompt-injection defense** `kb_guard.py`. inc 2: **wired into the live agent loop** — `agent.py` returns KB tool results via `kb_guard.guard_tool_result` (fenced as DATA); all other tools byte-identical (harness-proven). Row-level ParcelStore scoping + DB-layer roles pending) |
 | 6 | C2 manifest schema versioning + migration | 583 | in progress (migration engine + **migrate-on-load seam** done & live-verified; Ajv swap deferred) |
 | 6 | C5 AI-quality eval (citation-accuracy + grounding) | 586 | in progress (deterministic floor done; golden sets + LLM-judge pending) |
 
