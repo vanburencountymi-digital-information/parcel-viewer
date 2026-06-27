@@ -19,6 +19,12 @@
     return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {};
   }
 
+  // A3 (DIC-568): user prefs via the injected context (=== window.PV_PREFS through the
+  // bridge getter), with the global as fallback when the context isn't loaded.
+  function prefs() {
+    return (window.PS_CONTEXT && window.PS_CONTEXT.prefs) || window.PV_PREFS || null;
+  }
+
   // ── Dropdown open/close ────────────────────────────────────────────────────
   function openMenu() {
     menu.hidden = false;
@@ -480,13 +486,14 @@
   }
 
   function openSettings() {
+    var _p = prefs();
     var coordFmt  = (window.PV_COORDS && window.PV_COORDS.getFormat && window.PV_COORDS.getFormat()) || "dd";
-    var areaUnits = (window.PV_PREFS && window.PV_PREFS.getAreaUnits && window.PV_PREFS.getAreaUnits()) || "acres";
-    var basemap   = (window.PV_PREFS && window.PV_PREFS.getBasemap && window.PV_PREFS.getBasemap()) || "light";
+    var areaUnits = (_p && _p.getAreaUnits && _p.getAreaUnits()) || "acres";
+    var basemap   = (_p && _p.getBasemap && _p.getBasemap()) || "light";
     var glassPct  = 62; try { var _ga = parseFloat(localStorage.getItem("pv-glass-alpha")); if (_ga > 0) glassPct = Math.round(_ga * 100); } catch (_) {}
-    var orbitOn   = !(window.PV_PREFS && window.PV_PREFS.getCinematicOrbit) || window.PV_PREFS.getCinematicOrbit();
-    var reactions = (window.PV_PREFS && window.PV_PREFS.getMapReactions && window.PV_PREFS.getMapReactions()) || "subtle";
-    var mood      = (window.PV_PREFS && window.PV_PREFS.getMapMood && window.PV_PREFS.getMapMood()) || "none";
+    var orbitOn   = !(_p && _p.getCinematicOrbit) || _p.getCinematicOrbit();
+    var reactions = (_p && _p.getMapReactions && _p.getMapReactions()) || "subtle";
+    var mood      = (_p && _p.getMapMood && _p.getMapMood()) || "none";
     var hintsOn   = !(window.PS_HINTS && window.PS_HINTS.isEnabled) || window.PS_HINTS.isEnabled();
     function opt(v, label, cur) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + label + '</option>'; }
     var scheme = (window.PV_SCHEME && window.PV_SCHEME.get && window.PV_SCHEME.get()) || "terracotta";
@@ -547,15 +554,15 @@
       var a = bodyEl.querySelector("#pv-set-area");
       var c = bodyEl.querySelector("#pv-set-coord");
       var b = bodyEl.querySelector("#pv-set-basemap");
-      if (a) a.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setAreaUnits(a.value); });
+      if (a) a.addEventListener("change", function () { var p = prefs(); p && p.setAreaUnits(a.value); });
       if (c) c.addEventListener("change", function () { window.PV_COORDS && window.PV_COORDS.setFormat(c.value); });
-      if (b) b.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setBasemap(b.value); });
+      if (b) b.addEventListener("change", function () { var p = prefs(); p && p.setBasemap(b.value); });
       var orb = bodyEl.querySelector("#pv-set-orbit");
-      if (orb) orb.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setCinematicOrbit && window.PV_PREFS.setCinematicOrbit(orb.checked); });
+      if (orb) orb.addEventListener("change", function () { var p = prefs(); p && p.setCinematicOrbit && p.setCinematicOrbit(orb.checked); });
       var rx = bodyEl.querySelector("#pv-set-reactions");
-      if (rx) rx.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setMapReactions && window.PV_PREFS.setMapReactions(rx.value); });
+      if (rx) rx.addEventListener("change", function () { var p = prefs(); p && p.setMapReactions && p.setMapReactions(rx.value); });
       var md = bodyEl.querySelector("#pv-set-mood");
-      if (md) md.addEventListener("change", function () { window.PV_PREFS && window.PV_PREFS.setMapMood && window.PV_PREFS.setMapMood(md.value); });
+      if (md) md.addEventListener("change", function () { var p = prefs(); p && p.setMapMood && p.setMapMood(md.value); });
       var hk = bodyEl.querySelector("#pv-set-hints");
       if (hk) hk.addEventListener("change", function () { try { window.PS_HINTS && window.PS_HINTS.setEnabled(hk.checked); } catch (_) {} });
       var hr = bodyEl.querySelector("#pv-hints-reset");

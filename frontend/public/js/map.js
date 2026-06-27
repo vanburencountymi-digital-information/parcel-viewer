@@ -53,6 +53,12 @@
     return (ctx && ctx.config) || window.COUNTY || {};
   }
 
+  // A3 (DIC-568): read user prefs through the injected context (ctx.prefs === window.PV_PREFS
+  // via the bridge's lazy getter), falling back to the global if the context isn't present.
+  function prefs() {
+    return (ctx && ctx.prefs) || window.PV_PREFS || null;
+  }
+
   // Phase 1 (manifest-driven boot): read migrated fields from the assembled theme manifest
   // (window.PS_MANIFEST, published by pv-manifest.js BEFORE this script) with a COUNTY
   // fallback. This is the read-migration pattern the rest of A3 follows — additive, so a
@@ -320,7 +326,7 @@
   let _spotlightFn = null;
   function _effectiveReactions() {
     let mode = "subtle";
-    try { mode = (window.PV_PREFS && PV_PREFS.getMapReactions && PV_PREFS.getMapReactions()) || "subtle"; } catch (_) {}
+    try { var _p = prefs(); mode = (_p && _p.getMapReactions && _p.getMapReactions()) || "subtle"; } catch (_) {}
     if (mode === "full") {
       let reduced = false;
       try { reduced = document.documentElement.classList.contains("pv-a11y-motion") || matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (_) {}
@@ -1117,7 +1123,7 @@
       window.PS_MAP = map;
 
       // Apply the saved map mood (DIC-509) now that the map is ready.
-      try { applyMapMood(window.PV_PREFS && PV_PREFS.getMapMood ? PV_PREFS.getMapMood() : "none"); } catch (_) {}
+      try { var _pm = prefs(); applyMapMood(_pm && _pm.getMapMood ? _pm.getMapMood() : "none"); } catch (_) {}
 
       // Re-tint the map when the color scheme changes (DIC-505). admin-menu's
       // setScheme() flips data-scheme then dispatches this; applyTheme re-reads
@@ -2198,7 +2204,7 @@
     // Power users can disable the 360° orbit (Settings): keep a quick fly-in,
     // settle north-up and flat, skip the spin entirely.
     let orbitOn = true;
-    try { if (window.PV_PREFS && window.PV_PREFS.getCinematicOrbit) orbitOn = window.PV_PREFS.getCinematicOrbit(); } catch (e) {}
+    try { var _po = prefs(); if (_po && _po.getCinematicOrbit) orbitOn = _po.getCinematicOrbit(); } catch (e) {}
     if (!orbitOn) { map.flyTo({ center, zoom: z, pitch: 0, bearing: 0, speed: 1.2, curve: 1.4, essential: true }); return; }
 
     const userEvents = ["mousedown", "touchstart", "wheel"];
