@@ -1199,7 +1199,8 @@
               '<div id="ac-ac-health" class="ac-card-note"></div>' +
               '<div class="ac-toolbar" style="margin-top:8px;align-items:center">' +
                 '<button class="ac-btn ac-btn-primary" data-mf="autoconfigure">Generate draft</button>' +
-                '<span id="ac-ac-result" class="ac-card-note"></span></div>'
+                '<span id="ac-ac-result" class="ac-card-note"></span></div>' +
+              '<div id="ac-ac-refine" style="margin-top:8px"></div>'
           : '<p class="ac-readonly">The theme-composer capability isn’t loaded on this page.</p>') +
       '</div>' +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Manifest — complete view &amp; validated raw-edit</h2>' +
@@ -1237,26 +1238,49 @@
         var acOut = host.querySelector('#ac-ac-result');
         if (!composer) { if (acOut) acOut.textContent = 'composer unavailable'; return; }
         var base = assembleCurrentManifest() || {};
-        var result = composer.core({
+        var wantAi = !!(host.querySelector('#ac-ac-ai') || {}).checked;
+        var brief = {
           tenant: base.tenant,
           name: (base.branding && base.branding.name) || (STATE.config && STATE.config.name),
           topic: (host.querySelector('#ac-ac-topic') || {}).value || 'general',
           intent: (host.querySelector('#ac-ac-intent') || {}).value || 'public',
-          ai: !!(host.querySelector('#ac-ac-ai') || {}).checked,
+          ai: wantAi,
           sources: base.sources || [],
           center: base.map && base.map.center,
           zoom: base.map && base.map.zoom,
-        });
-        var draft = result.facts.draftManifest;
+        };
+        var result = composer.core(brief);
+        var draft = result.facts.draftManifest;       // DETERMINISTIC — the editor's source of truth
         var rawEl = host.querySelector('#ac-mf-raw');
         if (rawEl) rawEl.value = JSON.stringify(draft, null, 2);   // into the review editor
         var vr = validateManifest(draft);
-        // B4: when AI is unreachable the deterministic draft still works (degrade-to-facts);
-        // note that AI refinement was skipped so the operator knows what they're reviewing.
-        var aiNote = aiReachable() ? '' : ' (AI refinement skipped — service unreachable)';
+        // B4: when AI is unreachable the deterministic draft still works (degrade-to-facts).
+        var aiNote = (wantAi && aiReachable()) ? '' : ' (AI refinement skipped — service unreachable)';
         if (acOut) acOut.innerHTML = (vr.ok
           ? '<span style="color:#2f6b4f">✓ schema-valid draft' + esc(aiNote) + '</span> · '
           : '<span style="color:#b11e2f">✗ ' + esc((vr.errors || []).join('; ')) + '</span> · ') + esc(result.facts.rationale);
+        var refEl = host.querySelector('#ac-ac-refine');
+        if (refEl) refEl.innerHTML = '';
+        // B3 AI layer: narrate over the deterministic draft (rationale + suggestions). Async,
+        // additive — the draft is already in the editor; this only enriches the rationale.
+        if (wantAi && aiReachable() && vr.ok && refEl) {
+          refEl.innerHTML = '<span class="ac-card-note">Asking the AI to review the draft…</span>';
+          fetch(explainBase() + '/autoconfigure', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, cache: 'no-store',
+            body: JSON.stringify({ brief: brief, draft: draft, rationale: result.facts.rationale }),
+          }).then(function (r) { return r.ok ? r.json() : { ok: false }; })
+            .then(function (res) {
+              if (!res || !res.ok || !res.refinement) { refEl.innerHTML = ''; return; }
+              var rf = res.refinement;
+              var sug = (rf.suggestions || []).map(function (s) {
+                return '<li><code>' + esc(s.field || '') + '</code> — ' + esc(s.change || '') +
+                  (s.why ? ' <span class="ac-card-note">(' + esc(s.why) + ')</span>' : '') + '</li>';
+              }).join('');
+              refEl.innerHTML = '<div class="ac-banner"><span>✦</span><div><b>AI review:</b> ' + esc(rf.rationale || '') +
+                (sug ? '<br><b>Suggested tweaks</b> (apply in the editor):<ul>' + sug + '</ul>' : '') + '</div></div>';
+            })
+            .catch(function () { refEl.innerHTML = ''; });   // graceful: draft stands
+        }
         return;
       }
       // textarea-driven actions (validate / save / publish / export-edited).

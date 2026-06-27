@@ -15,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, explainer_profiles_public
+from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, explainer_profiles_public
 
 ALLOWED_ORIGINS = [
     o.strip()
@@ -86,6 +86,15 @@ class ExplainRequest(BaseModel):
     facts: dict = {}
 
 
+class AutoconfigureRequest(BaseModel):
+    # B3 (DIC-579): the theme-composer's AI refinement. `draft` is the DETERMINISTIC
+    # manifest the engine core already assembled; the model only narrates over it
+    # (rationale + suggestions), never originates it — so the frontend owns the manifest.
+    brief: dict = {}
+    draft: dict = {}
+    rationale: str = ""
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -133,6 +142,24 @@ async def explain(request: Request, body: ExplainRequest):
         return {"ok": False, "error": str(e)}
     except Exception as e:  # noqa: BLE001 — surface a clean message; frontend degrades
         return {"ok": False, "error": f"explainer failed: {e}"}
+
+
+@app.post("/autoconfigure")
+@limiter.limit(os.getenv("AUTOCONFIGURE_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
+async def autoconfigure(request: Request, body: AutoconfigureRequest):
+    """AI refinement for the Theme Composer (B3 / DIC-579). The engine assembled a
+    deterministic draft; the model adds a plain-language rationale + optional suggested
+    tweaks over it, never changing the manifest. Returns {ok, refinement:{rationale,
+    suggestions}} or {ok:false, error} so the console degrades to the baseline draft."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
+    if not body.draft:
+        return {"ok": False, "error": "no draft manifest to refine."}
+    try:
+        refinement = run_autoconfigure(body.brief or {}, body.draft or {}, body.rationale or "")
+        return {"ok": True, "refinement": refinement}
+    except Exception as e:  # noqa: BLE001 — surface a clean message; frontend degrades
+        return {"ok": False, "error": f"autoconfigure failed: {e}"}
 
 
 @app.get("/explainers")

@@ -974,3 +974,72 @@ def run_explain(topic: str, facts: dict) -> dict:
         if block.type == "tool_use" and block.name == "render_explanation":
             return dict(block.input or {})
     raise RuntimeError("model did not return a render_explanation tool call")
+
+
+_AUTOCONFIGURE_TOOL = {
+    "name": "propose_theme_refinement",
+    "description": (
+        "Return a plain-language rationale for the draft theme and concrete suggested "
+        "tweaks the operator can apply. You NEVER change the manifest yourself."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "rationale": {"type": "string", "description": "2-4 sentences: why this theme fits the brief, for a county GIS operator."},
+            "suggestions": {
+                "type": "array",
+                "description": "Optional concrete tweaks the operator might apply in the editor.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "field": {"type": "string", "description": "manifest path, e.g. capabilities.cogo or persona.audience"},
+                        "change": {"type": "string", "description": "the suggested change"},
+                        "why": {"type": "string", "description": "why it would help"},
+                    },
+                    "required": ["field", "change"],
+                },
+            },
+        },
+        "required": ["rationale"],
+    },
+}
+
+
+def run_autoconfigure(brief: dict, draft: dict, rationale: str = "") -> dict:
+    """AI refinement for the Theme Composer (B3 / DIC-579). Narrates over the
+    DETERMINISTIC draft manifest — explains the choices and suggests optional tweaks — but
+    never originates the manifest (facts-parity §4.6). Forced structured tool call; returns
+    the validated { rationale, suggestions } the frontend lays over the draft for review.
+    """
+    system = [{
+        "type": "text",
+        "text": (
+            "You help a county GIS operator review an AUTO-GENERATED draft theme manifest "
+            "for the Intelligent Spatial Viewer. The draft was assembled deterministically "
+            "from the operator's brief. Your job: (1) explain in plain language why the draft "
+            "fits the brief, and (2) suggest optional concrete tweaks. You DO NOT and CANNOT "
+            "change the manifest — the operator applies any changes in the editor. Ground "
+            "every statement in the provided draft + brief; never invent capabilities or "
+            "sources that aren't present."
+        ),
+        "cache_control": {"type": "ephemeral"},
+    }]
+    user = (
+        "BRIEF:\n" + json.dumps(brief, indent=2, default=str) +
+        "\n\nDETERMINISTIC DRAFT MANIFEST:\n" + json.dumps(draft, indent=2, default=str) +
+        (("\n\nBASELINE RATIONALE:\n" + rationale) if rationale else "")
+    )
+    model = os.getenv("AUTOCONFIGURE_MODEL", "claude-haiku-4-5")
+    max_tokens = int(os.getenv("AUTOCONFIGURE_MAX_TOKENS", "1024"))
+    response = _get_client().messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        tools=[_AUTOCONFIGURE_TOOL],
+        tool_choice={"type": "tool", "name": "propose_theme_refinement"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "propose_theme_refinement":
+            return dict(block.input or {})
+    raise RuntimeError("model did not return a propose_theme_refinement tool call")

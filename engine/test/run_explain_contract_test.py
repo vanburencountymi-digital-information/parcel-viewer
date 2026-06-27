@@ -138,6 +138,34 @@ class RunExplainContractTest(unittest.TestCase):
         # The serialized view exposes prompt + context, never a client/key.
         self.assertNotIn("api_key", json.dumps(pub))
 
+    # ── B3 autoconfigure refinement (DIC-579) — same forced-tool discipline ──────
+    def test_autoconfigure_returns_refinement(self):
+        ref = {"rationale": "Fits the brief.", "suggestions": [{"field": "capabilities.search", "change": "enable AI"}]}
+        self._patch_client(_Response([_Block("tool_use", name="propose_theme_refinement", input=ref)]))
+        out = agent.run_autoconfigure({"topic": "zoning"}, {"tenant": "vanburen", "capabilities": {"search": {"ai": "no-ai"}}})
+        self.assertEqual(out["rationale"], "Fits the brief.")
+        self.assertEqual(out["suggestions"][0]["field"], "capabilities.search")
+
+    def test_autoconfigure_forces_its_tool(self):
+        client = self._patch_client(_Response([_Block("tool_use", name="propose_theme_refinement", input={"rationale": "ok"})]))
+        agent.run_autoconfigure({"topic": "x"}, {"tenant": "t"})
+        kwargs = client.messages.calls[0]
+        self.assertEqual(kwargs["tool_choice"], {"type": "tool", "name": "propose_theme_refinement"})
+        self.assertEqual(kwargs["tools"][0]["name"], "propose_theme_refinement")
+
+    def test_autoconfigure_narrates_over_the_given_draft(self):
+        # The model is shown the deterministic draft as grounding — it never originates one.
+        client = self._patch_client(_Response([_Block("tool_use", name="propose_theme_refinement", input={"rationale": "ok"})]))
+        agent.run_autoconfigure({"topic": "zoning"}, {"tenant": "vanburen", "id": "viewer-vanburen"})
+        user_msg = client.messages.calls[0]["messages"][0]["content"]
+        self.assertIn('"tenant": "vanburen"', user_msg)
+        self.assertIn("DETERMINISTIC DRAFT MANIFEST", user_msg)
+
+    def test_autoconfigure_raises_when_tool_skipped(self):
+        self._patch_client(_Response([_Block("text", text="here is some prose instead")]))
+        with self.assertRaises(RuntimeError):
+            agent.run_autoconfigure({"topic": "x"}, {"tenant": "t"})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
