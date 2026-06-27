@@ -1,0 +1,47 @@
+{
+  "manifestVersion": "1.0",
+  "id": "zip-lockport-township",
+  "tenant": "lockport-township",
+  "branding": {
+    "name": "Lockport Township",
+    "attribution": "Lockport Township, Michigan · Zoning Intelligence Platform (ZIP)"
+  },
+  "map": {
+    "center": [-85.55, 41.975],
+    "zoom": 8,
+    "extent": [[-85.66, 41.88], [-85.44, 42.07]]
+  },
+  "sources": [
+    {
+      "id": "parcels",
+      "type": "vector",
+      "role": "base",
+      "idField": "pin",
+      "sourceLayer": "parcels",
+      "legend": "Lockport Township parcels styled by zoning district",
+      "dbSource": "assessing parcels (jurisdiction=lockport-township)",
+      "fields": ["pin", "site_address", "zoning", "zoning_text", "acres", "owner_name"],
+      "search": { "fields": ["pin", "owner_name", "site_address", "zoning"] },
+      "hover": { "enabled": true, "fields": ["pin", "zoning"] },
+      "popup": { "sections": ["Parcel", "Zoning"] }
+    }
+  ],
+  "capabilities": {
+    "search":         { "ai": "no-ai",       "disclosure": "basic" },
+    "parcelInfo":     { "ai": "no-ai",       "disclosure": "basic" },
+    "layers":         { "ai": "no-ai",       "disclosure": "basic" },
+    "drawing":        { "ai": "no-ai",       "disclosure": "advanced" },
+    "measure":        { "ai": "no-ai",       "disclosure": "advanced" },
+    "cogo":           { "ai": "ai-optional", "disclosure": "advanced" },
+    "explainer":      { "ai": "ai-optional", "disclosure": "basic" },
+    "visionDescribe": { "ai": "ai-optional", "disclosure": "advanced" },
+    "citations":      { "ai": "ai-optional", "disclosure": "advanced" },
+    "mapBuddy":       { "ai": "ai-optional" }
+  },
+  "persona": {
+    "voice": "A zoning advisor — an advisor, not an authorizer. Synthesizes parcel + ordinance data, cites exact ordinance sections, and defers final legal interpretation to township staff.",
+    "audience": "public"
+  },
+  "mapBuddy": { "apiBase": "/api", "knowledge": "lockport-township" },
+  "plugins": []
+}
