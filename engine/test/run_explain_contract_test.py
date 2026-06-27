@@ -166,6 +166,29 @@ class RunExplainContractTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             agent.run_autoconfigure({"topic": "x"}, {"tenant": "t"})
 
+    # ── C5 LLM-judge grounding gate (DIC-586) — forced verdict tool ──────────────
+    def test_judge_returns_a_verdict(self):
+        verdict = {"grounded": False, "citations_ok": False, "issues": ["invented $500,000 figure"]}
+        self._patch_client(_Response([_Block("tool_use", name="report_grounding_verdict", input=verdict)]))
+        out = agent.run_grounding_judge("The value is $500,000.", {"assessed_value": 98000})
+        self.assertFalse(out["grounded"])
+        self.assertIn("invented $500,000 figure", out["issues"])
+
+    def test_judge_forces_its_tool_and_shows_both_sides(self):
+        client = self._patch_client(_Response([_Block("tool_use", name="report_grounding_verdict",
+                                                      input={"grounded": True, "citations_ok": True, "issues": []})]))
+        agent.run_grounding_judge("Assessed value is $98,000.", {"assessed_value": 98000})
+        kwargs = client.messages.calls[0]
+        self.assertEqual(kwargs["tool_choice"], {"type": "tool", "name": "report_grounding_verdict"})
+        user_msg = kwargs["messages"][0]["content"]
+        self.assertIn("GROUNDING TRUTH", user_msg)
+        self.assertIn("AI OUTPUT", user_msg)
+
+    def test_judge_raises_when_tool_skipped(self):
+        self._patch_client(_Response([_Block("text", text="looks fine to me")]))
+        with self.assertRaises(RuntimeError):
+            agent.run_grounding_judge("x", {})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

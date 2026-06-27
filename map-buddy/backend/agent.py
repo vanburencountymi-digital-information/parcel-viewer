@@ -1043,3 +1043,59 @@ def run_autoconfigure(brief: dict, draft: dict, rationale: str = "") -> dict:
         if block.type == "tool_use" and block.name == "propose_theme_refinement":
             return dict(block.input or {})
     raise RuntimeError("model did not return a propose_theme_refinement tool call")
+
+
+_JUDGE_TOOL = {
+    "name": "report_grounding_verdict",
+    "description": (
+        "Report whether the AI OUTPUT is grounded in the GROUNDING TRUTH and whether every "
+        "claim that needs a source is supported. Be strict: an unsupported figure or an "
+        "invented citation is a failure."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "grounded": {"type": "boolean", "description": "true iff every factual claim traces to the grounding truth (no invented figures/claims)."},
+            "citations_ok": {"type": "boolean", "description": "true iff every cited source appears in the grounding truth and supports the claim."},
+            "issues": {"type": "array", "items": {"type": "string"}, "description": "Specific problems found (empty if none)."},
+        },
+        "required": ["grounded", "citations_ok", "issues"],
+    },
+}
+
+
+def run_grounding_judge(output_text: str, grounding: dict) -> dict:
+    """LLM-judge gate (C5 / DIC-586). Scores whether an AI output is grounded in the
+    deterministic truth + whether its citations are accurate — the non-deterministic
+    complement to the deterministic ai-quality checks. Intended as a gate run before a
+    prompt/model change ships, NOT per request. Forced structured tool call; returns
+    { grounded, citations_ok, issues }.
+    """
+    system = [{
+        "type": "text",
+        "text": (
+            "You are a strict grounding auditor for a government GIS assistant. You are given "
+            "an AI OUTPUT and the GROUNDING TRUTH it was supposed to rely on. Decide whether "
+            "every factual claim in the output traces to the truth (no invented numbers, "
+            "names, or laws) and whether any cited source actually appears in and supports "
+            "the claim. When in doubt, fail it — freelancing is worse than abstaining."
+        ),
+        "cache_control": {"type": "ephemeral"},
+    }]
+    user = (
+        "GROUNDING TRUTH:\n" + json.dumps(grounding, indent=2, default=str) +
+        "\n\nAI OUTPUT:\n" + str(output_text)
+    )
+    model = os.getenv("JUDGE_MODEL", "claude-haiku-4-5")
+    response = _get_client().messages.create(
+        model=model,
+        max_tokens=int(os.getenv("JUDGE_MAX_TOKENS", "1024")),
+        system=system,
+        tools=[_JUDGE_TOOL],
+        tool_choice={"type": "tool", "name": "report_grounding_verdict"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "report_grounding_verdict":
+            return dict(block.input or {})
+    raise RuntimeError("model did not return a report_grounding_verdict tool call")

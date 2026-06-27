@@ -15,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, explainer_profiles_public
+from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, run_grounding_judge, explainer_profiles_public
 
 ALLOWED_ORIGINS = [
     o.strip()
@@ -95,6 +95,14 @@ class AutoconfigureRequest(BaseModel):
     rationale: str = ""
 
 
+class JudgeRequest(BaseModel):
+    # C5 (DIC-586): LLM-judge grounding gate. `output` is the AI text to audit; `grounding`
+    # is the deterministic truth it should rely on. A gate run before prompt/model changes
+    # ship — not a per-request hot path.
+    output: str = ""
+    grounding: dict = {}
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
@@ -160,6 +168,21 @@ async def autoconfigure(request: Request, body: AutoconfigureRequest):
         return {"ok": True, "refinement": refinement}
     except Exception as e:  # noqa: BLE001 — surface a clean message; frontend degrades
         return {"ok": False, "error": f"autoconfigure failed: {e}"}
+
+
+@app.post("/judge")
+@limiter.limit(os.getenv("JUDGE_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
+async def judge(request: Request, body: JudgeRequest):
+    """LLM-judge grounding gate (C5 / DIC-586). Scores whether an AI output is grounded in
+    the deterministic truth + whether its citations are accurate. Returns {ok, verdict:
+    {grounded, citations_ok, issues}} or {ok:false, error}."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
+    try:
+        verdict = run_grounding_judge(body.output or "", body.grounding or {})
+        return {"ok": True, "verdict": verdict}
+    except Exception as e:  # noqa: BLE001 — clean message; caller degrades
+        return {"ok": False, "error": f"judge failed: {e}"}
 
 
 @app.get("/explainers")
