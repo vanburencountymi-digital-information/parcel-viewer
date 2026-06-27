@@ -27,6 +27,7 @@
   }
   var EXPLAINER = req('./explainer.core.js', 'ISV_EXPLAINER_CORE');
   var LEDGER = req('./ledger.core.js', 'ISV_LEDGER_CORE');
+  var COMPOSER = req('./theme-composer.core.js', 'ISV_THEME_COMPOSER_CORE');
 
   // Register the v1 capabilities into the given registry (an ISV.createRegistry()
   // result, or ISV.registry). Returns the registry for chaining.
@@ -49,6 +50,20 @@
       id: 'ledger',
       aiMode: 'no-ai',
       core: LEDGER.core,
+    });
+
+    registry.register({
+      id: 'theme-composer',
+      aiMode: 'ai-optional',
+      core: COMPOSER.core,
+      // narrate(facts, provenance, ctx): the AI refiner. The deterministic core already
+      // produced a schema-valid draftManifest (facts); this only adds richer prose
+      // rationale + suggested tweaks for the human to review. Delegates to an injected
+      // transport; returns null to degrade-to-facts (AI down → the baseline draft stands).
+      narrate: function (facts, provenance, ctx) {
+        if (!ctx || typeof ctx.fetchComposerNarration !== 'function') return null;
+        return ctx.fetchComposerNarration(facts, provenance, ctx);
+      },
     });
 
     return registry;

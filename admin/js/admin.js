@@ -1158,6 +1158,18 @@
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Capabilities &amp; AI mode</h2>' +
         '<span class="ac-card-note">capability selection + per-capability AI tri-state — owned by the manifest, not any single module</span></div>' +
         '<table class="ac-table"><thead><tr><th>Capability</th><th>AI mode</th><th>Disclosure</th></tr></thead><tbody>' + capRows + '</tbody></table></div>' +
+      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">AI autoconfigure (draft)</h2>' +
+        '<span class="ac-card-note">a brief → draft manifest + rationale, dropped into the editor below for review. AI proposes, you dispose (§4.12); works with no AI service.</span></div>' +
+        (window.ISV_THEME_COMPOSER_CORE
+          ? '<dl class="ac-grid">' +
+              '<dt>Topic</dt><dd><input class="ac-input" id="ac-ac-topic" value="parcels, assessment and tax" placeholder="e.g. parcels, zoning and tax"></dd>' +
+              '<dt>Intent</dt><dd><select class="ac-input" id="ac-ac-intent"><option value="public">Public</option><option value="staff">Staff</option><option value="staff analysis">Staff analysis</option></select></dd>' +
+              '<dt>AI assistant</dt><dd><input type="checkbox" id="ac-ac-ai" checked> <span class="ac-card-note">include Map Buddy</span></dd></dl>' +
+              '<div class="ac-toolbar" style="margin-top:8px;align-items:center">' +
+                '<button class="ac-btn ac-btn-primary" data-mf="autoconfigure">Generate draft</button>' +
+                '<span id="ac-ac-result" class="ac-card-note"></span></div>'
+          : '<p class="ac-readonly">The theme-composer capability isn’t loaded on this page.</p>') +
+      '</div>' +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Manifest — complete view &amp; validated raw-edit</h2>' +
         '<span class="ac-card-note">a complete, editable view of the manifest; edit the JSON, Validate, then Save (no one-way doors, §4.11)</span></div>' +
         '<textarea id="ac-mf-raw" class="ac-input" spellcheck="false" style="width:100%;min-height:340px;font-family:ui-monospace,Menlo,monospace;white-space:pre;tab-size:2">' + esc(json) + '</textarea>' +
@@ -1180,6 +1192,32 @@
       if (act === 'export') {
         var cur = savedManifest() || assembleCurrentManifest();
         return downloadJson((cur && cur.id || 'theme') + '.manifest.json', cur);
+      }
+      if (act === 'autoconfigure') {
+        // B3: AI proposes a draft (deterministic core; AI refinement is graceful-absent)
+        // → drop it into the editor for human review/publish. No blind publish (§4.12).
+        var composer = window.ISV_THEME_COMPOSER_CORE;
+        var acOut = host.querySelector('#ac-ac-result');
+        if (!composer) { if (acOut) acOut.textContent = 'composer unavailable'; return; }
+        var base = assembleCurrentManifest() || {};
+        var result = composer.core({
+          tenant: base.tenant,
+          name: (base.branding && base.branding.name) || (STATE.config && STATE.config.name),
+          topic: (host.querySelector('#ac-ac-topic') || {}).value || 'general',
+          intent: (host.querySelector('#ac-ac-intent') || {}).value || 'public',
+          ai: !!(host.querySelector('#ac-ac-ai') || {}).checked,
+          sources: base.sources || [],
+          center: base.map && base.map.center,
+          zoom: base.map && base.map.zoom,
+        });
+        var draft = result.facts.draftManifest;
+        var rawEl = host.querySelector('#ac-mf-raw');
+        if (rawEl) rawEl.value = JSON.stringify(draft, null, 2);   // into the review editor
+        var vr = validateManifest(draft);
+        if (acOut) acOut.innerHTML = (vr.ok
+          ? '<span style="color:#2f6b4f">✓ schema-valid draft</span> · '
+          : '<span style="color:#b11e2f">✗ ' + esc((vr.errors || []).join('; ')) + '</span> · ') + esc(result.facts.rationale);
+        return;
       }
       // textarea-driven actions (validate / save / publish / export-edited).
       var ta = host.querySelector('#ac-mf-raw');
