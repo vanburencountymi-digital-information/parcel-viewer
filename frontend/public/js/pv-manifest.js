@@ -54,7 +54,11 @@
 
   // Assemble/validate at boot; publish window.PS_MANIFEST + PS_MANIFEST_LOADED. Never
   // throws (boot must not break). Returns the load result, or null if nothing to load.
+  // Idempotent: once a manifest is published, repeat calls are no-ops (we run BOTH eagerly
+  // at parse time — so PS_MANIFEST exists before map.js initMap() — and again on
+  // DOMContentLoaded as a safety net if the engine deps weren't ready at parse time).
   function loadBootManifest() {
+    if (root.PS_MANIFEST_LOADED) return { ok: true, manifest: root.PS_MANIFEST_LOADED };
     var raw = bootManifest();
     if (!raw) return null;
     var res = load(raw);
@@ -73,9 +77,12 @@
 
   root.PV_MANIFEST = { load: load, loadBootManifest: loadBootManifest, assembleFromCounty: assembleFromCounty };
 
-  if (root.document && root.document.readyState !== 'loading') {
-    loadBootManifest();
-  } else if (root.document) {
+  // Assemble EAGERLY at parse time: this script now loads after county-config.js + the engine
+  // modules but BEFORE map.js, so window.PS_MANIFEST is published before initMap() reads it
+  // (Phase 1 routes branding/map/scheme reads through the manifest). If the eager pass found
+  // nothing to load (e.g. a dep wasn't ready), retry on DOMContentLoaded — idempotent.
+  var eager = loadBootManifest();
+  if ((!eager || !eager.ok) && root.document && root.document.readyState === 'loading') {
     root.document.addEventListener('DOMContentLoaded', loadBootManifest);
   }
 }(typeof self !== 'undefined' ? self : this));

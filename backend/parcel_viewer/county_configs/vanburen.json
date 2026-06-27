@@ -1,6 +1,7 @@
 {
   "name": "Van Buren County",
   "state": "MI",
+  "tenant": "vanburen",
   "map": {
     "extent": [[-86.33, 42.06], [-85.76, 42.43]],
     "center": [-86.03, 42.24],

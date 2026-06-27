@@ -745,6 +745,12 @@
        theme manifest from window.COUNTY at boot (Phase 0 of manifest-driven boot). -->
   <script src="/engine/capability-catalog.js"></script>
   <script src="/engine/manifest-assemble.js"></script>
+  <!-- Manifest bridge + boot (C2 + Phase 1): assembles a complete theme manifest from
+       window.COUNTY and publishes window.PS_MANIFEST EAGERLY here — BEFORE map.js — so the
+       viewer's branding/map/scheme reads can resolve from the manifest (COUNTY fallback).
+       Loads after county-config.js + all engine deps above; additive (COUNTY still drives
+       anything not yet migrated). -->
+  <script src="/frontend/public/js/pv-manifest.js"></script>
   <!-- AppContext bridge (A3): builds window.PS_CONTEXT from the live PS_* globals via
        lazy getters. Strangler-fig — old global reads keep working unchanged. -->
   <script src="/frontend/public/js/pv-app-context.js"></script>
@@ -763,9 +769,6 @@
   <script src="/frontend/public/js/pv-ai-mode.js"></script>
   <!-- AI-availability auto-fallback (B4): polls Map Buddy health; unreachable → AI-off + notice. -->
   <script src="/frontend/public/js/pv-ai-health.js"></script>
-  <!-- Manifest bridge (C2): exposes PV_MANIFEST.load (migrate-on-load) to the browser.
-       Additive no-op unless an explicit theme manifest is present (COUNTY isn't one yet). -->
-  <script src="/frontend/public/js/pv-manifest.js"></script>
   <script src="/frontend/public/js/parcel-labels.js"></script>
   <script src="/frontend/public/js/overlay-layers.js"></script>
   <script src="/frontend/public/js/county-layers.js"></script>

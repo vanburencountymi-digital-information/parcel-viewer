@@ -609,7 +609,10 @@
   // when the user hasn't picked a scheme; falls back to terracotta.
   function _countyScheme() {
     try {
-      var styling = countyConfig().styling || {};
+      // Phase 1: prefer the assembled theme manifest's styling block (carried via the
+      // assembler passthrough), falling back to COUNTY.styling. Additive — same default.
+      var m = window.PS_MANIFEST;
+      var styling = (m && typeof m === "object" && m.styling) || countyConfig().styling || {};
       var c = styling.colorScheme;
       return PV_SCHEMES.indexOf(c) !== -1 ? c : "terracotta";
     } catch (_) { return "terracotta"; }

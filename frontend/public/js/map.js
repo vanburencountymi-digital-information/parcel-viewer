@@ -25,11 +25,31 @@
     return (ctx && ctx.config) || window.COUNTY || {};
   }
 
-  // Stamp the county name into the topbar from the manifest (county-config.js).
-  if (countyConfig().name) {
+  // Phase 1 (manifest-driven boot): read migrated fields from the assembled theme manifest
+  // (window.PS_MANIFEST, published by pv-manifest.js BEFORE this script) with a COUNTY
+  // fallback. This is the read-migration pattern the rest of A3 follows — additive, so a
+  // missing/invalid manifest degrades to the legacy COUNTY reads with zero behavior change.
+  function manifest() {
+    var m = window.PS_MANIFEST;
+    return (m && typeof m === "object") ? m : null;
+  }
+  // Branding name: manifest.branding.name → COUNTY.name.
+  function brandName() {
+    var m = manifest();
+    return (m && m.branding && m.branding.name) || countyConfig().name || "";
+  }
+  // Map camera block: manifest.map (center/zoom/extent) → COUNTY.map.
+  function mapConfig() {
+    var m = manifest();
+    if (m && m.map && typeof m.map === "object") return m.map;
+    return countyConfig().map || {};
+  }
+
+  // Stamp the county name into the topbar from the manifest (→ COUNTY fallback).
+  if (brandName()) {
     document.addEventListener("DOMContentLoaded", function () {
       var el = document.querySelector(".pv-brand-county");
-      if (el) el.textContent = countyConfig().name;
+      if (el) el.textContent = brandName();
     });
   }
 
@@ -1036,7 +1056,7 @@
   // ── Map init ───────────────────────────────────────────────────────────
   async function initMap() {
     const style = await resolveStyle();
-    const cmap = countyConfig().map || {};
+    const cmap = mapConfig();   // manifest.map → COUNTY.map (Phase 1)
     const EXTENT = cmap.extent || [[-86.33, 42.06], [-85.76, 42.43]];
 
     map = new maplibregl.Map({
