@@ -1,0 +1,104 @@
+{
+  "_comment": "Golden corpus for the theme-composer / autoconfigure capability (C5 / DIC-586). Each case is a representative brief and the theme it MUST deterministically produce. The golden runner asserts the draft is schema-valid, fully grounded (evaluateComposer), and matches these expectations — regression protection for the autoconfigure behavior the AI refines over.",
+  "cases": [
+    {
+      "name": "public assessment & tax viewer",
+      "brief": {
+        "tenant": "vanburen",
+        "name": "Van Buren County",
+        "topic": "parcels, assessment and property tax",
+        "intent": "public",
+        "sources": [
+          {
+            "id": "parcels",
+            "type": "vector",
+            "idField": "pin"
+          }
+        ],
+        "center": [
+          -86.03,
+          42.24
+        ],
+        "zoom": 11
+      },
+      "expect": {
+        "audience": "public",
+        "hasCapabilities": [
+          "search",
+          "parcelInfo",
+          "layers",
+          "explainer",
+          "citations",
+          "mapBuddy"
+        ],
+        "lacksCapabilities": [
+          "cogo"
+        ]
+      }
+    },
+    {
+      "name": "staff survey / COGO tool",
+      "brief": {
+        "tenant": "vanburen",
+        "name": "Van Buren County",
+        "topic": "survey traverse, metes and bounds",
+        "intent": "staff analysis",
+        "sources": [
+          {
+            "id": "parcels",
+            "type": "vector",
+            "idField": "pin"
+          }
+        ],
+        "center": [
+          -86.03,
+          42.24
+        ],
+        "zoom": 11
+      },
+      "expect": {
+        "audience": "staff",
+        "hasCapabilities": [
+          "cogo",
+          "drawing",
+          "measure",
+          "search"
+        ],
+        "lacksCapabilities": []
+      }
+    },
+    {
+      "name": "no-AI public zoning viewer",
+      "brief": {
+        "tenant": "millburgh",
+        "name": "Millburgh Township",
+        "topic": "zoning districts",
+        "intent": "public",
+        "ai": false,
+        "sources": [
+          {
+            "id": "zoning",
+            "type": "vector",
+            "idField": "zone_id"
+          }
+        ],
+        "center": [
+          -85.58,
+          42.29
+        ],
+        "zoom": 11
+      },
+      "expect": {
+        "audience": "public",
+        "hasCapabilities": [
+          "explainer",
+          "citations",
+          "layers"
+        ],
+        "lacksCapabilities": [
+          "mapBuddy"
+        ]
+      }
+    }
+  ]
+}
