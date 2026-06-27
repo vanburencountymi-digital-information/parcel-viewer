@@ -16,6 +16,12 @@ window.COUNTY = {
   name: "Van Buren County",
   state: "MI",
 
+  // Canonical tenant key (ISV keystone, DIC-582). The single key the engine scopes by —
+  // matches the §5.1 manifest example and the Admin Console COUNTY_KEY. The manifest
+  // assembler carries this onto manifest.tenant; engine/tenant.js maps it to the DB
+  // `county` value RLS keys on (vanburen → "VBC"). Demotes the old name-slug.
+  tenant: "vanburen",
+
   // Initial map view + soft extent (used by initMap()).
   map: {
     extent: [[-86.33, 42.06], [-85.76, 42.43]],
