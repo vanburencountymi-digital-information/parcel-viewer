@@ -17,6 +17,18 @@ from slowapi.util import get_remote_address
 
 from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, run_grounding_judge, explainer_profiles_public
 import cache as result_cache
+import usage as ai_usage
+
+
+def _quota_block(tenant):
+    """If the tenant is over its AI quota, return a degrade-to-AI-off response (C3 /
+    DIC-584); the viewer falls back to facts (B4). Returns None when the call may proceed.
+    Call AFTER the cache check (cache hits are free) and BEFORE the model call."""
+    allowed, remaining = ai_usage.allow(tenant)
+    if not allowed:
+        return {"ok": False, "error": "AI quota exceeded for this tenant; using AI-off.",
+                "degraded": True, "quota_remaining": 0}
+    return None
 
 ALLOWED_ORIGINS = [
     o.strip()
@@ -152,8 +164,12 @@ async def explain(request: Request, body: ExplainRequest):
         hit = result_cache.get_cache().get(ck)
         if hit is not None:
             return {"ok": True, "explanation": hit, "cached": True}
+    blocked = _quota_block(tenant)
+    if blocked:
+        return blocked
     try:
         explanation = run_explain(body.topic, facts)
+        ai_usage.record(tenant)
         if result_cache.enabled():
             result_cache.get_cache().set(ck, explanation)
         return {"ok": True, "explanation": explanation, "cached": False}
@@ -180,8 +196,12 @@ async def autoconfigure(request: Request, body: AutoconfigureRequest):
         hit = result_cache.get_cache().get(ck)
         if hit is not None:
             return {"ok": True, "refinement": hit, "cached": True}
+    blocked = _quota_block(tenant)
+    if blocked:
+        return blocked
     try:
         refinement = run_autoconfigure(body.brief or {}, body.draft or {}, body.rationale or "")
+        ai_usage.record(tenant)
         if result_cache.enabled():
             result_cache.get_cache().set(ck, refinement)
         return {"ok": True, "refinement": refinement, "cached": False}
@@ -203,8 +223,12 @@ async def judge(request: Request, body: JudgeRequest):
         hit = result_cache.get_cache().get(ck)
         if hit is not None:
             return {"ok": True, "verdict": hit, "cached": True}
+    blocked = _quota_block(tenant)
+    if blocked:
+        return blocked
     try:
         verdict = run_grounding_judge(body.output or "", body.grounding or {})
+        ai_usage.record(tenant)
         if result_cache.enabled():
             result_cache.get_cache().set(ck, verdict)
         return {"ok": True, "verdict": verdict, "cached": False}
