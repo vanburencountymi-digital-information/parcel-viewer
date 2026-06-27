@@ -22,12 +22,21 @@ DIC-575 (all 7 drawing files single-source); **Citation Renderer (DIC-522)** —
 + in-app synchronized Sources panel, the first capability *built forward* on the new
 architecture. Harness 204→**221 green**.
 
+**Landed 2026-06-27 (commit `7e92a34`):** ✅ **KB-backed citation resolver (DIC-522)** —
+move #1 below is DONE. `pv-citations.js` now resolves citations against the County Knowledge
+Base (A6 KnowledgeStore) → full section text + passage-level highlight + true `resolves`
+state, with the curated statute corpus kept as fallback (no regression). New map-buddy
+`POST /kb/resolve` (jurisdiction-scoped, fail-closed, **no AI-key gate** — citations are
+facts). Vendored `kb_store.py` (+ `FixtureKnowledgeStore`) makes it live-verifiable WITHOUT
+Drake. Harness **221→230 green**. DEFERRED (gated): `dice` live-smoke + ingesting the VBC
+statute corpus into `knowledge.chunks` (today it holds only Lockport zoning). Backend flip
+is `KB_BACKEND=dice` — resolver logic identical.
+
 **Best next moves (pick one):**
-1. **KB-backed citation resolver** — swap `pv-citations.js`'s statute resolver for a
-   KnowledgeStore/KB one → full-text + precise anchors (true `resolves` state + passage
-   highlight). Realizes the "anything in the KB" vision. Highest leverage; doable on PV.
+1. ~~**KB-backed citation resolver**~~ — ✅ DONE (above).
 2. **More citation emitters** — make Map Buddy narration emit §6.4 envelopes so AI answers
-   cite into the Sources panel (full ZIP-style 3-way sync).
+   cite into the Sources panel (full ZIP-style 3-way sync). Now the highest-leverage next
+   step: the KB resolver + Sources panel are ready to receive them.
 3. **A new capability** — keep validating "build-forward" mode on PV.
 4. **ZIP-onto-engine** (DIC-523) — boot ZIP's frontend from `engine/themes/lockport-township.json`
    on the shared engine; needs ZIP's stack runnable locally + the DIC-575 *runtime*-share.
@@ -107,7 +116,7 @@ Engine (source-agnostic, no domain noun — enforced by `engine/test/engine-smok
 - `engine/validate-manifest.js` + `engine/schema/manifest.schema.json` + `engine/manifest-version.js` + `engine/load-manifest.js` — manifest validation, schema versioning/migration, and the canonical `loadManifest()` migrate-on-load seam (migrate→validate in one place).
 - `engine/manifest-assemble.js` + `engine/capability-catalog.js` — B2 manual builder: assemble a §5 theme manifest from the console editor slices (source-agnostic; noun-free, in the §4.1 guard) + the capability vocabulary/default AI tri-state (data module).
 - `engine/ai-quality.js` — citation-accuracy + grounding checks (C5).
-- `engine/citation.js` (`ISV_CITATION`) — **Citation Renderer core (DIC-522 / §6.4)**: `resolveCitation(envelope, resolver)` → render-ready doc + honest degradation (resolves/coarse/none, never over-claims). Resolver injected (PV statutes now; KB later). Viewer surface = `frontend/.../pv-citations.js` (`PV_CITATIONS`) → in-app `#pv-doc-panel`, bus event `citation-activated`, capability-gated. Explainer statute links emit the envelope (in-app, not new window). Same renderer will serve ZIP's ordinance.
+- `engine/citation.js` (`ISV_CITATION`) — **Citation Renderer core (DIC-522 / §6.4)**: `resolveCitation(envelope, resolver)` → render-ready doc + honest degradation (resolves/coarse/none, never over-claims). Resolver injected — **KB-backed** (map-buddy `POST /kb/resolve` over the A6 KnowledgeStore → full text + passage highlight), curated statutes as fallback. Viewer surface = `frontend/.../pv-citations.js` (`PV_CITATIONS`) → in-app `#pv-doc-panel`, bus event `citation-activated`, capability-gated. Explainer statute links emit the envelope (in-app, not new window). Same renderer will serve ZIP's ordinance.
 - `engine/drawing/` — canonical master of the shared drawing stack + `generate.mjs` (→ PV verbatim, ZIP via word-boundary `PS_→ZIP_`).
 
 Viewer bridges (`frontend/public/js/`, the only place that knows `PS_*` / `COUNTY`):
