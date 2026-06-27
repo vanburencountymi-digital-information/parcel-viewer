@@ -5,6 +5,38 @@ Pick-up doc for the **Intelligent Spatial Viewer** engine work. The authoritativ
 the engine contract is `engine/README.md`. This file is the "where are we / how do I
 continue" summary.
 
+## ⭐ START HERE (next session — 2026-06-28)
+
+**Strategic frame (agreed with the team):** PV & ZIP were POCs; the rebuild's goal is to
+reach the point where we **stop rebuilding and start building new capabilities forward**
+without future rewrites. **PV is at that inflection (~80%)** — the seams a new capability
+plugs into (contract, manifest, capability-gating, source abstraction, injected context,
+AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
+(~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
+
+**Landed this session (all pushed; parcel-viewer `01531cb`, ZIP `d29d16a`):** canonical
+tenant key (`vanburen`→`VBC`); keystone Phases 1–3 + depth (viewer now reads branding/map/
+scheme/capabilities/sources/county-overlays from `PS_MANIFEST`); Phase 4 non-contract
+read-grind (`PV_PREFS`/`PS_PARCEL_INDEX`→ctx); Phase 5 slice 1 (ZIP Lockport theme manifest);
+DIC-575 (all 7 drawing files single-source); **Citation Renderer (DIC-522)** — engine core
++ in-app synchronized Sources panel, the first capability *built forward* on the new
+architecture. Harness 204→**221 green**.
+
+**Best next moves (pick one):**
+1. **KB-backed citation resolver** — swap `pv-citations.js`'s statute resolver for a
+   KnowledgeStore/KB one → full-text + precise anchors (true `resolves` state + passage
+   highlight). Realizes the "anything in the KB" vision. Highest leverage; doable on PV.
+2. **More citation emitters** — make Map Buddy narration emit §6.4 envelopes so AI answers
+   cite into the Sources panel (full ZIP-style 3-way sync).
+3. **A new capability** — keep validating "build-forward" mode on PV.
+4. **ZIP-onto-engine** (DIC-523) — boot ZIP's frontend from `engine/themes/lockport-township.json`
+   on the shared engine; needs ZIP's stack runnable locally + the DIC-575 *runtime*-share.
+
+**Don't touch unprompted:** the parcel-studio CONTRACT globals (`PS_MAP`/`PS_STATE`/drawing
+`PS_*`) — that's Drake's project; migrate only in lockstep with it (not runnable here).
+ZIP repo has two pre-existing non-ours files (`init-db/02-seed.sh`, `files.zip`) — leave them.
+parcel-viewer has an untracked `docs/isv-theme-concepts.md` (not authored this session).
+
 ## TL;DR (read the honest status map below before assuming completeness)
 
 The **capability contract, the data-abstraction stores, the manifest+Theme-Composer stack,
