@@ -16,6 +16,8 @@ ZIP_BACKEND = Path(__file__).resolve().parents[3] / "ZIP" / "zip-poc" / "backend
 sys.path.insert(0, str(ZIP_BACKEND))
 
 from knowledge_store import build_store, DICE_SCHEMA  # noqa: E402
+from parcel_store import build_parcel_store  # noqa: E402
+from parcel_contract import tenant_predicate  # noqa: E402
 import kb_guard  # noqa: E402
 
 
@@ -87,6 +89,41 @@ class FailClosedScopingTest(unittest.TestCase):
         # The un-scoped single-tenant backend is allowed without a jurisdiction.
         s = build_store("zip-local", acquire=lambda: None, release=lambda c: None, embedder=lambda q: None)
         self.assertIsNone(s.jurisdiction)
+
+
+class ParcelTenantScopingTest(unittest.TestCase):
+    """Row-level tenant scoping for the ParcelStore (mirrors the KnowledgeStore guard)."""
+
+    def test_tenant_predicate_contract(self):
+        self.assertEqual(tenant_predicate(None, None), ("", []))
+        self.assertEqual(tenant_predicate(None, "VBC"), ("", []))      # no column -> no scoping
+        frag, params = tenant_predicate("pg.county", "VBC")
+        self.assertEqual(frag, " AND pg.county = %s")
+        self.assertEqual(params, ["VBC"])
+
+    def test_configured_column_without_tenant_fails_closed(self):
+        with self.assertRaises(ValueError):
+            tenant_predicate("pg.county", None)
+        with self.assertRaises(ValueError):   # at store construction too
+            build_parcel_store("dice-vbc", acquire=lambda: None, release=lambda c: None,
+                               tenant_column="pg.county", tenant=None)
+
+    def test_scoped_store_adds_the_predicate_to_every_query(self):
+        conn = _Conn([tuple(range(29))])   # a 29-col VBC row for canonical mapping
+        s = build_parcel_store("dice-vbc", acquire=lambda: conn, release=lambda c: None,
+                               tenant_column="pg.county", tenant="VBC")
+        s.get_parcel(45154)
+        sql, params = conn.cursors[-1].executed[-1]
+        self.assertIn("WHERE pg.id = %s AND pg.county = %s", sql)
+        self.assertEqual(params, [45154, "VBC"])
+
+    def test_unscoped_store_is_unchanged(self):
+        conn = _Conn([tuple(range(29))])
+        s = build_parcel_store("dice-vbc", acquire=lambda: conn, release=lambda c: None)
+        s.get_parcel(45154)
+        sql, params = conn.cursors[-1].executed[-1]
+        self.assertNotIn("county = %s", sql)
+        self.assertEqual(params, [45154])
 
 
 class PromptInjectionDefenseTest(unittest.TestCase):

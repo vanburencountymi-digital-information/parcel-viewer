@@ -23,9 +23,9 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 try:
-    from .parcel_contract import ParcelStore, canonical_parcel
+    from .parcel_contract import ParcelStore, canonical_parcel, tenant_predicate
 except ImportError:   # standalone load (harness): the stores dir is on sys.path
-    from parcel_contract import ParcelStore, canonical_parcel
+    from parcel_contract import ParcelStore, canonical_parcel, tenant_predicate
 
 # The full /parcel/{id} projection. Kept verbatim from the route so `raw` reproduces the
 # exact Feature the viewer expects (geometry + every property it renders).
@@ -77,15 +77,26 @@ def _to_canonical(r: dict) -> dict:
 
 
 class DiceVbcParcelStore(ParcelStore):
-    """`geo.parcel_geometry` ⋈ `assessing.vbc_parcels`, keyed by integer id."""
+    """`geo.parcel_geometry` ⋈ `assessing.vbc_parcels`, keyed by integer id.
+
+    Optional row-level tenant scoping (C1 / DIC-582): pass `tenant_column` (e.g.
+    'pg.county') + `tenant` to scope every query to one county; fail-closed if the column
+    is configured without a tenant. Single-tenant deployments (today's VBC) pass neither,
+    so behavior is unchanged."""
 
     SQL = _PARCEL_SQL
 
-    def __init__(self, fetch_one: Callable[[str, tuple], Optional[dict]]):
+    def __init__(self, fetch_one: Callable[[str, tuple], Optional[dict]],
+                 tenant_column: Optional[str] = None, tenant: Optional[str] = None):
         self._fetch_one = fetch_one
+        self._tenant_column = tenant_column
+        self._tenant = tenant
+        # Validate fail-closed up front (raises if a tenant column is configured w/o a tenant).
+        tenant_predicate(tenant_column, tenant)
 
     def get_parcel(self, parcel_id) -> Optional[dict]:
-        row = self._fetch_one(self.SQL, (parcel_id,))
+        frag, tparams = tenant_predicate(self._tenant_column, self._tenant)
+        row = self._fetch_one(self.SQL + frag, tuple([parcel_id] + tparams))
         if not row:
             return None
         return {"raw": row, "canonical": _to_canonical(row)}
@@ -98,6 +109,9 @@ def _pool_fetch_one(sql: str, params: tuple) -> Optional[dict]:
         return conn.execute(sql, params).fetchone()
 
 
-def make_parcel_store(fetch_one: Optional[Callable] = None) -> DiceVbcParcelStore:
-    """Default store, wired to the psycopg3 pool. Pass `fetch_one` to inject (tests)."""
-    return DiceVbcParcelStore(fetch_one or _pool_fetch_one)
+def make_parcel_store(fetch_one: Optional[Callable] = None,
+                      tenant_column: Optional[str] = None, tenant: Optional[str] = None) -> DiceVbcParcelStore:
+    """Default store, wired to the psycopg3 pool. Pass `fetch_one` to inject (tests).
+    For a multi-tenant deployment, pass `tenant_column='pg.county'` + the active `tenant`
+    so every query is row-scoped; single-tenant (current VBC) omits them."""
+    return DiceVbcParcelStore(fetch_one or _pool_fetch_one, tenant_column=tenant_column, tenant=tenant)

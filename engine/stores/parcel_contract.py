@@ -82,6 +82,27 @@ def canonical_parcel(
     }
 
 
+def tenant_predicate(column: Optional[str], tenant: Optional[str]):
+    """Row-level tenant scoping for ParcelStore queries (C1 / DIC-582). Returns
+    `(sql_fragment, params)` to append to a query's WHERE clause:
+
+      - no `column` configured (single-tenant deployment) -> ('', []), no scoping;
+      - `column` configured with a `tenant` -> (' AND <column> = %s', [tenant]);
+      - `column` configured but NO tenant -> raises (FAIL CLOSED — an un-scoped query
+        on a multi-tenant table would return another county's rows; §4.13).
+
+    `column` is configuration (e.g. 'pg.county'), never user input, so interpolating it
+    is safe."""
+    if not column:
+        return "", []
+    if not tenant:
+        raise ValueError(
+            "ParcelStore: tenant column %r is configured but no tenant was given "
+            "(fail-closed; would otherwise leak across tenants)" % column
+        )
+    return " AND " + column + " = %s", [tenant]
+
+
 class ParcelStore:
     """Interface: return a canonical parcel record by the backend's reference key
     (pin for ZIP-local, integer id for DICE/VBC). Implementations live per-backend."""
