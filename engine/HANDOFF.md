@@ -32,14 +32,26 @@ Drake. Harness **221→230 green**. DEFERRED (gated): `dice` live-smoke + ingest
 statute corpus into `knowledge.chunks` (today it holds only Lockport zoning). Backend flip
 is `KB_BACKEND=dice` — resolver logic identical.
 
+**Also landed 2026-06-27 (commit `32dd5c8`):** ✅ **Map Buddy → Sources 3-way sync (DIC-522,
+move #2)** — chat answers now emit §6.4 envelopes (`map-buddy/backend/citations.py`,
+citation-first over the vetted corpus) and render a "Sources" row whose `data-cite-*` buttons
+drive the SAME KB-backed Sources panel (reuses pv-citations' delegated handler — no new bus
+wiring). Chat system prompt now carries the statute reference + a cite-by-MCL instruction.
+Harness **230→237 green**. Live-verified (answer cited 211.27a/211.34/211.7cc → click → panel
+`resolves` + highlight). The Sources panel now serves BOTH the explainer and Map Buddy.
+
 **Best next moves (pick one):**
-1. ~~**KB-backed citation resolver**~~ — ✅ DONE (above).
-2. **More citation emitters** — make Map Buddy narration emit §6.4 envelopes so AI answers
-   cite into the Sources panel (full ZIP-style 3-way sync). Now the highest-leverage next
-   step: the KB resolver + Sources panel are ready to receive them.
-3. **A new capability** — keep validating "build-forward" mode on PV.
+1. ~~**KB-backed citation resolver**~~ — ✅ DONE (`7e92a34`).
+2. ~~**More citation emitters (Map Buddy → Sources)**~~ — ✅ DONE (`32dd5c8`).
+3. **A new capability** — keep validating "build-forward" mode on PV (now the top pick).
 4. **ZIP-onto-engine** (DIC-523) — boot ZIP's frontend from `engine/themes/lockport-township.json`
    on the shared engine; needs ZIP's stack runnable locally + the DIC-575 *runtime*-share.
+5. **Unblock the KB**: ingest the VBC statute corpus into `knowledge.chunks` + `KB_BACKEND=dice`
+   live-smoke (Drake/dice) — flips both citation features from fixture to the real KB.
+
+**Note (pre-existing, not from this work):** in the a11y-proxy preview the demo's `MapBuddy.mount`
+apiBase resolves to a base that 404s/fails; remount with `MapBuddy.mount({apiBase:'/map-buddy-api'})`
+to drive the LOCAL map-buddy when verifying AI chat. Worth checking how `demo/index.html` mounts it.
 
 **Don't touch unprompted:** the parcel-studio CONTRACT globals (`PS_MAP`/`PS_STATE`/drawing
 `PS_*`) — that's Drake's project; migrate only in lockstep with it (not runnable here).
