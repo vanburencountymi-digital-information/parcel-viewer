@@ -741,6 +741,10 @@
   <script src="/engine/manifest-version.js"></script>
   <script src="/engine/validate-manifest.js"></script>
   <script src="/engine/load-manifest.js"></script>
+  <!-- Manifest assembler + capability catalog (B2): pv-manifest.js assembles a complete
+       theme manifest from window.COUNTY at boot (Phase 0 of manifest-driven boot). -->
+  <script src="/engine/capability-catalog.js"></script>
+  <script src="/engine/manifest-assemble.js"></script>
   <!-- AppContext bridge (A3): builds window.PS_CONTEXT from the live PS_* globals via
        lazy getters. Strangler-fig — old global reads keep working unchanged. -->
   <script src="/frontend/public/js/pv-app-context.js"></script>

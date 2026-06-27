@@ -123,6 +123,27 @@
         "knowledge": { "type": "string" }
       }
     },
-    "plugins": { "type": "array", "items": { "type": "string" } }
+    "plugins": { "type": "array", "items": { "type": "string" } },
+
+    "state": { "type": "string", "description": "State/province (e.g. 'MI')." },
+    "parcelNumber": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Per-tenant parcel-number format (label, separator, segments). Absorbed from county-config so the manifest is the single config artifact the viewer boots from (the explainer's PIN breakdown reads this)."
+    },
+    "labels": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Per-tenant code→name lookups (property classes, school districts) the viewer renders. Absorbed from county-config."
+    },
+    "styling": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Per-tenant styling config (color schemes, per-layer paint, label defaults). branding.theme holds the §5 token subset; this is the full styling block. Absorbed from county-config."
+    },
+    "forms": { "type": "object", "additionalProperties": true, "description": "External destinations (data-request form, …)." },
+    "endpoints": { "type": "object", "additionalProperties": true, "description": "Per-deployment service endpoints (mapBuddy AI, …)." },
+    "integrations": { "type": "object", "additionalProperties": true, "description": "Third-party integration config (Street View key, …)." },
+    "access": { "type": "object", "additionalProperties": true, "description": "Access/ops facts (model, report inbox, rate-limited flag)." }
   }
 }

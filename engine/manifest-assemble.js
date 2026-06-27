@@ -158,6 +158,14 @@
     var mb = (config.endpoints && config.endpoints.mapBuddy) || (config.mapBuddy && config.mapBuddy.apiBase);
     if (mb) manifest.mapBuddy = { apiBase: mb };
 
+    // Generic passthrough: copy the named config keys onto the manifest verbatim. The
+    // viewer (which knows its own config shape) names these county-specific blocks, so the
+    // manifest can be a COMPLETE superset the viewer boots from, while the engine assembler
+    // stays source-agnostic (no domain field names hardcoded here, §4.1).
+    (opts.passthrough || []).forEach(function (k) {
+      if (config[k] !== undefined && !(k in manifest)) manifest[k] = config[k];
+    });
+
     return manifest;
   }
 

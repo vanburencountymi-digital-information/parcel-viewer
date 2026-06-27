@@ -107,6 +107,31 @@ test('an existing manifest with a real sources[] is passed through, not re-deriv
   assert.deepEqual(manifest.sources, [{ id: 'zoning', type: 'vector', idField: 'zone_id' }]);
 });
 
+test('passthrough carries county-config blocks onto the manifest (the grown superset)', () => {
+  const cfg = Object.assign(countyConfig(), {
+    state: 'MI',
+    parcelNumber: { label: 'Parcel Number', separator: '-', segments: [{ name: 'County code' }] },
+    labels: { propClass: { '401': 'Residential' } },
+    forms: { dataRequest: 'https://form' },
+  });
+  const m = assembleManifest(cfg, {
+    tenant: 'vanburen',
+    passthrough: ['state', 'parcelNumber', 'labels', 'forms'],
+  });
+  assert.equal(m.state, 'MI');
+  assert.deepEqual(m.parcelNumber.segments, [{ name: 'County code' }]);
+  assert.equal(m.labels.propClass['401'], 'Residential');
+  assert.equal(m.forms.dataRequest, 'https://form');
+  // The grown manifest still schema-validates (passthrough fields are additive).
+  assert.equal(loadManifest(m).ok, true);
+});
+
+test('passthrough never clobbers an assembler-derived field', () => {
+  const cfg = Object.assign(countyConfig(), { branding: { evil: true } });
+  const m = assembleManifest(cfg, { tenant: 'vanburen', passthrough: ['branding'] });
+  assert.equal(m.branding.name, 'Van Buren County');   // assembler's branding, not the raw passthrough
+});
+
 test('a config missing tenant still assembles, and loadManifest flags it (no silent pass)', () => {
   const cfg = countyConfig();      // no tenant, no opts.tenant → derived from name slug
   const manifest = assembleManifest(cfg);

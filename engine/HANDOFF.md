@@ -14,7 +14,15 @@ Build-order (spec §10) **steps 1–4 done; steps 5–6 in progress.**
 
 - **Repo:** `github.com/vanburencountymi-digital-information/parcel-viewer`
 - **Branch/commit:** `main` @ `ffc825a` — **pushed to origin** (CI: `.github/workflows/isv-harness.yml`).
-- **Tests:** 202 green (133 Node `node:test` + 69 Python `unittest`). Run: `bash engine/run-harness.sh`.
+- **Tests:** 204 green (135 Node `node:test` + 69 Python `unittest`). Run: `bash engine/run-harness.sh`.
+
+## Keystone work — manifest-driven boot (the integration spine)
+
+The real rewrite = make the live viewer run on the engine/manifest, kill the global bus, then ZIP-as-a-theme. Sequenced plan (A3 + manifest-boot interleaved, lowest-risk first):
+- **Phase 0 — manifest at boot — DONE & live-verified.** `pv-manifest.js` assembles a COMPLETE manifest from `window.COUNTY` at boot (the §5 manifest **grew** to a COUNTY superset — `parcelNumber`/`labels`/`styling`/`state`/`forms`/`endpoints`/`integrations`/`access` carried via the assembler's generic `opts.passthrough`; schema + `manifest.schema.json` grown). Validated → `window.PS_MANIFEST`. **Additive: COUNTY still drives the viewer; zero behavior change.** (⚠ bust the `.js` cache — preview_stop/start — when verifying engine edits.)
+- **Phase 1 (next):** route branding + map reads through `PS_MANIFEST` (COUNTY fallback).
+- **Phase 2:** capability gating from `manifest.capabilities` + wire `feature-flags.js` (lights up the built-but-unwired B2/B3/C4 stack).
+- **Phase 3:** sources from `manifest.sources` (A5 depth, riskiest). **Phase 4:** finish the A3 read-migration grind. **Phase 5:** ZIP-as-a-theme (gated on ZIP runnable).
 - **Linear:** project **Intelligent Spatial Viewer (ISV)** — `intelligent-spatial-viewer-isv-cd0a9c4c0f9e`. Each DIC ticket has commit-referenced progress comments.
 
 ## What's done (status per spec)
