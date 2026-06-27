@@ -330,11 +330,19 @@
     if (!statutes || !statutes.length) return '';
     var items = statutes.map(function (s) {
       var nm = esc(s.name || '');
-      var name = s.url
-        ? '<a class="pv-xp-stat-name" href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer">' + nm + '</a>'
-        : '<span class="pv-xp-stat-name">' + nm + '</span>';
+      // Citation trigger (DIC-522): clicking opens the in-app, synchronized Sources panel
+      // via the bus, instead of a detached new window. Only the §6.4 envelope keys go in
+      // attributes; pv-citations re-resolves the full source from the corpus/KB. The
+      // official external link stays as a secondary affordance (↗).
+      var name = '<button type="button" class="pv-xp-stat-name pv-cite-trigger"' +
+        ' data-cite-source="' + esc(s.citation || s.name || '') + '"' +
+        ' data-cite-anchor="' + esc(s.mcl || '') + '"' +
+        ' data-cite-span="' + esc(s.name || '') + '">' + nm + '</button>';
+      var ext = s.url
+        ? ' <a class="pv-xp-stat-ext" href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer" title="Official source" aria-label="Official source">↗</a>'
+        : '';
       var plain = s.plain ? '<span class="pv-xp-stat-plain">' + esc(s.plain) + '</span>' : '';
-      return '<li>' + name + ' <span class="pv-xp-stat-cite">' + esc(s.citation || '') + '</span>' + plain + '</li>';
+      return '<li>' + name + ext + ' <span class="pv-xp-stat-cite">' + esc(s.citation || '') + '</span>' + plain + '</li>';
     }).join('');
     return '<section class="pv-xp-section"><h3 class="pv-xp-h">Michigan law</h3>' +
       '<ul class="pv-xp-statutes">' + items + '</ul></section>';

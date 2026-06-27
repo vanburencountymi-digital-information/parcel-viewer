@@ -4503,3 +4503,67 @@ input[type="checkbox"]:focus-visible {
   outline: 2px solid var(--ui-interactive);
   outline-offset: 1px;
 }
+
+/* ── Sources / Docs panel — Citation Renderer (DIC-522) ─────────────────────── */
+/* Mirrors the parcel-info glass panel; docked bottom-RIGHT so it can sit alongside
+   the parcel-info panel (bottom-left) for the synchronized map+AI+docs experience. */
+.pv-doc-panel {
+  position: absolute;
+  bottom: 40px;
+  right: 12px;
+  background: var(--glass-frame);
+  backdrop-filter: blur(var(--glass-frame-blur)) saturate(1.3);
+  -webkit-backdrop-filter: blur(var(--glass-frame-blur)) saturate(1.3);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glass-object-shadow);
+  font-size: 12px;
+  width: 320px;
+  min-width: 220px;
+  max-width: 480px;
+  min-height: 140px;
+  max-height: 72vh;
+  display: flex;
+  flex-direction: column;
+  resize: both;
+  overflow: hidden;
+  z-index: 10;
+}
+.pv-doc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--glass-hairline, rgba(0,0,0,0.08));
+  flex: 0 0 auto;
+}
+.pv-doc-title { font-weight: 600; color: var(--ui-accent); }
+.pv-doc-close {
+  background: none; border: none; cursor: pointer; font-size: 14px; line-height: 1;
+  color: var(--text-muted, #777); padding: 2px 6px; border-radius: var(--radius-sm, 4px);
+}
+.pv-doc-close:hover { background: rgba(0,0,0,0.06); }
+.pv-doc-state {
+  font-size: 10.5px; padding: 4px 10px; flex: 0 0 auto;
+  border-bottom: 1px solid var(--glass-hairline, rgba(0,0,0,0.06));
+}
+.pv-doc-state[data-state="resolves"] { color: #2f6b4f; }
+.pv-doc-state[data-state="coarse"]   { color: #8a6d3b; }
+.pv-doc-state[data-state="none"]     { color: #a3473b; }
+.pv-doc-body { padding: 10px; overflow: auto; flex: 1 1 auto; }
+.pv-doc-h { margin: 0 0 4px; font-size: 13px; color: var(--ui-accent); }
+.pv-doc-cite { font-size: 11px; color: var(--text-muted, #777); margin-bottom: 6px; }
+.pv-doc-passage { line-height: 1.5; }
+.pv-doc-source-link { display: inline-block; margin-top: 8px; color: var(--ui-interactive); }
+.pv-doc-none { color: var(--text-muted, #777); font-style: italic; }
+/* The explainer statute name is now a button-as-link; keep its inline link look. */
+.pv-cite-trigger {
+  background: none; border: none; padding: 0; cursor: pointer; font: inherit;
+  color: var(--ui-interactive); text-align: left; text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.pv-cite-trigger:hover { color: var(--ui-accent); }
+.pv-xp-stat-ext { color: var(--text-muted, #888); text-decoration: none; font-size: 11px; }
+
+@media (max-width: 640px) {
+  .pv-doc-panel { left: 8px; right: 8px; width: auto; max-width: none; bottom: 96px; }
+}

@@ -104,6 +104,7 @@
         <button class="pv-mtab" id="pv-mtab-parcel"   data-target="parcel"   role="tab" aria-selected="false">Parcel Info</button>
         <button class="pv-mtab" id="pv-mtab-controls" data-target="controls" role="tab" aria-selected="false">Map Controls</button>
         <button class="pv-mtab" id="pv-mtab-buddy"    data-target="buddy"    role="tab" aria-selected="false">MapBuddy A.I.</button>
+        <button class="pv-mtab" id="pv-mtab-docs"     data-target="docs"     role="tab" aria-selected="false" hidden>Sources</button>
       </div>
 
       <button id="parcel-info-reopen-tab" class="parcel-info-reopen-tab" hidden title="Open parcel info" aria-label="Open parcel info">
@@ -122,6 +123,19 @@
           <button id="parcel-nav-next" class="parcel-nav-btn" title="Next parcel">&#8250;</button>
         </div>
         <div class="parcel-info-body"></div>
+      </div>
+
+      <!-- Sources / Docs panel (Citation Renderer, DIC-522): the in-app, synchronized
+           surface the citation renderer mounts into. Opened on demand when a citation is
+           activated (e.g. clicking an explainer statute link). Capability-gated by
+           manifest.capabilities.citations (pv-citations.js). -->
+      <div id="pv-doc-panel" class="pv-doc-panel" role="region" aria-labelledby="pv-doc-title" tabindex="-1" hidden>
+        <div class="pv-doc-header">
+          <span class="pv-doc-title" id="pv-doc-title" role="heading" aria-level="2">Sources</span>
+          <button class="pv-doc-close" id="pv-doc-close" title="Close" aria-label="Close sources panel">✕</button>
+        </div>
+        <div class="pv-doc-state" id="pv-doc-state" hidden></div>
+        <div class="pv-doc-body" id="pv-doc-body"></div>
       </div>
 
       <!-- Status strip (selection / parcel summary) -->
@@ -731,6 +745,8 @@
   <script src="/engine/source.js"></script>
   <script src="/engine/popup.js"></script>
   <script src="/engine/doc.js"></script>
+  <!-- Citation Renderer core (DIC-522 / §6.4): source-agnostic resolveCitation(envelope, resolver). -->
+  <script src="/engine/citation.js"></script>
   <script src="/engine/capabilities/explainer.core.js"></script>
   <script src="/engine/capabilities/ledger.core.js"></script>
   <script src="/engine/capabilities/theme-composer.core.js"></script>
@@ -764,6 +780,9 @@
   <script src="/frontend/public/js/pv-doc.js"></script>
   <script src="/frontend/public/js/pv-explain.js"></script>
   <script src="/frontend/public/js/pv-ledger.js"></script>
+  <!-- Citation Renderer surface (DIC-522): the in-app synchronized Sources doc panel,
+       bus-driven, capability-gated. Loads after pv-explain (emits citation-activated). -->
+  <script src="/frontend/public/js/pv-citations.js"></script>
   <script src="/frontend/public/js/map.js"></script>
   <!-- Selection bridge (A4 slice 1): mirrors the map's selection onto PS_BUS by
        intercepting PS_onParcelSelect (preserving any downstream handler). Loads AFTER
