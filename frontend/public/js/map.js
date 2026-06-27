@@ -19,7 +19,29 @@
   const ctx = window.PS_CONTEXT || null;
   const API_BASE = window.API_BASE || "";
   const MARTIN_URL = (window.PS_CONFIG && window.PS_CONFIG.MARTIN_URL) || "/tiles";
-  const SOURCE_LAYER = "parcels";
+
+  // Phase 3 (A5 source abstraction): the parcel source's IDENTITY — its MVT source-layer
+  // name and id field — comes from the manifest source entry (PS_MANIFEST.sources['parcels'],
+  // injected with idField:'pin' by the assembler) with the historical literals as fallback.
+  // Inline read (module init runs before the manifest()/sourceCfg() helpers below; PS_MANIFEST
+  // is published by pv-manifest.js BEFORE this script). The MapLibre source id stays the
+  // literal "parcels" (the style.json source name — not a manifest concern). All downstream
+  // feature-state / buffer-layer uses inherit SOURCE_LAYER, so they become manifest-driven
+  // here without touching each call site. Additive: today the manifest carries no parcels
+  // sourceLayer, so SOURCE_LAYER is "parcels" unchanged; idField resolves to "pin" from the
+  // manifest (real consumption, same value).
+  function _manifestSourceById(id) {
+    var m = window.PS_MANIFEST;
+    var ss = (m && Array.isArray(m.sources)) ? m.sources : null;
+    if (!ss) return null;
+    for (var i = 0; i < ss.length; i++) if (ss[i] && ss[i].id === id) return ss[i];
+    return null;
+  }
+  const _parcelSrc = _manifestSourceById("parcels");
+  const SOURCE_LAYER = (_parcelSrc && _parcelSrc.sourceLayer) || "parcels";
+  const PARCEL_ID_FIELD = (_parcelSrc && _parcelSrc.idField) || "pin";
+  // Expose the resolved parcel-source identity (read-only) for other modules / diagnostics.
+  window.PV_PARCEL_SOURCE = { id: "parcels", sourceLayer: SOURCE_LAYER, idField: PARCEL_ID_FIELD, fromManifest: !!_parcelSrc };
 
   function countyConfig() {
     return (ctx && ctx.config) || window.COUNTY || {};
@@ -1545,7 +1567,7 @@
   // small viewer renderers fed by source-config rows. A safe inline fallback keeps
   // PV green if the engine bundle is absent.
   const _PARCEL_INFO_SOURCE = {
-    id: "parcels", idField: "pin",
+    id: "parcels", idField: PARCEL_ID_FIELD,   // Phase 3: idField from manifest source (→ "pin")
     popup: { sections: [
       { title: "Parcel", fields: [
         { label: "Address", field: "prop_street", format: "site_address" },
