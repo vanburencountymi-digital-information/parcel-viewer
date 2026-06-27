@@ -2447,6 +2447,22 @@
 
     tabs.forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 
+    // ── Capability gating (Phase 2): hide a tool tab+pane entirely when its capability
+    //    is gated off via the manifest/feature-flags. Distinct from the advanced-tools
+    //    disclosure below (which only collapses them). Default-on: PV_CAPS absent → no gating. ──
+    (function () {
+      if (!window.PV_CAPS) return;
+      const TAB_CAP = { draw: "drawing", measure: "measure" };
+      Object.keys(TAB_CAP).forEach(function (tabId) {
+        if (window.PV_CAPS.isEnabled(TAB_CAP[tabId])) return;
+        const t = panel.querySelector('.mcp-tab[data-tab="' + tabId + '"]');
+        const p = document.getElementById("mcp-pane-" + tabId);
+        if (t) t.style.display = "none";
+        if (p) p.hidden = true;
+        if (window.PS_MAP_PANEL && window.PS_MAP_PANEL._activeTab === tabId) switchTab("layers");
+      });
+    })();
+
     // ── Progressive disclosure: basic default + Advanced Tools (DIC-402) ──
     // Layers is basic; Select/Draw/Measure are advanced (marked data-advanced,
     // overridable per viewer via COUNTY.tools.advanced). Advanced tabs are hidden

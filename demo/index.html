@@ -745,12 +745,19 @@
        theme manifest from window.COUNTY at boot (Phase 0 of manifest-driven boot). -->
   <script src="/engine/capability-catalog.js"></script>
   <script src="/engine/manifest-assemble.js"></script>
+  <!-- Per-tenant feature flags (C4 / DIC-585): override layer over the manifest capability
+       tri-state. Consumed at runtime by pv-capabilities.js (Phase 2). -->
+  <script src="/engine/feature-flags.js"></script>
   <!-- Manifest bridge + boot (C2 + Phase 1): assembles a complete theme manifest from
        window.COUNTY and publishes window.PS_MANIFEST EAGERLY here — BEFORE map.js — so the
        viewer's branding/map/scheme reads can resolve from the manifest (COUNTY fallback).
        Loads after county-config.js + all engine deps above; additive (COUNTY still drives
        anything not yet migrated). -->
   <script src="/frontend/public/js/pv-manifest.js"></script>
+  <!-- Capability gating (Phase 2): window.PV_CAPS.isEnabled(capId) = resolveCapabilities
+       (PS_MANIFEST, flags). Default-on; gates surfaces only when a flag turns a capability
+       off. Loads after the manifest + feature-flags, before map.js (which gates draw/measure). -->
+  <script src="/frontend/public/js/pv-capabilities.js"></script>
   <!-- AppContext bridge (A3): builds window.PS_CONTEXT from the live PS_* globals via
        lazy getters. Strangler-fig — old global reads keep working unchanged. -->
   <script src="/frontend/public/js/pv-app-context.js"></script>
@@ -794,7 +801,12 @@
         || window.MAP_BUDDY_API
         || (isLocal && '/map-buddy-api')
         || 'https://map-buddy-toaozre74a-uc.a.run.app';
-      MapBuddy.mount({ apiBase: apiBase });
+      // Capability gating (Phase 2): only mount Map Buddy when the manifest/feature-flags
+      // enable it. Default-on (PV_CAPS absent → mount). The B1 AI-mode toggle still governs
+      // on/off visibility separately; this governs whether the surface exists at all.
+      if (!window.PV_CAPS || PV_CAPS.isEnabled('mapBuddy')) {
+        MapBuddy.mount({ apiBase: apiBase });
+      }
     })();
   </script>
 </body>

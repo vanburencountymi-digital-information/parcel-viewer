@@ -232,6 +232,10 @@
 
   // ── Tool content ──────────────────────────────────────────────────────────
   function openTool(tool) {
+    // Capability gating (Phase 2): print/share are manifest capabilities. Skip even
+    // programmatic opens when gated off (the menu item is hidden by pv-capabilities.js;
+    // this also covers PV_TOOLS callers). Default-on when PV_CAPS is absent.
+    if (window.PV_CAPS && (tool === "print" || tool === "share") && !window.PV_CAPS.isEnabled(tool)) return;
     switch (tool) {
       case "print":        return openPrint();
       case "share":        return openShare();
