@@ -338,6 +338,19 @@ html[data-theme="dark"].pv-a11y-solid .maplibregl-popup-content { background: #1
 .pv-prof-bar-n { font-variant-numeric: tabular-nums; color: var(--text-muted, #6b6357); white-space: nowrap; }
 .pv-prof-subnote { margin: 8px 0 0; font-size: 10.5px; color: var(--text-muted, #8a7a60); }
 [data-theme="dark"] .pv-prof-card { background: rgba(255,255,255,0.03); }
+/* AI character read (DIC-588): additive card spanning the top of the dashboard. */
+.pv-prof-ai { grid-column: 1 / -1; border-color: rgba(var(--ui-interactive-rgb, 181,141,74), 0.4); background: rgba(var(--ui-interactive-rgb, 181,141,74), 0.06); }
+.pv-prof-ai-loading { display: flex; align-items: center; gap: 8px; color: var(--text-muted, #8a7a60); font-style: italic; font-size: 12.5px; }
+.pv-prof-ai-spark { color: var(--ui-accent, #8a6a2f); font-size: 14px; flex: none; }
+.pv-prof-ai-loadtext { animation: pv-prof-ai-pulse 1.4s ease-in-out infinite; }
+@keyframes pv-prof-ai-pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+.pv-prof-ai-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 6px; }
+.pv-prof-ai-title { margin: 0; font-size: 14px; color: var(--text, #1f2937); text-transform: none; letter-spacing: 0; }
+.pv-prof-ai-tag { font-size: 11.5px; color: var(--ui-accent, #8a6a2f); font-weight: 600; margin-top: 1px; }
+.pv-prof-ai-body p { margin: 0 0 7px; font-size: 12.5px; line-height: 1.5; }
+.pv-prof-ai-body p:last-child { margin-bottom: 0; }
+.pv-prof-ai-caveat { color: var(--text-muted, #8a7a60); font-size: 11px !important; font-style: italic; }
+.pv-prof-ai-note { margin: 8px 0 0; font-size: 10.5px; color: var(--text-muted, #8a7a60); font-style: italic; }
 @media (max-width: 640px) { .pv-profile-body { grid-template-columns: 1fr; } .pv-profile-head { flex-direction: column; } }
 
 /* Reduce motion */

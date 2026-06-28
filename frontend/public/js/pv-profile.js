@@ -4,9 +4,14 @@
  * Pick an area (a buffer around the selected parcel, via /cohort) → a rich, auditable
  * profile of its composition, character, and values, assembled from the engine core's
  * aggregators (ISV_COHORT_ANALYZE_CORE: composition / value-stats / value-change /
- * ownership / area-distribution). Deterministic — the dashboard stands alone (facts-parity);
- * an AI "character" read is a future additive layer (needs a cohort-narrate transport).
- * Capability-gated 'profile' (default-on).
+ * ownership / area-distribution). Deterministic — the dashboard stands alone (facts-parity).
+ *
+ * AI "character" read (DIC-588): when AI is on + reachable, an additive card at the top
+ * narrates "what kind of neighborhood is this" over the SAME deterministic facts, via the
+ * cohort-analyze narrate seam (map-buddy POST /describe-cohort, fetchCohortNarration). The
+ * model never originates a number (grounding-judge gated, DIC-586); AI off/unreachable →
+ * no card, the dashboard stands alone (§4.5/§4.6 degrade-to-facts). Capability-gated
+ * 'profile' (default-on).
  *
  * Exposes: window.PV_PROFILE { open, close, isEnabled }.
  *   open({ parcelId?, distanceFt? })  — defaults to the selected parcel + 1320 ft (¼ mile).
@@ -22,6 +27,35 @@
   function enabled() { var c = caps(); return c ? c.isEnabled('profile') : true; }
   function core() { return root.ISV_COHORT_ANALYZE_CORE || null; }
   function cfg() { return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {}; }
+
+  // ── AI character narration (DIC-588 / cohort-analyze narrate seam) ───────────
+  // Resolve the Map Buddy base the same way pv-explain does (one service, one key).
+  function mapBuddyBase() {
+    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
+    var endpoints = cfg().endpoints || {};
+    return root.MAP_BUDDY_API || endpoints.mapBuddy ||
+      (isLocal && '/map-buddy-api') ||
+      'https://map-buddy-toaozre74a-uc.a.run.app';
+  }
+  // AI on AND reachable (mirrors pv-explain.aiEnabled): the controller short-circuits a
+  // known-down service so we degrade to the dashboard immediately rather than per-request.
+  function aiEnabled() {
+    if (root.PV_AI_MODE && typeof root.PV_AI_MODE.isEffective === 'function') return root.PV_AI_MODE.isEffective();
+    if (root.PV_PREFS && typeof root.PV_PREFS.getAiMode === 'function') return root.PV_PREFS.getAiMode() === 'on';
+    var pref = root.PV_PREFS && root.PV_PREFS.aiMode;
+    return !(pref === 'off' || pref === false);
+  }
+  // The narrate transport (ctx.fetchCohortNarration shape): POST the deterministic facts,
+  // get back a character read. Returns null on ANY failure → caller shows no card (§4.5).
+  function fetchCohortNarration(facts) {
+    return fetch(mapBuddyBase() + '/describe-cohort', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ facts: facts }),
+    })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (res) { return (res && res.ok && res.narration) ? res.narration : null; })
+      .catch(function () { return null; });
+  }
   function labelMap(k) { var l = cfg().labels || {}; return l[k] || {}; }
   function el(id) { return doc && doc.getElementById(id); }
   function esc(s) {
@@ -66,6 +100,7 @@
           fields: PROFILE_FIELDS, aggregators: AGGS, source_id: 'assessment-roll',
         });
         renderBody(dashboard(result.facts), data.selector);
+        maybeNarrate(result.facts);   // additive AI character read; degrades to no-op
       })
       .catch(function () { renderBody('<p class="pv-prof-empty">Couldn’t reach the server.</p>'); });
   }
@@ -141,6 +176,45 @@
     if (!buckets.length) return '';
     var max = buckets.reduce(function (m, b) { return Math.max(m, b.count); }, 0) || 1;
     return card('Parcel size (acres)', bars(buckets, function (b) { return b.label; }, max));
+  }
+
+  // ── AI character card (additive over the deterministic dashboard) ───────────
+  // Loads asynchronously AFTER the dashboard so the facts are never gated on the model.
+  // AI off → skip entirely; AI on → a subtle loading card that becomes the read, or
+  // removes itself on failure (degrade-to-facts: the dashboard always stands alone).
+  function maybeNarrate(facts) {
+    if (!aiEnabled()) return;
+    var token = (_ctx.parcelId + ':' + _ctx.distanceFt);   // guard against a stale response after a radius change
+    _ctx.narrateToken = token;
+    var body = el('pv-profile-body');
+    if (!body) return;
+    body.insertAdjacentHTML('afterbegin', aiLoadingHtml());
+    fetchCohortNarration(facts).then(function (n) {
+      if (_ctx.narrateToken !== token) return;   // user moved on; drop this result
+      var slot = el('pv-prof-ai');
+      if (!slot) return;
+      if (n && (n.headline || (n.paragraphs && n.paragraphs.length))) slot.outerHTML = aiCardHtml(n);
+      else if (slot.parentNode) slot.parentNode.removeChild(slot);   // no card on failure
+    });
+  }
+
+  function aiLoadingHtml() {
+    return '<section id="pv-prof-ai" class="pv-prof-card pv-prof-ai pv-prof-ai-loading">' +
+      '<span class="pv-prof-ai-spark" aria-hidden="true">✦</span>' +
+      '<span class="pv-prof-ai-loadtext">Reading the neighborhood…</span></section>';
+  }
+
+  function aiCardHtml(n) {
+    var paras = (n.paragraphs || []).map(function (p) { return '<p>' + esc(p) + '</p>'; }).join('');
+    var caveats = (n.caveats && n.caveats.length)
+      ? '<p class="pv-prof-ai-caveat">' + n.caveats.map(esc).join(' ') + '</p>' : '';
+    return '<section id="pv-prof-ai" class="pv-prof-card pv-prof-ai">' +
+      '<div class="pv-prof-ai-head"><span class="pv-prof-ai-spark" aria-hidden="true">✦</span>' +
+        '<div><h3 class="pv-prof-ai-title">' + esc(n.headline || 'Neighborhood character') + '</h3>' +
+        (n.character ? '<div class="pv-prof-ai-tag">' + esc(n.character) + '</div>' : '') + '</div></div>' +
+      '<div class="pv-prof-ai-body">' + paras + caveats + '</div>' +
+      '<p class="pv-prof-ai-note">AI summary of the figures below — not an official valuation.</p>' +
+      '</section>';
   }
 
   // ── Shell / overlay ─────────────────────────────────────────────────────────
