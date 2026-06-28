@@ -2,8 +2,15 @@
 
 Pick-up doc for the **Intelligent Spatial Viewer** engine work. The authoritative spec is
 `Desktop/Claude/ISV_BUILD_SPEC.md` (v1.1); decisions/risk log is `engine/DECISIONS.md`;
-the engine contract is `engine/README.md`. This file is the "where are we / how do I
-continue" summary.
+the engine contract is `engine/README.md`; the **keystone acid-test / definition of done**
+("ISV is the engine, PV is a theme" — tiered DoD + AC1–AC10 + the unblock list) is
+`engine/THEME_RENDERING_ACID_TEST.md`. This file is the "where are we / how do I continue" summary.
+
+**Honest framing (2026-06-28):** the *capability layer* is genuinely engine-owned + source-agnostic
+(themed by config) — DONE. The *viewer-shell layer* still reads a manifest but is PV's frontend, not
+the engine rendering a theme — the vision is proven at Tier 0–1 (incl. AC4: an arbitrary 3rd theme is
+accepted generically), NOT at Tier 2+ (a 2nd theme rendering through the same bundle), which is gated
+on parcel-studio + ZIP being runnable + Lockport data. See the acid-test doc.
 
 ## ⭐ START HERE (next session — 2026-06-29)
 
