@@ -174,6 +174,55 @@
     return { edges: edges, buckets: buckets };
   }
 
+  // environmental: composition of the area by environmental constraint — flood-zone mix +
+  // share in a special flood hazard area, wetland coverage (features touching + acreage), and
+  // soil-class mix. SOURCE-AGNOSTIC and CLIP-READY: it reads per-feature environmental FIELDS
+  // (config in fields.environmental), so it produces nothing today (the assessment roll carries
+  // no environmental columns) and lights up with REAL numbers the moment those fields exist —
+  // e.g. once wetlands are a county PostGIS overlay and per-feature wetland acreage is clipped
+  // into each feature (the roadmap). Until then the viewer shows a coarse center-point read.
+  function truthy(v) {
+    if (v == null) return false;
+    var s = String(v).trim().toLowerCase();
+    return s === 't' || s === 'true' || s === 'y' || s === 'yes' || s === '1';
+  }
+  function environmental(features, fields) {
+    var env = fields.environmental || {};
+    var areaKey = env.area || fields.area;
+    var out = {}, total = (features || []).length;
+    var ps = props(features);
+
+    if (env.floodZone || env.floodFlag) {
+      var inSfha = 0, counted = 0;
+      ps.forEach(function (p) {
+        var f = env.floodFlag ? p[env.floodFlag] : null;
+        if (env.floodFlag) { counted += 1; if (truthy(f)) inSfha += 1; }
+      });
+      out.flood = {};
+      if (env.floodZone) out.flood.zoneMix = mix(features, env.floodZone, env.floodLabels, areaKey);
+      if (env.floodFlag) { out.flood.inSfhaCount = inSfha; out.flood.inSfhaShare = share(inSfha, counted); }
+    }
+
+    if (env.wetlandAcres || env.wetlandFlag) {
+      var withW = 0, wAcres = 0, areaTotal = 0;
+      ps.forEach(function (p) {
+        var a = env.wetlandAcres ? (toNum(p[env.wetlandAcres]) || 0) : 0;
+        var hit = env.wetlandAcres ? a > 0 : truthy(p[env.wetlandFlag]);
+        if (hit) withW += 1;
+        wAcres += a;
+        if (areaKey) areaTotal += (toNum(p[areaKey]) || 0);
+      });
+      out.wetland = { withWetlandCount: withW, withWetlandShare: share(withW, total) };
+      if (env.wetlandAcres) {
+        out.wetland.wetlandAcres = round(wAcres, 2);
+        out.wetland.wetlandAcreShare = areaTotal ? round(wAcres / areaTotal, 4) : 0;
+      }
+    }
+
+    if (env.soilClass) out.soil = { soilMix: mix(features, env.soilClass, env.soilLabels, areaKey) };
+    return out;
+  }
+
   // compare: transpose the cohort into a (field × feature) table with per-row diff marking
   // — the explicit-cohort "identity + diff" preset (DIC-589). compareFields = [{key,label}];
   // columnLabel names the property used as each column header (e.g. the id field).
@@ -200,6 +249,8 @@
     if ((fields.values || []).some(function (v) { return v.prev; })) s.push('value-change');
     if (fields.owner) s.push('ownership');
     if (fields.area) s.push('area-distribution');
+    var env = fields.environmental || {};
+    if (env.floodZone || env.floodFlag || env.wetlandAcres || env.wetlandFlag || env.soilClass) s.push('environmental');
     if ((fields.compareFields || []).length) s.push('compare');
     return s;
   }
@@ -228,6 +279,7 @@
     if (want.indexOf('value-change') >= 0) facts.valueChange = valueChange(features, fields);
     if (want.indexOf('ownership') >= 0) facts.ownership = ownership(features, fields);
     if (want.indexOf('area-distribution') >= 0) facts.areaDistribution = areaDistribution(features, fields, input.areaEdges);
+    if (want.indexOf('environmental') >= 0) facts.environmental = environmental(features, fields);
     if (want.indexOf('compare') >= 0) facts.compare = compare(features, fields);
 
     return { facts: facts, provenance: provenance(input, features.length) };
@@ -251,6 +303,6 @@
     // exported helpers (unit-tested directly)
     stats: stats, composition: composition, valueStats: valueStats,
     valueChange: valueChange, ownership: ownership, areaDistribution: areaDistribution,
-    compare: compare, supported: supported,
+    environmental: environmental, compare: compare, supported: supported,
   };
 }));

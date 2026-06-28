@@ -132,6 +132,39 @@ test('compare: transposes the cohort into a field×feature table, marks rows tha
   assert.equal(byField.owner_name.differs, false);    // both Smith
 });
 
+test('environmental: flood/wetland/soil composition from per-feature fields (clip-ready)', () => {
+  // Synthetic features carrying the env fields that a future county wetland-clip will supply.
+  const feats = [
+    { id: 1, properties: { gis_acres: 10, flood_zone: 'AE', in_sfha: 'T', wetland_acres: 4, soil: 'Ms' } },
+    { id: 2, properties: { gis_acres: 10, flood_zone: 'X', in_sfha: 'F', wetland_acres: 0, soil: 'Ms' } },
+    { id: 3, properties: { gis_acres: 20, flood_zone: 'X', in_sfha: 'F', wetland_acres: 0, soil: 'Bd' } },
+  ];
+  const fields = { area: 'gis_acres', environmental: {
+    floodZone: 'flood_zone', floodFlag: 'in_sfha', floodLabels: { AE: 'AE — base flood elev' },
+    wetlandAcres: 'wetland_acres', soilClass: 'soil', soilLabels: { Ms: 'Marsh', Bd: 'Boyer sand' } } };
+  const e = CORE.environmental(feats, fields);
+  // flood: zone mix + share in a special flood hazard area
+  assert.equal(e.flood.inSfhaCount, 1);
+  assert.equal(e.flood.inSfhaShare, round3(1 / 3));
+  assert.equal(e.flood.zoneMix[0].key, 'X');           // X leads (2 of 3)
+  assert.equal(e.flood.zoneMix.find((z) => z.key === 'AE').label, 'AE — base flood elev');
+  // wetland: parcels touching + acreage share of total area (4 of 40 acres)
+  assert.equal(e.wetland.withWetlandCount, 1);
+  assert.equal(e.wetland.wetlandAcres, 4);
+  assert.equal(e.wetland.wetlandAcreShare, 0.1);
+  // soil: class mix
+  assert.equal(e.soil.soilMix[0].key, 'Ms');
+  assert.equal(e.soil.soilMix[0].count, 2);
+});
+
+function round3(n) { return Math.round(n * 10000) / 10000; }
+
+test('environmental: dormant when no env fields are configured (no data today)', () => {
+  // The PROFILE today configures no environmental fields → the aggregator isn't even supported.
+  assert.equal(CORE.supported({ area: 'gis_acres', category: 'prop_class' }).indexOf('environmental'), -1);
+  assert.ok(CORE.supported({ area: 'a', environmental: { wetlandAcres: 'w' } }).indexOf('environmental') >= 0);
+});
+
 test('compare: a null vs a present value counts as differing', () => {
   const feats = [{ id: 1, properties: { x: 5 } }, { id: 2, properties: {} }];
   const c = CORE.compare(feats, { compareFields: [{ key: 'x', label: 'X' }] });
