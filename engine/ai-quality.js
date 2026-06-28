@@ -110,6 +110,55 @@
     return { ok: citations.ok && grounding.ok, citations: citations, grounding: grounding };
   }
 
+  // ── Cohort narration grounding (DIC-588) ────────────────────────────────────
+  // The cohort "character" read narrates the deterministic profile (composition /
+  // value-stats / value-change / ownership). Same discipline as the explainer: any
+  // dollar amount it states must be a figure the engine core already computed — the
+  // model characterizes, it never originates a number (§4.6). The allowed set is every
+  // dollar-valued statistic in the cohort facts (sums/means/medians/min/max/per-area +
+  // change totals). Shares/percentages and counts are not dollars and aren't policed here.
+  function cohortDollarSet(facts) {
+    var set = Object.create(null);
+    function add(v) { var n = Math.round(Number(v)); if (!isNaN(n)) set[n] = 1; }
+    var vs = (facts && facts.valueStats) || {};
+    Object.keys(vs).forEach(function (k) {
+      var s = vs[k] || {};
+      ['sum', 'mean', 'median', 'min', 'max', 'perArea'].forEach(function (f) { if (s[f] != null) add(s[f]); });
+    });
+    var vc = (facts && facts.valueChange) || {};
+    Object.keys(vc).forEach(function (k) {
+      var c = vc[k] || {};
+      ['currentTotal', 'priorTotal', 'deltaTotal'].forEach(function (f) { if (c[f] != null) add(c[f]); });
+    });
+    return set;
+  }
+
+  // Grounding: every dollar amount in the cohort narration must be a verified figure.
+  function checkCohortGrounding(text, facts) {
+    var allowed = cohortDollarSet(facts);
+    var violations = [];
+    dollarsIn(text).forEach(function (n) {
+      if (!allowed[n]) violations.push({ amount: n, reason: 'not in cohort figures' });
+    });
+    return { ok: violations.length === 0, violations: violations };
+  }
+
+  // Flatten a cohort-narration output ({headline, character, paragraphs, caveats}) to one string.
+  function cohortText(out) {
+    if (!out) return '';
+    var parts = [out.headline || '', out.character || ''];
+    (out.paragraphs || []).forEach(function (p) { parts.push(p || ''); });
+    (out.caveats || []).forEach(function (c) { parts.push(c || ''); });
+    return parts.join('\n');
+  }
+
+  // Evaluate a cohort narration against the deterministic facts it narrated from.
+  function evaluateCohortNarration(output, ctx) {
+    ctx = ctx || {};
+    var grounding = checkCohortGrounding(cohortText(output), ctx.facts);
+    return { ok: grounding.ok, grounding: grounding };
+  }
+
   // ── Generic §6.4 citation-envelope check (any capability, not just the explainer) ──
   var ENVELOPE_STATES = { resolves: 1, coarse: 1, none: 1 };
 
@@ -168,6 +217,8 @@
     checkCitations: checkCitations,
     checkGrounding: checkGrounding,
     evaluateExplanation: evaluateExplanation,
+    checkCohortGrounding: checkCohortGrounding,
+    evaluateCohortNarration: evaluateCohortNarration,
     checkEnvelope: checkEnvelope,
     evaluateComposer: evaluateComposer,
     mclCores: mclCores,

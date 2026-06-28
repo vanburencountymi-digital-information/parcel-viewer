@@ -75,3 +75,47 @@ test('the whole curated corpus self-validates (every entry resolves)', () => {
   const r = Q.checkCitations(corpus, corpus);
   assert.equal(r.ok, true, JSON.stringify(r.violations));
 });
+
+// ── Cohort narration grounding (DIC-588) — the deterministic floor under /describe-cohort ──
+const COHORT_CORE = require('../capabilities/cohort-analyze.core.js');
+const COHORT_FACTS = COHORT_CORE.core({
+  cohort: { selector: { type: 'buffer', label: '¼ mi of #1' }, features: [
+    { id: 1, properties: { prop_class: '401', gis_acres: 2,  assessed_value: 100000, prev_assessed_value: 90000,  owner_name: 'Smith' } },
+    { id: 2, properties: { prop_class: '401', gis_acres: 4,  assessed_value: 120000, prev_assessed_value: 120000, owner_name: 'Smith' } },
+    { id: 3, properties: { prop_class: '201', gis_acres: 10, assessed_value: 300000, prev_assessed_value: 320000, owner_name: 'Jones' } },
+    { id: 4, properties: { prop_class: '101', gis_acres: 40, assessed_value: 50000,  prev_assessed_value: 50000,  owner_name: 'Acme Farms' } },
+  ] },
+  fields: { area: 'gis_acres', category: 'prop_class', owner: 'owner_name',
+    values: [{ key: 'assessed_value', prev: 'prev_assessed_value', label: 'Assessed Value' }] },
+}).facts;
+
+test('cohort: a character read citing only computed figures is grounded', () => {
+  // median AV 110000, total 570000 (currentTotal) are both in the facts.
+  const good = {
+    headline: 'Established residential area',
+    character: 'Mostly residential, owner-occupied, stable values',
+    paragraphs: [
+      'This is a predominantly residential area, with a couple of commercial and agricultural parcels mixed in.',
+      'The median assessed value is about $110,000, and assessed values across the area total $570,000.',
+    ],
+    caveats: ['Aggregates public assessment data; not an official valuation.'],
+  };
+  const r = Q.evaluateCohortNarration(good, { facts: COHORT_FACTS });
+  assert.equal(r.ok, true, JSON.stringify(r));
+});
+
+test('cohort: qualitative reads with shares/counts (no dollars) are not policed', () => {
+  const r = Q.checkCohortGrounding('Half the parcels are residential; one owner holds 2 of them.', COHORT_FACTS);
+  assert.equal(r.ok, true);
+});
+
+test('cohort: an ORIGINATED dollar amount not in the figures is caught', () => {
+  const bad = {
+    headline: 'A pricey area',
+    paragraphs: ['Homes here are worth around $750,000 and rents run $2,400 a month.'],
+  };
+  const r = Q.evaluateCohortNarration(bad, { facts: COHORT_FACTS });
+  assert.equal(r.ok, false);
+  const amounts = r.grounding.violations.map((v) => v.amount).sort((a, b) => a - b);
+  assert.deepEqual(amounts, [2400, 750000]);
+});
