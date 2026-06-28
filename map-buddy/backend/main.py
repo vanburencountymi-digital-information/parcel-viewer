@@ -15,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, run_grounding_judge, explainer_profiles_public
+from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, run_grounding_judge, run_describe_cohort, explainer_profiles_public
 import cache as result_cache
 import usage as ai_usage
 import kb_resolver
@@ -126,6 +126,13 @@ class JudgeRequest(BaseModel):
     # ship — not a per-request hot path.
     output: str = ""
     grounding: dict = {}
+
+
+class DescribeCohortRequest(BaseModel):
+    # DIC-588: the cohort-analyze narrate seam. `facts` is the DETERMINISTIC profile the
+    # engine core (ISV_COHORT_ANALYZE_CORE) already computed for an area; the model only
+    # characterizes them in plain language, never originating a number (facts-parity §4.6).
+    facts: dict = {}
 
 
 class KbResolveRequest(BaseModel):
@@ -268,6 +275,36 @@ async def judge(request: Request, body: JudgeRequest):
         return {"ok": True, "verdict": verdict, "cached": False}
     except Exception as e:  # noqa: BLE001 — clean message; caller degrades
         return {"ok": False, "error": f"judge failed: {e}"}
+
+
+@app.post("/describe-cohort")
+@limiter.limit(os.getenv("DESCRIBE_COHORT_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
+async def describe_cohort(request: Request, body: DescribeCohortRequest):
+    """AI 'character' read over a Neighborhood / Area Profile (DIC-588). The engine core
+    already computed the deterministic facts; the model only characterizes them in plain
+    language, never originating a number. Returns {ok, narration:{headline, character,
+    paragraphs, caveats}} or {ok:false, error} so the Profile degrades to its dashboard
+    (facts-parity §4.6). Reuses the C3 cache + per-tenant quota like the other AI routes."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
+    facts = body.facts or {}
+    tenant = facts.get("tenant") or facts.get("county")
+    ck = result_cache.cache_key("describe-cohort", tenant, facts)
+    if result_cache.enabled():
+        hit = result_cache.get_cache().get(ck)
+        if hit is not None:
+            return {"ok": True, "narration": hit, "cached": True}
+    blocked = _quota_block(tenant)
+    if blocked:
+        return blocked
+    try:
+        narration = run_describe_cohort(facts)
+        ai_usage.record(tenant)
+        if result_cache.enabled():
+            result_cache.get_cache().set(ck, narration)
+        return {"ok": True, "narration": narration, "cached": False}
+    except Exception as e:  # noqa: BLE001 — clean message; the Profile degrades to facts
+        return {"ok": False, "error": f"describe-cohort failed: {e}"}
 
 
 @app.post("/kb/resolve")

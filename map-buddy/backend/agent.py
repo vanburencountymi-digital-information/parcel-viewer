@@ -1128,3 +1128,92 @@ def run_grounding_judge(output_text: str, grounding: dict) -> dict:
         if block.type == "tool_use" and block.name == "report_grounding_verdict":
             return dict(block.input or {})
     raise RuntimeError("model did not return a report_grounding_verdict tool call")
+
+
+# ── Cohort character narration (DIC-588 / cohort-analyze narrate seam) ─────────
+# The AI "what kind of neighborhood is this" read over the Neighborhood / Area
+# Profile's DETERMINISTIC aggregates. Same two-engine discipline as the explainer:
+# the engine core (ISV_COHORT_ANALYZE_CORE) already produced the authoritative
+# facts (composition / value-stats / value-change / ownership / area-distribution);
+# this only CHARACTERIZES them in plain language. It must NEVER originate a number —
+# the dashboard owns every figure (facts-parity §4.6; grounding-judge gated, DIC-586).
+COHORT_NARRATE_MODEL = os.getenv("COHORT_NARRATE_MODEL", os.getenv("MAP_BUDDY_MODEL", "claude-sonnet-4-6"))
+
+_COHORT_NARRATE_SYSTEM = """You are the Neighborhood Profile narrator for the Van Buren County, Michigan parcel viewer — you read a deterministic, pre-computed PROFILE of an AREA (a set of parcels) and describe, in plain friendly language, what KIND of place it is.
+
+# The one rule that matters: characterize, never originate
+You are given a block of VERIFIED FACTS computed from the assessment roll for one area: a parcel count, a class/composition mix, assessed/taxable value statistics, year-over-year change, ownership concentration, and a parcel-size distribution. Your job is to turn those facts into a human "character" read — NOT to recompute or invent anything.
+
+- NEVER state a number, dollar amount, percentage, share, count, acreage, or year that is not present in the VERIFIED FACTS. If you cite a figure, it must appear verbatim (or as an obvious rounding the facts already give) in the input.
+- NEVER compute new figures — no ratios, totals, per-capita, growth rates, or comparisons to other areas not in the facts.
+- You MAY characterize qualitatively from the facts: "predominantly residential", "mostly small lots", "owner-occupied with little turnover", "values rose modestly last year", "ownership is fragmented across many owners". Tie each characterization to what the facts actually show.
+- Prefer words over numbers. Let the dashboard show the figures; you give the meaning. Quote a figure only when it genuinely sharpens the point.
+- This is an educational summary of public assessment data, not an official valuation, a market appraisal, or a statement about the people who live there. Describe the PROPERTY pattern, never make claims about residents' wealth, demographics, or desirability.
+
+# What to produce
+- A short headline naming the area's character in a few words.
+- A one-line "character" tag (e.g. "Established residential, stable values").
+- 2–4 short paragraphs walking through composition, values/change, ownership, and lot sizes — only the dimensions the facts contain.
+- Caveats: that this aggregates public assessment data, isn't an official valuation, and that individual parcels vary.
+
+# Style
+Warm, clear, concise. Short paragraphs, no jargon without a plain gloss. No emojis. Write for a resident or county staffer skimming a dashboard, not an assessor."""
+
+
+_COHORT_NARRATE_TOOL = {
+    "name": "report_cohort_character",
+    "description": (
+        "Return a plain-language character read of the area, grounded ONLY in the verified "
+        "facts. You never originate or compute a number — the dashboard owns every figure."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "headline": {"type": "string", "description": "A few words naming the area's character, e.g. 'Established lakeside residential'."},
+            "character": {"type": "string", "description": "One short line tagging the area, e.g. 'Mostly residential, stable values, fragmented ownership'."},
+            "paragraphs": {
+                "type": "array",
+                "description": "2-4 short plain-language paragraphs covering only the dimensions the facts contain (composition / values / change / ownership / size).",
+                "items": {"type": "string"},
+            },
+            "caveats": {
+                "type": "array",
+                "description": "Short honesty notes: aggregates public assessment data, not an official valuation, individual parcels vary.",
+                "items": {"type": "string"},
+            },
+        },
+        "required": ["headline", "character", "paragraphs"],
+    },
+}
+
+
+def run_describe_cohort(facts: dict) -> dict:
+    """Narrate the deterministic cohort profile (DIC-588). `facts` is the engine
+    core's authoritative output (ISV_COHORT_ANALYZE_CORE). Returns the validated
+    { headline, character, paragraphs, caveats } the Profile lays over its dashboard.
+    Raises if the model declines the forced tool call.
+    """
+    system = [{
+        "type": "text",
+        "text": _COHORT_NARRATE_SYSTEM,
+        "cache_control": {"type": "ephemeral"},
+    }]
+    user = (
+        "Describe this area using ONLY the verified facts below. Do not state any number "
+        "that is not present here, and do not compute new figures.\n\n"
+        "VERIFIED FACTS:\n"
+        + json.dumps(facts or {}, indent=2, default=str)
+    )
+    max_tokens = int(os.getenv("COHORT_NARRATE_MAX_TOKENS", "1536"))
+    response = _get_client().messages.create(
+        model=COHORT_NARRATE_MODEL,
+        max_tokens=max_tokens,
+        system=system,
+        tools=[_COHORT_NARRATE_TOOL],
+        tool_choice={"type": "tool", "name": "report_cohort_character"},
+        messages=[{"role": "user", "content": user}],
+    )
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "report_cohort_character":
+            return dict(block.input or {})
+    raise RuntimeError("model did not return a report_cohort_character tool call")
