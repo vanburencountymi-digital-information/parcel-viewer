@@ -12,6 +12,13 @@ the engine rendering a theme — the vision is proven at Tier 0–1, NOT at Tier
 rendering through the same bundle), which is gated on parcel-studio + ZIP being runnable + Lockport
 data. See the acid-test doc.
 
+**Deploy prep (`ca390b2`): `/map-buddy/` no-store + `infra/DEPLOY-CHECKLIST.md`** (critical: run
+`bash map-buddy/deploy.sh` — prod is missing the new AI routes; endpoint-URL match across 3 config
+copies; no-content-hash caching note). PV deploys to a live URL ~week of 2026-07-06 — see
+[[project_parcel_viewer_deploy]]. **DIC-407 seam (`c13d79f`): parcel popup config is manifest-drivable**
+(`map.js _parcelPopupCfg()`, in-file fallback, zero change for VBC; canonical-config move + de-dupe
+deferred post-deploy to keep the popup stable for the launch).
+
 **AC7 DONE (`5c437a0`): the manifest now drives the viewer's CONFIG too.** `pv-app-context.js`
 `ctx.config` is a view = COUNTY base + the manifest's passthrough blocks (labels/styling/parcelNumber/
 forms/endpoints/integrations/access/state); deep-equals COUNTY for VBC (zero change), a different

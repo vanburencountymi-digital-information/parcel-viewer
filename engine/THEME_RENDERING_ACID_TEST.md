@@ -59,8 +59,10 @@ The engine must accept a theme it has never seen without special-casing.
       blocks (labels/styling/parcelNumber/forms/endpoints/integrations/access/state). Strangler-safe
       by construction — for VBC the view deep-equals COUNTY (zero change); a different theme's blocks
       drive config (live-verified: a changed label flows through ctx.config, COUNTY untouched).
-- [ ] No parcel-hardcoded render path in the shell (A5 depth: rich popup config is still viewer-owned
-      by decision D7; revisit for a non-parcel domain). Ticket: DIC-407.
+- [~] Popup config manifest-drivable (DIC-407): the parcel popup renders through the engine AND its
+      config now resolves from the manifest source (`map.js _parcelPopupCfg()`) when a theme ships rich
+      popup sections, in-file config as fallback — seam in + live-verified. **Remaining (post-deploy):**
+      move the canonical config out of map.js into COUNTY/manifest + de-dupe; formatters stay viewer-owned.
 - [ ] A3 contract globals (`PS_STATE`/`PS_MAP`/drawing) migrated to injected context; guard forbids
       new contract-global reads in the shell. Ticket: DIC-568. **Gated:** needs parcel-studio runnable.
 
