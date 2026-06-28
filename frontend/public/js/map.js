@@ -1638,6 +1638,17 @@
       { title: "Tax Description", fields: [
         { label: "Description", field: "ps_legal_description", format: "tax_description" } ] } ] },
   };
+  // DIC-407 seam: the parcel popup config can come from the manifest source (so a theme
+  // defines its own popup), with the in-file _PARCEL_INFO_SOURCE as the fallback. Only treats
+  // the manifest popup as authoritative when it carries RICH sections (with `fields`); today's
+  // VBC manifest declares section NAMES only (D7), so this resolves to _PARCEL_INFO_SOURCE —
+  // ZERO behavior change. Formatters (format-name → fn) stay viewer-owned (_PARCEL_FORMATTERS).
+  function _parcelPopupCfg() {
+    var ms = (window.PV_MANIFEST && window.PV_MANIFEST.source && window.PV_MANIFEST.source("parcels")) || null;
+    var pop = ms && ms.popup;
+    var rich = pop && Array.isArray(pop.sections) && pop.sections.some(function (s) { return s && Array.isArray(s.fields); });
+    return rich ? { id: ms.id || "parcels", idField: ms.idField || PARCEL_ID_FIELD, popup: pop } : _PARCEL_INFO_SOURCE;
+  }
   const _PARCEL_FORMATTERS = {
     site_address: function (_v, ctx) {
       const p = ctx.props || {};
@@ -1737,7 +1748,7 @@
     return '<div class="parcel-info-section-title">' + _escHtml(title) + "</div>" + rows;
   }
   function _assessedValuesHtml(props, pin, geometry) {
-    const rows = _engineSectionRows(_PARCEL_INFO_SOURCE, _PARCEL_FORMATTERS, props, "Assessed Values", geometry);
+    const rows = _engineSectionRows(_parcelPopupCfg(), _PARCEL_FORMATTERS, props, "Assessed Values", geometry);
     if (!rows) return null;
     const byLabel = {};
     rows.forEach(function (r) { byLabel[r.label] = r; });
@@ -1797,7 +1808,7 @@
       '<div class="parcel-info-row" style="margin-top:6px"><span class="parcel-info-label"' + tipAttr("PRE") + '>PRE</span><span class="parcel-info-value">' + htmlVal("PRE") + '</span></div>';
   }
   function _taxDescriptionHtml(props, pin, geometry) {
-    const rows = _engineSectionRows(_PARCEL_INFO_SOURCE, _PARCEL_FORMATTERS, props, "Tax Description", geometry);
+    const rows = _engineSectionRows(_parcelPopupCfg(), _PARCEL_FORMATTERS, props, "Tax Description", geometry);
     if (!rows) return null;
     const row = rows[0] || {};
     const desc = row.value != null && row.value !== "" ? row.value : null;
@@ -1905,7 +1916,7 @@
       `<div class="parcel-info-zoning">${dash(p.municipality)}</div>` +
       `<hr class="parcel-info-divider">` +
 
-      (_engineSectionHtml(_PARCEL_INFO_SOURCE, _PARCEL_FORMATTERS, p, "Parcel", geometry) ||
+      (_engineSectionHtml(_parcelPopupCfg(), _PARCEL_FORMATTERS, p, "Parcel", geometry) ||
         (`<div class="parcel-info-section-title">Parcel</div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label">Address</span><span class="parcel-info-value">${dash(siteAddr)}</span></div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Parcel area calculated from the mapped boundary">Area</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
@@ -1915,7 +1926,7 @@
          provenance)) +
       `<hr class="parcel-info-divider">` +
 
-      (_engineSectionHtml(_PARCEL_INFO_SOURCE, _PARCEL_FORMATTERS, p, "Owner") ||
+      (_engineSectionHtml(_parcelPopupCfg(), _PARCEL_FORMATTERS, p, "Owner") ||
         (`<div class="parcel-info-section-title">Owner</div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label">Name</span><span class="parcel-info-value">${dash(p.owner_name)}</span></div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>`)) +
