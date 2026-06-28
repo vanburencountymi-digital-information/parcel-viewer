@@ -7,8 +7,10 @@ All geometry leaves the API as GeoJSON in EPSG:4326; storage is EPSG:2253
 import json
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from .. import config
+from ..cohort_query import CohortSelectorError, build_predicate
 from ..db import pool
 from ..stores.parcel_store import make_parcel_store
 
@@ -35,6 +37,20 @@ _FEATURE_PROPS_SQL = """
     a.assessed_value     AS assessed_value,
     a.taxable_value      AS taxable_value
 """
+
+# Cohort feature props (DIC-587): the parcel attributes the cohort-analyze core aggregates
+# over. Superset of the bbox feature props — adds the prior-period values that back the
+# value-change aggregator. No geometry (lighter payload; aggregation is non-spatial).
+_COHORT_PROPS_SQL = _FEATURE_PROPS_SQL + """,
+    a.prev_assessed_value AS prev_assessed_value,
+    a.prev_taxable_value  AS prev_taxable_value
+"""
+
+
+class CohortRequest(BaseModel):
+    # selector: { type:'explicit', ids:[...] } | { type:'buffer', parcel_id|lng+lat, distance_ft }
+    selector: dict = {}
+    limit: int = 3000
 
 
 @router.get("/style.json")
@@ -180,6 +196,33 @@ async def parcels_bbox(
         rows = conn.execute(sql, (w, s, e, n, limit)).fetchall()
 
     return {"type": "FeatureCollection", "features": [_row_to_feature(r) for r in rows]}
+
+
+@router.post("/cohort")
+async def cohort(body: CohortRequest):
+    """Resolve a cohort selector to a feature SET for the cohort-analyze capability
+    (DIC-587). The backend does the spatial SELECTION (PostGIS); the deterministic
+    aggregation runs in the engine core over these features (single source of truth).
+    Returns { selector:{type,label,count}, features:[{id, properties:{...}}] }."""
+    limit = max(1, min(int(body.limit or 3000), 5000))
+    try:
+        pred, params, resolved = build_predicate(body.selector or {}, limit)
+    except CohortSelectorError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    sql = f"""
+        SELECT {_COHORT_PROPS_SQL}
+        FROM geo.parcel_geometry pg
+        LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
+        WHERE pg.archived_at IS NULL AND {pred}
+        LIMIT %s
+    """
+    with pool.connection() as conn:
+        rows = conn.execute(sql, params + [limit]).fetchall()
+
+    features = [{"id": r["id"], "properties": {k: v for k, v in r.items() if k != "id"}} for r in rows]
+    resolved["count"] = len(features)
+    return {"selector": resolved, "features": features}
 
 
 @router.get("/nearest-road")
