@@ -31,6 +31,48 @@ test('every theme in engine/themes/ round-trips loadManifest (the AC)', () => {
   });
 });
 
+// AC4 of the ISV acid test (engine/THEME_RENDERING_ACID_TEST.md): the engine must accept a
+// theme it has NEVER seen — proving "one engine, N themes" isn't just the two hardcoded
+// PV/ZIP cases. A synthetic third domain (parks) round-trips loadManifest, canonicalizes its
+// tenant, and resolves capabilities generically — all with zero domain-specific engine code.
+test('engine accepts an arbitrary third theme (not PV, not ZIP) — no hardcoded cases', () => {
+  const synthetic = {
+    manifestVersion: '1.0',
+    id: 'acme-parks',
+    tenant: 'acme-parks',
+    branding: { name: 'Acme Parks & Trails' },
+    map: { center: [-90, 40], zoom: 10 },
+    sources: [
+      { id: 'parks', type: 'vector', role: 'base', label: 'Parks', idField: 'park_id', default: true,
+        popup: { sections: ['Park', 'Amenities'] } },
+      { id: 'trails', type: 'vector', role: 'overlay', label: 'Trails', geomType: 'line' },
+    ],
+    capabilities: {
+      search: { ai: 'no-ai', disclosure: 'basic' },
+      layers: { ai: 'no-ai', disclosure: 'basic' },
+      explainer: { ai: 'ai-optional', disclosure: 'basic' },
+    },
+  };
+  const res = loadManifest(synthetic);
+  assert.deepEqual(res.errors, [], (res.errors || []).join('; '));
+  assert.equal(res.ok, true);
+  const m = res.manifest;
+  // Generic tenant handling — no PV/ZIP special-case (acme-parks registered ad hoc, as a new
+  // county would be at deploy time).
+  assert.equal(TENANT.canonicalTenant(m), 'acme-parks');
+  TENANT.register('acme-parks', 'ACME');
+  assert.equal(TENANT.dbCounty('acme-parks'), 'ACME');
+  // Capabilities resolve generically through the same feature-flag engine the viewer uses.
+  const FF = require('../feature-flags.js');
+  const resolved = FF.resolveCapabilities(m, { search: false });   // a flag turns one off
+  assert.ok(resolved.layers && resolved.explainer, 'untouched caps survive');
+  assert.ok(!resolved.search, 'a flag gates a capability off — generically');
+  // The source registry treats a non-parcel base source like any other.
+  const base = m.sources.find((s) => s.role === 'base');
+  assert.equal(base.id, 'parks');
+  assert.deepEqual(base.popup.sections, ['Park', 'Amenities']);
+});
+
 test('theme registry (index.json) is consistent with the theme files', () => {
   const reg = JSON.parse(fs.readFileSync(path.join(THEMES_DIR, 'index.json'), 'utf8'));
   assert.ok(Array.isArray(reg.themes) && reg.themes.length >= 1, 'registry must list themes');
