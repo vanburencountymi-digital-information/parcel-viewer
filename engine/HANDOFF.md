@@ -49,11 +49,14 @@ Harness **230→237 green**. Live-verified (answer cited 211.27a/211.34/211.7cc 
    aggregators composition/value-stats/value-change/ownership/area-distribution, source-agnostic
    (config-driven fields, in the §4.1 guard), registered ai-optional w/ narrate seam. Harness
    237→251. **Next:** backend cohort-selection endpoint (buffer/adjacency/named-geo → feature set
-   via PostGIS, on the `api` built image) ✅ `POST /cohort` (explicit+buffer); **Compare preset
-   (DIC-589) ✅ DONE** (`pv-compare.js` tray + diff table, live-verified). **NEXT: Neighborhood/Area
-   Profile flagship (DIC-588)** — buffer/named-geography cohort → composition/value/ownership
-   dashboard + AI character read. Plus 2 follow-ups: Map Buddy `compare_parcels` tool, ownership
-   `(unknown)` filter. Plan: `[[project_isv_analysis_capability]]`,
+   via PostGIS) ✅ `POST /cohort` (explicit ids+pins, buffer); **Compare preset (DIC-589) ✅ DONE**
+   (`pv-compare.js` tray + diff table + Map Buddy `compare_parcels` tool, live-verified);
+   **Neighborhood/Area Profile (DIC-588) ✅ DONE** (`pv-profile.js` dashboard: composition/value/
+   value-change/ownership/area-dist + radius selector, live-verified 387-parcel ¼-mi cohort);
+   ownership `(unknown)` filter ✅ DONE. **NEXT (additive, deferred):** AI **character narrative**
+   over profile facts (needs a map-buddy cohort-narrate endpoint + `fetchCohortNarration`
+   transport — the core's narrate seam is registered ai-optional); **named-geography / drawn-polygon**
+   cohort selectors (`/cohort` does explicit+buffer today). Plan: `[[project_isv_analysis_capability]]`,
    Linear DIC-587/588/589 + DIC-536 catalog. Data: composition+assessment-values+YoY+ownership now;
    market/sales comps gated (DIC-545/352).
 
