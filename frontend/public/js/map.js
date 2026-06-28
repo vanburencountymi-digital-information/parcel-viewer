@@ -1953,6 +1953,10 @@
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>` +
           `<span>Compare Parcels</span>` +
         `</button>` +
+        `<button class="pv-ptool" data-ptool="profile" data-pin="${pin}">` +
+          `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="21"/></svg>` +
+          `<span>Neighborhood Profile</span>` +
+        `</button>` +
       `</div>`;
 
     if (!infoPanelCollapsed) {

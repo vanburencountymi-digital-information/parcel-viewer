@@ -259,14 +259,21 @@
     switch (tool) {
       case "packet":     return openPacket();
       case "compare":    return openCompare();
+      case "profile":    return openProfile();
       case "streetview": return openStreetView();
     }
+  }
+
+  // Neighborhood / Area Profile (DIC-588): the cohort-analyze profile preset (pv-profile.js).
+  function openProfile() {
+    if (window.PV_PROFILE && window.PV_PROFILE.open) { window.PV_PROFILE.open(); return; }
+    openModal("Neighborhood Profile", placeholderTag("Profile is unavailable right now."));
   }
 
   // Programmatic access to the viewer's tools/windows (used by MapBuddy AI and
   // any other caller). Names match the data-ptool / data-info / menu ids. Each
   // opener handles the "select a parcel first" case on its own.
-  var _PARCEL_TOOLS = { packet: 1, compare: 1, streetview: 1 };
+  var _PARCEL_TOOLS = { packet: 1, compare: 1, profile: 1, streetview: 1 };
   var _INFO_WINDOWS = { tax: 1, assess: 1 };
   var _MENU_TOOLS = { print: 1, share: 1, bookmark: 1, "data-request": 1,
     "report-error": 1, help: 1, "whats-new": 1, about: 1, settings: 1 };
