@@ -252,6 +252,56 @@ html[data-theme="dark"].pv-a11y-solid .maplibregl-popup-content { background: #1
 .pv-ai-pill-x:hover { background: rgba(255,255,255,0.38); }
 @media (max-width: 640px) { .pv-ai-pill { left: 12px; right: 12px; max-width: none; } }
 
+/* Compare preset (DIC-589): tray to build the 2–5 parcel set + side-by-side diff table. */
+.pv-compare-tray {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 9000;
+  display: flex; align-items: center; gap: 8px; max-width: 92vw; flex-wrap: wrap;
+  background: var(--panel-bg, #fff); color: var(--text, #1f2937);
+  border: 1px solid var(--ui-border, rgba(0,0,0,0.12)); border-radius: 10px;
+  padding: 8px 10px; box-shadow: 0 8px 28px rgba(0,0,0,0.22);
+}
+.pv-compare-tray-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted, #8a7a60); }
+.pv-compare-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.pv-compare-chip {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600;
+  background: var(--ui-interactive-bg, rgba(181,141,74,0.12)); color: var(--ui-interactive-dk, #8a6a2f);
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.3)); border-radius: 999px; padding: 2px 4px 2px 9px;
+}
+.pv-compare-chip-x, .pv-cmp-colx {
+  border: none; background: rgba(0,0,0,0.12); color: inherit; cursor: pointer;
+  width: 16px; height: 16px; border-radius: 50%; font-size: 12px; line-height: 1; padding: 0;
+}
+.pv-compare-chip-x:hover, .pv-cmp-colx:hover { background: rgba(0,0,0,0.24); }
+.pv-compare-go {
+  border: none; border-radius: 8px; cursor: pointer; font-size: 12.5px; font-weight: 700; padding: 6px 12px;
+  background: var(--ui-accent, #b58d4a); color: #fff;
+}
+.pv-compare-go:disabled { opacity: 0.5; cursor: default; }
+.pv-compare-clear { border: none; background: none; color: var(--text-muted, #8a7a60); cursor: pointer; font-size: 12px; text-decoration: underline; }
+
+.pv-compare-overlay {
+  position: fixed; inset: 0; z-index: 11000; background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.pv-compare-overlay[hidden] { display: none; }
+.pv-compare-modal {
+  background: var(--panel-bg, #fff); color: var(--text, #1f2937); border-radius: 12px;
+  max-width: min(900px, 94vw); max-height: 86vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.pv-compare-modal-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--ui-border, rgba(0,0,0,0.1)); position: sticky; top: 0; background: inherit; }
+.pv-compare-modal-title { margin: 0; font-size: 15px; }
+.pv-compare-modal-x { border: none; background: none; cursor: pointer; font-size: 20px; line-height: 1; color: var(--text-muted, #777); }
+.pv-compare-modal-body { padding: 12px 16px 16px; }
+.pv-compare-table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+.pv-compare-table th, .pv-compare-table td { padding: 7px 10px; text-align: left; border-bottom: 1px solid var(--ui-border, rgba(0,0,0,0.08)); vertical-align: top; }
+.pv-compare-table thead th { font-size: 12px; color: var(--ui-accent, #8a6a2f); white-space: nowrap; }
+.pv-compare-table th[scope="row"], .pv-cmp-fieldhead { font-weight: 600; color: var(--text-muted, #6b6357); white-space: nowrap; }
+.pv-cmp-differs { background: var(--ui-accent-soft, rgba(255,214,102,0.16)); }
+.pv-cmp-differs th[scope="row"] { color: var(--text, #1f2937); }
+.pv-cmp-diffdot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ui-accent, #b58d4a); vertical-align: middle; }
+.pv-compare-note { margin: 10px 2px 0; font-size: 11px; color: var(--text-muted, #8a7a60); font-style: italic; }
+[data-theme="dark"] .pv-compare-chip-x, [data-theme="dark"] .pv-cmp-colx { background: rgba(255,255,255,0.18); }
+
 /* Reduce motion */
 html.pv-a11y-motion *, html.pv-a11y-motion *::before, html.pv-a11y-motion *::after {
   transition: none !important; animation: none !important; scroll-behavior: auto !important; }

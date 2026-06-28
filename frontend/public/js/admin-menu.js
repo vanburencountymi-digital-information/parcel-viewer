@@ -1083,11 +1083,14 @@
       })();
     }, { wide: true, flush: true });
   }
+  // Compare (DIC-589) is now the cohort-analyze 'compare' preset (pv-compare.js): the
+  // parcel-action button ADDS the current parcel to the compare tray; the tray's button
+  // renders the side-by-side table. Delegate; fall back to a hint if the module is absent.
   function openCompare() {
+    if (window.PV_COMPARE && window.PV_COMPARE.addCurrent) { window.PV_COMPARE.addCurrent(); return; }
     openModal("Compare Parcels", [
       '<p class="pv-modal-lead">Side-by-side comparison of 2–5 parcels.</p>',
-      '<p>Compare assessment, size, zoning, and environmental attributes — useful for appeals, neighbor comparisons, and due diligence.</p>',
-      placeholderTag("Coming soon.")
+      placeholderTag("Compare is unavailable right now.")
     ].join(""));
   }
   function openStreetView() {

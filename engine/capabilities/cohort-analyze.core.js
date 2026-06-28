@@ -167,6 +167,24 @@
     return { edges: edges, buckets: buckets };
   }
 
+  // compare: transpose the cohort into a (field × feature) table with per-row diff marking
+  // — the explicit-cohort "identity + diff" preset (DIC-589). compareFields = [{key,label}];
+  // columnLabel names the property used as each column header (e.g. the id field).
+  function compare(features, fields) {
+    var cfs = fields.compareFields || [];
+    var columns = (features || []).map(function (f) {
+      var p = (f && f.properties) || {};
+      return { id: f && f.id != null ? f.id : null, label: fields.columnLabel ? p[fields.columnLabel] : (f && f.id) };
+    });
+    var rows = cfs.map(function (cf) {
+      var values = props(features).map(function (p) { var v = p[cf.key]; return v === undefined ? null : v; });
+      var seen = {}, distinct = 0;
+      values.forEach(function (v) { var k = v == null ? ' ' : String(v); if (!seen[k]) { seen[k] = 1; distinct++; } });
+      return { field: cf.key, label: cf.label || cf.key, values: values, differs: distinct > 1 };
+    });
+    return { columns: columns, rows: rows };
+  }
+
   // Which aggregators the configured fields can actually support.
   function supported(fields) {
     var s = [];
@@ -175,6 +193,7 @@
     if ((fields.values || []).some(function (v) { return v.prev; })) s.push('value-change');
     if (fields.owner) s.push('ownership');
     if (fields.area) s.push('area-distribution');
+    if ((fields.compareFields || []).length) s.push('compare');
     return s;
   }
 
@@ -202,6 +221,7 @@
     if (want.indexOf('value-change') >= 0) facts.valueChange = valueChange(features, fields);
     if (want.indexOf('ownership') >= 0) facts.ownership = ownership(features, fields);
     if (want.indexOf('area-distribution') >= 0) facts.areaDistribution = areaDistribution(features, fields, input.areaEdges);
+    if (want.indexOf('compare') >= 0) facts.compare = compare(features, fields);
 
     return { facts: facts, provenance: provenance(input, features.length) };
   }
@@ -224,6 +244,6 @@
     // exported helpers (unit-tested directly)
     stats: stats, composition: composition, valueStats: valueStats,
     valueChange: valueChange, ownership: ownership, areaDistribution: areaDistribution,
-    supported: supported,
+    compare: compare, supported: supported,
   };
 }));

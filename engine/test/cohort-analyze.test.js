@@ -98,6 +98,31 @@ test('area-distribution: histogram over configurable edges', () => {
   assert.equal(d.buckets[4].label, '≥ 40');
 });
 
+test('compare: transposes the cohort into a field×feature table, marks rows that differ', () => {
+  const fields = { columnLabel: 'prop_class', compareFields: [
+    { key: 'prop_class', label: 'Class' },
+    { key: 'gis_acres', label: 'Acres' },
+    { key: 'owner_name', label: 'Owner' },
+  ] };
+  // Compare just features #1 and #2 (both Smith, both 401, different acreage).
+  const c = CORE.compare(FEATURES.slice(0, 2), fields);
+  assert.deepEqual(c.columns.map((col) => ({ id: col.id, label: col.label })),
+    [{ id: 1, label: '401' }, { id: 2, label: '401' }]);
+  const byField = Object.fromEntries(c.rows.map((r) => [r.field, r]));
+  assert.deepEqual(byField.prop_class.values, ['401', '401']);
+  assert.equal(byField.prop_class.differs, false);   // same class
+  assert.deepEqual(byField.gis_acres.values, [2, 4]);
+  assert.equal(byField.gis_acres.differs, true);      // different acreage
+  assert.equal(byField.owner_name.differs, false);    // both Smith
+});
+
+test('compare: a null vs a present value counts as differing', () => {
+  const feats = [{ id: 1, properties: { x: 5 } }, { id: 2, properties: {} }];
+  const c = CORE.compare(feats, { compareFields: [{ key: 'x', label: 'X' }] });
+  assert.deepEqual(c.rows[0].values, [5, null]);
+  assert.equal(c.rows[0].differs, true);
+});
+
 test('supported(): only aggregators the configured fields can back', () => {
   assert.deepEqual(CORE.supported(FIELDS).sort(),
     ['area-distribution', 'composition', 'ownership', 'value-change', 'value-stats']);
