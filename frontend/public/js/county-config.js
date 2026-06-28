@@ -127,7 +127,7 @@ window.COUNTY = {
     hillshade: { defaultOn: false },
     labels: {
       defaultField: "owner",
-      fields: ["owner", "pin", "address", "acres", "av", "tv", "class"],
+      fields: ["owner", "pin", "address", "acres", "av", "tv", "tmv", "class"],
       defaultSize: "medium",
       sizes: ["small", "medium", "large"],
       zoom: { largeParcels: 13, smallParcels: 14 },

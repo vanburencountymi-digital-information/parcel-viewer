@@ -880,10 +880,14 @@
 
   function _fmtField(p, field) {
     var acres = p.gis_acres != null ? parseFloat(p.gis_acres) : null;
-    var av    = p.assessed_value_2026 != null ? parseInt(p.assessed_value_2026) : null;
-    var sev   = p.sev_2026            != null ? parseInt(p.sev_2026)            : null;
-    var tv    = p.taxable_value_2026  != null ? parseInt(p.taxable_value_2026)  : null;
-    var tmv   = av != null ? av * 2 : null;
+    // The viewport parcel index (/parcels?bbox) returns assessed_value / taxable_value
+    // (see _FEATURE_PROPS_SQL). Read those; keep the year-suffixed names as a fallback so a
+    // future schema that ships them still works. (AV/TV were blank before — wrong keys.)
+    var num = function (v) { return v != null && v !== '' && !isNaN(v) ? parseInt(v, 10) : null; };
+    var av    = num(p.assessed_value != null ? p.assessed_value : p.assessed_value_2026);
+    var sev   = num(p.sev            != null ? p.sev            : p.sev_2026);
+    var tv    = num(p.taxable_value  != null ? p.taxable_value  : p.taxable_value_2026);
+    var tmv   = av != null ? av * 2 : null;   // estimated market value (≈ 2× AV; matches the popup's TCV)
     var cur   = function (v) { return v != null ? '$' + v.toLocaleString() : ''; };
     switch (field) {
       case 'pin':      return String(p.pin || p.PIN || '');
