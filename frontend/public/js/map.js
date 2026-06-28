@@ -2504,18 +2504,32 @@
     // ── Capability gating (Phase 2): hide a tool tab+pane entirely when its capability
     //    is gated off via the manifest/feature-flags. Distinct from the advanced-tools
     //    disclosure below (which only collapses them). Default-on: PV_CAPS absent → no gating. ──
-    (function () {
+    // Re-applied on DOMContentLoaded as well as now: the engine feature-flags module (and
+    // localStorage flag overrides) may load AFTER this bootstrap runs at parse time, so a
+    // parse-time-only pass would miss flag-driven gating (same reason pv-capabilities defers
+    // its DOM gates). Idempotent — hiding twice is harmless.
+    function applyCapabilityTabGates() {
       if (!window.PV_CAPS) return;
-      const TAB_CAP = { draw: "drawing", measure: "measure" };
+      const TAB_CAP = { layers: "layers", draw: "drawing", measure: "measure" };
+      let activeGated = false;
       Object.keys(TAB_CAP).forEach(function (tabId) {
         if (window.PV_CAPS.isEnabled(TAB_CAP[tabId])) return;
         const t = panel.querySelector('.mcp-tab[data-tab="' + tabId + '"]');
         const p = document.getElementById("mcp-pane-" + tabId);
         if (t) t.style.display = "none";
         if (p) p.hidden = true;
-        if (window.PS_MAP_PANEL && window.PS_MAP_PANEL._activeTab === tabId) switchTab("layers");
+        if (window.PS_MAP_PANEL && window.PS_MAP_PANEL._activeTab === tabId) activeGated = true;
       });
-    })();
+      // If the active tab got gated off (incl. the default 'layers'), fall back to the first
+      // tab still visible — never leave the panel on a hidden tab.
+      if (activeGated) {
+        const first = [].slice.call(panel.querySelectorAll(".mcp-tab"))
+          .filter(function (t) { return t.style.display !== "none"; })[0];
+        if (first) switchTab(first.dataset.tab);
+      }
+    }
+    applyCapabilityTabGates();
+    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", applyCapabilityTabGates);
 
     // ── Progressive disclosure: basic default + Advanced Tools (DIC-402) ──
     // Layers is basic; Select/Draw/Measure are advanced (marked data-advanced,

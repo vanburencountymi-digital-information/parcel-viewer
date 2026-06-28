@@ -78,6 +78,9 @@
     { cap: 'print',    sel: '.pv-admin-item[data-tool="print"]' },
     { cap: 'share',    sel: '.pv-admin-item[data-tool="share"]' },
     { cap: 'mapBuddy', sel: '#pv-mtab-buddy' },
+    // Phase 2 Slice B — basic surfaces. search = the top-bar parcel search (desktop input +
+    // mobile button). A theme can ship a minimal viewer without it (default-on otherwise).
+    { cap: 'search',   sel: '#parcel-search, #pv-search-btn' },
   ];
 
   function applyDomGates() {
