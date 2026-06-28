@@ -25,17 +25,21 @@ jobs:
   harness:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # Action majors pinned to their Node24-native releases — the older v4/v5 runtimes
+      # target the deprecated Node 20 and get force-migrated to Node 24 by the runner,
+      # which has been destabilizing this job (see commit 982266d). Node/Python test
+      # toolchains bumped to current LTS (tests verified green on Node 20/22/24).
+      - uses: actions/checkout@v5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: JS — capability cores + contract + facts-parity + schema (node --test)
         working-directory: engine
