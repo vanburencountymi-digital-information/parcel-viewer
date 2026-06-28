@@ -131,7 +131,9 @@
       stat('distinct owners', (o.distinctOwners != null ? o.distinctOwners : '—')) +
       stat('top owner share', (top.share != null ? Math.round(top.share * 100) + '%' : '—')) +
       stat('owners w/ 2+', (o.multiFeatureOwners != null ? o.multiFeatureOwners : '—')) +
-      stat('concentration', (o.concentrationHHI != null ? o.concentrationHHI.toFixed(2) : '—')) + '</div>');
+      stat('concentration', (o.concentrationHHI != null ? o.concentrationHHI.toFixed(2) : '—')) +
+      (o.unknownCount ? stat('unmatched', o.unknownCount) : '') + '</div>' +
+      (o.unknownCount ? '<p class="pv-prof-subnote">Shares are over the ' + ((o.total || 0) - o.unknownCount) + ' parcels with a named owner; ' + o.unknownCount + ' have no owner on record.</p>' : ''));
   }
 
   function sizeCard(f) {

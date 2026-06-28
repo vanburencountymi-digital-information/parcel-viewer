@@ -90,6 +90,22 @@ test('ownership: distinct owners, top owner, multi-feature owners, HHI concentra
   assert.equal(o.concentrationHHI, 0.375);           // 0.5^2 + 0.25^2 + 0.25^2
 });
 
+test('ownership: blank/unmatched owners are separated; concentration is over KNOWN owners', () => {
+  const feats = [
+    { id: 1, properties: { owner_name: 'Smith' } },
+    { id: 2, properties: { owner_name: 'Smith' } },
+    { id: 3, properties: { owner_name: '' } },     // blank
+    { id: 4, properties: { owner_name: null } },    // missing
+  ];
+  const o = CORE.ownership(feats, { owner: 'owner_name' });
+  assert.equal(o.total, 4);
+  assert.equal(o.unknownCount, 2);
+  assert.equal(o.distinctOwners, 1);          // only Smith counts as an owner
+  assert.equal(o.topOwner.owner, 'Smith');
+  assert.equal(o.topOwner.share, 1);          // 2/2 KNOWN, not 2/4 total
+  assert.equal(o.concentrationHHI, 1);        // a single known owner
+});
+
 test('area-distribution: histogram over configurable edges', () => {
   const d = CORE.areaDistribution(FEATURES, FIELDS);
   const counts = d.buckets.map((b) => b.count);

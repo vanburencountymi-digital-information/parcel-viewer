@@ -129,23 +129,30 @@
     return out;
   }
 
-  // ownership: identity concentration over the owner field (assemblage / consolidation signal).
+  // ownership: identity concentration over the owner field (assemblage / consolidation
+  // signal). Blank/unmatched owners are SEPARATED into unknownCount (not a real owner), so
+  // they can't masquerade as a single dominant holder — concentration is over KNOWN owners.
   function ownership(features, fields) {
-    var byOwner = {}, total = (features || []).length;
+    var total = (features || []).length;
+    var byOwner = {}, unknown = 0;
     col(features, fields.owner).forEach(function (raw) {
-      var k = (raw == null || raw === '') ? '(unknown)' : String(raw).trim();
+      var k = (raw == null || String(raw).trim() === '') ? null : String(raw).trim();
+      if (k == null) { unknown++; return; }
       byOwner[k] = (byOwner[k] || 0) + 1;
     });
+    var knownTotal = total - unknown;
     var owners = Object.keys(byOwner).map(function (k) {
-      return { owner: k, count: byOwner[k], share: share(byOwner[k], total) };
+      return { owner: k, count: byOwner[k], share: share(byOwner[k], knownTotal) };
     }).sort(function (a, b) { return b.count - a.count; });
     var hhi = 0;
     owners.forEach(function (o) { hhi += o.share * o.share; });
     return {
-      distinctOwners: owners.length,
-      topOwner: owners[0] || null,
+      total: total,
+      unknownCount: unknown,                                    // blank / unmatched owner field
+      distinctOwners: owners.length,                            // distinct KNOWN owners
+      topOwner: owners[0] || null,                              // share over the KNOWN total
       multiFeatureOwners: owners.filter(function (o) { return o.count > 1; }).length,
-      concentrationHHI: round(hhi, 4),   // 1 = one owner holds all; ~0 = highly fragmented
+      concentrationHHI: owners.length ? round(hhi, 4) : 0,      // 1 = one owner holds all known
     };
   }
 

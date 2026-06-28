@@ -336,6 +336,7 @@ html[data-theme="dark"].pv-a11y-solid .maplibregl-popup-content { background: #1
 .pv-prof-bar-track { background: var(--ui-border, rgba(0,0,0,0.08)); border-radius: 999px; height: 8px; overflow: hidden; }
 .pv-prof-bar-fill { display: block; height: 100%; background: var(--ui-accent, #b58d4a); border-radius: 999px; }
 .pv-prof-bar-n { font-variant-numeric: tabular-nums; color: var(--text-muted, #6b6357); white-space: nowrap; }
+.pv-prof-subnote { margin: 8px 0 0; font-size: 10.5px; color: var(--text-muted, #8a7a60); }
 [data-theme="dark"] .pv-prof-card { background: rgba(255,255,255,0.03); }
 @media (max-width: 640px) { .pv-profile-body { grid-template-columns: 1fr; } .pv-profile-head { flex-direction: column; } }
 
