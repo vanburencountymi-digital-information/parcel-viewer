@@ -49,8 +49,11 @@ Harness **230→237 green**. Live-verified (answer cited 211.27a/211.34/211.7cc 
    aggregators composition/value-stats/value-change/ownership/area-distribution, source-agnostic
    (config-driven fields, in the §4.1 guard), registered ai-optional w/ narrate seam. Harness
    237→251. **Next:** backend cohort-selection endpoint (buffer/adjacency/named-geo → feature set
-   via PostGIS, on the `api` built image), then the **Compare preset** (DIC-589, smallest) and the
-   **Neighborhood/Area Profile** flagship (DIC-588). Plan: `[[project_isv_analysis_capability]]`,
+   via PostGIS, on the `api` built image) ✅ `POST /cohort` (explicit+buffer); **Compare preset
+   (DIC-589) ✅ DONE** (`pv-compare.js` tray + diff table, live-verified). **NEXT: Neighborhood/Area
+   Profile flagship (DIC-588)** — buffer/named-geography cohort → composition/value/ownership
+   dashboard + AI character read. Plus 2 follow-ups: Map Buddy `compare_parcels` tool, ownership
+   `(unknown)` filter. Plan: `[[project_isv_analysis_capability]]`,
    Linear DIC-587/588/589 + DIC-536 catalog. Data: composition+assessment-values+YoY+ownership now;
    market/sales comps gated (DIC-545/352).
 
