@@ -44,6 +44,16 @@ Harness **230→237 green**. Live-verified (answer cited 211.27a/211.34/211.7cc 
 1. ~~**KB-backed citation resolver**~~ — ✅ DONE (`7e92a34`).
 2. ~~**More citation emitters (Map Buddy → Sources)**~~ — ✅ DONE (`32dd5c8`).
 3. **A new capability** — keep validating "build-forward" mode on PV (now the top pick).
+   **▶ IN PROGRESS — `cohort-analyze` (analysis suite, DIC-587):** increment 1 (deterministic
+   capability core) landed (commit `397285a`): `engine/capabilities/cohort-analyze.core.js`,
+   aggregators composition/value-stats/value-change/ownership/area-distribution, source-agnostic
+   (config-driven fields, in the §4.1 guard), registered ai-optional w/ narrate seam. Harness
+   237→251. **Next:** backend cohort-selection endpoint (buffer/adjacency/named-geo → feature set
+   via PostGIS, on the `api` built image), then the **Compare preset** (DIC-589, smallest) and the
+   **Neighborhood/Area Profile** flagship (DIC-588). Plan: `[[project_isv_analysis_capability]]`,
+   Linear DIC-587/588/589 + DIC-536 catalog. Data: composition+assessment-values+YoY+ownership now;
+   market/sales comps gated (DIC-545/352).
+
    **`view-describe` (vision) is planned** — see `DECISIONS.md` D8–D12 + Linear DIC-555 (refined
    plan): a G1 capability (`core()`=deterministic identify, `narrate()`=vision over an on-demand
    offscreen capture), Map Buddy tool + ADA "Describe this view" mounts, both AI-optional. ⚠ Two
