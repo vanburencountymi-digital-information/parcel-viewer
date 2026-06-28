@@ -8,12 +8,14 @@ on:
   push:
     paths:
       - 'engine/**'
+      - '!engine/**/*.md'
       - 'frontend/public/js/pv-explain.js'
       - 'map-buddy/backend/agent.py'
       - '.github/workflows/isv-harness.yml'
   pull_request:
     paths:
       - 'engine/**'
+      - '!engine/**/*.md'
       - 'frontend/public/js/pv-explain.js'
       - 'map-buddy/backend/agent.py'
       - '.github/workflows/isv-harness.yml'
@@ -23,15 +25,16 @@ jobs:
   harness:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '20'
+          package-manager-cache: false
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -41,4 +44,6 @@ jobs:
 
       - name: Python — run_explain structured-output contract (stdlib unittest, no SDK)
         working-directory: engine
-        run: python -m unittest test.run_explain_contract_test -v
+        run: |
+          python -VV
+          python -m unittest test.run_explain_contract_test -v
