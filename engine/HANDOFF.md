@@ -14,12 +14,19 @@ plugs into (contract, manifest, capability-gating, source abstraction, injected 
 AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
 (~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
 
-**▶ CURRENT STATE: parcel-viewer `main` @ `b8ba286` — 7 cohort commits ahead of origin,
-NOT yet pushed (`821a25a`,`9c0ff60`,`48297e3`,`83e8bf0`,`f55b8ac`,`2f0e26f`,`b8ba286`). Harness
-281 green (174 Node + 107 Python, `bash engine/run-harness.sh`).** ZIP/zip-poc +
-county-data-services clean/in sync (ZIP's `init-db/02-seed.sh` + `files.zip` are pre-existing
-not-ours files — leave them). ⚠ The PV `api` image was rebuilt this session (new `/cohort/*`
-routes) — already up.
+**▶ CURRENT STATE: parcel-viewer `main` @ `07ed5c0` — 9 cohort commits ahead of origin,
+NOT yet pushed (`821a25a`→`07ed5c0`). Harness 283 green (176 Node + 107 Python,
+`bash engine/run-harness.sh`).** ZIP/zip-poc + county-data-services clean/in sync (ZIP's
+`init-db/02-seed.sh` + `files.zip` are pre-existing not-ours files — leave them). ⚠ The PV `api`
+image was rebuilt this session (new `/cohort/*` routes + `/cohort` `center`) — already up.
+
+**Environmental profile (DIC-588, `59832f4`+`07ed5c0`):** clip-ready `environmental` aggregator
+in `cohort-analyze.core.js` (dormant until per-feature env fields exist) + a Profile env card that
+shows a coarse **center-point read** today (flood/wetland/soil sampled at `/cohort` `selector.center`
+via `/wms-proxy`) and auto-switches to area-wide % when the core emits `environmental`. Env is
+**WMS-only now**; when wetlands become a county PostGIS overlay, clip per-feature acreage into the
+`/cohort` features + uncomment `PROFILE_FIELDS.environmental` → accurate area clips, no rework. See
+[[project_parcel_env_clip_roadmap]].
 
 **Landed 2026-06-28 (cohort AI narrative + selectors + size control + Map Buddy tool — DIC-588):**
 - **AI character narrative** (`821a25a`,`9c0ff60`,`48297e3`): map-buddy `POST /describe-cohort`
