@@ -8,9 +8,16 @@ the engine contract is `engine/README.md`; the **keystone acid-test / definition
 
 **Honest framing (2026-06-28):** the *capability layer* is genuinely engine-owned + source-agnostic
 (themed by config) — DONE. The *viewer-shell layer* still reads a manifest but is PV's frontend, not
-the engine rendering a theme — the vision is proven at Tier 0–1 (incl. AC4: an arbitrary 3rd theme is
-accepted generically), NOT at Tier 2+ (a 2nd theme rendering through the same bundle), which is gated
-on parcel-studio + ZIP being runnable + Lockport data. See the acid-test doc.
+the engine rendering a theme — the vision is proven at Tier 0–1, NOT at Tier 2+ (a 2nd theme
+rendering through the same bundle), which is gated on parcel-studio + ZIP being runnable + Lockport
+data. See the acid-test doc.
+
+**AC7 DONE (`5c437a0`): the manifest now drives the viewer's CONFIG too.** `pv-app-context.js`
+`ctx.config` is a view = COUNTY base + the manifest's passthrough blocks (labels/styling/parcelNumber/
+forms/endpoints/integrations/access/state); deep-equals COUNTY for VBC (zero change), a different
+theme's blocks drive config. **Tier 1 essentially closed** (AC1–AC7 green). The only remaining
+in-repo keystone item is **DIC-407** (A5 rich-popup render path → manifest); the rest (AC8 A3 globals,
+AC9/AC10 2nd theme renders) are externally gated.
 
 ## ⭐ START HERE (next session — 2026-06-29)
 

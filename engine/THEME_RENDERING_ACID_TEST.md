@@ -54,10 +54,11 @@ The engine must accept a theme it has never seen without special-casing.
 - [x] A **synthetic third theme** (neither PV nor ZIP) round-trips `loadManifest`, canonicalizes its
       tenant, and resolves capabilities generically — see `themes.test.js`
       ("engine accepts an arbitrary third theme"). Proves it's not two hardcoded cases.
-- [ ] The live shell reads **all** theme-varying config from the manifest, not `window.COUNTY`
-      (ctx.config resolves from the manifest; strangler invariant `ctx.X === window.X` holds).
-      *Remaining: the COUNTY-superset passthrough blocks (labels/styling/forms/…) still read from
-      COUNTY at runtime; vanburen boots only because theme == COUNTY.*
+- [x] The live shell reads its theme-varying CONFIG from the manifest, not `window.COUNTY`
+      (AC7, `pv-app-context.js`): `ctx.config` is a view = COUNTY base + the manifest's passthrough
+      blocks (labels/styling/parcelNumber/forms/endpoints/integrations/access/state). Strangler-safe
+      by construction — for VBC the view deep-equals COUNTY (zero change); a different theme's blocks
+      drive config (live-verified: a changed label flows through ctx.config, COUNTY untouched).
 - [ ] No parcel-hardcoded render path in the shell (A5 depth: rich popup config is still viewer-owned
       by decision D7; revisit for a non-parcel domain). Ticket: DIC-407.
 - [ ] A3 contract globals (`PS_STATE`/`PS_MAP`/drawing) migrated to injected context; guard forbids
@@ -85,13 +86,15 @@ The engine must accept a theme it has never seen without special-casing.
 | AC4 | Arbitrary (3rd) theme accepted generically | `themes.test.js` (synthetic) | ✅ |
 | AC5 | Viewer boots from a theme FILE | live `?theme=` + `pv-manifest.js` | ✅ |
 | AC6 | Capabilities/surfaces gate from manifest | `pv-capabilities.js` + `feature-flags.test.js` | ✅ |
-| AC7 | Shell config fully manifest-driven (no COUNTY) | *new strangler invariant test* | ⬜ |
+| AC7 | Shell config fully manifest-driven (no COUNTY) | `pv-app-context.js` config view + deep-equal invariant (live) | ✅ |
 | AC8 | A3 contract globals injected, not global | DIC-568 + guard expansion | ⬜ (gated) |
 | AC9 | 2nd theme renders through same bundle (stub) | live boot of lockport via same bundle | ⬜ (gated) |
 | AC10 | 2nd theme renders real data + capabilities | live + db-dice data | ⬜ (gated) |
 
-**The vision is "done" when AC1–AC10 are all ✅ and a synthetic theme passes AC9.** Today: AC1–AC6
-green; AC7 is unblocked engineering; AC8–AC10 are externally gated.
+**The vision is "done" when AC1–AC10 are all ✅ and a synthetic theme passes AC9.** Today: **AC1–AC7
+green** (the manifest now drives capabilities, sources, branding, map, AND config); AC8 (A3 contract
+globals) + AC9–AC10 (a 2nd theme renders) are externally gated. **Tier 1 is essentially closed** —
+the only remaining Tier-1 item is the A5 rich-popup render path (DIC-407), a smaller grind.
 
 ---
 
@@ -122,8 +125,9 @@ When 1–4 are available, the acid test is: register lockport bootable → load 
 
 - Tier 0 (all green) and **AC4** — the synthetic-arbitrary-theme harness check — run in CI with no
   external deps. That converts "the engine isn't hardcoded to PV/ZIP" from a claim into a test.
-- **AC7** (shell config fully manifest-driven) is *unblocked* engineering we can do here: route the
-  COUNTY-superset passthrough reads through the manifest behind the strangler invariant. This is the
-  highest-leverage next keystone step that needs no external repo.
+- **AC7 — DONE** (`5c437a0`): `ctx.config` is a COUNTY-base + manifest-passthrough view; the manifest
+  now drives the viewer's config, deep-equal-safe for VBC. Tier 1 is essentially closed.
+- The remaining in-repo item is **DIC-407** (A5 rich-popup render path → manifest) — a smaller grind,
+  doable here. After that, the next moves (AC8–AC10) wait on the runnable-environment list above.
 
 The rest (AC8–AC10) waits on the runnable-environment list above.
