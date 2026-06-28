@@ -5,7 +5,7 @@ Pick-up doc for the **Intelligent Spatial Viewer** engine work. The authoritativ
 the engine contract is `engine/README.md`. This file is the "where are we / how do I
 continue" summary.
 
-## ⭐ START HERE (next session — 2026-06-28)
+## ⭐ START HERE (next session — 2026-06-29)
 
 **Strategic frame (agreed with the team):** PV & ZIP were POCs; the rebuild's goal is to
 reach the point where we **stop rebuilding and start building new capabilities forward**
@@ -14,66 +14,58 @@ plugs into (contract, manifest, capability-gating, source abstraction, injected 
 AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
 (~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
 
-**Landed this session (all pushed; parcel-viewer `01531cb`, ZIP `d29d16a`):** canonical
-tenant key (`vanburen`→`VBC`); keystone Phases 1–3 + depth (viewer now reads branding/map/
-scheme/capabilities/sources/county-overlays from `PS_MANIFEST`); Phase 4 non-contract
-read-grind (`PV_PREFS`/`PS_PARCEL_INDEX`→ctx); Phase 5 slice 1 (ZIP Lockport theme manifest);
-DIC-575 (all 7 drawing files single-source); **Citation Renderer (DIC-522)** — engine core
-+ in-app synchronized Sources panel, the first capability *built forward* on the new
-architecture. Harness 204→**221 green**.
+**▶ CURRENT STATE: parcel-viewer `main` @ `b9a9b19` — PUSHED & in sync with origin. Harness
+267 green (`bash engine/run-harness.sh`).** ZIP/zip-poc + county-data-services clean/in sync
+(ZIP's `init-db/02-seed.sh` + `files.zip` are the pre-existing not-ours files — leave them).
 
-**Landed 2026-06-27 (commit `7e92a34`):** ✅ **KB-backed citation resolver (DIC-522)** —
-move #1 below is DONE. `pv-citations.js` now resolves citations against the County Knowledge
-Base (A6 KnowledgeStore) → full section text + passage-level highlight + true `resolves`
-state, with the curated statute corpus kept as fallback (no regression). New map-buddy
-`POST /kb/resolve` (jurisdiction-scoped, fail-closed, **no AI-key gate** — citations are
-facts). Vendored `kb_store.py` (+ `FixtureKnowledgeStore`) makes it live-verifiable WITHOUT
-Drake. Harness **221→230 green**. DEFERRED (gated): `dice` live-smoke + ingesting the VBC
-statute corpus into `knowledge.chunks` (today it holds only Lockport zoning). Backend flip
-is `KB_BACKEND=dice` — resolver logic identical.
+**Landed 2026-06-27/28 (all on `main`, pushed):**
+- **Citation Renderer 3-way sync (DIC-522)** — KB-backed resolver (`pv-citations.js` →
+  map-buddy `POST /kb/resolve` over the A6 KnowledgeStore, fixture-backed, no-AI-key gate) +
+  Map Buddy answers emit §6.4 envelopes that cite into the SAME Sources panel. (`7e92a34`,`32dd5c8`)
+- **AI defaults ON + first-run pill (DIC-571 / DECISIONS D13)** — `map.js getAiMode` falls back
+  to `'on'`; dismissible pill points at the sparkle toggle; deployments opt out via
+  `COUNTY.ai.defaultMode='off'`. AI-optional invariants intact. (`302e94e`)
+- **cohort-analyze analysis suite (DIC-587/588/589) — the big one, functionally complete:**
+  capability core (`engine/capabilities/cohort-analyze.core.js`, 6 source-agnostic aggregators
+  — composition/value-stats/value-change/ownership/area-distribution/compare) → backend
+  `POST /cohort` (explicit ids+pins, buffer, in `backend/parcel_viewer/cohort_query.py`) →
+  **Compare** preset (`pv-compare.js` tray + diff table + Map Buddy `compare_parcels` tool) +
+  **Neighborhood/Area Profile** flagship (`pv-profile.js` dashboard + radius selector). All
+  live-verified on real VBC data (e.g. ¼-mi cohort of #45154 = 387 parcels). AI-optional;
+  ownership separates blank/unmatched owners. (`397285a`,`ce0bee7`,`0822d50`,`3468c83`,`e00dcd9`,`9ff63ae`)
 
-**Also landed 2026-06-27 (commit `32dd5c8`):** ✅ **Map Buddy → Sources 3-way sync (DIC-522,
-move #2)** — chat answers now emit §6.4 envelopes (`map-buddy/backend/citations.py`,
-citation-first over the vetted corpus) and render a "Sources" row whose `data-cite-*` buttons
-drive the SAME KB-backed Sources panel (reuses pv-citations' delegated handler — no new bus
-wiring). Chat system prompt now carries the statute reference + a cite-by-MCL instruction.
-Harness **230→237 green**. Live-verified (answer cited 211.27a/211.34/211.7cc → click → panel
-`resolves` + highlight). The Sources panel now serves BOTH the explainer and Map Buddy.
+**Prior context (sessions before 2026-06-27, on `main`):** canonical tenant key, keystone
+Phases 1–5 slice 1 (manifest-driven reads), DIC-575 drawing single-source, the contract +
+stores + Theme Composer + all five hardening gates. See git log + per-DIC Linear comments.
 
-**Best next moves (pick one):**
-1. ~~**KB-backed citation resolver**~~ — ✅ DONE (`7e92a34`).
-2. ~~**More citation emitters (Map Buddy → Sources)**~~ — ✅ DONE (`32dd5c8`).
-3. **A new capability** — keep validating "build-forward" mode on PV (now the top pick).
-   **▶ IN PROGRESS — `cohort-analyze` (analysis suite, DIC-587):** increment 1 (deterministic
-   capability core) landed (commit `397285a`): `engine/capabilities/cohort-analyze.core.js`,
-   aggregators composition/value-stats/value-change/ownership/area-distribution, source-agnostic
-   (config-driven fields, in the §4.1 guard), registered ai-optional w/ narrate seam. Harness
-   237→251. **Next:** backend cohort-selection endpoint (buffer/adjacency/named-geo → feature set
-   via PostGIS) ✅ `POST /cohort` (explicit ids+pins, buffer); **Compare preset (DIC-589) ✅ DONE**
-   (`pv-compare.js` tray + diff table + Map Buddy `compare_parcels` tool, live-verified);
-   **Neighborhood/Area Profile (DIC-588) ✅ DONE** (`pv-profile.js` dashboard: composition/value/
-   value-change/ownership/area-dist + radius selector, live-verified 387-parcel ¼-mi cohort);
-   ownership `(unknown)` filter ✅ DONE. **NEXT (additive, deferred):** AI **character narrative**
-   over profile facts (needs a map-buddy cohort-narrate endpoint + `fetchCohortNarration`
-   transport — the core's narrate seam is registered ai-optional); **named-geography / drawn-polygon**
-   cohort selectors (`/cohort` does explicit+buffer today). Plan: `[[project_isv_analysis_capability]]`,
-   Linear DIC-587/588/589 + DIC-536 catalog. Data: composition+assessment-values+YoY+ownership now;
-   market/sales comps gated (DIC-545/352).
-
-   **`view-describe` (vision) is planned** — see `DECISIONS.md` D8–D12 + Linear DIC-555 (refined
-   plan): a G1 capability (`core()`=deterministic identify, `narrate()`=vision over an on-demand
-   offscreen capture), Map Buddy tool + ADA "Describe this view" mounts, both AI-optional. ⚠ Two
-   things need owner sign-off before coding: **AI-default-ON + first-run pill** (reverses §4 #4 /
-   DIC-571 — see DECISIONS "OPEN"), and confirm build-order. Honesty rule: NO numbers from the
-   vision model (grounding only); §6.4 state `none`; vision = ADA enhancement, never the compliance backbone.
+**Best next moves for tomorrow (pick one — all additive, build-forward):**
+1. **Cohort AI character narrative** (finishes DIC-588) — the only missing piece of the analysis
+   suite: a map-buddy endpoint (e.g. `POST /describe-cohort`) + a `fetchCohortNarration` transport
+   so the Neighborhood Profile gets an AI "what kind of neighborhood is this" read over the
+   deterministic facts. The core's narrate seam is ALREADY registered (`register.js`, ai-optional);
+   honesty rule: narrate facts only, NEVER originate a number (judge-gated, DIC-586). Wire the
+   C3 cache/quota like the other AI routes. Smallest, highest-fit next step.
+2. **More cohort selectors** — `named-geography` (subdivision / PLSS-section / township / school
+   district via Drake's `geo.*` layers) + `drawn-polygon` in `cohort_query.py` + `/cohort` →
+   unlocks profiles over real districts, not just buffers. The pure-builder + harness pattern is
+   already set (`run_cohort_query_test.py`).
+3. **`view-describe` (vision capability, DIC-555)** — now UNBLOCKED (AI-default-ON is resolved): a
+   G1 capability, `core()`=deterministic identify, `narrate()`=vision over an **on-demand offscreen
+   capture**; Map Buddy tool + ADA "Describe this view" mounts. Plan = DECISIONS D8–D12. Confirm
+   build-order (Map Buddy first vs ADA). Honesty: NO numbers from vision; §6.4 `none`; ADA
+   enhancement, never the compliance backbone.
 4. **ZIP-onto-engine** (DIC-523) — boot ZIP's frontend from `engine/themes/lockport-township.json`
    on the shared engine; needs ZIP's stack runnable locally + the DIC-575 *runtime*-share.
-5. **Unblock the KB**: ingest the VBC statute corpus into `knowledge.chunks` + `KB_BACKEND=dice`
-   live-smoke (Drake/dice) — flips both citation features from fixture to the real KB.
+5. **Unblock the KB** (Drake/dice): ingest the VBC statute corpus into `knowledge.chunks` +
+   `KB_BACKEND=dice` smoke → flips BOTH citation features from the local fixture to the real KB.
 
-**Note (pre-existing, not from this work):** in the a11y-proxy preview the demo's `MapBuddy.mount`
-apiBase resolves to a base that 404s/fails; remount with `MapBuddy.mount({apiBase:'/map-buddy-api'})`
-to drive the LOCAL map-buddy when verifying AI chat. Worth checking how `demo/index.html` mounts it.
+**Verify-live gotcha (preview):** the demo's `MapBuddy.mount` apiBase fails in the a11y-proxy
+preview — remount with `MapBuddy.mount({apiBase:'/map-buddy-api'})` + `window.MAP_BUDDY_API=
+'/map-buddy-api'` to drive the LOCAL map-buddy for AI chat. The `api` service is a built image →
+`docker compose -f infra/docker-compose.viewer.yml up -d --build api` after backend edits;
+map-buddy is bind-mounted (`--reload`). Bring map-buddy up WITH the key:
+`docker compose -f infra/docker-compose.viewer.yml --env-file .env up -d map-buddy`. Cache-bust JS
+by in-page `fetch(file,{cache:'reload'})` then reload.
 
 **Don't touch unprompted:** the parcel-studio CONTRACT globals (`PS_MAP`/`PS_STATE`/drawing
 `PS_*`) — that's Drake's project; migrate only in lockstep with it (not runnable here).
