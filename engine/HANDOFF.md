@@ -14,10 +14,19 @@ plugs into (contract, manifest, capability-gating, source abstraction, injected 
 AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
 (~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
 
-**▶ CURRENT STATE: parcel-viewer `main` @ `be414c1` — PUSHED & in sync with origin. Harness
+**▶ CURRENT STATE: parcel-viewer `main` @ `cfee78e` — PUSHED & in sync with origin. Harness
 285 green (178 Node + 107 Python, `bash engine/run-harness.sh`).** The DIC-588 cohort suite is
 done (4 area modes: buffer+custom-distance / named-geography / drawn-polygon; env profile;
 AI narrative). Back on the keystone since.
+
+**Keystone Phase 2B + a fix (2026-06-28, `2731d8c`+`cfee78e`):** capability gating extended
+to basic surfaces — `search` (top-bar) + `layers` (map-panel tab, with first-visible-tab
+fallback when the default tab is gated). Default-on; gates only when a manifest/feature-flag
+turns a cap off (verify: `localStorage 'pv-feature-flags' = {"search":false,"layers":false}`).
+`parcelInfo`/`ledger` deliberately left ungated (core / embedded). ⚠ **Fixed a collision** in
+the just-shipped theme-boot: the manifest theme id now lives in `localStorage 'pv-theme-id'`,
+NOT `'pv-theme'` (that's the dark/light **mode** key, map.js:1059 — it was being mis-read as a
+theme id, forcing the async boot path). `?theme=` URL param still works.
 
 **Keystone advance 2026-06-28 (theme-file boot + chooser — DIC-568/523, `63b80f8`+`be414c1`):**
 The viewer can now BOOT FROM A THEME FILE, not just the COUNTY-assembled manifest.
