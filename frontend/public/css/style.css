@@ -348,6 +348,14 @@ html[data-theme="dark"].pv-a11y-solid .maplibregl-popup-content { background: #1
 .pv-prof-bar-n { font-variant-numeric: tabular-nums; color: var(--text-muted, #6b6357); white-space: nowrap; }
 .pv-prof-subnote { margin: 8px 0 0; font-size: 10.5px; color: var(--text-muted, #8a7a60); }
 [data-theme="dark"] .pv-prof-card { background: rgba(255,255,255,0.03); }
+/* Environmental card (DIC-588): full-width, below the dashboard cards. */
+.pv-prof-env { grid-column: 1 / -1; }
+.pv-prof-env-tag { font-size: 9.5px; font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text-muted, #8a7a60); font-style: italic; margin-left: 4px; }
+.pv-prof-env-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.pv-prof-env-list li { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; }
+.pv-prof-env-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-muted, #8a7a60); min-width: 64px; }
+.pv-prof-env-grp { font-size: 12.5px; margin-bottom: 4px; }
+.pv-prof-env-flag { color: #b91c1c; font-weight: 600; }
 /* AI character read (DIC-588): additive card spanning the top of the dashboard. */
 .pv-prof-ai { grid-column: 1 / -1; border-color: rgba(var(--ui-interactive-rgb, 181,141,74), 0.4); background: rgba(var(--ui-interactive-rgb, 181,141,74), 0.06); }
 .pv-prof-ai-loading { display: flex; align-items: center; gap: 8px; color: var(--text-muted, #8a7a60); font-style: italic; font-size: 12.5px; }

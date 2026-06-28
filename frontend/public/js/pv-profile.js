@@ -68,6 +68,63 @@
     return _geoCache[type];
   }
 
+  // ── Environmental context (center-point read; DIC-588) ──────────────────────
+  // A true area clip (% acreage in wetland/flood) needs the env layers in PostGIS; today
+  // they're WMS-only (FEMA NFHL / USFWS NWI / USDA SSURGO point services). So we sample the
+  // AREA'S CENTER (one read each, via the same /wms-proxy the popup uses) for a coarse,
+  // clearly-labeled read. When wetlands become a county overlay and per-feature acreage is
+  // clipped into the cohort, the deterministic core 'environmental' aggregator takes over
+  // automatically (see envCard's two paths). Cached per rounded center.
+  var _FEMA_NFHL = 'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query';
+  var _NWI = 'https://fwspublicservices.wim.usgs.gov/wetlandsmapservice/rest/services/Wetlands/MapServer/0/query';
+  var _SSURGO = 'https://sdmdataaccess.nrcs.usda.gov/Spatial/SDM.wms';
+  function wmsProxy(url) { return apiBase() + '/wms-proxy?url=' + encodeURIComponent(url); }
+
+  function _restPoint(base, lng, lat) {
+    var url = base + '?geometry=' + lng + '%2C' + lat + '&geometryType=esriGeometryPoint&inSR=4326' +
+      '&spatialRel=esriSpatialRelIntersects&outFields=*&returnGeometry=false&f=json';
+    return fetch(wmsProxy(url)).then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var f = d && d.features && d.features[0]; if (!f) return null;
+        var raw = f.attributes || {}, out = {};
+        Object.keys(raw).forEach(function (k) { out[k.indexOf('.') !== -1 ? k.split('.').pop() : k] = raw[k]; });
+        return out;
+      }).catch(function () { return null; });
+  }
+  function _soilAt(lng, lat) {
+    var R = 6378137.0, mx = lng * Math.PI * R / 180.0;
+    var my = Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360.0)) * R, half = 150.0;
+    var url = _SSURGO + '?SERVICE=WMS&VERSION=1.1.1&REQUEST=GetFeatureInfo&LAYERS=MapunitPolyExtended' +
+      '&QUERY_LAYERS=MapunitPolyExtended&BBOX=' + (mx - half) + ',' + (my - half) + ',' + (mx + half) + ',' + (my + half) +
+      '&WIDTH=256&HEIGHT=256&X=128&Y=128&SRS=EPSG:3857&INFO_FORMAT=text/plain&FEATURE_COUNT=3';
+    return fetch(wmsProxy(url)).then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (t) {
+        var name = null; (t || '').split('\n').forEach(function (ln) {
+          var i = ln.indexOf('='); if (i < 0) return;
+          var k = ln.slice(0, i).trim().toLowerCase(), v = ln.slice(i + 1).trim().replace(/^['"]|['"]$/g, '');
+          if (k === 'muname' && v && !name) name = v;
+        });
+        return name;
+      }).catch(function () { return null; });
+  }
+  var _envCache = {};
+  function envAtPoint(center) {
+    if (!center || center.length < 2) return Promise.resolve(null);
+    var key = center[0].toFixed(4) + ',' + center[1].toFixed(4);
+    if (_envCache[key]) return _envCache[key];
+    var lng = center[0], lat = center[1];
+    _envCache[key] = Promise.all([_restPoint(_FEMA_NFHL, lng, lat), _restPoint(_NWI, lng, lat), _soilAt(lng, lat)])
+      .then(function (r) {
+        var fl = r[0], we = r[1];
+        return {
+          flood: fl ? { zone: fl.FLD_ZONE, sfha: fl.SFHA_TF } : { zone: 'X', none: true },
+          wetlands: we ? { present: true, type: we.WETLAND_TYPE } : { present: false },
+          soil: r[2] || null,
+        };
+      }).catch(function () { return null; });
+    return _envCache[key];
+  }
+
   // The narrate transport (ctx.fetchCohortNarration shape): POST the deterministic facts,
   // get back a character read. Returns null on ANY failure → caller shows no card (§4.5).
   function fetchCohortNarration(facts) {
@@ -97,8 +154,15 @@
       { key: 'assessed_value', prev: 'prev_assessed_value', label: 'Assessed Value' },
       { key: 'taxable_value', prev: 'prev_taxable_value', label: 'Taxable Value' },
     ],
+    // environmental: WIRE THIS when wetlands/flood/soil become a county PostGIS overlay and
+    // per-feature acreage/zone is clipped into the cohort features (then the core's
+    // 'environmental' aggregator renders area-wide % automatically — see envCardDeterministic):
+    //   environmental: { floodZone: 'flood_zone', floodFlag: 'in_sfha',
+    //                    wetlandAcres: 'wetland_acres', soilClass: 'soil_class' }
   };
-  var AGGS = ['composition', 'value-stats', 'value-change', 'ownership', 'area-distribution'];
+  // 'environmental' is requested but gates itself off until PROFILE_FIELDS.environmental exists
+  // (supported() returns it only when env fields are configured) — so it's a no-op today.
+  var AGGS = ['composition', 'value-stats', 'value-change', 'ownership', 'area-distribution', 'environmental'];
 
   var _ctx = { parcelId: null, mode: 'buffer', distanceFt: DEFAULT_FT, geoName: null, geoId: null };
 
@@ -144,6 +208,7 @@
           fields: PROFILE_FIELDS, aggregators: AGGS, source_id: 'assessment-roll',
         });
         renderBody(dashboard(result.facts), data.selector);
+        maybeEnvironmental(result.facts, data.selector);   // area-wide clip if available, else center read
         maybeNarrate(result.facts);   // additive AI character read; degrades to no-op
       })
       .catch(function () { renderBody('<p class="pv-prof-empty">Couldn’t reach the server.</p>'); });
@@ -260,6 +325,81 @@
       '<div class="pv-prof-ai-body">' + paras + caveats + '</div>' +
       '<p class="pv-prof-ai-note">AI summary of the figures below — not an official valuation.</p>' +
       '</section>';
+  }
+
+  // ── Environmental card ──────────────────────────────────────────────────────
+  // Two paths (DIC-588): if the cohort core produced a deterministic `environmental`
+  // aggregate (per-feature clip fields exist → the future county-wetland path), render that
+  // area-wide. Otherwise sample the area's CENTER for a coarse, clearly-labeled read.
+  function maybeEnvironmental(facts, selector) {
+    var body = el('pv-profile-body'); if (!body) return;
+    if (facts.environmental && hasEnv(facts.environmental)) {
+      insertEnvCard(body, envCardDeterministic(facts.environmental));
+      return;
+    }
+    var center = selector && selector.center;
+    if (!center) return;                                   // nothing to sample → no card
+    var token = [_ctx.mode, _ctx.parcelId, _ctx.distanceFt, _ctx.geoId, _ctx.geoName].join(':');
+    _ctx.envToken = token;
+    insertEnvCard(body, envLoadingHtml());
+    envAtPoint(center).then(function (e) {
+      if (_ctx.envToken !== token) return;
+      var slot = el('pv-prof-env'); if (!slot) return;
+      if (e) slot.outerHTML = envCardCenter(e);
+      else if (slot.parentNode) slot.parentNode.removeChild(slot);
+    });
+  }
+  function hasEnv(e) { return !!(e && (e.flood || e.wetland || e.soil)); }
+  function insertEnvCard(body, html) {
+    var note = body.querySelector('.pv-prof-note');
+    if (note) note.insertAdjacentHTML('beforebegin', html); else body.insertAdjacentHTML('beforeend', html);
+  }
+  function envLoadingHtml() {
+    return '<section id="pv-prof-env" class="pv-prof-card pv-prof-env">' +
+      '<h3 class="pv-prof-card-t">Environmental</h3>' +
+      '<p class="pv-prof-empty">Checking flood, wetlands &amp; soil…</p></section>';
+  }
+  function floodText(fl) {
+    if (!fl) return '—';
+    if (fl.sfha === 'T' || fl.sfha === true) return 'Zone ' + esc(fl.zone || 'A') + ' — in the 1% (100-yr) floodplain';
+    return 'Zone ' + esc(fl.zone || 'X') + ' — no special flood hazard';
+  }
+  function envCardCenter(e) {
+    var rows =
+      '<li><span class="pv-prof-env-k">Flood</span><span>' + floodText(e.flood) + '</span></li>' +
+      '<li><span class="pv-prof-env-k">Wetlands</span><span>' +
+        (e.wetlands && e.wetlands.present ? (esc(e.wetlands.type || 'mapped wetland') + ' at center') : 'none mapped at center') + '</span></li>' +
+      '<li><span class="pv-prof-env-k">Soil</span><span>' + (e.soil ? esc(e.soil) : '—') + '</span></li>';
+    return '<section id="pv-prof-env" class="pv-prof-card pv-prof-env">' +
+      '<h3 class="pv-prof-card-t">Environmental <span class="pv-prof-env-tag">sampled at area center</span></h3>' +
+      '<ul class="pv-prof-env-list">' + rows + '</ul>' +
+      '<p class="pv-prof-subnote">Sampled at the area’s center — not a full clip. Area-wide wetland/flood coverage arrives with the county wetland layer; for one parcel use the Environmental tool.</p>' +
+      '</section>';
+  }
+  // Deterministic area-wide env (future, once per-feature clip fields exist).
+  function envCardDeterministic(en) {
+    var parts = [];
+    if (en.flood) {
+      var mix = en.flood.zoneMix || [];
+      var sfha = en.flood.inSfhaShare != null ? Math.round(en.flood.inSfhaShare * 100) + '% in a special flood hazard area' : '';
+      parts.push('<div class="pv-prof-env-grp"><span class="pv-prof-env-k">Flood</span> ' +
+        esc(mix.map(function (z) { return (z.label || z.key) + ' ' + Math.round((z.share || 0) * 100) + '%'; }).slice(0, 3).join(' · ')) +
+        (sfha ? ' <span class="pv-prof-env-flag">' + sfha + '</span>' : '') + '</div>');
+    }
+    if (en.wetland) {
+      var w = en.wetland;
+      parts.push('<div class="pv-prof-env-grp"><span class="pv-prof-env-k">Wetlands</span> ' +
+        (w.wetlandAcreShare != null ? Math.round(w.wetlandAcreShare * 100) + '% of acreage' : '') +
+        (w.withWetlandShare != null ? ' · ' + Math.round(w.withWetlandShare * 100) + '% of parcels touch wetland' : '') + '</div>');
+    }
+    if (en.soil) {
+      var s = (en.soil.soilMix || []).slice(0, 3);
+      parts.push('<div class="pv-prof-env-grp"><span class="pv-prof-env-k">Soil</span> ' +
+        esc(s.map(function (m) { return (m.label || m.key) + ' ' + Math.round((m.share || 0) * 100) + '%'; }).join(' · ')) + '</div>');
+    }
+    return '<section id="pv-prof-env" class="pv-prof-card pv-prof-env">' +
+      '<h3 class="pv-prof-card-t">Environmental</h3>' + parts.join('') +
+      '<p class="pv-prof-subnote">Area-wide coverage from the county environmental layers.</p></section>';
   }
 
   // ── Shell / overlay ─────────────────────────────────────────────────────────

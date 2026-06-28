@@ -217,11 +217,25 @@ async def cohort(body: CohortRequest):
         WHERE pg.archived_at IS NULL AND {pred}
         LIMIT %s
     """
+    # The area's center (bbox centroid of the matched set, in lng/lat) — a cheap anchor the
+    # viewer samples for a coarse center-point environmental read (flood/wetland/soil) while
+    # those layers are WMS-only. A true area clip arrives with the county wetland PostGIS layer.
+    center_sql = f"""
+        SELECT ST_X(c) AS lng, ST_Y(c) AS lat FROM (
+            SELECT ST_Transform(ST_SetSRID(ST_Centroid(ST_Extent(pg.geom)::geometry), 2253), 4326) AS c
+            FROM geo.parcel_geometry pg
+            LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
+            WHERE pg.archived_at IS NULL AND {pred}
+        ) q
+    """
     with pool.connection() as conn:
         rows = conn.execute(sql, params + [limit]).fetchall()
+        crow = conn.execute(center_sql, params).fetchone()
 
     features = [{"id": r["id"], "properties": {k: v for k, v in r.items() if k != "id"}} for r in rows]
     resolved["count"] = len(features)
+    if crow and crow.get("lng") is not None:
+        resolved["center"] = [crow["lng"], crow["lat"]]
     return {"selector": resolved, "features": features}
 
 
