@@ -14,21 +14,33 @@ plugs into (contract, manifest, capability-gating, source abstraction, injected 
 AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
 (~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
 
-**▶ CURRENT STATE: parcel-viewer `main` @ `48297e3` — 3 cohort-narrative commits ahead of origin,
-NOT yet pushed (`821a25a`,`9c0ff60`,`48297e3`). Harness 271 green (174 Node + 97 Python,
-`bash engine/run-harness.sh`).** ZIP/zip-poc + county-data-services clean/in sync
-(ZIP's `init-db/02-seed.sh` + `files.zip` are the pre-existing not-ours files — leave them).
+**▶ CURRENT STATE: parcel-viewer `main` @ `b8ba286` — 7 cohort commits ahead of origin,
+NOT yet pushed (`821a25a`,`9c0ff60`,`48297e3`,`83e8bf0`,`f55b8ac`,`2f0e26f`,`b8ba286`). Harness
+281 green (174 Node + 107 Python, `bash engine/run-harness.sh`).** ZIP/zip-poc +
+county-data-services clean/in sync (ZIP's `init-db/02-seed.sh` + `files.zip` are pre-existing
+not-ours files — leave them). ⚠ The PV `api` image was rebuilt this session (new `/cohort/*`
+routes) — already up.
 
-**Landed 2026-06-28 (cohort AI character narrative — finishes the AI-optional half of DIC-588):**
-map-buddy `POST /describe-cohort` (`agent.py` `run_describe_cohort` forced `report_cohort_character`
-tool, sonnet via `COHORT_NARRATE_MODEL`, "characterize never originate" rule, C3 cache+quota like
-`/judge`) + `fetchCohortNarration` transport & async character card in `pv-profile.js`/`style.css`
-(gated on `PV_AI_MODE`; degrade-to-facts → no card) + a deterministic grounding floor
-(`ai-quality.js` `checkCohortGrounding`/`evaluateCohortNarration` + tests). Live-verified on the
-real #45154 ¼-mi cohort (387 parcels): grounded read, every figure matched the dashboard, AI-off →
-no card. DIC-588 comment posted. **Still open on DIC-588:** v1 environmental-profile section
-(flood/wetland/soil intersect); the Map Buddy "what's this neighborhood like?" tool is a clean
-follow-up over the same endpoint.
+**Landed 2026-06-28 (cohort AI narrative + selectors + size control + Map Buddy tool — DIC-588):**
+- **AI character narrative** (`821a25a`,`9c0ff60`,`48297e3`): map-buddy `POST /describe-cohort`
+  (`run_describe_cohort`, sonnet via `COHORT_NARRATE_MODEL`, "characterize never originate", C3
+  cache+quota) + `fetchCohortNarration` transport & async card in `pv-profile.js`/`style.css`
+  (gated on `PV_AI_MODE`; degrade→no card) + grounding floor (`ai-quality.js`
+  `checkCohortGrounding`/`evaluateCohortNarration`).
+- **New cohort selectors** (`f55b8ac`): `named-geography` (subdivision/section spatial via
+  `geo.subdivisions`/`geo.plss_sections`; township/school attribute via `pg.municipality`/
+  `a.school_dist`) + `drawn-polygon` (backend+tests only) in `cohort_query.py`, whitelisted
+  `GEOGRAPHY_SOURCES`, + `GET /cohort/geographies` names route. +10 harness tests.
+- **Area + size control** (`2f0e26f`): Profile "Area" picker (buffer ↔ named geographies) +
+  custom distance input (100–10,560 ft) in `pv-profile.js`.
+- **Map Buddy tool** (`b8ba286`): `describe_neighborhood` (`agent.py` tool + `map-buddy.js`
+  bridge → `PV_PROFILE.open`), buffer or named-geography.
+- Live-verified: Covert Twp 2722 parcels (grounded AI read), subdivision #66 = 19, custom 800 ft
+  = 271, Map Buddy tool opens both forms. DIC-588 comments posted.
+- **Still open on DIC-588:** environmental-profile section; drawn-polygon Profile UI (draw-tool
+  handoff). **Infra nit (spun off as a task):** add `/map-buddy/` to nginx `no-store` — edited
+  `map-buddy.js` serves stale until hard refresh (bit me this session: a new command read as
+  "unknown command" from the cached old script).
 
 **Landed 2026-06-27/28 (all on `main`, pushed):**
 - **Citation Renderer 3-way sync (DIC-522)** — KB-backed resolver (`pv-citations.js` →
@@ -51,9 +63,9 @@ Phases 1–5 slice 1 (manifest-driven reads), DIC-575 drawing single-source, the
 stores + Theme Composer + all five hardening gates. See git log + per-DIC Linear comments.
 
 **Best next moves for tomorrow (pick one — all additive, build-forward):**
-1. ✅ **DONE 2026-06-28 — Cohort AI character narrative** (see "Landed" above). Follow-ups: the v1
-   environmental-profile section + the Map Buddy "what's this neighborhood like?" tool over `/describe-cohort`.
-2. **More cohort selectors** — `named-geography` (subdivision / PLSS-section / township / school
+1. ✅ **DONE 2026-06-28 — Cohort AI character narrative + selectors + size control + Map Buddy tool**
+   (see "Landed" above). Remaining DIC-588: environmental-profile section + drawn-polygon Profile UI.
+2. ✅ **DONE 2026-06-28 — More cohort selectors** (named-geography + drawn-polygon backend; see above). — `named-geography` (subdivision / PLSS-section / township / school
    district via Drake's `geo.*` layers) + `drawn-polygon` in `cohort_query.py` + `/cohort` →
    unlocks profiles over real districts, not just buffers. The pure-builder + harness pattern is
    already set (`run_cohort_query_test.py`).
