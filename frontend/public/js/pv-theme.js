@@ -16,7 +16,9 @@
   'use strict';
   var doc = root.document;
   var VIEW_KEY = 'pv-view';            // transient camera snapshot, restored once after a switch
-  var THEME_KEY = 'pv-theme';          // the user's chosen theme id (also read by pv-manifest)
+  // The chosen theme id (also read by pv-manifest's selectedThemeId). NOT 'pv-theme' — that's
+  // the dark/light mode key (map.js); a separate key avoids reading 'light'/'dark' as a theme.
+  var THEME_KEY = 'pv-theme-id';
   var VIEW_TTL_MS = 60000;             // a saved view older than this is ignored (stale)
 
   function lsGet(k) { try { return root.localStorage.getItem(k); } catch (e) { return null; } }

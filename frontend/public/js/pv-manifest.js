@@ -79,13 +79,15 @@
   }
 
   // ── Theme-file boot (keystone): boot the viewer from a theme manifest FILE selected by
-  //    `?theme=<id>` (highest) or localStorage 'pv-theme', validated against the registry's
+  //    `?theme=<id>` (highest) or localStorage 'pv-theme-id', validated against the registry's
   //    `bootable` flag. Falls back to the COUNTY-assembled boot on any miss — additive, the
-  //    default (no selection) path is unchanged. Async (fetch), surfaced via PS_MANIFEST_READY. ──
+  //    default (no selection) path is unchanged. Async (fetch), surfaced via PS_MANIFEST_READY.
+  //    NOTE: the key is 'pv-theme-id', NOT 'pv-theme' — the latter is the dark/light mode key
+  //    (map.js); reusing it would mis-read 'light'/'dark' as a manifest id. ──
   var THEME_DIR = '/engine/themes/';
   function selectedThemeId() {
     try { var q = new URL(root.location.href).searchParams.get('theme'); if (q) return q; } catch (e) {}
-    try { return (root.localStorage && root.localStorage.getItem('pv-theme')) || null; } catch (e) { return null; }
+    try { return (root.localStorage && root.localStorage.getItem('pv-theme-id')) || null; } catch (e) { return null; }
   }
   function fetchJson(url) {
     return fetch(url, { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
