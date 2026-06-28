@@ -1052,9 +1052,9 @@
       setTimeout(activate, 400);
       return;
     }
-    if (!_computed) {
-      _computed = buildCentroids(parcelIndex);
-    }
+    // Always rebuild from the CURRENT index (not a stale cache) so turning labels on
+    // reflects wherever the map is now — e.g. after panning with labels off.
+    _computed = buildCentroids(parcelIndex);
     _active = true;
     addOrUpdateLayer();
     var map = getMap();
@@ -1071,6 +1071,23 @@
       if (map && _layersAdded[def.id]) map.setLayoutProperty(def.id, 'visibility', 'none');
     });
     _saveState();
+  }
+
+  // Rebuild the labels for the parcels now in view. Labels are computed from
+  // PS_PARCEL_INDEX, which map.js re-fetches per viewport bbox and announces via
+  // 'ps:parcel-index-updated'. Without recomputing here, labels only ever covered the
+  // parcels loaded when the tool was switched on — so panning showed no labels in the
+  // newly-revealed area. Gated to active + label zoom, so it does no work when off.
+  function rebuildFromIndex() {
+    if (!_active) return;
+    var map = getMap();
+    if (!map || map.getZoom() < MIN_ZOOM) return;
+    var idx = sourceIndex();
+    if (!idx || !idx.length) return;
+    _computed = buildCentroids(idx);
+    var src = map.getSource(SOURCE_ID);
+    if (src && src.setData) src.setData(_computed);
+    else addOrUpdateLayer();
   }
 
   function setField(field) {
@@ -1167,6 +1184,10 @@
   document.addEventListener('change', function (e) {
     if (e.target && e.target.id === 'toggle-aerial') _repaintLabels();
   });
+
+  // Re-label the new viewport whenever the parcel index refreshes (pan/zoom). map.js
+  // fires this after fetching /parcels?bbox= for the current view (see refreshParcelIndex).
+  document.addEventListener('ps:parcel-index-updated', rebuildFromIndex);
 
   if (_active) {
     var _tryActivate = function () {
