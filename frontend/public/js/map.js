@@ -1394,14 +1394,17 @@
         applyTheme(v === "dark");
       }
     },
-    // AI mode (B1 / DIC-571). Default OFF / opt-in (§4.4a); a county manifest may set
-    // COUNTY.ai.defaultMode. 'on' | 'off'. setAiMode dispatches 'pv-ai-mode-change';
-    // pv-ai-mode.js applies it (toggle state, Map Buddy visibility, degrade-to-facts).
+    // AI mode (B1 / DIC-571). Default ON (owner decision 2026-06-27 — supersedes the
+    // original opt-in default): the platform leads with AI on and the startup pill points
+    // users to the toggle to turn it off. Precedence: an explicit user choice (localStorage)
+    // wins; else the manifest's COUNTY.ai.defaultMode; else 'on'. A deployment that must
+    // ship AI-off (procurement) sets COUNTY.ai.defaultMode = 'off'. The AI-optional
+    // invariants are unchanged — off still degrades to facts (facts-parity, §4.5/§4.6).
     getAiMode: function () {
       try { var v = localStorage.getItem("pv-ai-mode"); if (v === "on" || v === "off") return v; } catch (_) {}
       var ai = countyConfig().ai || {};
-      var d = ai.defaultMode || "off";
-      return d === "on" ? "on" : "off";
+      var d = ai.defaultMode || "on";
+      return d === "off" ? "off" : "on";
     },
     setAiMode: function (mode) {
       var m = mode === "on" ? "on" : "off";

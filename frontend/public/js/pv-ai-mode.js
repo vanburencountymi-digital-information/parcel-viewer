@@ -87,6 +87,59 @@
     notice(userOn && !_available);
   }
 
+  // ── Startup pill (DIC-571): AI now defaults ON, so on first run point the user at the
+  // toggle to turn it off. Shown ONCE (persisted), only while AI is on. Defensive — a UI
+  // nicety must never break the controller, so every browser-only API is guarded and the
+  // whole thing is wrapped in try/catch (the headless render-test has no localStorage/
+  // timers/getBoundingClientRect).
+  var PILL_KEY = 'pv-ai-pill-seen';
+  function pillSeen() { try { return root.localStorage && root.localStorage.getItem(PILL_KEY) === '1'; } catch (_) { return false; } }
+  function markPillSeen() { try { if (root.localStorage) root.localStorage.setItem(PILL_KEY, '1'); } catch (_) {} }
+  // Pure decision (unit-tested): show only when AI is on and the user hasn't seen it.
+  function shouldShowPill(on, seen) { return !!on && !seen; }
+
+  function maybeShowStartupPill() {
+    try {
+      if (!doc || !doc.body) return;
+      if (!shouldShowPill(isOn(), pillSeen())) return;
+      if (doc.getElementById('pv-ai-pill')) return;
+      var toggle = doc.getElementById('pv-ai-toggle');
+      var pill = doc.createElement('div');
+      pill.id = 'pv-ai-pill';
+      pill.className = 'pv-ai-pill';
+      pill.setAttribute('role', 'status');
+      pill.innerHTML = '<span class="pv-ai-pill-spark" aria-hidden="true">✨</span>' +
+        '<span class="pv-ai-pill-text">AI features are <strong>on</strong>. Turn them off anytime with the sparkle button.</span>' +
+        '<button type="button" class="pv-ai-pill-x" aria-label="Dismiss">×</button>';
+      // Anchor under the toggle when we can measure it; otherwise the CSS top-right default.
+      try {
+        if (toggle && typeof toggle.getBoundingClientRect === 'function') {
+          var r = toggle.getBoundingClientRect();
+          if (r && r.bottom) {
+            pill.style.position = 'fixed';
+            pill.style.top = (r.bottom + 10) + 'px';
+            pill.style.right = Math.max(8, (root.innerWidth || 0) - r.right) + 'px';
+          }
+        }
+      } catch (_) {}
+      doc.body.appendChild(pill);
+      if (root.requestAnimationFrame) root.requestAnimationFrame(function () { pill.classList.add('pv-ai-pill--show'); });
+      else pill.classList.add('pv-ai-pill--show');
+      var dismiss = function () {
+        markPillSeen();
+        pill.classList.remove('pv-ai-pill--show');
+        if (root.setTimeout) root.setTimeout(function () { if (pill.parentNode) pill.parentNode.removeChild(pill); }, 300);
+        else if (pill.parentNode) pill.parentNode.removeChild(pill);
+      };
+      var x = pill.querySelector && pill.querySelector('.pv-ai-pill-x');
+      if (x) x.addEventListener('click', dismiss);
+      // Using the toggle (the thing the pill points at) also dismisses it.
+      if (toggle && toggle.addEventListener) toggle.addEventListener('click', dismiss, { once: true });
+      // Auto-dismiss after a while; mark seen so it never nags again.
+      if (root.setTimeout) root.setTimeout(dismiss, 14000);
+    } catch (_) { /* a pill must never break AI mode */ }
+  }
+
   function set(mode) {
     var p = prefs();
     var m = (mode === 'on') ? 'on' : 'off';
@@ -105,6 +158,7 @@
     // Re-apply whenever the mode changes (button, settings, or the B4 fallback).
     root.addEventListener('pv-ai-mode-change', function () { apply(); });
     apply();
+    maybeShowStartupPill();
   }
 
   if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', wire);
@@ -113,5 +167,6 @@
   root.PV_AI_MODE = {
     get: get, set: set, isOn: isOn, toggle: toggle, apply: apply,
     isAvailable: isAvailable, isEffective: isEffective, setAvailable: setAvailable,
+    shouldShowPill: shouldShowPill,
   };
 }(typeof window !== 'undefined' ? window : this));

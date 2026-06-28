@@ -87,3 +87,19 @@ test('set/toggle update PV_PREFS and isOn', () => {
   sandbox.PV_AI_MODE.toggle();
   assert.equal(sandbox.PV_AI_MODE.get(), 'off');
 });
+
+test('startup pill decision (DIC-571): show only when AI on AND not yet seen', () => {
+  const { sandbox } = load('on');
+  const f = sandbox.PV_AI_MODE.shouldShowPill;
+  assert.equal(f(true, false), true);    // AI on, first run → show
+  assert.equal(f(true, true), false);    // already seen → never nag
+  assert.equal(f(false, false), false);  // AI off → no pill
+});
+
+test('default ON when AI mode is on (load("on") boots effective-on without a user click)', () => {
+  // The default resolution lives in PV_PREFS.getAiMode (map.js); here the controller
+  // simply reflects whatever the preference resolves to — proving an on-default boots on.
+  const { sandbox, attrs } = load('on');
+  assert.equal(attrs()['data-ai-mode'], 'on');
+  assert.equal(sandbox.PV_AI_MODE.isEffective(), true);
+});

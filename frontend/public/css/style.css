@@ -232,6 +232,26 @@ html[data-theme="dark"].pv-a11y-solid .maplibregl-popup-content { background: #1
 .pv-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(10px); background: #1f2937; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); z-index: 10000; opacity: 0; transition: opacity 0.25s, transform 0.25s; max-width: 90vw; text-align: center; }
 .pv-toast--show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* Startup pill (DIC-571): AI defaults on → point the user at the toggle to turn it off.
+   Rounded pill matching the suggestion-chip look; anchored under the sparkle by JS. */
+.pv-ai-pill {
+  position: fixed; top: 64px; right: 12px; z-index: 10000;
+  display: flex; align-items: center; gap: 8px; max-width: 300px;
+  background: var(--ui-accent, #b58d4a); color: #fff;
+  padding: 8px 10px 8px 13px; border-radius: 999px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25); font-size: 12.5px; line-height: 1.35;
+  opacity: 0; transform: translateY(-6px); transition: opacity 0.25s, transform 0.25s;
+}
+.pv-ai-pill--show { opacity: 1; transform: translateY(0); }
+.pv-ai-pill-spark { flex: none; }
+.pv-ai-pill-text strong { font-weight: 700; }
+.pv-ai-pill-x {
+  flex: none; width: 18px; height: 18px; border: none; border-radius: 50%; cursor: pointer;
+  background: rgba(255,255,255,0.22); color: #fff; font-size: 14px; line-height: 1; padding: 0;
+}
+.pv-ai-pill-x:hover { background: rgba(255,255,255,0.38); }
+@media (max-width: 640px) { .pv-ai-pill { left: 12px; right: 12px; max-width: none; } }
+
 /* Reduce motion */
 html.pv-a11y-motion *, html.pv-a11y-motion *::before, html.pv-a11y-motion *::after {
   transition: none !important; animation: none !important; scroll-behavior: auto !important; }
