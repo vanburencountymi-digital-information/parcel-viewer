@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .. import config
-from ..cohort_query import CohortSelectorError, build_predicate
+from ..cohort_query import CohortSelectorError, build_predicate, GEOGRAPHY_SOURCES
 from ..db import pool
 from ..stores.parcel_store import make_parcel_store
 
@@ -223,6 +223,37 @@ async def cohort(body: CohortRequest):
     features = [{"id": r["id"], "properties": {k: v for k, v in r.items() if k != "id"}} for r in rows]
     resolved["count"] = len(features)
     return {"selector": resolved, "features": features}
+
+
+@router.get("/cohort/geographies")
+async def cohort_geographies(type: str = Query(...)):
+    """List the available named geographies of a given TYPE so the viewer can offer them as
+    cohort areas (DIC-588). `type` ∈ {subdivision, section, township, school}. Returns
+    { type, geographies:[{id, name}] } — `id` is null for attribute geographies (the name
+    is the selector value). The table/column come from the whitelist, never the request."""
+    src = GEOGRAPHY_SOURCES.get((type or "").lower())
+    if not src:
+        raise HTTPException(status_code=400, detail="unknown geography type")
+    if src["kind"] == "spatial":
+        sql = (
+            "SELECT %s AS id, %s AS name FROM %s WHERE %s IS NOT NULL AND %s <> '' "
+            "ORDER BY name"
+        ) % (src["id_col"], src["name_col"], src["table"], src["name_col"], src["name_col"])
+        with pool.connection() as conn:
+            rows = conn.execute(sql).fetchall()
+        geos = [{"id": r["id"], "name": r["name"]} for r in rows]
+    else:
+        # DISTINCT values of a parcel column (the cohort feature join), e.g. municipality / school_dist.
+        col = src["column"]
+        join = "LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no" if col.startswith("a.") else ""
+        sql = (
+            "SELECT DISTINCT %s AS name FROM geo.parcel_geometry pg %s "
+            "WHERE pg.archived_at IS NULL AND %s IS NOT NULL AND %s <> '' ORDER BY name"
+        ) % (col, join, col, col)
+        with pool.connection() as conn:
+            rows = conn.execute(sql).fetchall()
+        geos = [{"id": None, "name": r["name"]} for r in rows]
+    return {"type": type, "geographies": geos}
 
 
 @router.get("/nearest-road")
