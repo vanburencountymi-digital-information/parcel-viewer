@@ -14,12 +14,25 @@ plugs into (contract, manifest, capability-gating, source abstraction, injected 
 AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
 (~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
 
-**▶ CURRENT STATE: parcel-viewer `main` @ `3790b86` — 12 cohort commits ahead of origin,
-NOT yet pushed (`821a25a`→`3790b86`). Harness 283 green (176 Node + 107 Python,
-`bash engine/run-harness.sh`).** All four DIC-588 area modes ship: buffer (custom distance) +
-named-geography (subdivision/section/township/school) + drawn-polygon (full Profile UI — "Draw
-an area" hands the polygon tool via `PS_DRAWING_TOOLS`, watches `PS_ANNOTATION_STORE`, reopens
-on the sketched shape; `3790b86`). ZIP/zip-poc + county-data-services clean/in sync (ZIP's
+**▶ CURRENT STATE: parcel-viewer `main` @ `be414c1` — PUSHED & in sync with origin. Harness
+285 green (178 Node + 107 Python, `bash engine/run-harness.sh`).** The DIC-588 cohort suite is
+done (4 area modes: buffer+custom-distance / named-geography / drawn-polygon; env profile;
+AI narrative). Back on the keystone since.
+
+**Keystone advance 2026-06-28 (theme-file boot + chooser — DIC-568/523, `63b80f8`+`be414c1`):**
+The viewer can now BOOT FROM A THEME FILE, not just the COUNTY-assembled manifest.
+- `engine/themes/index.json` registry (`{id,label,kind,bootable}`); `vanburen` bootable,
+  `lockport-township` registered non-bootable (zoning/ZIP, gated on DIC-523).
+- `engine/themes/vanburen.json` — faithful superset captured from the live `PS_MANIFEST`.
+- `pv-manifest.js`: `?theme=`/`localStorage 'pv-theme'` → fetch+boot that theme file (async,
+  `PS_MANIFEST_READY` promise that `map.js initMap()` awaits); **default boot unchanged**
+  (COUNTY-assembled); non-bootable/failed → falls back to COUNTY.
+- `pv-theme.js` (`PV_THEME_SWITCHER`): a top-bar chooser shown ONLY when >1 bootable theme
+  (today hidden); switching snapshots the camera → reloads `?theme=<id>` → restores the view
+  once. Live-verified end-to-end incl. exact view restore + fallback.
+- **To make the chooser appear:** register a 2nd `bootable:true` theme (ZIP-as-a-theme DIC-523,
+  or a 2nd county). **Still the big keystone:** kill the global bus (A3 grind) + boot ZIP's own
+  frontend on the shared engine. See [[project_isv_current_status]]. ZIP/zip-poc + county-data-services clean/in sync (ZIP's
 `init-db/02-seed.sh` + `files.zip` are pre-existing not-ours files — leave them). ⚠ The PV `api`
 image was rebuilt this session (new `/cohort/*` routes + `/cohort` `center`) — already up.
 
