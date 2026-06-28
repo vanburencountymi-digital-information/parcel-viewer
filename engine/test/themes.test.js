@@ -15,7 +15,8 @@ const THEMES_DIR = path.join(__dirname, '..', 'themes');
 
 function themeFiles() {
   if (!fs.existsSync(THEMES_DIR)) return [];
-  return fs.readdirSync(THEMES_DIR).filter((f) => f.endsWith('.json'));
+  // index.json is the theme REGISTRY, not a manifest — exclude it from the manifest round-trip.
+  return fs.readdirSync(THEMES_DIR).filter((f) => f.endsWith('.json') && f !== 'index.json');
 }
 
 test('every theme in engine/themes/ round-trips loadManifest (the AC)', () => {
@@ -28,6 +29,40 @@ test('every theme in engine/themes/ round-trips loadManifest (the AC)', () => {
     assert.equal(res.ok, true, f + ' must load');
     assert.deepEqual(res.applied, [], f + ' should already be CURRENT_VERSION');
   });
+});
+
+test('theme registry (index.json) is consistent with the theme files', () => {
+  const reg = JSON.parse(fs.readFileSync(path.join(THEMES_DIR, 'index.json'), 'utf8'));
+  assert.ok(Array.isArray(reg.themes) && reg.themes.length >= 1, 'registry must list themes');
+  const ids = {};
+  reg.themes.forEach((t) => {
+    assert.ok(t.id && t.label, 'each registry entry needs id + label');
+    assert.equal(ids[t.id], undefined, 'registry ids must be unique: ' + t.id);
+    ids[t.id] = 1;
+    // Every registered theme must have a manifest file present.
+    assert.ok(fs.existsSync(path.join(THEMES_DIR, t.id + '.json')), 'missing theme file for ' + t.id);
+  });
+  // vanburen is the PV-bootable theme; lockport-township is registered but not PV-bootable yet.
+  const vb = reg.themes.find((t) => t.id === 'vanburen');
+  assert.ok(vb && vb.bootable === true, 'vanburen must be a bootable theme');
+  // The gated chooser shows only with >1 bootable theme — assert today there is exactly one,
+  // so the pulldown stays hidden until ZIP-as-a-theme (or a 2nd county) flips a second bootable.
+  const bootable = reg.themes.filter((t) => t.bootable);
+  assert.equal(bootable.length, 1, 'exactly one bootable theme today (chooser stays gated)');
+});
+
+test('vanburen theme is a faithful, bootable parcel manifest', () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(THEMES_DIR, 'vanburen.json'), 'utf8'));
+  const res = loadManifest(raw);
+  assert.equal(res.ok, true, (res.errors || []).join('; '));
+  const m = res.manifest;
+  assert.equal(m.id, 'vanburen');
+  assert.equal(TENANT.canonicalTenant(m), 'vanburen');
+  // Carries the COUNTY superset the viewer boots from (passthrough blocks), not just §5.
+  ['labels', 'styling', 'parcelNumber', 'endpoints'].forEach((k) => assert.ok(m[k], 'vanburen theme must carry ' + k));
+  // A parcel viewer: parcels base source + the tax ledger capability (vs ZIP's zoning theme).
+  assert.ok(m.sources.find((s) => s.id === 'parcels' && s.role === 'base'));
+  assert.ok(m.capabilities.ledger, 'vanburen has the parcel-tax ledger');
 });
 
 test('Lockport Township is a valid SECOND theme, distinct from a parcel-tax viewer', () => {

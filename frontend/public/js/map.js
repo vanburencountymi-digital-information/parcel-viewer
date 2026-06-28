@@ -1096,6 +1096,12 @@
 
   // ── Map init ───────────────────────────────────────────────────────────
   async function initMap() {
+    // Manifest-driven boot: if a theme FILE is being loaded (?theme=/localStorage), wait for
+    // it before reading PS_MANIFEST (Phase 1+ branding/map/capability/source reads). Resolves
+    // immediately for the default COUNTY-assembled boot, so this is a no-op there.
+    if (window.PS_MANIFEST_READY && typeof window.PS_MANIFEST_READY.then === "function") {
+      try { await window.PS_MANIFEST_READY; } catch (e) {}
+    }
     const style = await resolveStyle();
     const cmap = mapConfig();   // manifest.map → COUNTY.map (Phase 1)
     const EXTENT = cmap.extent || [[-86.33, 42.06], [-85.76, 42.43]];

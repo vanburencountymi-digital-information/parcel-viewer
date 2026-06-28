@@ -52,6 +52,15 @@
     return assembleFromCounty(root.COUNTY);
   }
 
+  function publish(res) {
+    root.PS_MANIFEST = res.manifest;            // the validated manifest, available at runtime
+    root.PS_MANIFEST_LOADED = res.manifest;
+    if (res.applied && res.applied.length && root.console && console.info) {
+      console.info('[pv-manifest] migrated manifest ' + res.fromVersion + ' → ' + res.toVersion +
+        ' (' + res.applied.join(', ') + ')');
+    }
+  }
+
   // Assemble/validate at boot; publish window.PS_MANIFEST + PS_MANIFEST_LOADED. Never
   // throws (boot must not break). Returns the load result, or null if nothing to load.
   // Idempotent: once a manifest is published, repeat calls are no-ops (we run BOTH eagerly
@@ -62,17 +71,44 @@
     var raw = bootManifest();
     if (!raw) return null;
     var res = load(raw);
-    if (res.ok) {
-      root.PS_MANIFEST = res.manifest;          // the validated manifest, available at runtime
-      root.PS_MANIFEST_LOADED = res.manifest;
-      if (res.applied && res.applied.length && root.console && console.info) {
-        console.info('[pv-manifest] migrated manifest ' + res.fromVersion + ' → ' + res.toVersion +
-          ' (' + res.applied.join(', ') + ')');
-      }
-    } else if (root.console && console.warn) {
+    if (res.ok) publish(res);
+    else if (root.console && console.warn) {
       console.warn('[pv-manifest] manifest failed to assemble/validate at boot:', (res.errors || []).join('; '));
     }
     return res;
+  }
+
+  // ── Theme-file boot (keystone): boot the viewer from a theme manifest FILE selected by
+  //    `?theme=<id>` (highest) or localStorage 'pv-theme', validated against the registry's
+  //    `bootable` flag. Falls back to the COUNTY-assembled boot on any miss — additive, the
+  //    default (no selection) path is unchanged. Async (fetch), surfaced via PS_MANIFEST_READY. ──
+  var THEME_DIR = '/engine/themes/';
+  function selectedThemeId() {
+    try { var q = new URL(root.location.href).searchParams.get('theme'); if (q) return q; } catch (e) {}
+    try { return (root.localStorage && root.localStorage.getItem('pv-theme')) || null; } catch (e) { return null; }
+  }
+  function fetchJson(url) {
+    return fetch(url, { cache: 'no-cache' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+  function fetchRegistry() {
+    return fetchJson(THEME_DIR + 'index.json').then(function (j) { return (j && j.themes) || []; });
+  }
+  // Boot from a registered, bootable theme file. Resolves to the manifest, or null to fall back.
+  function bootFromTheme(id) {
+    return fetchRegistry().then(function (themes) {
+      var entry = themes.filter(function (t) { return t && t.id === id; })[0];
+      if (!entry || !entry.bootable) {
+        if (root.console && console.warn) console.warn('[pv-manifest] theme "' + id + '" is not a bootable theme; using default boot.');
+        return null;
+      }
+      return fetchJson(THEME_DIR + id + '.json').then(function (raw) {
+        if (!raw) { if (root.console && console.warn) console.warn('[pv-manifest] theme "' + id + '" file missing; using default boot.'); return null; }
+        var res = load(raw);
+        if (res.ok) { publish(res); if (root.console && console.info) console.info('[pv-manifest] booted theme "' + id + '"'); return res.manifest; }
+        if (root.console && console.warn) console.warn('[pv-manifest] theme "' + id + '" failed to validate:', (res.errors || []).join('; '));
+        return null;
+      });
+    });
   }
 
   // ── Source accessors (Phase 3): the single read-point for manifest sources, reused by the
@@ -105,15 +141,28 @@
 
   root.PV_MANIFEST = {
     load: load, loadBootManifest: loadBootManifest, assembleFromCounty: assembleFromCounty,
+    fetchRegistry: fetchRegistry, selectedThemeId: selectedThemeId,
     sources: sources, source: source, vectorOverlays: vectorOverlays, sourcesByRole: sourcesByRole,
   };
 
-  // Assemble EAGERLY at parse time: this script now loads after county-config.js + the engine
-  // modules but BEFORE map.js, so window.PS_MANIFEST is published before initMap() reads it
-  // (Phase 1 routes branding/map/scheme reads through the manifest). If the eager pass found
-  // nothing to load (e.g. a dep wasn't ready), retry on DOMContentLoaded — idempotent.
-  var eager = loadBootManifest();
-  if ((!eager || !eager.ok) && root.document && root.document.readyState === 'loading') {
-    root.document.addEventListener('DOMContentLoaded', loadBootManifest);
+  // Boot. Default (no theme selected) = assemble from COUNTY EAGERLY at parse time, so
+  // window.PS_MANIFEST exists before map.js initMap() reads it — unchanged behavior. When a
+  // theme is selected (?theme= / localStorage), boot from that theme FILE instead (async);
+  // initMap() awaits PS_MANIFEST_READY before reading the manifest. Theme-load failure falls
+  // back to the COUNTY boot, so a bad selection never breaks the viewer.
+  var _themeId = selectedThemeId();
+  if (_themeId) {
+    root.PS_MANIFEST_THEME = _themeId;
+    root.PS_MANIFEST_READY = bootFromTheme(_themeId).then(function (m) {
+      if (m) return m;
+      var r = loadBootManifest();             // fallback: COUNTY-assembled
+      return (r && r.manifest) || null;
+    });
+  } else {
+    var eager = loadBootManifest();
+    if ((!eager || !eager.ok) && root.document && root.document.readyState === 'loading') {
+      root.document.addEventListener('DOMContentLoaded', loadBootManifest);
+    }
+    root.PS_MANIFEST_READY = Promise.resolve((eager && eager.manifest) || root.PS_MANIFEST_LOADED || null);
   }
 }(typeof self !== 'undefined' ? self : this));

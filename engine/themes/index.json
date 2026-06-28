@@ -1,0 +1,7 @@
+{
+  "_comment": "Theme registry for the manifest-driven engine (keystone / DIC-568). Each entry is a theme manifest in this directory. `bootable` flags themes that can drive THIS (parcel) frontend; the theme-chooser pulldown appears only when >1 bootable theme is registered. lockport-township is the zoning-domain ZIP theme — not PV-bootable until ZIP's frontend runs on the shared engine (DIC-523).",
+  "themes": [
+    { "id": "vanburen", "label": "Van Buren County", "kind": "parcel", "bootable": true },
+    { "id": "lockport-township", "label": "Lockport Township — Zoning", "kind": "zoning", "bootable": false }
+  ]
+}
