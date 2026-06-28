@@ -174,7 +174,11 @@ Viewer bridges (`frontend/public/js/`, the only place that knows `PS_*` / `COUNT
 
 ## Behavior change to know
 
-**AI is now opt-in (default OFF)** per B1 (§4.4a). The live viewer **hides Map Buddy until the AI toggle (sparkle, top-right) is clicked**, and explainers show facts + statute links by default. To keep AI on by default for a deployment, set `COUNTY.ai.defaultMode = 'on'`.
+**AI now defaults ON** (owner decision 2026-06-27, DECISIONS D13 / DIC-571 — supersedes the
+original opt-in default). A **first-run pill** points users to the sparkle toggle (top-right) to
+turn it off; an explicit user choice persists, and a deployment can ship AI-off via
+`COUNTY.ai.defaultMode = 'off'`. AI-optional invariants unchanged — off still degrades to facts
+(facts-parity), and B4 auto-fallback still degrades to facts when the AI service is unreachable.
 
 ## What's next (recommended order)
 
