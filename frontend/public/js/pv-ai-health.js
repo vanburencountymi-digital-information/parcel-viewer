@@ -17,7 +17,11 @@
   var doc = root.document;
   var POLL_MS = 30000;
   var TIMEOUT_MS = 4000;
+  var FAIL_THRESHOLD = 2;   // tolerate ONE transient miss before degrading (cold start, brief blip)
+  var RETRY_MS = 6000;      // after a sub-threshold miss, re-check soon (don't wait a full poll)
   var _timer = null;
+  var _retryTimer = null;
+  var _fails = 0;
 
   function countyConfig() {
     return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {};
@@ -38,12 +42,27 @@
     if (root.PV_AI_MODE && typeof root.PV_AI_MODE.setAvailable === 'function') root.PV_AI_MODE.setAvailable(a);
   }
 
+  // Hysteresis (§4.4b): a SINGLE failed ping no longer declares AI down — the "AI is
+  // unavailable" notice was popping prematurely while an explainer/Map Buddy call was still
+  // assembling (a Cloud Run cold start makes the first /health ping time out even though the
+  // request ultimately succeeds). We require FAIL_THRESHOLD consecutive misses before
+  // degrading, recover instantly on any success, and re-check quickly after a sub-threshold
+  // miss so a genuine outage is still caught within a few seconds.
+  function onResult(ok) {
+    if (ok) { _fails = 0; setAvail(true); return; }
+    _fails += 1;
+    if (_fails >= FAIL_THRESHOLD) { setAvail(false); return; }
+    if (!_retryTimer) {
+      _retryTimer = setTimeout(function () { _retryTimer = null; if (wantsAi()) check(); }, RETRY_MS);
+    }
+  }
+
   function check() {
     var ctrl = ('AbortController' in root) ? new root.AbortController() : null;
     var to = ctrl ? setTimeout(function () { try { ctrl.abort(); } catch (_) {} }, TIMEOUT_MS) : null;
     return root.fetch(mapBuddyBase() + '/health', { signal: ctrl ? ctrl.signal : undefined, cache: 'no-store' })
-      .then(function (r) { setAvail(!!r && r.ok); })
-      .catch(function () { setAvail(false); })
+      .then(function (r) { onResult(!!r && r.ok); })
+      .catch(function () { onResult(false); })
       .then(function () { if (to) clearTimeout(to); });
   }
 

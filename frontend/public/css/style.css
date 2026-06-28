@@ -1404,6 +1404,7 @@ input[type="checkbox"]:focus-visible {
 .pv-hint-dismiss {
   pointer-events: auto;
   padding: 8px; width: 32px; height: 32px; justify-content: center;
+  font-size: 18px; line-height: 1;   /* the literal × glyph, sized for the 32px circle */
   border-radius: 999px;
   background: #fff;
   color: var(--text-muted, #6b7280);

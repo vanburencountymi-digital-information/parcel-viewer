@@ -1021,8 +1021,12 @@
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     const moonIcon = document.getElementById("theme-icon-moon");
     const sunIcon  = document.getElementById("theme-icon-sun");
-    if (moonIcon) moonIcon.hidden = dark;
-    if (sunIcon)  sunIcon.hidden  = !dark;
+    // These are <svg> elements: `.hidden` is an HTMLElement property and is a NO-OP on
+    // SVGElement (it never reflects to the attribute the [hidden] CSS rule keys on), which
+    // froze the icon on the moon. Toggle the actual attribute instead. Sun shows in dark
+    // (tap to go light), moon shows in light (tap to go dark).
+    if (moonIcon) moonIcon.toggleAttribute("hidden", dark);
+    if (sunIcon)  sunIcon.toggleAttribute("hidden", !dark);
 
     if (map) {
       const src = map.getSource("carto-positron");

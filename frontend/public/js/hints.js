@@ -242,8 +242,8 @@
     x.type = 'button';
     x.className = 'pv-hint-dismiss';
     x.setAttribute('aria-label', 'Hide hints');
-    var xi = document.createElement('i'); xi.className = 'ti ti-x'; xi.setAttribute('aria-hidden', 'true');
-    x.appendChild(xi);
+    x.textContent = '×';   // literal × — no icon-font dependency (the 'ti' font may not load;
+                                // same reason the '?' help glyph above is a literal, not an <i>)
     x.addEventListener('click', function () { _setEnabled(false); });
     rail.appendChild(x);
   }
