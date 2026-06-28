@@ -14,9 +14,21 @@ plugs into (contract, manifest, capability-gating, source abstraction, injected 
 AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
 (~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
 
-**▶ CURRENT STATE: parcel-viewer `main` @ `b9a9b19` — PUSHED & in sync with origin. Harness
-267 green (`bash engine/run-harness.sh`).** ZIP/zip-poc + county-data-services clean/in sync
+**▶ CURRENT STATE: parcel-viewer `main` @ `48297e3` — 3 cohort-narrative commits ahead of origin,
+NOT yet pushed (`821a25a`,`9c0ff60`,`48297e3`). Harness 271 green (174 Node + 97 Python,
+`bash engine/run-harness.sh`).** ZIP/zip-poc + county-data-services clean/in sync
 (ZIP's `init-db/02-seed.sh` + `files.zip` are the pre-existing not-ours files — leave them).
+
+**Landed 2026-06-28 (cohort AI character narrative — finishes the AI-optional half of DIC-588):**
+map-buddy `POST /describe-cohort` (`agent.py` `run_describe_cohort` forced `report_cohort_character`
+tool, sonnet via `COHORT_NARRATE_MODEL`, "characterize never originate" rule, C3 cache+quota like
+`/judge`) + `fetchCohortNarration` transport & async character card in `pv-profile.js`/`style.css`
+(gated on `PV_AI_MODE`; degrade-to-facts → no card) + a deterministic grounding floor
+(`ai-quality.js` `checkCohortGrounding`/`evaluateCohortNarration` + tests). Live-verified on the
+real #45154 ¼-mi cohort (387 parcels): grounded read, every figure matched the dashboard, AI-off →
+no card. DIC-588 comment posted. **Still open on DIC-588:** v1 environmental-profile section
+(flood/wetland/soil intersect); the Map Buddy "what's this neighborhood like?" tool is a clean
+follow-up over the same endpoint.
 
 **Landed 2026-06-27/28 (all on `main`, pushed):**
 - **Citation Renderer 3-way sync (DIC-522)** — KB-backed resolver (`pv-citations.js` →
@@ -39,12 +51,8 @@ Phases 1–5 slice 1 (manifest-driven reads), DIC-575 drawing single-source, the
 stores + Theme Composer + all five hardening gates. See git log + per-DIC Linear comments.
 
 **Best next moves for tomorrow (pick one — all additive, build-forward):**
-1. **Cohort AI character narrative** (finishes DIC-588) — the only missing piece of the analysis
-   suite: a map-buddy endpoint (e.g. `POST /describe-cohort`) + a `fetchCohortNarration` transport
-   so the Neighborhood Profile gets an AI "what kind of neighborhood is this" read over the
-   deterministic facts. The core's narrate seam is ALREADY registered (`register.js`, ai-optional);
-   honesty rule: narrate facts only, NEVER originate a number (judge-gated, DIC-586). Wire the
-   C3 cache/quota like the other AI routes. Smallest, highest-fit next step.
+1. ✅ **DONE 2026-06-28 — Cohort AI character narrative** (see "Landed" above). Follow-ups: the v1
+   environmental-profile section + the Map Buddy "what's this neighborhood like?" tool over `/describe-cohort`.
 2. **More cohort selectors** — `named-geography` (subdivision / PLSS-section / township / school
    district via Drake's `geo.*` layers) + `drawn-polygon` in `cohort_query.py` + `/cohort` →
    unlocks profiles over real districts, not just buffers. The pure-builder + harness pattern is
