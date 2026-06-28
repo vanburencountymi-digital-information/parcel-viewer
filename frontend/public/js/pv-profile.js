@@ -30,6 +30,7 @@
     { key: 'section', label: 'Section' },
     { key: 'township', label: 'Township' },
     { key: 'school', label: 'School district' },
+    { key: 'drawn', label: 'Draw an area' },
   ];
 
   function apiBase() { return root.API_BASE || (root.PS_CONFIG && root.PS_CONFIG.API_BASE) || '/api'; }
@@ -164,14 +165,19 @@
   // (supported() returns it only when env fields are configured) — so it's a no-op today.
   var AGGS = ['composition', 'value-stats', 'value-change', 'ownership', 'area-distribution', 'environmental'];
 
-  var _ctx = { parcelId: null, mode: 'buffer', distanceFt: DEFAULT_FT, geoName: null, geoId: null };
+  var _ctx = { parcelId: null, mode: 'buffer', distanceFt: DEFAULT_FT, geoName: null, geoId: null, drawnGeometry: null };
 
   // Build the /cohort selector for the current area mode. Buffer needs a parcel; a named
-  // geography needs a chosen name/id. Returns null when the mode isn't satisfiable yet.
+  // geography needs a chosen name/id; a drawn area needs a sketched polygon. Returns null
+  // when the mode isn't satisfiable yet.
   function buildSelector() {
     if (_ctx.mode === 'buffer') {
       if (_ctx.parcelId == null) return null;
       return { type: 'buffer', parcel_id: _ctx.parcelId, distance_ft: _ctx.distanceFt };
+    }
+    if (_ctx.mode === 'drawn') {
+      if (!_ctx.drawnGeometry) return null;
+      return { type: 'drawn-polygon', geometry: _ctx.drawnGeometry };
     }
     if (_ctx.geoName == null && _ctx.geoId == null) return null;
     var sel = { type: 'named-geography', geography: _ctx.mode };
@@ -182,9 +188,12 @@
   function open(opts) {
     if (!enabled()) return;
     opts = opts || {};
+    // Any open that isn't the draw-completion itself means a pending draw-watch is stale.
+    if (!opts.drawnGeometry) stopDrawWatch();
     if (opts.mode) _ctx.mode = opts.mode;
     if (opts.geoName !== undefined) _ctx.geoName = opts.geoName;
     if (opts.geoId !== undefined) _ctx.geoId = opts.geoId;
+    if (opts.drawnGeometry !== undefined) _ctx.drawnGeometry = opts.drawnGeometry;
     if (opts.distanceFt) _ctx.distanceFt = opts.distanceFt;
     var pid = opts.parcelId;
     if (pid == null) { var pc = root.PS_STATE && root.PS_STATE.parcel; pid = pc && pc.id; }
@@ -195,7 +204,12 @@
     }
     var selector = buildSelector();
     renderShell('Loading neighborhood…');
-    if (!selector) { renderBody('<p class="pv-prof-empty">Pick a ' + esc(modeLabel(_ctx.mode).toLowerCase()) + ' above to profile it.</p>'); return; }
+    if (!selector) {
+      var msg = _ctx.mode === 'drawn'
+        ? 'Click “Draw an area” above, then sketch a neighborhood on the map.'
+        : 'Pick a ' + modeLabel(_ctx.mode).toLowerCase() + ' above to profile it.';
+      renderBody('<p class="pv-prof-empty">' + esc(msg) + '</p>'); return;
+    }
     fetch(apiBase() + '/cohort', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selector: selector }),
@@ -450,6 +464,10 @@
           'min="' + MIN_FT + '" max="' + MAX_FT + '" step="10" placeholder="ft" aria-label="Custom distance in feet"' +
           (customVal ? ' value="' + customVal + '"' : '') + '><span class="pv-prof-custom-u">ft</span></span>';
     }
+    if (_ctx.mode === 'drawn') {
+      return '<button type="button" id="pv-prof-draw" class="pv-prof-drawbtn">✏️ ' +
+        (_ctx.drawnGeometry ? 'Redraw area' : 'Draw an area') + '</button>';
+    }
     // named geography: a name dropdown (lazy-filled by wireControls).
     return '<select id="pv-prof-geo" class="pv-prof-select pv-prof-geo-select" aria-label="' + esc(modeLabel(_ctx.mode)) + '">' +
       '<option value="">Loading ' + esc(modeLabel(_ctx.mode).toLowerCase()) + 's…</option></select>';
@@ -469,6 +487,8 @@
       var ft = Math.max(MIN_FT, Math.min(MAX_FT, parseInt(custom.value, 10) || 0));
       if (ft) open({ distanceFt: ft });
     });
+    var drawBtn = overlay.querySelector('#pv-prof-draw');
+    if (drawBtn) drawBtn.addEventListener('click', startDrawArea);
     var geoSel = overlay.querySelector('#pv-prof-geo');
     if (geoSel) {
       fetchGeographies(_ctx.mode).then(function (list) {
@@ -491,6 +511,46 @@
         else open({ geoName: v.slice(5), geoId: null });
       });
     }
+  }
+
+  // ── Draw-an-area flow (drawn-polygon selector) ──────────────────────────────
+  // Hands the user the polygon draw tool, hides the modal so they can sketch on the map,
+  // and reopens the Profile on the finished shape. Uses the contract drawing globals
+  // (PS_DRAWING_TOOLS / PS_ANNOTATION_STORE) read-only — never mutates them.
+  function annIds(store) {
+    var ids = {}, st = store.getState ? store.getState() : null;
+    var feats = (st && st.annotations && st.annotations.features) || [];
+    feats.forEach(function (f) { if (f && f.id != null) ids[f.id] = 1; });
+    return ids;
+  }
+  function newPolygon(store, beforeIds) {
+    var st = store.getState ? store.getState() : null;
+    var feats = (st && st.annotations && st.annotations.features) || [];
+    for (var i = 0; i < feats.length; i++) {
+      var f = feats[i];
+      if (f && !beforeIds[f.id] && f.geometry && f.geometry.type === 'Polygon' &&
+          f.geometry.coordinates && f.geometry.coordinates.length) return f.geometry;
+    }
+    return null;
+  }
+  function stopDrawWatch() { if (_ctx.drawUnsub) { _ctx.drawUnsub(); _ctx.drawUnsub = null; } }
+  function startDrawArea() {
+    var D = root.PS_DRAWING_TOOLS, store = root.PS_ANNOTATION_STORE;
+    if (!D || !D.setActiveDrawTool || !store || !store.subscribe || !store.getState) {
+      return hint('Drawing isn’t available right now.');
+    }
+    stopDrawWatch();   // clear any prior watch (e.g. a cancelled draw)
+    close();           // hide the modal so the map is reachable
+    hint('Draw an area: click to add points, double-click to finish.');
+    var before = annIds(store);
+    _ctx.drawUnsub = store.subscribe(function () {
+      var poly = newPolygon(store, before);
+      if (!poly) return;                      // some other store change — keep waiting
+      stopDrawWatch();
+      D.setActiveDrawTool(null);              // put the tool away
+      open({ mode: 'drawn', drawnGeometry: poly });
+    });
+    D.setActiveDrawTool('polygon');
   }
 
   function renderBody(html, selector) {
