@@ -19,14 +19,26 @@
 (function (root) {
   'use strict';
   var doc = root.document;
-  var RADII = [500, 1320, 2640];       // ft options (¼ mi = 1320, ½ mi = 2640)
+  var RADII = [500, 1320, 2640];       // ft preset options (¼ mi = 1320, ½ mi = 2640)
   var DEFAULT_FT = 1320;
+  var MIN_FT = 100, MAX_FT = 10560;    // custom-distance clamp (≈ up to 2 mi)
+  // Area modes: a buffer around the parcel (default) or a named geography (DIC-588).
+  // The geography keys match the backend GEOGRAPHY_SOURCES whitelist + /cohort/geographies.
+  var AREA_MODES = [
+    { key: 'buffer', label: 'Around this parcel' },
+    { key: 'subdivision', label: 'Subdivision' },
+    { key: 'section', label: 'Section' },
+    { key: 'township', label: 'Township' },
+    { key: 'school', label: 'School district' },
+  ];
 
   function apiBase() { return root.API_BASE || (root.PS_CONFIG && root.PS_CONFIG.API_BASE) || '/api'; }
   function caps() { return root.PV_CAPS || null; }
   function enabled() { var c = caps(); return c ? c.isEnabled('profile') : true; }
   function core() { return root.ISV_COHORT_ANALYZE_CORE || null; }
   function cfg() { return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {}; }
+  function modeLabel(key) { for (var i = 0; i < AREA_MODES.length; i++) { if (AREA_MODES[i].key === key) return AREA_MODES[i].label; } return key; }
+  function ftLabel(ft) { return ft >= 5280 ? (ft / 5280) + ' mi' : (ft === 1320 ? '¼ mi' : (ft === 2640 ? '½ mi' : ft + ' ft')); }
 
   // ── AI character narration (DIC-588 / cohort-analyze narrate seam) ───────────
   // Resolve the Map Buddy base the same way pv-explain does (one service, one key).
@@ -45,6 +57,17 @@
     var pref = root.PV_PREFS && root.PV_PREFS.aiMode;
     return !(pref === 'off' || pref === false);
   }
+  // Available named geographies of a type (DIC-588), cached per type. [] on failure.
+  var _geoCache = {};
+  function fetchGeographies(type) {
+    if (_geoCache[type]) return _geoCache[type];
+    _geoCache[type] = fetch(apiBase() + '/cohort/geographies?type=' + encodeURIComponent(type), { cache: 'force-cache' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { return (j && j.geographies) || []; })
+      .catch(function () { return []; });
+    return _geoCache[type];
+  }
+
   // The narrate transport (ctx.fetchCohortNarration shape): POST the deterministic facts,
   // get back a character read. Returns null on ANY failure → caller shows no card (§4.5).
   function fetchCohortNarration(facts) {
@@ -77,20 +100,41 @@
   };
   var AGGS = ['composition', 'value-stats', 'value-change', 'ownership', 'area-distribution'];
 
-  var _ctx = { parcelId: null, distanceFt: DEFAULT_FT };
+  var _ctx = { parcelId: null, mode: 'buffer', distanceFt: DEFAULT_FT, geoName: null, geoId: null };
+
+  // Build the /cohort selector for the current area mode. Buffer needs a parcel; a named
+  // geography needs a chosen name/id. Returns null when the mode isn't satisfiable yet.
+  function buildSelector() {
+    if (_ctx.mode === 'buffer') {
+      if (_ctx.parcelId == null) return null;
+      return { type: 'buffer', parcel_id: _ctx.parcelId, distance_ft: _ctx.distanceFt };
+    }
+    if (_ctx.geoName == null && _ctx.geoId == null) return null;
+    var sel = { type: 'named-geography', geography: _ctx.mode };
+    if (_ctx.geoId != null) sel.id = _ctx.geoId; else sel.name = _ctx.geoName;
+    return sel;
+  }
 
   function open(opts) {
     if (!enabled()) return;
     opts = opts || {};
+    if (opts.mode) _ctx.mode = opts.mode;
+    if (opts.geoName !== undefined) _ctx.geoName = opts.geoName;
+    if (opts.geoId !== undefined) _ctx.geoId = opts.geoId;
+    if (opts.distanceFt) _ctx.distanceFt = opts.distanceFt;
     var pid = opts.parcelId;
     if (pid == null) { var pc = root.PS_STATE && root.PS_STATE.parcel; pid = pc && pc.id; }
-    if (pid == null) { return hint('Select a parcel first, then open the Neighborhood Profile.'); }
-    _ctx.parcelId = pid;
-    _ctx.distanceFt = opts.distanceFt || _ctx.distanceFt || DEFAULT_FT;
+    if (pid != null) _ctx.parcelId = pid;
+    // Buffer mode needs a parcel to anchor; named-geography can stand on its own.
+    if (_ctx.mode === 'buffer' && _ctx.parcelId == null) {
+      return hint('Select a parcel first, then open the Neighborhood Profile.');
+    }
+    var selector = buildSelector();
     renderShell('Loading neighborhood…');
+    if (!selector) { renderBody('<p class="pv-prof-empty">Pick a ' + esc(modeLabel(_ctx.mode).toLowerCase()) + ' above to profile it.</p>'); return; }
     fetch(apiBase() + '/cohort', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selector: { type: 'buffer', parcel_id: pid, distance_ft: _ctx.distanceFt } }),
+      body: JSON.stringify({ selector: selector }),
     })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
@@ -184,7 +228,8 @@
   // removes itself on failure (degrade-to-facts: the dashboard always stands alone).
   function maybeNarrate(facts) {
     if (!aiEnabled()) return;
-    var token = (_ctx.parcelId + ':' + _ctx.distanceFt);   // guard against a stale response after a radius change
+    // Guard against a stale response after the user changes area/radius mid-flight.
+    var token = [_ctx.mode, _ctx.parcelId, _ctx.distanceFt, _ctx.geoId, _ctx.geoName].join(':');
     _ctx.narrateToken = token;
     var body = el('pv-profile-body');
     if (!body) return;
@@ -225,25 +270,87 @@
       o.addEventListener('click', function (e) { if (e.target === o) close(); });
       return o;
     })();
-    var radii = RADII.map(function (ft) {
-      return '<button type="button" class="pv-prof-radius' + (ft === _ctx.distanceFt ? ' is-on' : '') + '" data-ft="' + ft + '">' +
-        (ft >= 5280 ? (ft / 5280) + ' mi' : (ft === 1320 ? '¼ mi' : (ft === 2640 ? '½ mi' : ft + ' ft'))) + '</button>';
-    }).join('');
     overlay.innerHTML =
       '<div class="pv-profile-modal" role="dialog" aria-modal="true" aria-label="Neighborhood profile">' +
         '<div class="pv-profile-head">' +
-          '<div><h2 class="pv-profile-title">Neighborhood Profile</h2>' +
-            '<div id="pv-profile-sub" class="pv-profile-sub">' + esc(loading || '') + '</div></div>' +
-          '<div class="pv-profile-head-r"><span class="pv-prof-radii">' + radii + '</span>' +
-            '<button type="button" class="pv-profile-x" aria-label="Close">×</button></div>' +
+          '<div class="pv-profile-head-l"><h2 class="pv-profile-title">Neighborhood Profile</h2>' +
+            '<div id="pv-profile-sub" class="pv-profile-sub">' + esc(loading || '') + '</div>' +
+            controlsHtml() + '</div>' +
+          '<button type="button" class="pv-profile-x" aria-label="Close">×</button>' +
         '</div>' +
         '<div id="pv-profile-body" class="pv-profile-body">' + (loading ? '<p class="pv-prof-empty">' + esc(loading) + '</p>' : '') + '</div>' +
       '</div>';
     overlay.hidden = false;
     overlay.querySelector('.pv-profile-x').addEventListener('click', close);
-    [].forEach.call(overlay.querySelectorAll('.pv-prof-radius'), function (b) {
-      b.addEventListener('click', function () { open({ parcelId: _ctx.parcelId, distanceFt: parseInt(b.getAttribute('data-ft'), 10) }); });
+    wireControls(overlay);
+  }
+
+  // Area + size controls: an area-mode picker plus mode-specific sizing (radius chips +
+  // a custom-distance field for buffers; a name dropdown for a named geography).
+  function controlsHtml() {
+    var modeOpts = AREA_MODES.map(function (m) {
+      return '<option value="' + m.key + '"' + (m.key === _ctx.mode ? ' selected' : '') + '>' + esc(m.label) + '</option>';
+    }).join('');
+    return '<div class="pv-prof-controls">' +
+      '<label class="pv-prof-ctl"><span class="pv-prof-ctl-l">Area</span>' +
+        '<select id="pv-prof-mode" class="pv-prof-select" aria-label="Area type">' + modeOpts + '</select></label>' +
+      '<span id="pv-prof-mode-ctl" class="pv-prof-mode-ctl">' + modeControlsHtml() + '</span>' +
+      '</div>';
+  }
+
+  function modeControlsHtml() {
+    if (_ctx.mode === 'buffer') {
+      var radii = RADII.map(function (ft) {
+        return '<button type="button" class="pv-prof-radius' + (ft === _ctx.distanceFt ? ' is-on' : '') +
+          '" data-ft="' + ft + '">' + ftLabel(ft) + '</button>';
+      }).join('');
+      var customVal = RADII.indexOf(_ctx.distanceFt) < 0 ? _ctx.distanceFt : '';
+      return '<span class="pv-prof-radii">' + radii + '</span>' +
+        '<span class="pv-prof-custom"><input id="pv-prof-custom-ft" class="pv-prof-custom-in" type="number" ' +
+          'min="' + MIN_FT + '" max="' + MAX_FT + '" step="10" placeholder="ft" aria-label="Custom distance in feet"' +
+          (customVal ? ' value="' + customVal + '"' : '') + '><span class="pv-prof-custom-u">ft</span></span>';
+    }
+    // named geography: a name dropdown (lazy-filled by wireControls).
+    return '<select id="pv-prof-geo" class="pv-prof-select pv-prof-geo-select" aria-label="' + esc(modeLabel(_ctx.mode)) + '">' +
+      '<option value="">Loading ' + esc(modeLabel(_ctx.mode).toLowerCase()) + 's…</option></select>';
+  }
+
+  function wireControls(overlay) {
+    var modeSel = overlay.querySelector('#pv-prof-mode');
+    if (modeSel) modeSel.addEventListener('change', function () {
+      _ctx.mode = modeSel.value; _ctx.geoName = null; _ctx.geoId = null;
+      open({});   // re-render controls; named modes show "pick one" until a name is chosen
     });
+    [].forEach.call(overlay.querySelectorAll('.pv-prof-radius'), function (b) {
+      b.addEventListener('click', function () { open({ distanceFt: parseInt(b.getAttribute('data-ft'), 10) }); });
+    });
+    var custom = overlay.querySelector('#pv-prof-custom-ft');
+    if (custom) custom.addEventListener('change', function () {
+      var ft = Math.max(MIN_FT, Math.min(MAX_FT, parseInt(custom.value, 10) || 0));
+      if (ft) open({ distanceFt: ft });
+    });
+    var geoSel = overlay.querySelector('#pv-prof-geo');
+    if (geoSel) {
+      fetchGeographies(_ctx.mode).then(function (list) {
+        var cur = el('pv-prof-geo'); if (!cur) return;   // shell may have been re-rendered
+        if (!list.length) { cur.innerHTML = '<option value="">none available</option>'; return; }
+        var schoolMap = _ctx.mode === 'school' ? labelMap('schoolDist') : null;
+        cur.innerHTML = '<option value="">Choose a ' + esc(modeLabel(_ctx.mode).toLowerCase()) + '…</option>' +
+          list.map(function (g) {
+            var v = g.id != null ? ('id:' + g.id) : ('name:' + g.name);
+            var seld = (g.id != null && g.id === _ctx.geoId) || (g.id == null && g.name === _ctx.geoName);
+            // School districts are stored as codes — show the readable name when the county map has it.
+            var text = (schoolMap && schoolMap[g.name]) ? (schoolMap[g.name] + ' (' + g.name + ')') : g.name;
+            return '<option value="' + esc(v) + '"' + (seld ? ' selected' : '') + '>' + esc(text) + '</option>';
+          }).join('');
+      });
+      geoSel.addEventListener('change', function () {
+        var v = geoSel.value;
+        if (!v) return;
+        if (v.indexOf('id:') === 0) open({ geoId: parseInt(v.slice(3), 10), geoName: null });
+        else open({ geoName: v.slice(5), geoId: null });
+      });
+    }
   }
 
   function renderBody(html, selector) {
