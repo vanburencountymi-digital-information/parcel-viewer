@@ -794,6 +794,10 @@
        cohort via /cohort → composition/value/ownership dashboard from the engine core. -->
   <script src="/frontend/public/js/pv-profile.js"></script>
   <script src="/frontend/public/js/map.js"></script>
+  <!-- Theme chooser (keystone): a pulldown to switch between bootable theme manifests
+       (engine/themes/index.json), preserving the current view. Gated — hidden until >1
+       bootable theme is registered. Loads after pv-manifest.js + map.js. -->
+  <script src="/frontend/public/js/pv-theme.js"></script>
   <!-- Selection bridge (A4 slice 1): mirrors the map's selection onto PS_BUS by
        intercepting PS_onParcelSelect (preserving any downstream handler). Loads AFTER
        map.js. Additive — no map.js changes. -->
