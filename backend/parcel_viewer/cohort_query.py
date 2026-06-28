@@ -36,15 +36,27 @@ def build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
     if stype == "explicit":
         ids = []
         for x in (sel.get("ids") or []):
+            # Tolerate numeric strings ("45154"); a non-numeric value is a PIN, not an id.
             try:
                 ids.append(int(x))
             except (TypeError, ValueError):
                 raise CohortSelectorError("explicit selector: ids must be integers")
+        pins = [str(p).strip() for p in (sel.get("pins") or []) if str(p).strip()]
         ids = ids[:limit]
-        if not ids:
-            raise CohortSelectorError("explicit selector needs at least one id")
-        label = "%d selected parcel%s" % (len(ids), "" if len(ids) == 1 else "s")
-        return ("pg.id = ANY(%s)", [ids], {"type": "explicit", "label": label})
+        pins = pins[:limit]
+        clauses, params = [], []
+        if ids:
+            clauses.append("pg.id = ANY(%s)")
+            params.append(ids)
+        if pins:
+            clauses.append("pg.parcel_no = ANY(%s)")
+            params.append(pins)
+        if not clauses:
+            raise CohortSelectorError("explicit selector needs at least one id or pin")
+        n = len(ids) + len(pins)
+        pred = clauses[0] if len(clauses) == 1 else "(" + " OR ".join(clauses) + ")"
+        label = "%d selected parcel%s" % (n, "" if n == 1 else "s")
+        return (pred, params, {"type": "explicit", "label": label})
 
     if stype == "buffer":
         try:

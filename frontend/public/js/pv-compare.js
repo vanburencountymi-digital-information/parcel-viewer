@@ -111,11 +111,16 @@
   function clear() { _set = []; renderTray(); }
 
   // ── Compare TABLE (render the core's facts) ─────────────────────────────────
-  // For Map Buddy / programmatic: set the cohort to these ids, then show.
-  function open(ids) {
-    if (Array.isArray(ids)) { _set = ids.slice(0, MAX).map(function (x) {
-      return (x && typeof x === 'object') ? { id: x.id, pin: x.pin } : { id: x, pin: null };
-    }); }
+  // For Map Buddy / programmatic: set the cohort to these parcels, then show. Each entry
+  // may be a numeric id, a PIN string, or { id, pin } (e.g. Map Buddy passes PINs).
+  function normItem(x) {
+    if (x && typeof x === 'object') return { id: x.id != null ? x.id : null, pin: x.pin || null };
+    if (typeof x === 'number') return { id: x, pin: null };
+    var s = String(x).trim();
+    return /^\d+$/.test(s) ? { id: Number(s), pin: null } : { id: null, pin: s };
+  }
+  function open(list) {
+    if (Array.isArray(list)) { _set = list.slice(0, MAX).map(normItem); }
     renderTray();
     show();
   }
@@ -123,10 +128,14 @@
   function show() {
     if (!enabled()) return;
     if (_set.length < MIN) { toast('Add at least ' + MIN + ' parcels to compare.'); return; }
-    var ids = _set.map(function (p) { return p.id; });
+    var ids = [], pins = [];
+    _set.forEach(function (p) { if (p.id != null) ids.push(p.id); else if (p.pin) pins.push(p.pin); });
+    var selector = { type: 'explicit' };
+    if (ids.length) selector.ids = ids;
+    if (pins.length) selector.pins = pins;
     fetch(apiBase() + '/cohort', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selector: { type: 'explicit', ids: ids } }),
+      body: JSON.stringify({ selector: selector }),
     })
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {

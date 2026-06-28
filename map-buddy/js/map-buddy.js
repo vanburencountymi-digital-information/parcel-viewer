@@ -982,6 +982,15 @@
       return '🪟 Opened ' + (LABEL[canon] || canon);
     },
 
+    // ── Compare (DIC-589): open the side-by-side table for named parcels ──────
+    compare_parcels: function (p) {
+      if (!root.PV_COMPARE || !root.PV_COMPARE.open) return null;
+      var items = [].concat(p.ids || [], p.pins || []).filter(function (x) { return x != null && x !== ''; });
+      if (items.length < 2) return null;
+      root.PV_COMPARE.open(items.slice(0, 5));
+      return '📊 Compared ' + Math.min(items.length, 5) + ' parcels';
+    },
+
     // ── Interface / appearance ────────────────────────────────────────────────
     set_theme: function (p) {
       var dark = p.dark != null ? !!p.dark : /dark|night/i.test(p.mode || p.theme || '');

@@ -54,6 +54,7 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor 
 - Measurement: measure_parcel, measure_area, measure_distance (results are shown to the user automatically).
 - Built-in viewer tools: set_parcel_labels (label every parcel by owner/PIN/address/value), dimension_parcel (surveyor-style side dimensions), activate_draw_tool (hand the user a draw tool), undo, redo.
 - Open viewer windows: open_tool — the Parcel Packet report ('packet'), Compare, Street View, the tax/assessment explainers, print/share/bookmark/settings, etc. "Show me the parcel packet" → select the parcel if needed, then open_tool 'packet'.
+- Compare parcels: compare_parcels — a side-by-side table of 2-5 specific parcels by `pins`/`ids` (differing rows highlighted). Use it for "compare this to <other>", "why is my assessment higher than my neighbor's", side-by-side questions. (open_tool 'compare' only adds the selected parcel to the compare tray; compare_parcels is how you compare named parcels directly.)
 - Data lookups (results come back to you): search_parcels finds parcels across the whole county by owner/address/PIN; get_parcel_info pulls a full record by id; get_environmental_info returns the REAL flood zone / wetlands / soil at a point. For "find X and do Y": call search_parcels, then select_parcel with the best match's `id`, then act (you have the tool results, so do it all). If several plausible matches, ask which one.
 - Interface: set_theme (dark/light), set_basemap (light/dark/aerial), set_base_layer (aerial/parcels), set_accessibility (large text, contrast, readable font, reduced motion/transparency, or max), set_panel_transparency, open_panel, set_area_units, set_coordinate_format, bookmark_current. Honor direct requests like "switch to dark mode", "turn on satellite", "make the text bigger".
 
@@ -358,6 +359,11 @@ TOOLS = [
     {"name": "redo", "description": "Redo the last undone drawing/annotation action.", "input_schema": {"type": "object", "properties": {}, "required": []}},
     {"name": "open_tool", "description": "Open one of the viewer's built-in tools/windows for the user. Parcel tools (a parcel must be selected first): 'packet' = the full Parcel Packet report, 'compare' = compare parcels, 'streetview' = Street View. Explainer windows: 'tax' = tax-description breakdown, 'assess' = assessment & tax breakdown. App tools: 'print', 'share', 'bookmark', 'data-request', 'report-error', 'help', 'whats-new', 'about', 'settings'. For 'show me the parcel packet', select the parcel if needed then open 'packet'.",
      "input_schema": {"type": "object", "properties": {"tool": {"type": "string", "enum": ["packet", "compare", "streetview", "tax", "assess", "print", "share", "bookmark", "data-request", "report-error", "help", "whats-new", "about", "settings"]}}, "required": ["tool"]}},
+    {"name": "compare_parcels", "description": "Open a side-by-side comparison of 2-5 specific parcels (class, acreage, assessed/taxable value, $/acre, owner, school district) with differing rows highlighted. Use for 'compare this parcel to ...', 'why is my assessment higher than my neighbor's', or any side-by-side question. Pass the parcels by `pins` (and/or `ids` from a search_parcels result); include the currently selected parcel's PIN when the user says 'this one'.",
+     "input_schema": {"type": "object", "properties": {
+         "pins": {"type": "array", "items": {"type": "string"}, "description": "Parcel PINs to compare (2-5)"},
+         "ids": {"type": "array", "items": {"type": ["integer", "string"]}, "description": "Parcel DB ids to compare (from search_parcels results)"}},
+      "required": []}},
 
     # ── Showcase ──────────────────────────────────────────────────────────────
     {"name": "map_tour", "description": "Run a guided fly-through of several stops, pausing at each. Each stop is a parcel PIN or a coordinate, with an optional note.",

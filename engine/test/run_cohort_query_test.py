@@ -31,9 +31,23 @@ class CohortQueryTest(unittest.TestCase):
         _, params, _ = cq.build_predicate({"type": "explicit", "ids": list(range(10))}, 4)
         self.assertEqual(params[0], [0, 1, 2, 3])
 
+    def test_explicit_pins_build_parcel_no_predicate(self):
+        pred, params, resolved = cq.build_predicate({"type": "explicit", "pins": ["80-07-017-025-00"]}, 3000)
+        self.assertEqual(pred, "pg.parcel_no = ANY(%s)")
+        self.assertEqual(params, [["80-07-017-025-00"]])
+        self.assertEqual(resolved["label"], "1 selected parcel")
+
+    def test_explicit_ids_and_pins_are_ORed(self):
+        pred, params, resolved = cq.build_predicate({"type": "explicit", "ids": [3], "pins": ["A", "B"]}, 3000)
+        self.assertEqual(pred, "(pg.id = ANY(%s) OR pg.parcel_no = ANY(%s))")
+        self.assertEqual(params, [[3], ["A", "B"]])
+        self.assertEqual(resolved["label"], "3 selected parcels")   # 1 id + 2 pins
+
     def test_explicit_empty_fails_closed(self):
         with self.assertRaises(cq.CohortSelectorError):
             cq.build_predicate({"type": "explicit", "ids": []}, 3000)
+        with self.assertRaises(cq.CohortSelectorError):
+            cq.build_predicate({"type": "explicit", "ids": [], "pins": []}, 3000)
 
     def test_explicit_non_integer_rejected(self):
         with self.assertRaises(cq.CohortSelectorError):
