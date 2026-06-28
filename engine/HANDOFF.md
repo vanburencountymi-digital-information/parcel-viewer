@@ -14,9 +14,12 @@ plugs into (contract, manifest, capability-gating, source abstraction, injected 
 AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
 (~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
 
-**▶ CURRENT STATE: parcel-viewer `main` @ `07ed5c0` — 9 cohort commits ahead of origin,
-NOT yet pushed (`821a25a`→`07ed5c0`). Harness 283 green (176 Node + 107 Python,
-`bash engine/run-harness.sh`).** ZIP/zip-poc + county-data-services clean/in sync (ZIP's
+**▶ CURRENT STATE: parcel-viewer `main` @ `3790b86` — 12 cohort commits ahead of origin,
+NOT yet pushed (`821a25a`→`3790b86`). Harness 283 green (176 Node + 107 Python,
+`bash engine/run-harness.sh`).** All four DIC-588 area modes ship: buffer (custom distance) +
+named-geography (subdivision/section/township/school) + drawn-polygon (full Profile UI — "Draw
+an area" hands the polygon tool via `PS_DRAWING_TOOLS`, watches `PS_ANNOTATION_STORE`, reopens
+on the sketched shape; `3790b86`). ZIP/zip-poc + county-data-services clean/in sync (ZIP's
 `init-db/02-seed.sh` + `files.zip` are pre-existing not-ours files — leave them). ⚠ The PV `api`
 image was rebuilt this session (new `/cohort/*` routes + `/cohort` `center`) — already up.
 
