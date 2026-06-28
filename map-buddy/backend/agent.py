@@ -55,6 +55,7 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor 
 - Built-in viewer tools: set_parcel_labels (label every parcel by owner/PIN/address/value), dimension_parcel (surveyor-style side dimensions), activate_draw_tool (hand the user a draw tool), undo, redo.
 - Open viewer windows: open_tool — the Parcel Packet report ('packet'), Compare, Street View, the tax/assessment explainers, print/share/bookmark/settings, etc. "Show me the parcel packet" → select the parcel if needed, then open_tool 'packet'.
 - Compare parcels: compare_parcels — a side-by-side table of 2-5 specific parcels by `pins`/`ids` (differing rows highlighted). Use it for "compare this to <other>", "why is my assessment higher than my neighbor's", side-by-side questions. (open_tool 'compare' only adds the selected parcel to the compare tray; compare_parcels is how you compare named parcels directly.)
+- Describe a neighborhood: describe_neighborhood — opens the Area Profile dashboard (composition, values + YoY change, ownership, parcel sizes) with an AI character read over the figures. Use for "what's this neighborhood/area like", "tell me about this area", "profile around this parcel". Defaults to a 1/4-mile buffer around the selected parcel; pass distance_ft for a different radius, or geography+name to profile a whole subdivision/section/township/school district instead.
 - Data lookups (results come back to you): search_parcels finds parcels across the whole county by owner/address/PIN; get_parcel_info pulls a full record by id; get_environmental_info returns the REAL flood zone / wetlands / soil at a point. For "find X and do Y": call search_parcels, then select_parcel with the best match's `id`, then act (you have the tool results, so do it all). If several plausible matches, ask which one.
 - Interface: set_theme (dark/light), set_basemap (light/dark/aerial), set_base_layer (aerial/parcels), set_accessibility (large text, contrast, readable font, reduced motion/transparency, or max), set_panel_transparency, open_panel, set_area_units, set_coordinate_format, bookmark_current. Honor direct requests like "switch to dark mode", "turn on satellite", "make the text bigger".
 
@@ -363,6 +364,14 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {
          "pins": {"type": "array", "items": {"type": "string"}, "description": "Parcel PINs to compare (2-5)"},
          "ids": {"type": "array", "items": {"type": ["integer", "string"]}, "description": "Parcel DB ids to compare (from search_parcels results)"}},
+      "required": []}},
+    {"name": "describe_neighborhood", "description": "Open the Neighborhood / Area Profile — a rich dashboard of an area's composition (class mix), assessed values + year-over-year change, ownership concentration, and parcel sizes, with an AI plain-language 'what kind of neighborhood is this' read over the figures. Use for 'what's this neighborhood/area like', 'tell me about this neighborhood', 'profile the area around this parcel', 'what kind of area is this'. Default = a 1/4-mile buffer around the selected parcel (set distance_ft for a bigger/smaller radius). Or profile a named area instead: set geography to 'subdivision'|'section'|'township'|'school' with its name.",
+     "input_schema": {"type": "object", "properties": {
+         "pin": {"type": "string", "description": "Parcel PIN to anchor a buffer around (defaults to the selected parcel)"},
+         "id": {"type": ["integer", "string"], "description": "Parcel DB id to anchor a buffer around (from search_parcels)"},
+         "distance_ft": {"type": "number", "description": "Buffer radius in feet (default 1320 = 1/4 mile; 2640 = 1/2 mile)"},
+         "geography": {"type": "string", "enum": ["subdivision", "section", "township", "school"], "description": "Profile a named area instead of a buffer"},
+         "name": {"type": "string", "description": "The name of the geography to profile (e.g. the township or school-district name)"}},
       "required": []}},
 
     # ── Showcase ──────────────────────────────────────────────────────────────

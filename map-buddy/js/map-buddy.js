@@ -991,6 +991,24 @@
       return '📊 Compared ' + Math.min(items.length, 5) + ' parcels';
     },
 
+    // ── Neighborhood / Area Profile (DIC-588): open the dashboard + AI character read ──
+    describe_neighborhood: function (p) {
+      if (!root.PV_PROFILE || !root.PV_PROFILE.open) return null;
+      var geo = p.geography && String(p.geography).toLowerCase();
+      if (geo && ['subdivision', 'section', 'township', 'school'].indexOf(geo) >= 0) {
+        var name = p.name != null ? String(p.name) : null;
+        if (!name) return null;
+        root.PV_PROFILE.open({ mode: geo, geoName: name });
+        return '🏘️ Profiling ' + name;
+      }
+      var opts = { mode: 'buffer' };
+      if (p.id != null && !isNaN(parseInt(p.id, 10))) opts.parcelId = parseInt(p.id, 10);
+      if (p.distance_ft != null && !isNaN(Number(p.distance_ft))) opts.distanceFt = Number(p.distance_ft);
+      root.PV_PROFILE.open(opts);   // parcelId omitted → defaults to the selected parcel
+      var d = opts.distanceFt || 1320;
+      return '🏘️ Neighborhood profile (' + (d >= 5280 ? (d / 5280) + ' mi' : d + ' ft') + ')';
+    },
+
     // ── Interface / appearance ────────────────────────────────────────────────
     set_theme: function (p) {
       var dark = p.dark != null ? !!p.dark : /dark|night/i.test(p.mode || p.theme || '');
