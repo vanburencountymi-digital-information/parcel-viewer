@@ -28,6 +28,7 @@
   var EXPLAINER = req('./explainer.core.js', 'ISV_EXPLAINER_CORE');
   var LEDGER = req('./ledger.core.js', 'ISV_LEDGER_CORE');
   var COMPOSER = req('./theme-composer.core.js', 'ISV_THEME_COMPOSER_CORE');
+  var COHORT = req('./cohort-analyze.core.js', 'ISV_COHORT_ANALYZE_CORE');
 
   // Register the v1 capabilities into the given registry (an ISV.createRegistry()
   // result, or ISV.registry). Returns the registry for chaining.
@@ -50,6 +51,20 @@
       id: 'ledger',
       aiMode: 'no-ai',
       core: LEDGER.core,
+    });
+
+    registry.register({
+      id: 'cohort-analyze',
+      aiMode: 'ai-optional',
+      core: COHORT.core,
+      // narrate(facts, provenance, ctx): the AI "character" read over the deterministic
+      // aggregates. Delegates to an injected transport; returns null to degrade-to-facts
+      // (AI down → the dashboard/table stands alone, §4.5/§4.6). It must NEVER originate a
+      // number — only summarize what facts already contains (grounding-judge gated).
+      narrate: function (facts, provenance, ctx) {
+        if (!ctx || typeof ctx.fetchCohortNarration !== 'function') return null;
+        return ctx.fetchCohortNarration(facts, provenance, ctx);
+      },
     });
 
     registry.register({
