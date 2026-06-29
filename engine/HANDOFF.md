@@ -1,4 +1,4 @@
-# ISV — Handoff (2026-06-27)
+# ISV — Handoff (updated 2026-06-28 → for the 2026-06-29 session)
 
 Pick-up doc for the **Intelligent Spatial Viewer** engine work. The authoritative spec is
 `Desktop/Claude/ISV_BUILD_SPEC.md` (v1.1); decisions/risk log is `engine/DECISIONS.md`;
@@ -35,10 +35,28 @@ plugs into (contract, manifest, capability-gating, source abstraction, injected 
 AI-optional, Citation Renderer) are built and proven on the live viewer. **ZIP is not yet
 (~40%)** — only its theme manifest is proven; its frontend is still the `ZIP_*` fork.
 
-**▶ CURRENT STATE: parcel-viewer `main` @ `cfee78e` — PUSHED & in sync with origin. Harness
-285 green (178 Node + 107 Python, `bash engine/run-harness.sh`).** The DIC-588 cohort suite is
-done (4 area modes: buffer+custom-distance / named-geography / drawn-polygon; env profile;
-AI narrative). Back on the keystone since.
+**▶ CURRENT STATE: parcel-viewer `main` @ `20fe8f0` — PUSHED & in sync (only the pre-existing
+not-ours `docs/isv-theme-concepts.md` is untracked — leave it). Harness 286 green (179 Node +
+107 Python, `bash engine/run-harness.sh`); CI green (actions bumped to Node24-native).**
+Feature-complete for the testing-phase deploy. Keystone Tier 1 essentially closed (AC1–AC7 green).
+
+**Landed today (2026-06-28, all pushed):** AC7 — manifest-driven config (`5c437a0`); DIC-407 popup
+-config seam (`c13d79f`); deploy prep — `/map-buddy/` no-store + `infra/DEPLOY-CHECKLIST.md` +
+**`infra/HANDOFF-DRAKE-DEPLOY.md`** (`ca390b2`,`20fe8f0`); CI actions fix (`4f7e043`); UI fixes —
+parcel labels follow pan + AV/TV/TMV draw (`38e1bd5`,`426d97c`), hint-× glyph + AI-notice hysteresis
++ theme-icon swap (`691d214`); acid-test DoD + AC4 (`017e517`).
+
+**▶ Best next moves (2026-06-29 — pick one; first two are unblocked here):**
+1. **Finish DIC-407** — move the canonical parcel-popup config out of `map.js _PARCEL_INFO_SOURCE`
+   into COUNTY/the manifest + de-dupe the in-file fallback. The seam (`_parcelPopupCfg()`) is already
+   in; this makes the popup fully theme-defined. Strangler: deep-equal vs the in-file config. (Kept
+   off the critical path before the deploy; safe to do now.)
+2. **Deploy support** — PV goes to a live URL ~week of 2026-07-06; Drake runs it from
+   `infra/HANDOFF-DRAKE-DEPLOY.md`. Be ready to fold in his answers (hostname, single/multi-tenant,
+   map-buddy min-instances, fixture vs `KB_BACKEND=dice`) and help with the post-deploy smoke test.
+3. **Keystone Tier 2+ (still gated):** kill-the-bus A3 (AC8 — needs parcel-studio runnable) +
+   ZIP-as-a-theme (AC9/10 — needs ZIP runnable + Lockport data). Not doable in this env; see the
+   acid-test doc. Lights up the (built, gated) theme chooser when a 2nd bootable theme exists.
 
 **Keystone Phase 2B + a fix (2026-06-28, `2731d8c`+`cfee78e`):** capability gating extended
 to basic surfaces — `search` (top-bar) + `layers` (map-panel tab, with first-visible-tab
