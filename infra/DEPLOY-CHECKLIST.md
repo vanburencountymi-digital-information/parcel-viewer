@@ -15,7 +15,7 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
 
 1. **[infra] Deploy current Map Buddy to Cloud Run** — `bash map-buddy/deploy.sh`.
    - Ships the routes prod is **missing today**: `/describe-cohort`, `/judge`, `/autoconfigure`, `/status`, plus the C3 cache/quota and the KB resolver. Until this runs, the deployed viewer's AI features (cohort narrative, theme composer, grounding judge) won't work even though the UI is live.
-   - Key comes from secret `PS_ANTHROPIC_API_KEY` (already wired in deploy.sh). `ALLOWED_ORIGINS` already includes the prod viewer origins.
+   - Key comes from secret `MAP_BUDDY_ANTHROPIC_API_KEY` (already wired in deploy.sh). `ALLOWED_ORIGINS` already includes the prod viewer origins.
    - ⚠ **Cold starts:** deploy.sh sets `--min-instances 0`. The first AI call cold-starts (~seconds), which can briefly trip the "AI is unavailable" notice. We added health-check hysteresis so a single blip won't pop it, but for the testing window consider `--min-instances 1` (small cost, no cold-start hiccups).
 
 2. **[verify] Viewer points at the deployed Map Buddy URL.** `deploy.sh` prints the Cloud Run URL; it must equal `COUNTY.endpoints.mapBuddy` in **all three** places:

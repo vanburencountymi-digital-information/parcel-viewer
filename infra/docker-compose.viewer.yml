@@ -43,9 +43,9 @@ services:
     env_file: ../.env
     environment:
       # Accept either name: the backend wants ANTHROPIC_API_KEY, but the project
-      # (and the Cloud Run secret) use PS_ANTHROPIC_API_KEY. Prefer the plain
-      # name if set, else fall back to the PS_-prefixed one from .env.
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-${PS_ANTHROPIC_API_KEY:-}}"
+      # (and the Cloud Run secret) use MAP_BUDDY_ANTHROPIC_API_KEY. Prefer the plain
+      # name if set, else fall back to the MAP_BUDDY_-prefixed one from .env.
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-${MAP_BUDDY_ANTHROPIC_API_KEY:-}}"
       ALLOWED_ORIGINS: "http://localhost:8080,http://localhost:8091,http://127.0.0.1:8080"
     # Bind-mount the source + hot-reload so backend edits are live in build mode
     # (mirrors how the frontend is mounted). Remove both lines for prod parity.

@@ -33,7 +33,7 @@ stack + map-buddy on Cloud Run) from current code, plus a couple of decisions (b
 ## Do this (order matters)
 
 1. **Deploy Map Buddy → Cloud Run:** `bash map-buddy/deploy.sh`
-   - Already wired: image build/push to Artifact Registry, key from secret `PS_ANTHROPIC_API_KEY`,
+   - Already wired: image build/push to Artifact Registry, key from secret `MAP_BUDDY_ANTHROPIC_API_KEY`,
      `ALLOWED_ORIGINS` = `https://map.dicemi.org, https://parcels.dicemi.org, localhost…`.
    - ⚠ It sets `--min-instances 0`. First AI call cold-starts (~seconds); for the testing window I'd
      bump to `--min-instances 1` so the explainers/cohort AI don't briefly show "AI unavailable" on a

@@ -21,7 +21,7 @@ gcloud run deploy ${SERVICE} \
   --image ${IMAGE} \
   --region ${REGION} \
   --project ${PROJECT_ID} \
-  --set-secrets ANTHROPIC_API_KEY=PS_ANTHROPIC_API_KEY:latest \
+  --set-secrets ANTHROPIC_API_KEY=MAP_BUDDY_ANTHROPIC_API_KEY:latest \
   --set-env-vars "^|^ALLOWED_ORIGINS=https://map.dicemi.org,https://parcels.dicemi.org,http://localhost:8080,http://localhost:5173" \
   --allow-unauthenticated \
   --port 8000 \
