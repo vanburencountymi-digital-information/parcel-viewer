@@ -60,6 +60,7 @@ the specs that touch them — never as a blanket rule.
 | `labels` | Every Parcel Labels field renders clean text on the map (no NaN / undefined); size buttons; turning labels off removes them |
 | `explainers` | Assessment + tax-description explainers with AI off, AI on but failing (says "couldn't be reached", not "off"), AI on (mocked; model text escaped; same figures as AI-off); a statute citation opens the Sources panel |
 | `automations` | Every Map Buddy automation runs on the selected parcel; the setback input is honoured; an out-of-range setback is refused with the reason |
+| `a11y-scan` | axe-core WCAG 2.1 A/AA scan of the main screens (load, parcel, settings, Map Buddy, layers, dark mode) and the admin console; serious/critical violations fail. The phone layout is scanned in `mobile.spec` |
 | `choropleth` | Every "Color parcels by" view repaints with a legend; taxable value / acre puts each parcel's own value on the map; school legend lists the districts present; choice persists; dark palette |
 
 ## Proving a test catches its bug

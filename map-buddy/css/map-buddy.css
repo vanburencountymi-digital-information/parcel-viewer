@@ -151,7 +151,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.mb-context-empty #mb-context-text { color: #9ca3af; }
+.mb-context-empty #mb-context-text { color: #646a75; }   /* 5.0:1 on the panel (was 2.3:1) */
 
 /* ── Messages area ── */
 .mb-messages {
