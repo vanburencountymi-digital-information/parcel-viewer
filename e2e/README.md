@@ -30,7 +30,10 @@ an uncaught exception, unless that test declares the specific error expected. Si
 breakage — a handler throwing, a failed fetch nobody surfaces — is what these tests hunt.
 The only global exception: up to two failed `/ws` connection attempts, because the
 standalone viewer has no live-update backend (Parcel Studio does); `smoke.spec.js` asserts
-that bound so a reconnect loop can't come back unnoticed.
+that bound so a reconnect loop can't come back unnoticed. When a test fails, the report
+also lists every failed request (status + URL), so "Failed to load resource" is traceable.
+Third-party outages (FEMA / USFWS / NRCS via `/api/wms-proxy`) are allowed by URL only in
+the specs that touch them — never as a blanket rule.
 
 ## Files
 
@@ -46,6 +49,16 @@ that bound so a reconnect loop can't come back unnoticed.
 | `error-states` | Style/config/search/parcel/Map Buddy failures (simulated with request interception) show the right message or fallback |
 | `theme-a11y` | Dark mode persists, accessibility + AI toggles, text-size clamp, blocked browser storage |
 | `mobile` | Phone viewport: tab bar, search overlay, selection, no horizontal overflow |
+| `admin-console` | Every admin module renders from live config; Edit/Cancel; saving, history and publish without a token fail with a message; layer discovery; manifest validation |
+| `measure-and-draw` | Area/distance results match Turf on the drawn shape (and the clicked points, within snapping); dimension perimeter matches the parcel; draw, undo/redo, clear all |
+| `bookmarks-and-share` | Bookmarks survive a reload and reopen the parcel; Share links reopen the same parcel or map view; malformed links are ignored |
+| `profile-areas` | Neighborhood Profile for every area type (radius, subdivision, section, township, school, drawn area); larger radius never gives fewer parcels; rapid changes settle correctly; labelled by parcel number |
+| `identify` | Flood identify popup (mocked proxy): zone shown, upstream text escaped, closes; no feature / proxy failure → no popup; rapid clicks keep only the latest result |
+| `compare` | Parcels compared by PIN (as Map Buddy does) can be removed; the tray × removes a parcel |
+| `select-tools` | Attribute filter count matches the data and selects exactly those parcels; Remove from Selection keeps the rest; CSV has one row per parcel and neutralises spreadsheet formulas; next/prev and arrow keys; clear; buffer from the selected parcel; box drag |
+| `settings` | Area units and coordinate format re-render the open panel and persist; DMS / State Plane readouts agree with proj4; default basemap applies now and after reload |
+| `labels` | Every Parcel Labels field renders clean text on the map (no NaN / undefined); size buttons; turning labels off removes them |
+| `choropleth` | Every "Color parcels by" view repaints with a legend; taxable value / acre puts each parcel's own value on the map; school legend lists the districts present; choice persists; dark palette |
 
 ## Proving a test catches its bug
 

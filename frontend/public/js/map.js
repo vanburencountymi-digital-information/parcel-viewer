@@ -174,10 +174,11 @@
       const next = COORD_FORMATS[(COORD_FORMATS.indexOf(_coordFormat()) + 1) % COORD_FORMATS.length];
       localStorage.setItem("pv-coord-format", next);
       _renderCoords();
+      rerenderOpenParcel();   // the panel's "Center" row uses the same format
     });
     // Hook for a future Settings control.
     window.PV_COORDS = {
-      setFormat: (f) => { if (COORD_FORMATS.indexOf(f) !== -1) { localStorage.setItem("pv-coord-format", f); _renderCoords(); } },
+      setFormat: (f) => { if (COORD_FORMATS.indexOf(f) !== -1) { localStorage.setItem("pv-coord-format", f); _renderCoords(); rerenderOpenParcel(); } },
       getFormat: _coordFormat,
       formats: COORD_FORMATS.slice(),
     };
@@ -265,7 +266,7 @@
     window.PS_BUS.on("active-feature-changed", function (e) {
       const r = e && e.ref;
       if (r && r.sourceId === "parcels" && r.properties) {
-        showParcelInfo(r.pin || r.selectionKey || r.id, r.properties, r.geometry);
+        showParcelInfo(r.selectionKey || r.pin || r.id, r.properties, r.geometry);
       }
     });
   }
@@ -1132,10 +1133,12 @@
     });
 
     initCoordReadout();
+    map.once("load", applyDeepLink);
 
     map.on("load", () => {
       requestAnimationFrame(() => {
         map.resize();
+        if (_deepLinked) return;   // a shared link set the camera; skip the intro fly-over
         const cam = map.cameraForBounds(EXTENT, { padding: 0 });
         map.flyTo({ center: cam.center, zoom: cam.zoom + 0.5, duration: 1400, curve: 1.4, essential: true });
       });
@@ -1716,13 +1719,21 @@
       const p = ctx.props || {};
       return [p.assessed_value_yr0, p.assessed_value_yr1, p.assessed_value_yr2,
               p.assessed_value_yr3, p.assessed_value_yr4]
-        .map(function (v) { return v != null && v !== "" ? parseInt(v) : null; });
+        .map(avYear);
     },
     tax_description: function (_v, ctx) {
       const p = ctx.props || {};
       return p.ps_legal_description || p.legal_description || null;
     },
   };
+  // One assessed-value history year -> a finite number or null. Blank or non-numeric roll
+  // values used to become NaN and draw <rect height="NaN"> bars (DIC-1873).
+  function avYear(v) {
+    if (v == null || v === "") return null;
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+
   function _escHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
@@ -1776,7 +1787,7 @@
     const histVals = historyRow && Array.isArray(historyRow.value) ? historyRow.value : [];
     const avChartHtml = (function () {
       const vals = histVals.slice().reverse();
-      const validVals = vals.filter(function (v) { return v != null; });
+      const validVals = vals.filter(function (v) { return v != null; });   // avYear: finite or null
       if (validVals.length === 0) {
         return '<div class="parcel-info-row"><span class="parcel-info-label"' + tipAttr("AV History") + '>AV History</span><span class="parcel-info-value">&mdash;</span></div>';
       }
@@ -1793,7 +1804,7 @@
         const cx = colW * i + colW / 2;
         const yr = curYear - (vals.length - 1 - i);
         if (v == null) return '<text x="' + cx + '" y="' + (H - 2) + '" text-anchor="middle" font-size="9" fill="' + yrClr + '">' + yr + '</text>';
-        const bh = Math.max(3, Math.round((v / maxVal) * barAreaH));
+        const bh = Math.max(3, Math.round((maxVal > 0 ? v / maxVal : 0) * barAreaH));   // all-zero history: no 0/0
         const bx = cx - barW / 2, by = valueH + barAreaH - bh;
         const lbl = "$" + Math.round(v / 1000) + "k";
         return '<rect x="' + bx.toFixed(1) + '" y="' + by.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + bh.toFixed(1) + '" fill="url(#av-bar-grad)" rx="2"/>' +
@@ -1884,7 +1895,7 @@
 
     const histVals = [p.assessed_value_yr0, p.assessed_value_yr1, p.assessed_value_yr2,
                       p.assessed_value_yr3, p.assessed_value_yr4]
-      .map(v => v != null ? parseInt(v) : null);
+      .map(avYear);
 
     // Build a compact SVG bar chart for AV history.
     // histVals is newest-first (yr0…yr4); reverse so bars read oldest→newest left to right.
@@ -1906,7 +1917,7 @@
         const cx = colW * i + colW / 2;
         const yr = curYear - (vals.length - 1 - i);
         if (v == null) return `<text x="${cx}" y="${H - 2}" text-anchor="middle" font-size="9" fill="${yrClr}">${yr}</text>`;
-        const bh = Math.max(3, Math.round((v / maxVal) * barAreaH));
+        const bh = Math.max(3, Math.round((maxVal > 0 ? v / maxVal : 0) * barAreaH));   // all-zero history: no 0/0
         const bx = cx - barW / 2, by = valueH + barAreaH - bh;
         const lbl = '$' + Math.round(v / 1000) + 'k';
         return `<rect x="${bx.toFixed(1)}" y="${by.toFixed(1)}" width="${barW.toFixed(1)}" height="${bh.toFixed(1)}" fill="url(#av-bar-grad)" rx="2"/>` +
@@ -1975,19 +1986,19 @@
             `<span class="pv-bm-label">${on ? "Bookmarked" : "Bookmark"}</span>` +
           `</button>`;
         })() +
-        `<button class="pv-ptool" data-ptool="streetview" data-pin="${pin}">` +
+        `<button class="pv-ptool" data-ptool="streetview" data-pin="${_escHtml(pin)}">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 0-8 8c0 5.4 8 12 8 12s8-6.6 8-12a8 8 0 0 0-8-8z"/></svg>` +
           `<span>Street View</span>` +
         `</button>` +
-        `<button class="pv-ptool" data-ptool="packet" data-pin="${pin}">` +
+        `<button class="pv-ptool" data-ptool="packet" data-pin="${_escHtml(pin)}">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>` +
           `<span>Generate Parcel Packet</span>` +
         `</button>` +
-        `<button class="pv-ptool" data-ptool="compare" data-pin="${pin}">` +
+        `<button class="pv-ptool" data-ptool="compare" data-pin="${_escHtml(pin)}">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><rect x="3" y="4" width="7" height="16" rx="1"/><rect x="14" y="4" width="7" height="16" rx="1"/></svg>` +
           `<span>Compare Parcels</span>` +
         `</button>` +
-        `<button class="pv-ptool" data-ptool="profile" data-pin="${pin}">` +
+        `<button class="pv-ptool" data-ptool="profile" data-pin="${_escHtml(pin)}">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="15" height="15"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="21"/></svg>` +
           `<span>Neighborhood Profile</span>` +
         `</button>` +
@@ -2151,7 +2162,9 @@
       showParcelAtIndex(0);
       // The search box opts into a cinematic arrival; other callers (MapBuddy
       // workflows, etc.) get the quick fit so they aren't slowed down.
-      if (opts.cinematic) {
+      if (opts.keepView) {
+        // Deep link with its own view: leave the camera where the link put it.
+      } else if (opts.cinematic) {
         window.PS_cinematicFlyTo(feature.geometry);
       } else {
         map.fitBounds(computeBounds(feature.geometry), { padding: 80, duration: 800, maxZoom: 17 });
@@ -2744,10 +2757,14 @@
     }
     const fields = [...fieldSet];
 
+    // Text starting with = + - @ (or tab/CR) is run as a formula when the CSV is opened
+    // in Excel/Sheets, so prefix it with ' (OWASP CSV-injection guidance). Numbers,
+    // including negatives, pass through unchanged.
     const cell = (v) => {
       if (v == null) return "";
-      const s = String(v);
-      return /[,"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      let s = String(v);
+      if (typeof v !== "number" && /^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = "'" + s;
+      return /[,"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
     };
 
     const rows = [fields.map(cell).join(",")];
@@ -2818,6 +2835,9 @@
           map.getCanvas().style.cursor = "crosshair";
         } else if (tool === "buffer") {
           map.getCanvas().style.cursor = "crosshair";
+          // Seed from the parcel already on screen; a map click still re-seeds.
+          const cur = activeInfoPin && selectedFeatureMap.get(activeInfoPin);
+          if (cur && cur.geometry) handleBufferSeedClick({ properties: cur.props, geometry: cur.geometry });
         } else {
           map.dragPan.enable();
           map.getCanvas().style.cursor = "";
@@ -3684,6 +3704,43 @@
     // Start with everything closed on mobile.
     if (isMobile() && mcpPanel) mcpPanel.hidden = true;
     refresh();
+  }
+
+  // ── Deep links (Share) ────────────────────────────────────────────────
+  // ?parcel=<id> reopens a parcel; ?view=<lng>,<lat>,<zoom> restores the map position.
+  // Share used to copy location.href, which never carried either, so every shared link
+  // opened the default county view. Values are validated; anything malformed is ignored.
+  function viewLink() {
+    const u = new URL(window.location.href);
+    u.hash = "";
+    u.searchParams.delete("parcel");
+    u.searchParams.delete("view");
+    const sel = window.PS_STATE && window.PS_STATE.parcel;
+    if (sel && sel.id != null) u.searchParams.set("parcel", String(sel.id));
+    if (map) {
+      const c = map.getCenter();
+      u.searchParams.set("view", [c.lng.toFixed(5), c.lat.toFixed(5), map.getZoom().toFixed(2)].join(","));
+    }
+    return u.toString();
+  }
+  window.PV_VIEW_LINK = viewLink;
+
+  let _deepLinked = false;   // set when the URL placed the camera (suppresses the intro fly)
+  function applyDeepLink() {
+    let params;
+    try { params = new URL(window.location.href).searchParams; } catch (_) { return; }
+    const view = (params.get("view") || "").split(",").map(Number);
+    if (view.length === 3 && view.every(Number.isFinite) &&
+        Math.abs(view[0]) <= 180 && Math.abs(view[1]) <= 90 && view[2] >= 0 && view[2] <= 22) {
+      map.jumpTo({ center: [view[0], view[1]], zoom: view[2] });
+      _deepLinked = true;
+    }
+    const parcel = params.get("parcel");
+    if (parcel && /^\d+$/.test(parcel)) {
+      // Keep the shared view when one was given; otherwise fit to the parcel.
+      _deepLinked = true;
+      window.PS_selectParcelById(Number(parcel), { keepView: view.length === 3 && view.every(Number.isFinite) });
+    }
   }
 
   // The map can't start (API down, style.json failing, MapLibre missing). Without this the

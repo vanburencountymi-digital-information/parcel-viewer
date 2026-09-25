@@ -52,8 +52,14 @@
       active = { el: el, close: close, returnTo: root.document.activeElement };
     }
     root.document.addEventListener('keydown', onKey, true);
-    var target = el.querySelector('[aria-label="Close"]') || focusables(el)[0];
-    if (target) target.focus();
+    // Focus on the next tick, not now: a dialog can open *during* a key event (Enter
+    // finishing a drawn area reopens the Profile). Focusing synchronously let that same
+    // Enter's default action land on the Close button and shut the dialog at once.
+    setTimeout(function () {
+      if (!active || active.el !== el || el.hidden) return;
+      var target = el.querySelector('[aria-label="Close"]') || focusables(el)[0];
+      if (target) target.focus();
+    }, 0);
   }
 
   function closed(el) {

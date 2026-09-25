@@ -243,6 +243,15 @@ def cohort(body: CohortRequest):
     with pool.connection() as conn:
         rows = conn.execute(sql, params + [limit]).fetchall()
         crow = conn.execute(center_sql, params).fetchone()
+        # A buffer around a parcel is labelled by its parcel number (what people know),
+        # not the internal DB id cohort_query had to hand ("... of parcel 58710").
+        sel = body.selector or {}
+        if resolved.get("type") == "buffer" and sel.get("parcel_id") is not None:
+            prow = conn.execute(
+                "SELECT parcel_no FROM geo.parcel_geometry WHERE id = %s", (int(sel["parcel_id"]),)
+            ).fetchone()
+            if prow and prow.get("parcel_no"):
+                resolved["label"] = resolved["label"].rsplit(" parcel ", 1)[0] + " parcel " + prow["parcel_no"]
 
     features = [{"id": r["id"], "properties": {k: v for k, v in r.items() if k != "id"}} for r in rows]
     resolved["count"] = len(features)

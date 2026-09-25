@@ -361,7 +361,7 @@
       '<div class="pv-about-grid">' +
         '<div class="pv-about-k">Version</div><div class="pv-about-v" id="pv-app-version">… (preview)</div>' +
         aboutRow("Maintained by", "DICE Labs") +
-        aboutRow("Basemap", "CARTO / OpenStreetMap contributors") +
+        aboutRow("Basemap", "Esri Light/Dark Gray Canvas (Esri, HERE, Garmin, OpenStreetMap contributors)") +
         aboutRow("Parcel data", countyName + " GIS") +
       '</div>',
       '<p class="pv-modal-note">This is a preview build. Data shown is for informational purposes only and is not a legal record of survey.</p>'
@@ -405,7 +405,8 @@
   }
 
   function openShare() {
-    var url = window.location.href;
+    // A link to the selected parcel and current map view (map.js PV_VIEW_LINK).
+    var url = window.PV_VIEW_LINK ? window.PV_VIEW_LINK() : window.location.href;
     openModal("Share", [
       '<p class="pv-modal-lead">Share a link to this view.</p>',
       '<div class="pv-copy-row">' +

@@ -16,14 +16,22 @@ const test = base.test.extend({
     const problems = [];
     const allowed = [];
     page.on('console', (msg) => {
-      if (msg.type() === 'error') problems.push('console.error: ' + msg.text());
+      // Include the resource URL (set for "Failed to load resource") so tests can allow a
+      // specific third-party failure by URL without hiding our own.
+      const where = (msg.location() && msg.location().url) || '';
+      if (msg.type() === 'error') problems.push('console.error: ' + msg.text() + (where ? ' [' + where + ']' : ''));
     });
     page.on('pageerror', (err) => problems.push('uncaught: ' + err.message));
+    // Browsers log a failed request as "Failed to load resource" without the URL; keep the
+    // URL + status so a failure report says which request it was.
+    const failed = [];
+    page.on('response', (r) => { if (r.status() >= 400) failed.push(r.status() + ' ' + r.request().method() + ' ' + r.url()); });
     await use({ allow: (re) => allowed.push(re), problems });
     const unexpected = problems.filter((p) => !allowed.concat(BENIGN).some((re) => re.test(p)));
     if (unexpected.length) {
       testInfo.annotations.push({ type: 'console', description: unexpected.join('\n') });
-      throw new Error('Unexpected browser errors:\n  ' + unexpected.slice(0, 10).join('\n  '));
+      throw new Error('Unexpected browser errors:\n  ' + unexpected.slice(0, 10).join('\n  ') +
+        (failed.length ? '\nFailed requests:\n  ' + failed.slice(0, 10).join('\n  ') : ''));
     }
   }, { auto: true }],
 });
