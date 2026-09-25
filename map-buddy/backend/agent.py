@@ -14,7 +14,13 @@ _client = None
 def _get_client():
     global _client
     if _client is None:
-        _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+        # SDK defaults are a 600s timeout with 2 retries; a hung call would pin a request
+        # (and a Cloud Run instance) for up to half an hour of retries (DIC-1854).
+        _client = anthropic.Anthropic(
+            api_key=os.environ["ANTHROPIC_API_KEY"],
+            timeout=float(os.getenv("ANTHROPIC_TIMEOUT_S", "60")),
+            max_retries=int(os.getenv("ANTHROPIC_MAX_RETRIES", "1")),
+        )
     return _client
 
 
@@ -560,7 +566,15 @@ def _exec_data_tool(name: str, inp: dict) -> str:
             pid = inp.get("id") if inp.get("id") is not None else inp.get("parcel_id")
             if pid is None:
                 return "Provide a parcel id (from search_parcels)."
-            data = _http_get_json("/parcel/" + urllib.parse.quote(str(pid)))
+            # The id is model-supplied: accept only a positive integer so it can't steer
+            # the request to another API path (e.g. "../config") (DIC-1854).
+            try:
+                pid = int(str(pid).strip())
+            except ValueError:
+                pid = 0
+            if pid <= 0:
+                return "Parcel id must be the numeric id from search_parcels."
+            data = _http_get_json("/parcel/%d" % pid)
             return json.dumps(data.get("properties", data))
         if name == "get_environmental_info":
             lng, lat = inp.get("lng"), inp.get("lat")
