@@ -1,0 +1,43 @@
+# CodeQL code scanning (DIC-1880). Required by the team's "Production" App Checklist and
+# Public Release Gate: runs on every PR and push to main, plus weekly, so new CVE queries
+# also check code that hasn't changed. Findings appear under Security → Code scanning.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 6 * * 1'   # Mondays 06:23 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # upload results to code scanning
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # No compiled code, so no build step (build-mode: none).
+        language: [python, javascript-typescript, actions]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          config-file: ./.github/codeql/codeql-config.yml
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
