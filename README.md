@@ -45,7 +45,8 @@ The viewer stack (api + martin + nginx) and Map Buddy are **two separate deploya
 | `demo/index.html` | Standalone demo (Layers \| Select \| Draw \| Measure) |
 | `infra/compose.ps1` | Docker compose wrapper with preflight checks |
 | `infra/docker-compose.viewer.yml` | api + martin + nginx stack |
-| `infra/DEPLOY-CHECKLIST.md` | Pre-launch checklist and smoke tests |
+| `infra/DEPLOY-CHECKLIST.md` | Pre-launch checklist, prod settings and smoke tests |
+| `infra/smoke-test.sh` | Automated post-deploy check: `bash infra/smoke-test.sh <viewer-url>` |
 | `tools/a11y-proxy.py` | Accessibility audit proxy |
 
 ---
