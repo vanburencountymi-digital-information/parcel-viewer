@@ -9,14 +9,14 @@ on:
     paths:
       - 'engine/**'
       - '!engine/**/*.md'
-      - 'frontend/public/js/pv-explain.js'
+      - 'frontend/public/js/**'
       - 'map-buddy/backend/agent.py'
       - '.github/workflows/isv-harness.yml'
   pull_request:
     paths:
       - 'engine/**'
       - '!engine/**/*.md'
-      - 'frontend/public/js/pv-explain.js'
+      - 'frontend/public/js/**'
       - 'map-buddy/backend/agent.py'
       - '.github/workflows/isv-harness.yml'
   workflow_dispatch:
@@ -49,4 +49,6 @@ jobs:
         working-directory: engine
         run: |
           python -VV
-          python -m unittest test.run_explain_contract_test -v
+          # Run the file directly: `python -m unittest test.<mod>` resolves `test` to
+          # the stdlib package, not engine/test/, and fails with ModuleNotFoundError.
+          python test/run_explain_contract_test.py
