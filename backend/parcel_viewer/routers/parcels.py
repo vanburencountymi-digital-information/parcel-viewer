@@ -5,6 +5,7 @@ All geometry leaves the API as GeoJSON in EPSG:4326; storage is EPSG:2253
 """
 
 import json
+import math
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -172,12 +173,14 @@ def _row_to_feature(row: dict) -> dict:
 
 
 @router.get("/parcels")
-async def parcels_bbox(
+def parcels_bbox(
     bbox: str = Query(..., description="west,south,east,north in EPSG:4326"),
-    limit: int = Query(4000, le=10000),
+    limit: int = Query(4000, ge=1, le=10000),
 ):
     try:
         w, s, e, n = (float(v) for v in bbox.split(","))
+        if not all(math.isfinite(v) for v in (w, s, e, n)):
+            raise ValueError
     except ValueError:
         raise HTTPException(status_code=400, detail="bbox must be west,south,east,north")
 
@@ -199,7 +202,7 @@ async def parcels_bbox(
 
 
 @router.post("/cohort")
-async def cohort(body: CohortRequest):
+def cohort(body: CohortRequest):
     """Resolve a cohort selector to a feature SET for the cohort-analyze capability
     (DIC-587). The backend does the spatial SELECTION (PostGIS); the deterministic
     aggregation runs in the engine core over these features (single source of truth).
@@ -240,7 +243,7 @@ async def cohort(body: CohortRequest):
 
 
 @router.get("/cohort/geographies")
-async def cohort_geographies(type: str = Query(...)):
+def cohort_geographies(type: str = Query(...)):
     """List the available named geographies of a given TYPE so the viewer can offer them as
     cohort areas (DIC-588). `type` ∈ {subdivision, section, township, school}. Returns
     { type, geographies:[{id, name}] } — `id` is null for attribute geographies (the name
@@ -271,7 +274,7 @@ async def cohort_geographies(type: str = Query(...)):
 
 
 @router.get("/nearest-road")
-async def nearest_road(lng: float = Query(...), lat: float = Query(...)):
+def nearest_road(lng: float = Query(...), lat: float = Query(...)):
     """Snap a point to the closest point on the nearest road (geo.reference_layers).
 
     Street View was opening at the parcel centroid, which is usually mid-parcel
@@ -298,7 +301,7 @@ async def nearest_road(lng: float = Query(...), lat: float = Query(...)):
 
 
 @router.get("/streetview-target")
-async def streetview_target(id: int = Query(...)):
+def streetview_target(id: int = Query(...)):
     """Best Street View setup for a parcel: anchor on the parcel's ADDRESS POINT
     (the structure, geo.address_points) when one exists, stand on the nearest
     road to it, and look back at it. Falls back to the parcel's representative
@@ -348,7 +351,7 @@ async def streetview_target(id: int = Query(...)):
 
 
 @router.get("/search")
-async def search(q: str = Query(..., min_length=2), limit: int = Query(10, le=50)):
+def search(q: str = Query(..., min_length=2, max_length=100), limit: int = Query(10, ge=1, le=50)):
     tokens = [t for t in q.strip().split() if t]
     if not tokens:
         return {"results": []}
@@ -418,7 +421,7 @@ async def search(q: str = Query(..., min_length=2), limit: int = Query(10, le=50
 
 
 @router.get("/parcel/{parcel_id}")
-async def get_parcel(parcel_id: int):
+def get_parcel(parcel_id: int):
     # The schema-coupled SQL now lives in the ParcelStore seam (A6 / DIC-570); the route
     # formats the raw row into its GeoJSON Feature exactly as before. `canonical` is the
     # cross-backend normalized record, available to other callers.
@@ -437,7 +440,7 @@ async def get_parcel(parcel_id: int):
 
 
 @router.get("/parcel/{parcel_id}/history")
-async def parcel_history(parcel_id: int, limit: int = Query(50, le=200)):
+def parcel_history(parcel_id: int, limit: int = Query(50, ge=1, le=200)):
     sql = """
         SELECT event_id, parcel_id, event_type, event_timestamp, operator_id,
                source_document, closure_error, precision_ratio, bowditch_applied,

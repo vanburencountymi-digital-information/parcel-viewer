@@ -166,5 +166,22 @@ class CohortQueryTest(unittest.TestCase):
                 self.assertTrue(src["column"].startswith(("pg.", "a.")))
 
 
+    def test_malformed_values_raise_selector_error_not_500(self):
+        # DIC-1853: bare int()/float() on request values used to escape as plain ValueError
+        # (→ HTTP 500). Every malformed value must surface as CohortSelectorError (→ 400).
+        bad = [
+            {"type": "buffer", "parcel_id": "abc", "distance_ft": 100},
+            {"type": "buffer", "lng": "x", "lat": 42.2, "distance_ft": 100},
+            {"type": "buffer", "lng": float("nan"), "lat": 42.2, "distance_ft": 100},
+            {"type": "buffer", "parcel_id": 1, "distance_ft": float("inf")},
+            {"type": "named-geography", "geography": "subdivision", "id": "abc"},
+            {"type": "named-geography", "geography": "school", "id": [1]},
+        ]
+        for sel in bad:
+            with self.subTest(sel=sel):
+                with self.assertRaises(cq.CohortSelectorError):
+                    cq.build_predicate(sel, 3000)
+
+
 if __name__ == "__main__":
     unittest.main()

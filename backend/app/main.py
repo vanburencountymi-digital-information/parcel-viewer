@@ -1,5 +1,6 @@
 """Parcel Viewer backend — read-only FastAPI app."""
 
+import hmac
 import json
 import os
 from contextlib import asynccontextmanager
@@ -9,6 +10,8 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from psycopg.errors import QueryCanceled
+from psycopg_pool import PoolTimeout
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -81,7 +84,10 @@ def _require_writer(x_admin_token: str | None = Header(default=None)):
             raise HTTPException(status_code=503, detail=f"Config store error: {e}")
     if store is None:
         raise HTTPException(status_code=503, detail="Config store not configured (set PV_WRITER_DATABASE_URL).")
-    if not _ADMIN_TOKEN or x_admin_token != _ADMIN_TOKEN:
+    # Constant-time compare so response timing can't leak the token (DIC-1853).
+    if not _ADMIN_TOKEN or not hmac.compare_digest(
+        (x_admin_token or "").encode(), _ADMIN_TOKEN.encode()
+    ):
         raise HTTPException(status_code=401, detail="Admin auth required (interim PV_ADMIN_TOKEN; real auth is DIC-463).")
     return store
 
@@ -113,6 +119,8 @@ async def lifespan(app: FastAPI):
     open_pool()
     yield
     close_pool()
+    if _store_singleton is not None:
+        _store_singleton.close()
 
 
 app = FastAPI(title="Parcel Viewer API", version="0.1.0", lifespan=lifespan)
@@ -137,17 +145,29 @@ limiter = Limiter(key_func=_client_ip)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+# Every route is a plain `def` (DIC-1853): the psycopg pool, config store and urllib
+# calls all block, so FastAPI must run them in its threadpool — an `async def` doing
+# blocking I/O stalls the event loop and every other request with it.
+#
+# A statement past PV_STATEMENT_TIMEOUT_MS, or no free pool connection within
+# PV_POOL_TIMEOUT_S, is load — answer 503 rather than an opaque 500.
+@app.exception_handler(QueryCanceled)
+@app.exception_handler(PoolTimeout)
+async def _db_overloaded(request: Request, exc: Exception):
+    return JSONResponse({"error": "database busy, try again"}, status_code=503)
+
+
 app.include_router(parcels.router, tags=["parcels"])
 app.include_router(feedback.router, tags=["feedback"])
 
 
 @app.get("/health")
-async def health():
+def health():
     return {"status": "ok", "db": health_check()}
 
 
 @app.get("/config")
-async def config(county: str = DEFAULT_COUNTY):
+def config(county: str = DEFAULT_COUNTY):
     """The published per-county manifest as JSON (admin console + programmatic)."""
     data = _published_config(county)
     if data is None:
@@ -156,7 +176,7 @@ async def config(county: str = DEFAULT_COUNTY):
 
 
 @app.get("/config.js")
-async def config_js(county: str = DEFAULT_COUNTY):
+def config_js(county: str = DEFAULT_COUNTY):
     """The published manifest as a script that sets `window.COUNTY`. The viewer
     loads this after the baked county-config.js, so it overrides at runtime when
     reachable and the baked copy stands as the offline fallback if it isn't."""
@@ -275,7 +295,7 @@ def _discover_layers(county: str) -> list[dict]:
 
 
 @app.get("/admin/discover/layers")
-async def discover_layers(county: str = DEFAULT_COUNTY):
+def discover_layers(county: str = DEFAULT_COUNTY):
     """Spatial layers Martin can serve, for Admin-Console registration (DIC-502)."""
     try:
         return {"layers": _discover_layers(county)}
@@ -285,13 +305,13 @@ async def discover_layers(county: str = DEFAULT_COUNTY):
 
 # ── Config editing (writer-only; DIC-464 / DIC-466) ───────────────────────────
 @app.get("/config/{county}/draft")
-async def get_config_draft(county: str, store=Depends(_require_writer)):
+def get_config_draft(county: str, store=Depends(_require_writer)):
     """The working draft (or the latest published / baked manifest if none yet)."""
     return store.get_draft(county) or _load_county_config(county) or {}
 
 
 @app.put("/config/{county}/draft")
-async def put_config_draft(county: str, body: DraftBody, store=Depends(_require_writer)):
+def put_config_draft(county: str, body: DraftBody, store=Depends(_require_writer)):
     baked = _load_county_config(county)
     if baked:
         store.seed_if_empty(county, baked)   # establish v1 from baked before edits
@@ -300,7 +320,7 @@ async def put_config_draft(county: str, body: DraftBody, store=Depends(_require_
 
 
 @app.post("/config/{county}/publish")
-async def publish_config(county: str, body: PublishBody, store=Depends(_require_writer)):
+def publish_config(county: str, body: PublishBody, store=Depends(_require_writer)):
     baked = _load_county_config(county)
     if baked:
         store.seed_if_empty(county, baked)
@@ -312,12 +332,12 @@ async def publish_config(county: str, body: PublishBody, store=Depends(_require_
 
 
 @app.get("/config/{county}/versions")
-async def config_versions(county: str, store=Depends(_require_writer)):
+def config_versions(county: str, store=Depends(_require_writer)):
     return {"versions": store.list_versions(county)}
 
 
 @app.post("/config/{county}/rollback")
-async def rollback_config(county: str, body: RollbackBody, store=Depends(_require_writer)):
+def rollback_config(county: str, body: RollbackBody, store=Depends(_require_writer)):
     try:
         version = store.rollback(county, body.version, body.author)
     except ValueError as e:
@@ -327,7 +347,7 @@ async def rollback_config(county: str, body: RollbackBody, store=Depends(_requir
 
 @app.get("/wms-proxy")
 @limiter.limit(os.getenv("WMS_PROXY_RATE_LIMIT", "45/minute"))
-async def wms_proxy(request: Request, url: str):
+def wms_proxy(request: Request, url: str):
     """Proxy WMS GetFeatureInfo / GetLegendGraphic requests server-side.
 
     Per-IP rate limited (DIC-496) — the only unauthenticated abuse surface here.

@@ -100,6 +100,9 @@ For a **working map in the browser**, use the full Docker stack — `npx serve` 
 |----------|---------|
 | `PV_DATABASE_URL` | Read API → PostGIS (falls back to `PS_DATABASE_URL`) |
 | `MARTIN_DATABASE_URL` | Martin → PostGIS (`martin_ro` role) |
+| `UVICORN_WORKERS` | API worker processes (default `2`); each has its own DB pool |
+| `PV_POOL_MAX` / `PV_POOL_TIMEOUT_S` | Read pool size per worker (default `10`) and max wait for a connection (default `10`s → 503) |
+| `PV_STATEMENT_TIMEOUT_MS` | Server-side cap on any one query, read and config pools (default `10000` → 503) |
 | `PV_HTTP_PORT` | Host port (default `8080`) |
 
 ---
