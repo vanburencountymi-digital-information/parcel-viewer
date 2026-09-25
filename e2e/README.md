@@ -58,6 +58,8 @@ the specs that touch them — never as a blanket rule.
 | `select-tools` | Attribute filter count matches the data and selects exactly those parcels; Remove from Selection keeps the rest; CSV has one row per parcel and neutralises spreadsheet formulas; next/prev and arrow keys; clear; buffer from the selected parcel; box drag |
 | `settings` | Area units and coordinate format re-render the open panel and persist; DMS / State Plane readouts agree with proj4; default basemap applies now and after reload |
 | `labels` | Every Parcel Labels field renders clean text on the map (no NaN / undefined); size buttons; turning labels off removes them |
+| `explainers` | Assessment + tax-description explainers with AI off, AI on but failing (says "couldn't be reached", not "off"), AI on (mocked; model text escaped; same figures as AI-off); a statute citation opens the Sources panel |
+| `automations` | Every Map Buddy automation runs on the selected parcel; the setback input is honoured; an out-of-range setback is refused with the reason |
 | `choropleth` | Every "Color parcels by" view repaints with a legend; taxable value / acre puts each parcel's own value on the map; school legend lists the districts present; choice persists; dark palette |
 
 ## Proving a test catches its bug
