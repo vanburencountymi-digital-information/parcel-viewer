@@ -123,7 +123,16 @@ async def lifespan(app: FastAPI):
         _store_singleton.close()
 
 
-app = FastAPI(title="Parcel Viewer API", version="0.1.0", lifespan=lifespan)
+# Interactive API docs are off unless PV_API_DOCS=1 (DIC-1855): /docs and /openapi.json
+# publish every route, including the admin/config ones, to anyone. The dev compose
+# turns them on.
+_DOCS = os.getenv("PV_API_DOCS", "") == "1"
+app = FastAPI(
+    title="Parcel Viewer API", version="0.1.0", lifespan=lifespan,
+    docs_url="/docs" if _DOCS else None,
+    redoc_url="/redoc" if _DOCS else None,
+    openapi_url="/openapi.json" if _DOCS else None,
+)
 
 # CORS (DIC-1852). The viewer and admin console call the API same-origin through
 # nginx (/api/), so CORS only governs third-party browser callers. Allow just the

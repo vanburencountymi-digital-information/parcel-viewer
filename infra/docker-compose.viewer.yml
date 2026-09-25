@@ -17,6 +17,7 @@ services:
     env_file: ../.env
     environment:
       PV_MARTIN_PUBLIC_URL: /tiles
+      PV_API_DOCS: "1"          # dev only: /api/docs (off by default, DIC-1855)
     restart: unless-stopped
     expose:
       - "8000"
@@ -47,6 +48,7 @@ services:
       # name if set, else fall back to the MAP_BUDDY_-prefixed one from .env.
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-${MAP_BUDDY_ANTHROPIC_API_KEY:-}}"
       ALLOWED_ORIGINS: "http://localhost:8080,http://localhost:8091,http://127.0.0.1:8080"
+      MAP_BUDDY_API_DOCS: "1"   # dev only (off by default, DIC-1855)
     # Bind-mount the source + hot-reload so backend edits are live in build mode
     # (mirrors how the frontend is mounted). Remove both lines for prod parity.
     volumes:
@@ -62,7 +64,10 @@ services:
       - ./nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro
       - ../frontend/public:/usr/share/nginx/html/parcel-viewer:ro
       - ../demo:/usr/share/nginx/html/demo:ro
-      - ../map-buddy:/usr/share/nginx/html/map-buddy:ro
+      # Only Map Buddy's browser assets — never its backend source, deploy script or any
+      # local files next to them (DIC-1855). nginx also 404s everything else under /map-buddy/.
+      - ../map-buddy/js:/usr/share/nginx/html/map-buddy/js:ro
+      - ../map-buddy/css:/usr/share/nginx/html/map-buddy/css:ro
       - ../admin:/usr/share/nginx/html/admin:ro
       # ISV engine: capability contract + cores + curated corpora, served at /engine/
       # so the browser loads the SAME modules the harness tests (O1-a). Canonical home
