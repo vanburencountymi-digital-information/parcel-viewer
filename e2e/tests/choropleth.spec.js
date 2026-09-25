@@ -73,6 +73,28 @@ test('school district legend lists the districts present, and the choice persist
   await expect(page.locator('#parcels-choro-legend')).toContainText('School district');
 });
 
+test('Plain view: selecting a parcel keeps the other parcels visible; outlines are white with a casing', async ({ page }) => {
+  await openViews(page);
+  await pick(page, 'none');
+  await page.evaluate(async () => {
+    await window.PS_selectParcelById(window.PS_PARCEL_INDEX[5].properties.id, { keepView: true });
+  });
+  await waitForMapIdle(page);
+  const r = await page.evaluate(() => {
+    const m = window.PS_MAP;
+    const unselected = (id) => { const v = m.getPaintProperty(id, 'line-opacity'); return Array.isArray(v) ? v[v.length - 1] : v; };
+    return {
+      color: m.getPaintProperty('parcels-line', 'line-color'),
+      line: unselected('parcels-line'),
+      casing: m.getLayer('parcels-line-casing') ? unselected('parcels-line-casing') : null,
+      fill: m.getPaintProperty('parcels-fill', 'fill-opacity'),
+    };
+  });
+  expect(r.color).toBe('#ffffff');
+  expect(r.line, 'unselected outline opacity (was 0.18 → parcels vanished)').toBeGreaterThanOrEqual(0.5);
+  expect(r.casing, 'dark casing present and visible').toBeGreaterThanOrEqual(0.3);
+});
+
 test('dark mode swaps the view to its dark palette', async ({ page }) => {
   await openViews(page);
   await pick(page, 'class');
