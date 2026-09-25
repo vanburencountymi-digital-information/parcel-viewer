@@ -973,8 +973,14 @@
     }
 
     // ── Drawing tool shortcuts ───────────────────────────────────────────────
+    // Esc cancels the shape in progress; with nothing in progress it exits the tool, so
+    // panning and parcel clicks come back even when no tool buttons are on screen
+    // (e.g. a tool activated by Map Buddy). Not while typing in a field.
     if (e.key === 'Escape') {
-      cancelCurrentDraw();
+      var t = e.target;
+      var typing = t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (isDrawing || typing) cancelCurrentDraw();
+      else setActiveDrawTool(null);
       return;
     }
     if (e.key === 'Enter') {
