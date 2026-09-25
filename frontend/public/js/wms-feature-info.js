@@ -332,7 +332,7 @@
             '<span class="wfi-section-title">' + r.cfg.label + '</span>' +
             (count > 1 ? '<span class="wfi-count">' + count + ' features</span>' : '') +
           '</div>' +
-          (r.error ? '<div class="wfi-error">Query failed: ' + r.error + '</div>' : rows) +
+          (r.error ? '<div class="wfi-error">Query failed: ' + _esc(r.error) + '</div>' : rows) +
           '</div>';
       }).join('');
 

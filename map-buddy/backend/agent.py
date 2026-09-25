@@ -1,6 +1,7 @@
 """Map Buddy agent — Anthropic-backed chat with map command tool use."""
 
 import json
+import logging
 import math
 import os
 import urllib.parse
@@ -8,6 +9,8 @@ import urllib.request
 import anthropic
 
 from citations import extract_citations  # §6.4 envelope extraction (DIC-522)
+
+log = logging.getLogger("map_buddy.agent")
 
 _client = None
 
@@ -715,8 +718,11 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
 
             messages.append({"role": "user", "content": tool_results})
             yield {"type": "status", "message": "Working on it…"}
-    except Exception as e:
-        yield {"type": "error", "message": str(e)}
+    except Exception:
+        # Shown in the chat panel: keep SDK/network details (request ids, key status)
+        # in the server log, not in front of the user (DIC-1855).
+        log.exception("chat stream failed")
+        yield {"type": "error", "message": "Map Buddy hit a problem answering that. Please try again in a moment."}
         return
 
     if commands and not response_text.strip():

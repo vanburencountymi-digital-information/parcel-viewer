@@ -1,6 +1,7 @@
 """Map Buddy microservice — standalone FastAPI backend for the Map Buddy AI assistant."""
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Literal
@@ -44,6 +45,11 @@ SERVER_TENANT = os.getenv("MAP_BUDDY_TENANT", "vanburen")
 MAX_BODY_BYTES = int(os.getenv("MAP_BUDDY_MAX_BODY_BYTES", str(64 * 1024)))
 MAX_MESSAGE_CHARS = int(os.getenv("MAP_BUDDY_MAX_MESSAGE_CHARS", "2000"))
 MAX_HISTORY_TURNS = int(os.getenv("MAP_BUDDY_MAX_HISTORY", "12"))
+
+
+# Unexpected errors are logged in full; callers get "<route> failed" without the raw
+# exception text (SDK errors carry request ids, model names, key status) (DIC-1855).
+log = logging.getLogger("map_buddy")
 
 
 def _quota_block(tenant):
@@ -297,8 +303,9 @@ async def explain(request: Request, body: ExplainRequest):
         return {"ok": True, "explanation": explanation, "cached": False}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
-    except Exception as e:  # noqa: BLE001 — surface a clean message; frontend degrades
-        return {"ok": False, "error": f"explainer failed: {e}"}
+    except Exception:  # noqa: BLE001 — surface a clean message; frontend degrades
+        log.exception("explainer failed")
+        return {"ok": False, "error": "explainer failed"}
 
 
 @app.post("/autoconfigure")
@@ -327,8 +334,9 @@ async def autoconfigure(request: Request, body: AutoconfigureRequest):
         if result_cache.enabled():
             result_cache.get_cache().set(ck, refinement)
         return {"ok": True, "refinement": refinement, "cached": False}
-    except Exception as e:  # noqa: BLE001 — surface a clean message; frontend degrades
-        return {"ok": False, "error": f"autoconfigure failed: {e}"}
+    except Exception:  # noqa: BLE001 — surface a clean message; frontend degrades
+        log.exception("autoconfigure failed")
+        return {"ok": False, "error": "autoconfigure failed"}
 
 
 @app.post("/judge")
@@ -354,8 +362,9 @@ async def judge(request: Request, body: JudgeRequest):
         if result_cache.enabled():
             result_cache.get_cache().set(ck, verdict)
         return {"ok": True, "verdict": verdict, "cached": False}
-    except Exception as e:  # noqa: BLE001 — clean message; caller degrades
-        return {"ok": False, "error": f"judge failed: {e}"}
+    except Exception:  # noqa: BLE001 — clean message; caller degrades
+        log.exception("judge failed")
+        return {"ok": False, "error": "judge failed"}
 
 
 @app.post("/describe-cohort")
@@ -384,8 +393,9 @@ async def describe_cohort(request: Request, body: DescribeCohortRequest):
         if result_cache.enabled():
             result_cache.get_cache().set(ck, narration)
         return {"ok": True, "narration": narration, "cached": False}
-    except Exception as e:  # noqa: BLE001 — clean message; the Profile degrades to facts
-        return {"ok": False, "error": f"describe-cohort failed: {e}"}
+    except Exception:  # noqa: BLE001 — clean message; the Profile degrades to facts
+        log.exception("describe-cohort failed")
+        return {"ok": False, "error": "describe-cohort failed"}
 
 
 @app.post("/kb/resolve")
@@ -408,8 +418,9 @@ async def kb_resolve(request: Request, body: KbResolveRequest):
         return {"ok": False, "error": "knowledge base unavailable"}
     try:
         doc = kb_resolver.resolve_envelope(store, body.envelope or {}, domain=body.domain)
-    except Exception as e:  # noqa: BLE001 — clean message; viewer falls back
-        return {"ok": False, "error": f"kb resolve failed: {e}"}
+    except Exception:  # noqa: BLE001 — clean message; viewer falls back
+        log.exception("kb resolve failed")
+        return {"ok": False, "error": "kb resolve failed"}
     if not doc:
         return {"ok": False, "error": "no citable source in the knowledge base"}
     return {"ok": True, "doc": doc}
