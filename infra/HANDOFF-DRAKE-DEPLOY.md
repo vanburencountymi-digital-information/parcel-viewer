@@ -3,6 +3,21 @@
 Written 2026-06-28. Repo state: `main` @ `e00261d`, pushed & in sync. Harness 286 green, CI green.
 Quick step list: `infra/DEPLOY-CHECKLIST.md`. This doc is the "where things stand + what you do" narrative.
 
+> **Update 2026-09-25 — read this first.** A pre-launch hardening pass
+> ([DIC-1851](https://linear.app/dicelabs/issue/DIC-1851), PRs #16–#21) changed deploy-relevant
+> settings: new `api` env vars, nginx rate limits + security headers + private-file blocks, Map Buddy
+> quota/caps/tenant, and a single config-only home for the Map Buddy URL. **`infra/DEPLOY-CHECKLIST.md`
+> is now the source of truth** — its "Settings changed by the pre-launch hardening" section lists every
+> variable with prod guidance. The post-deploy check is automated: `bash infra/smoke-test.sh <url>`.
+>
+> Two things from that pass you should know before touching prod:
+> - **The live Map Buddy on Cloud Run is an old build:** AI quota **off**, `/docs` public. Redeploying
+>   (`bash map-buddy/deploy.sh`) fixes both.
+> - **Your decisions are tracked in Linear:** hosting/TLS/admin gate/DB sizing/branch protection in
+>   [DIC-1863](https://linear.app/dicelabs/issue/DIC-1863), the Map Buddy quota store and related infra
+>   in [DIC-1862](https://linear.app/dicelabs/issue/DIC-1862). They supersede the "Open questions" at the
+>   bottom of this doc. The rest of this doc (June narrative) is kept for context.
+
 ---
 
 ## Where things stand (read first)
@@ -85,6 +100,9 @@ Avast/Web-Shield-during-migrations note is **local-machine only** — not a prod
 
 ## Post-deploy smoke test
 
+Automated first: `bash infra/smoke-test.sh https://<live-host>` (exit 0 = pass; details in the checklist).
+Then the manual browser checks:
+
 - Load the URL → a parcel selects, popup renders (Parcel / Owner / Assessed Values + AV chart), labels follow pan.
 - Open an explainer (Assessment) → AI narration arrives → proves Cloud Run + key + the viewer→map-buddy URL.
 - Open Neighborhood Profile → dashboard + environmental + AI "character" read → proves `/cohort` (api) + `/describe-cohort` (map-buddy).
@@ -106,6 +124,8 @@ not that. See `engine/THEME_RENDERING_ACID_TEST.md`. And it does **not** touch t
 globals (`PS_MAP`/`PS_STATE`/drawing) — those stay as-is.
 
 ## Open questions for you / Jerry
+_Superseded 2026-09-25 by [DIC-1863](https://linear.app/dicelabs/issue/DIC-1863) (hosting) and
+[DIC-1862](https://linear.app/dicelabs/issue/DIC-1862) (Map Buddy infra); the KB question below is still open._
 - Final live hostname(s)?
 - Single-tenant VBC for now (→ skip RLS), or multi-tenant?
 - Keep map-buddy at `--min-instances 0` (cheaper, cold starts) or `1` (warm) for the testing window?
