@@ -23,6 +23,9 @@
   var STORAGE_COLLAPSED = 'mb:collapsed';
   var STORAGE_WIDTH     = 'mb:width';
   var DEFAULT_WIDTH     = 340;
+  // Chat request ceiling and per-turn history cap (server rejects turns > 8000 chars).
+  var CHAT_TIMEOUT_MS   = 120000;
+  var HISTORY_MAX_CHARS = 6000;
   var MIN_WIDTH         = 240;
   var MAX_WIDTH         = 620;
 
@@ -509,19 +512,33 @@
       map_state:            _buildMapState(),
     };
 
+    // A request can legitimately take a while (several tool rounds), but never forever:
+    // abort so the Send button and the "Thinking…" bubble can't stay stuck (DIC-1870).
+    var ctrl = typeof AbortController === 'function' ? new AbortController() : null;
+    var timer = ctrl ? setTimeout(function () { ctrl.abort(); }, CHAT_TIMEOUT_MS) : null;
+    var finished = false;   // a 'done' or 'error' event arrived
+
     return fetch(_apiBase + '/chat', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
+      signal:  ctrl ? ctrl.signal : undefined,
     }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
+      if (!res.ok) { var e = new Error('HTTP ' + res.status); e.status = res.status; throw e; }
       var reader  = res.body.getReader();
       var decoder = new TextDecoder();
       var buf     = '';
 
       function pump() {
         return reader.read().then(function (chunk) {
-          if (chunk.done) return;
+          if (chunk.done) {
+            // Stream closed without a final event: don't leave a dead "Thinking…" bubble.
+            if (!finished) {
+              thinkEl.remove();
+              _appendAiMsg('Map Buddy stopped before finishing. Please try again.');
+            }
+            return;
+          }
           buf += decoder.decode(chunk.value, { stream: true });
           var lines = buf.split('\n');
           buf = lines.pop();
@@ -537,11 +554,16 @@
             if (evt.type === 'status') {
               _updateThinking(thinkEl, evt.message);
             } else if (evt.type === 'done') {
+              finished = true;
               thinkEl.remove();
               var responseText = evt.response_text || '';
               var aiEl = _appendAiMsg(responseText);
-              _history.push({ role: 'user',      content: userMessage   });
-              _history.push({ role: 'assistant', content: responseText  });
+              // Only keep turns the server will accept when resent: an empty turn or one
+              // over the history cap would make every later request fail (DIC-1870).
+              if (responseText.trim()) {
+                _history.push({ role: 'user',      content: userMessage.slice(0, HISTORY_MAX_CHARS) });
+                _history.push({ role: 'assistant', content: responseText.slice(0, HISTORY_MAX_CHARS) });
+              }
               if (evt.commands && evt.commands.length) {
                 _appendActionChips(aiEl, _runCommands(evt.commands));
               }
@@ -549,6 +571,7 @@
                 _appendSources(aiEl, evt.citations);
               }
             } else if (evt.type === 'error') {
+              finished = true;
               thinkEl.remove();
               _appendAiMsg('Sorry, something went wrong: ' + evt.message);
             }
@@ -560,12 +583,21 @@
 
     }).catch(function (err) {
       thinkEl.remove();
-      if (err.message && err.message.indexOf('404') !== -1) {
+      var st = err && err.status;
+      if (err && err.name === 'AbortError') {
+        _appendAiMsg('That took too long, so I stopped waiting. Please try again.');
+      } else if (st === 404) {
         _appendAiMsg('The AI backend isn’t connected yet. Check back soon!');
+      } else if (st === 429) {
+        _appendAiMsg('Map Buddy is busy right now. Please wait a moment and try again.');
+      } else if (st === 413 || st === 422) {
+        _appendAiMsg('That request was too long for Map Buddy. Try a shorter message.');
       } else {
         _appendAiMsg('Couldn’t reach the server. Please try again.');
       }
       console.error('[Map Buddy]', err);
+    }).then(function () {
+      if (timer) clearTimeout(timer);
     });
   }
 
@@ -877,7 +909,8 @@
     select_parcel: function (p) {
       // Prefer DB id (from a backend search) — works even for parcels not in the
       // currently loaded tiles; fall back to PIN lookup within the loaded index.
-      if (p.id != null && root.PS_selectParcelById) { root.PS_selectParcelById(p.id); return '📍 Selected ' + (p.pin || p.id); }
+      // The id comes from model output and becomes part of a URL path: digits only (DIC-1870).
+      if (p.id != null && /^\d+$/.test(String(p.id)) && root.PS_selectParcelById) { root.PS_selectParcelById(p.id); return '📍 Selected ' + (p.pin || p.id); }
       if (p.pin && root.PS_selectParcel) { root.PS_selectParcel(p.pin); return '📍 Selected ' + p.pin; }
       return null;
     },
@@ -1146,7 +1179,8 @@
     _cancelCinematic();  // a new request stops any in-flight fly-around
     for (var i = 0; i < cmds.length; i++) {
       var cmd = cmds[i]; if (!cmd || !cmd.type) continue;
-      var fn = _CMDS[cmd.type];
+      // Own properties only: names like "constructor" must not resolve to prototype methods.
+      var fn = Object.prototype.hasOwnProperty.call(_CMDS, cmd.type) ? _CMDS[cmd.type] : null;
       if (!fn) { console.warn('[Map Buddy] unknown command:', cmd.type); continue; }
       try { var label = fn(cmd.payload || {}); if (label) chips.push(label); }
       catch (e) { console.warn('[Map Buddy] command error', cmd, e); }

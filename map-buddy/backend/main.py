@@ -45,6 +45,16 @@ SERVER_TENANT = os.getenv("MAP_BUDDY_TENANT", "vanburen")
 MAX_BODY_BYTES = int(os.getenv("MAP_BUDDY_MAX_BODY_BYTES", str(64 * 1024)))
 MAX_MESSAGE_CHARS = int(os.getenv("MAP_BUDDY_MAX_MESSAGE_CHARS", "2000"))
 MAX_HISTORY_TURNS = int(os.getenv("MAP_BUDDY_MAX_HISTORY", "12"))
+# Free-form payloads (facts/grounding) go straight into the prompt, so bound them well
+# below the body cap: the frontend's real payloads are a few KB (DIC-1870).
+MAX_FACTS_BYTES = int(os.getenv("MAP_BUDDY_MAX_FACTS_BYTES", str(24 * 1024)))
+
+
+def _payload_too_large(obj):
+    """An {ok:false} response if obj serializes (compactly) past MAX_FACTS_BYTES, else None."""
+    if len(json.dumps(obj, separators=(",", ":"), default=str)) > MAX_FACTS_BYTES:
+        return {"ok": False, "error": "request payload too large"}
+    return None
 
 
 # Unexpected errors are logged in full; callers get "<route> failed" without the raw
@@ -55,8 +65,9 @@ log = logging.getLogger("map_buddy")
 def _quota_block(tenant):
     """If the tenant is over its AI quota, return a degrade-to-AI-off response (C3 /
     DIC-584); the viewer falls back to facts (B4). Returns None when the call may proceed.
-    Call AFTER the cache check (cache hits are free) and BEFORE the model call."""
-    allowed, remaining = ai_usage.allow(tenant)
+    Call AFTER the cache check (cache hits are free) and BEFORE the model call. It
+    reserves (counts) the call atomically, so callers don't record() again."""
+    allowed, remaining = ai_usage.reserve(tenant)   # counts the call if allowed
     if not allowed:
         return {"ok": False, "error": "AI quota exceeded for this tenant; using AI-off.",
                 "degraded": True, "quota_remaining": 0}
@@ -260,7 +271,6 @@ async def chat(request: Request, body: ChatRequest):
             iter([f'data: {json.dumps({"type": "error", "message": blocked["error"], "degraded": True})}\n\n']),
             media_type="text/event-stream",
         )
-    ai_usage.record(SERVER_TENANT)
     history = body.conversation_history[-MAX_HISTORY_TURNS:] if MAX_HISTORY_TURNS > 0 else []
 
     def stream():
@@ -277,7 +287,7 @@ async def chat(request: Request, body: ChatRequest):
 
 @app.post("/explain")
 @limiter.limit(os.getenv("EXPLAIN_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
-async def explain(request: Request, body: ExplainRequest):
+def explain(request: Request, body: ExplainRequest):
     """Generate a grounded, structured explanation for a parcel (DIC-370). The
     caller passes pre-verified figures; the model only narrates them. Returns
     {ok, explanation} or {ok: false, error} so the frontend can fall back to the
@@ -285,6 +295,9 @@ async def explain(request: Request, body: ExplainRequest):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
     facts = body.facts or {}
+    too_big = _payload_too_large(facts)
+    if too_big:
+        return too_big
     # C3 result cache: the same parcel explained twice shouldn't pay twice. Tenant-scoped.
     tenant = SERVER_TENANT
     ck = result_cache.cache_key("explain:" + body.topic, tenant, facts)
@@ -297,7 +310,6 @@ async def explain(request: Request, body: ExplainRequest):
         return blocked
     try:
         explanation = run_explain(body.topic, facts)
-        ai_usage.record(tenant)
         if result_cache.enabled():
             result_cache.get_cache().set(ck, explanation)
         return {"ok": True, "explanation": explanation, "cached": False}
@@ -310,7 +322,7 @@ async def explain(request: Request, body: ExplainRequest):
 
 @app.post("/autoconfigure")
 @limiter.limit(os.getenv("AUTOCONFIGURE_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
-async def autoconfigure(request: Request, body: AutoconfigureRequest):
+def autoconfigure(request: Request, body: AutoconfigureRequest):
     """AI refinement for the Theme Composer (B3 / DIC-579). The engine assembled a
     deterministic draft; the model adds a plain-language rationale + optional suggested
     tweaks over it, never changing the manifest. Returns {ok, refinement:{rationale,
@@ -330,7 +342,6 @@ async def autoconfigure(request: Request, body: AutoconfigureRequest):
         return blocked
     try:
         refinement = run_autoconfigure(body.brief or {}, body.draft or {}, body.rationale or "")
-        ai_usage.record(tenant)
         if result_cache.enabled():
             result_cache.get_cache().set(ck, refinement)
         return {"ok": True, "refinement": refinement, "cached": False}
@@ -341,12 +352,15 @@ async def autoconfigure(request: Request, body: AutoconfigureRequest):
 
 @app.post("/judge")
 @limiter.limit(os.getenv("JUDGE_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
-async def judge(request: Request, body: JudgeRequest):
+def judge(request: Request, body: JudgeRequest):
     """LLM-judge grounding gate (C5 / DIC-586). Scores whether an AI output is grounded in
     the deterministic truth + whether its citations are accurate. Returns {ok, verdict:
     {grounded, citations_ok, issues}} or {ok:false, error}."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
+    too_big = _payload_too_large({"output": body.output, "grounding": body.grounding})
+    if too_big:
+        return too_big
     tenant = SERVER_TENANT
     ck = result_cache.cache_key("judge", tenant, {"output": body.output, "grounding": body.grounding})
     if result_cache.enabled():
@@ -358,7 +372,6 @@ async def judge(request: Request, body: JudgeRequest):
         return blocked
     try:
         verdict = run_grounding_judge(body.output or "", body.grounding or {})
-        ai_usage.record(tenant)
         if result_cache.enabled():
             result_cache.get_cache().set(ck, verdict)
         return {"ok": True, "verdict": verdict, "cached": False}
@@ -369,7 +382,7 @@ async def judge(request: Request, body: JudgeRequest):
 
 @app.post("/describe-cohort")
 @limiter.limit(os.getenv("DESCRIBE_COHORT_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
-async def describe_cohort(request: Request, body: DescribeCohortRequest):
+def describe_cohort(request: Request, body: DescribeCohortRequest):
     """AI 'character' read over a Neighborhood / Area Profile (DIC-588). The engine core
     already computed the deterministic facts; the model only characterizes them in plain
     language, never originating a number. Returns {ok, narration:{headline, character,
@@ -378,6 +391,9 @@ async def describe_cohort(request: Request, body: DescribeCohortRequest):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
     facts = body.facts or {}
+    too_big = _payload_too_large(facts)
+    if too_big:
+        return too_big
     tenant = SERVER_TENANT
     ck = result_cache.cache_key("describe-cohort", tenant, facts)
     if result_cache.enabled():
@@ -389,7 +405,6 @@ async def describe_cohort(request: Request, body: DescribeCohortRequest):
         return blocked
     try:
         narration = run_describe_cohort(facts)
-        ai_usage.record(tenant)
         if result_cache.enabled():
             result_cache.get_cache().set(ck, narration)
         return {"ok": True, "narration": narration, "cached": False}
@@ -400,7 +415,7 @@ async def describe_cohort(request: Request, body: DescribeCohortRequest):
 
 @app.post("/kb/resolve")
 @limiter.limit(os.getenv("KB_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "120/minute")))
-async def kb_resolve(request: Request, body: KbResolveRequest):
+def kb_resolve(request: Request, body: KbResolveRequest):
     """Resolve a §6.4 citation envelope against the County Knowledge Base (DIC-522), so the
     viewer's Sources panel can show full section text + a precise passage. NOT AI — pure
     retrieval, so there is NO ANTHROPIC_API_KEY gate (citations must work AI-off). Returns
@@ -446,7 +461,7 @@ async def workflows():
 
 @app.post("/workflow")
 @limiter.limit(os.getenv("MAP_BUDDY_RATE_LIMIT", "120/minute"))
-async def run_workflow(request: Request, body: WorkflowRequest):
+def run_workflow(request: Request, body: WorkflowRequest):
     """Deterministically expand a macro into map commands — one tap, no model
     round-trip. Returns the same {commands} the chat's run_workflow would."""
     inp = dict(body.params or {})
