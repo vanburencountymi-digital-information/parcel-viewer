@@ -39,10 +39,18 @@ jobs:
         working-directory: engine
         run: node --test
 
-      - name: Python — run_explain structured-output contract (stdlib unittest, no SDK)
+      - name: Python — explainer contract, cohort SQL, quota, cache, citations, KB, parcel store (stdlib only)
         working-directory: engine
         run: |
           python -VV
-          # Run the file directly: `python -m unittest test.<mod>` resolves `test` to
+          # Run each file directly: `python -m unittest test.<mod>` resolves `test` to
           # the stdlib package, not engine/test/, and fails with ModuleNotFoundError.
-          python test/run_explain_contract_test.py
+          # All of these are stdlib-only (no SDK, no DB). Not listed: run_parcel_store,
+          # run_knowledge_store and run_tenant_isolation import the ZIP backend from a
+          # sibling repo (../ZIP/zip-poc/backend) that isn't checked out here.
+          set -e
+          for t in run_explain_contract run_cohort_query run_quota run_cost_cache run_citation_extract run_kb_resolver run_pv_parcel_store; do
+            echo "::group::$t"
+            python "test/${t}_test.py"
+            echo "::endgroup::"
+          done

@@ -2,6 +2,7 @@
 
 import hmac
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -20,6 +21,10 @@ from parcel_viewer import config_store
 from parcel_viewer.db import close_pool, health_check, open_pool, pool
 from parcel_viewer.ratelimit import limiter
 from parcel_viewer.routers import feedback, parcels
+
+# Unexpected errors are logged here in full; clients get a generic message, never the
+# raw exception (DB driver messages carry hostnames and role names) (DIC-1855).
+log = logging.getLogger("parcel_viewer.api")
 
 # ── County config manifests (DIC-465) ────────────────────────────────────────
 # Server-side source of truth for the per-county manifest the viewer & admin
@@ -80,8 +85,9 @@ def _require_writer(x_admin_token: str | None = Header(default=None)):
     if config_store.is_configured():
         try:
             store = _get_store()
-        except Exception as e:  # noqa: BLE001
-            raise HTTPException(status_code=503, detail=f"Config store error: {e}")
+        except Exception:  # noqa: BLE001
+            log.exception("config store unavailable")
+            raise HTTPException(status_code=503, detail="Config store unavailable.")
     if store is None:
         raise HTTPException(status_code=503, detail="Config store not configured (set PV_WRITER_DATABASE_URL).")
     # Constant-time compare so response timing can't leak the token (DIC-1853).
@@ -312,8 +318,9 @@ def discover_layers(county: str = DEFAULT_COUNTY):
     """Spatial layers Martin can serve, for Admin-Console registration (DIC-502)."""
     try:
         return {"layers": _discover_layers(county)}
-    except Exception as e:  # noqa: BLE001
-        return JSONResponse({"error": str(e), "layers": []}, status_code=500)
+    except Exception:  # noqa: BLE001
+        log.exception("layer discovery failed")
+        return JSONResponse({"error": "layer discovery failed", "layers": []}, status_code=500)
 
 
 # ── Config editing (writer-only; DIC-464 / DIC-466) ───────────────────────────
@@ -387,5 +394,6 @@ def wms_proxy(request: Request, url: str):
             status_code=e.code,
             media_type=e.headers.get("Content-Type", "text/plain"),
         )
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=502)
+    except Exception:
+        log.exception("wms-proxy upstream request failed: %s", host)
+        return JSONResponse({"error": "upstream map service unavailable"}, status_code=502)
