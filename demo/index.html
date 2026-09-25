@@ -724,6 +724,8 @@
        before map.js parses; if config.js 404s, the baked fallback stands. -->
   <script src="/frontend/public/js/county-config.js"></script>
   <script src="/api/config.js" onerror="window.PV_CONFIG_SOURCE='fallback'"></script>
+  <!-- Service URL resolution (Map Buddy etc.) — after config, before any AI module. -->
+  <script src="/frontend/public/js/pv-endpoints.js"></script>
   <!-- Local draft preview (DIC-512): merges an Admin Console draft from
        localStorage over window.COUNTY for testing, before map.js reads it. -->
   <script src="/frontend/public/js/style-preview.js"></script>
@@ -828,16 +830,10 @@
   <!-- Map Buddy AI assistant — remove these two lines to detach -->
   <script src="/map-buddy/js/map-buddy.js"></script>
   <script>
-    // Map Buddy runs as a standalone Cloud Run service — the frontend just points
-    // apiBase at it (one key, one rate-limiter, one place to update). Prefer the
-    // configured per-county endpoint everywhere, including localhost. The local
-    // /map-buddy-api proxy is only a fallback if no endpoint is configured.
+    // Map Buddy runs as a standalone Cloud Run service; its URL comes from county config
+    // via pv-endpoints.js (DIC-1856), the same resolution every AI module uses.
     (function () {
-      var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-      var apiBase = (window.COUNTY && COUNTY.endpoints && COUNTY.endpoints.mapBuddy)
-        || window.MAP_BUDDY_API
-        || (isLocal && '/map-buddy-api')
-        || 'https://map-buddy-toaozre74a-uc.a.run.app';
+      var apiBase = PV_ENDPOINTS.mapBuddyBase();
       // Capability gating (Phase 2): only mount Map Buddy when the manifest/feature-flags
       // enable it. Default-on (PV_CAPS absent → mount). The B1 AI-mode toggle still governs
       // on/off visibility separately; this governs whether the surface exists at all.

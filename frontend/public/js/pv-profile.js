@@ -43,12 +43,9 @@
 
   // ── AI character narration (DIC-588 / cohort-analyze narrate seam) ───────────
   // Resolve the Map Buddy base the same way pv-explain does (one service, one key).
+  // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function mapBuddyBase() {
-    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-    var endpoints = cfg().endpoints || {};
-    return root.MAP_BUDDY_API || endpoints.mapBuddy ||
-      (isLocal && '/map-buddy-api') ||
-      'https://map-buddy-toaozre74a-uc.a.run.app';
+    return root.PV_ENDPOINTS ? root.PV_ENDPOINTS.mapBuddyBase() : (root.MAP_BUDDY_API || '/map-buddy-api');
   }
   // AI on AND reachable (mirrors pv-explain.aiEnabled): the controller short-circuits a
   // known-down service so we degrade to the dashboard immediately rather than per-request.

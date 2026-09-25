@@ -23,19 +23,11 @@
   var _retryTimer = null;
   var _fails = 0;
 
-  function countyConfig() {
-    return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {};
-  }
-
   // Same resolution pv-explain uses, so we health-check the service the explainer/
   // Map Buddy actually call.
+  // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function mapBuddyBase() {
-    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(root.location.hostname);
-    var endpoints = countyConfig().endpoints || {};
-    return endpoints.mapBuddy ||
-      root.MAP_BUDDY_API ||
-      (isLocal && '/map-buddy-api') ||
-      'https://map-buddy-toaozre74a-uc.a.run.app';
+    return root.PV_ENDPOINTS ? root.PV_ENDPOINTS.mapBuddyBase() : (root.MAP_BUDDY_API || '/map-buddy-api');
   }
 
   function setAvail(a) {
