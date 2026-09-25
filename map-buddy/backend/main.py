@@ -9,7 +9,7 @@ from typing import Literal
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent.parent / ".env", override=True)
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -19,6 +19,9 @@ from slowapi.util import get_remote_address
 
 from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, run_grounding_judge, run_describe_cohort, explainer_profiles_public
 import cache as result_cache
+from common.error_logging_client import ErrorLoggingClient, get_error_logging_client, init_error_monitoring
+from common.logging_setup import configure_logging
+from common.request_context import RequestContextMiddleware
 import usage as ai_usage
 import kb_resolver
 
@@ -61,6 +64,12 @@ def _payload_too_large(obj):
 # exception text (SDK errors carry request ids, model names, key status) (DIC-1855).
 log = logging.getLogger("map_buddy")
 
+# Observability (DIC-1879, ADR 0001): stdout logs with request ids (Cloud Run's Logs
+# tab reads the JSON), and Sentry when SENTRY_DSN is set (staging/production only).
+APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
+configure_logging("map-buddy")
+init_error_monitoring("map-buddy", APP_VERSION)
+
 
 def _quota_block(tenant):
     """If the tenant is over its AI quota, return a degrade-to-AI-off response (C3 /
@@ -69,6 +78,7 @@ def _quota_block(tenant):
     reserves (counts) the call atomically, so callers don't record() again."""
     allowed, remaining = ai_usage.reserve(tenant)   # counts the call if allowed
     if not allowed:
+        log.warning("AI quota exceeded for tenant %s", tenant, extra={"tenant": tenant})
         return {"ok": False, "error": "AI quota exceeded for this tenant; using AI-off.",
                 "degraded": True, "quota_remaining": 0}
     return None
@@ -87,7 +97,7 @@ limiter = Limiter(key_func=get_remote_address)
 # service is public, so /docs would advertise /judge, /autoconfigure etc. to anyone.
 _DOCS = os.getenv("MAP_BUDDY_API_DOCS", "") == "1"
 app = FastAPI(
-    title="Map Buddy Service", version="0.1.0",
+    title="Map Buddy Service", version=APP_VERSION,
     docs_url="/docs" if _DOCS else None,
     redoc_url="/redoc" if _DOCS else None,
     openapi_url="/openapi.json" if _DOCS else None,
@@ -146,7 +156,12 @@ app.add_middleware(
     allow_origins=ALLOWED_ORIGINS,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type"],
+    expose_headers=["X-Request-ID"],
 )
+
+# Added last so it wraps everything: every response, including 413s and CORS
+# rejections, gets a request id and an access-log line.
+app.add_middleware(RequestContextMiddleware)
 
 
 class ParcelContext(BaseModel):
@@ -243,7 +258,7 @@ async def status():
     stats, and per-tenant quota usage. No secrets — counts + config only, safe to scrape."""
     return {
         "status": "ok",
-        "version": "0.1.0",
+        "version": APP_VERSION,
         "ai_available": bool(os.environ.get("ANTHROPIC_API_KEY")),
         "cache": result_cache.stats(),
         "quota": ai_usage.snapshot(),
@@ -257,7 +272,11 @@ async def config():
 
 @app.post("/chat")
 @limiter.limit(os.getenv("MAP_BUDDY_RATE_LIMIT", "120/minute"))
-async def chat(request: Request, body: ChatRequest):
+async def chat(
+    request: Request,
+    body: ChatRequest,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return StreamingResponse(
             iter([f'data: {json.dumps({"type": "error", "message": "ANTHROPIC_API_KEY not configured."})}\n\n']),
@@ -275,7 +294,7 @@ async def chat(request: Request, body: ChatRequest):
 
     def stream():
         ms = body.map_state.model_dump() if body.map_state else None
-        for event in run_chat_stream(body.message, history, body.parcel_context, ms):
+        for event in run_chat_stream(body.message, history, body.parcel_context, ms, errors=errors):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
@@ -287,7 +306,11 @@ async def chat(request: Request, body: ChatRequest):
 
 @app.post("/explain")
 @limiter.limit(os.getenv("EXPLAIN_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
-def explain(request: Request, body: ExplainRequest):
+def explain(
+    request: Request,
+    body: ExplainRequest,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     """Generate a grounded, structured explanation for a parcel (DIC-370). The
     caller passes pre-verified figures; the model only narrates them. Returns
     {ok, explanation} or {ok: false, error} so the frontend can fall back to the
@@ -315,14 +338,19 @@ def explain(request: Request, body: ExplainRequest):
         return {"ok": True, "explanation": explanation, "cached": False}
     except ValueError as e:
         return {"ok": False, "error": str(e)}
-    except Exception:  # noqa: BLE001 — surface a clean message; frontend degrades
+    except Exception as exc:  # noqa: BLE001 — surface a clean message; frontend degrades
         log.exception("explainer failed")
+        errors.report_exception(exc, tags={"operation": "explain"})
         return {"ok": False, "error": "explainer failed"}
 
 
 @app.post("/autoconfigure")
 @limiter.limit(os.getenv("AUTOCONFIGURE_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
-def autoconfigure(request: Request, body: AutoconfigureRequest):
+def autoconfigure(
+    request: Request,
+    body: AutoconfigureRequest,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     """AI refinement for the Theme Composer (B3 / DIC-579). The engine assembled a
     deterministic draft; the model adds a plain-language rationale + optional suggested
     tweaks over it, never changing the manifest. Returns {ok, refinement:{rationale,
@@ -345,14 +373,19 @@ def autoconfigure(request: Request, body: AutoconfigureRequest):
         if result_cache.enabled():
             result_cache.get_cache().set(ck, refinement)
         return {"ok": True, "refinement": refinement, "cached": False}
-    except Exception:  # noqa: BLE001 — surface a clean message; frontend degrades
+    except Exception as exc:  # noqa: BLE001 — surface a clean message; frontend degrades
         log.exception("autoconfigure failed")
+        errors.report_exception(exc, tags={"operation": "autoconfigure"})
         return {"ok": False, "error": "autoconfigure failed"}
 
 
 @app.post("/judge")
 @limiter.limit(os.getenv("JUDGE_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
-def judge(request: Request, body: JudgeRequest):
+def judge(
+    request: Request,
+    body: JudgeRequest,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     """LLM-judge grounding gate (C5 / DIC-586). Scores whether an AI output is grounded in
     the deterministic truth + whether its citations are accurate. Returns {ok, verdict:
     {grounded, citations_ok, issues}} or {ok:false, error}."""
@@ -375,14 +408,19 @@ def judge(request: Request, body: JudgeRequest):
         if result_cache.enabled():
             result_cache.get_cache().set(ck, verdict)
         return {"ok": True, "verdict": verdict, "cached": False}
-    except Exception:  # noqa: BLE001 — clean message; caller degrades
+    except Exception as exc:  # noqa: BLE001 — clean message; caller degrades
         log.exception("judge failed")
+        errors.report_exception(exc, tags={"operation": "judge"})
         return {"ok": False, "error": "judge failed"}
 
 
 @app.post("/describe-cohort")
 @limiter.limit(os.getenv("DESCRIBE_COHORT_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
-def describe_cohort(request: Request, body: DescribeCohortRequest):
+def describe_cohort(
+    request: Request,
+    body: DescribeCohortRequest,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     """AI 'character' read over a Neighborhood / Area Profile (DIC-588). The engine core
     already computed the deterministic facts; the model only characterizes them in plain
     language, never originating a number. Returns {ok, narration:{headline, character,
@@ -408,14 +446,19 @@ def describe_cohort(request: Request, body: DescribeCohortRequest):
         if result_cache.enabled():
             result_cache.get_cache().set(ck, narration)
         return {"ok": True, "narration": narration, "cached": False}
-    except Exception:  # noqa: BLE001 — clean message; the Profile degrades to facts
+    except Exception as exc:  # noqa: BLE001 — clean message; the Profile degrades to facts
         log.exception("describe-cohort failed")
+        errors.report_exception(exc, tags={"operation": "describe_cohort"})
         return {"ok": False, "error": "describe-cohort failed"}
 
 
 @app.post("/kb/resolve")
 @limiter.limit(os.getenv("KB_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "120/minute")))
-def kb_resolve(request: Request, body: KbResolveRequest):
+def kb_resolve(
+    request: Request,
+    body: KbResolveRequest,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     """Resolve a §6.4 citation envelope against the County Knowledge Base (DIC-522), so the
     viewer's Sources panel can show full section text + a precise passage. NOT AI — pure
     retrieval, so there is NO ANTHROPIC_API_KEY gate (citations must work AI-off). Returns
@@ -433,8 +476,9 @@ def kb_resolve(request: Request, body: KbResolveRequest):
         return {"ok": False, "error": "knowledge base unavailable"}
     try:
         doc = kb_resolver.resolve_envelope(store, body.envelope or {}, domain=body.domain)
-    except Exception:  # noqa: BLE001 — clean message; viewer falls back
+    except Exception as exc:  # noqa: BLE001 — clean message; viewer falls back
         log.exception("kb resolve failed")
+        errors.report_exception(exc, tags={"operation": "kb_resolve"})
         return {"ok": False, "error": "kb resolve failed"}
     if not doc:
         return {"ok": False, "error": "no citable source in the knowledge base"}

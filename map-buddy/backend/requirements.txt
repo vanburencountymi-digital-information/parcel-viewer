@@ -5,3 +5,5 @@ uvicorn[standard]==0.54.0
 anthropic==1.8.0
 python-dotenv==1.2.3
 slowapi==0.1.10
+# Error monitoring (DIC-1879, ADR 0001); a no-op without SENTRY_DSN.
+sentry-sdk[fastapi]==2.70.0

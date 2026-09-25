@@ -46,7 +46,7 @@ the specs that touch them — never as a blanket rule.
 | `tool-windows` | Every Help & tools menu window and parcel tool: open, close by button, close by Esc, focus not lost |
 | `map-controls` | Every Select / Measure / Draw tool arms and exits, releasing the gate and restoring panning |
 | `layers` | Every layer toggle on/off; aerial replaces the street basemap |
-| `error-states` | Style/config/search/parcel/Map Buddy failures (simulated with request interception) show the right message or fallback |
+| `error-states` | Style/config/search/parcel/Map Buddy failures (simulated with request interception) show the right message or fallback; a page JS error reaches the server via the error beacon; extension errors are ignored |
 | `theme-a11y` | Dark mode persists, accessibility + AI toggles, text-size clamp, blocked browser storage |
 | `mobile` | Phone viewport: tab bar, search overlay, selection, no horizontal overflow |
 | `admin-console` | Every admin module renders from live config; Edit/Cancel; saving, history and publish without a token fail with a message; layer discovery; manifest validation |
