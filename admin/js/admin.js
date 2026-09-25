@@ -72,11 +72,13 @@
 
   // Config paths come from the manifest being edited; refuse the keys that reach
   // JavaScript's shared object prototype (CodeQL js/prototype-pollution-utility, DIC-1880).
-  var UNSAFE_KEYS = { '__proto__': true, 'constructor': true, 'prototype': true };
+  // A list, not an object: in a literal, '__proto__': … sets the prototype rather than
+  // adding a key.
+  var UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
   function safePath(path) {
     var parts = String(path).split('.');
     for (var i = 0; i < parts.length; i++) {
-      if (UNSAFE_KEYS[parts[i]]) throw new Error('Unsafe config path: ' + path);
+      if (UNSAFE_KEYS.indexOf(parts[i]) !== -1) throw new Error('Unsafe config path: ' + path);
     }
     return parts;
   }

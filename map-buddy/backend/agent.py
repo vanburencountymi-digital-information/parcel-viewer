@@ -10,6 +10,7 @@ import urllib.request
 import anthropic
 
 from citations import extract_citations  # §6.4 envelope extraction (DIC-522)
+from common.logging_setup import safe_for_log
 
 log = logging.getLogger("map_buddy.agent")
 
@@ -629,7 +630,7 @@ def _exec_data_tool(name: str, inp: dict) -> str:
                 return "Provide the point as lng + lat (use the selected parcel's centroid)."
             return json.dumps(_query_environment(float(lng), float(lat)))
     except Exception:
-        log.warning("data tool %s failed", name, exc_info=True)
+        log.warning("data tool %s failed", safe_for_log(name, 80), exc_info=True)
         return "Lookup failed; the service may be unavailable right now."
     return "Unknown data tool."
 
@@ -672,7 +673,7 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
             try:
                 env = _query_environment(float(centroid[0]), float(centroid[1]))
             except Exception:
-                log.warning("environment lookup failed for workflow %s", name, exc_info=True)
+                log.warning("environment lookup failed for workflow %s", safe_for_log(name, 80), exc_info=True)
                 env = dict(_LOOKUP_UNAVAILABLE)
 
     pin = inp.get("pin")
