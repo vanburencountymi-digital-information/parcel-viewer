@@ -27,7 +27,7 @@
  */
 (function (root, factory) {
   'use strict';
-  var mod = factory(root);
+  var mod = factory();
   if (typeof module !== 'undefined' && module.exports) module.exports = mod;
   root.ISV_TENANT = mod;
 }(typeof self !== 'undefined' ? self : this, function () {

@@ -397,16 +397,6 @@
     });
   }
 
-  // ── Roadmap placeholder (modules still to build) ───────────────────────────
-  function roadmap(title, sub, epic, items) {
-    return function (host) {
-      host.innerHTML = pageHead(title, sub) +
-        '<div class="ac-card ac-roadmap"><div class="ac-card-head"><h2 class="ac-card-title">Planned</h2>' +
-          '<span class="ac-epic">' + esc(epic) + '</span></div>' +
-          '<ul>' + items.map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + '</ul></div>';
-    };
-  }
-
   // ── Intelligence module: explainer-plugin admin backend (DIC-459, read-only) ─
   function renderIntelligence(host) {
     host.innerHTML = pageHead('Intelligence — Explainer Plugins',
@@ -826,7 +816,7 @@
       }
       return '<tr><td>' + esc(r.o.label) + '</td><td><code>' + esc(r.o.source || '—') + '</code></td>' +
         '<td>' + (r.o.minZoom ? ('z' + r.o.minZoom + '+') : 'all') + '</td>' +
-        '<td>' + (r.o.default ? 'on' : '') + '</td>' + (editing ? '<td></td>' : '') + '</tr>';
+        '<td>' + (r.o.default ? 'on' : '') + '</td></tr>';
     }).join('');
     if (!pgRows) {
       pgRows = '<tr><td colspan="' + (editing ? 5 : 4) + '" class="ac-readonly">No PostGIS layers yet' +

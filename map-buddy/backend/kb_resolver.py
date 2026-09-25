@@ -43,7 +43,6 @@ def _find_passage(body: str, needle: Optional[str]) -> Optional[dict]:
 
     norm = re.sub(r"\s+", " ", needle).strip()
     if norm and norm != needle:
-        idx = re.sub(r"\s+", " ", body).find(norm)
         # Offsets into the normalized string don't map back cleanly; only mark when the
         # collapsed body still contains it AND the raw body does too (best-effort exact).
         raw = body.find(norm)

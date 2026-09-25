@@ -114,10 +114,12 @@ class _BodySizeLimit:
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
-            return await self.app(scope, receive, send)
+            await self.app(scope, receive, send)
+            return
         for k, v in scope.get("headers") or []:
             if k == b"content-length" and v.isdigit() and int(v) > self.max_bytes:
-                return await self._reject(send)
+                await self._reject(send)
+                return
         seen, rejected = 0, False
 
         async def limited_receive():

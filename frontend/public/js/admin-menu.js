@@ -1319,34 +1319,6 @@
     };
   }
 
-  function wireForm(successTitle, successMsg) {
-    return function (bodyEl) {
-      var form = bodyEl.querySelector("form");
-      if (!form) return;
-      bodyEl.addEventListener("click", function (e) {
-        if (e.target.closest("[data-close]")) closeModal();
-      });
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        if (!form.checkValidity()) { form.reportValidity(); return; }
-        // PLACEHOLDER: no backend yet. Log the payload and show a success state.
-        var data = {};
-        Array.prototype.forEach.call(form.elements, function (el) {
-          if (el.name) data[el.name] = el.value;
-        });
-        console.info("[admin-menu] form submitted (placeholder, not sent):", data);
-        bodyEl.innerHTML =
-          '<div class="pv-form-success">' +
-            '<div class="pv-form-success-icon">&#10003;</div>' +
-            '<div class="pv-form-success-title">' + successTitle + '</div>' +
-            '<p class="pv-form-success-msg">' + successMsg + '</p>' +
-            '<button type="button" class="pv-btn-primary" data-close>Close</button>' +
-          '</div>';
-        bodyEl.querySelector("[data-close]").addEventListener("click", closeModal);
-      });
-    };
-  }
-
   // ── Small HTML helpers ────────────────────────────────────────────────────
   function field(label, control) {
     return '<label class="pv-field"><span class="pv-field-label">' + label + '</span>' + control + '</label>';
@@ -1359,10 +1331,6 @@
   }
   function placeholderTag(text) {
     return '<p class="pv-modal-note"><span class="pv-badge">Preview</span> ' + text + '</p>';
-  }
-  function changeEntry(date, items) {
-    return '<div class="pv-change"><div class="pv-change-date">' + esc(date) + '</div>' +
-      '<ul class="pv-change-list">' + items.map(function (i) { return '<li>' + i + '</li>'; }).join("") + '</ul></div>';
   }
   function esc(s) {
     return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; });
