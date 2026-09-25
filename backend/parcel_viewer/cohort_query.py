@@ -22,6 +22,7 @@ ST_DWithin distance in feet is used directly — no metric conversion. GeoJSON i
 from __future__ import annotations
 
 import json
+import math
 from typing import Tuple
 
 
@@ -49,6 +50,24 @@ def build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
     `resolved_selector` is the echo returned to the client (type + human label).
     Raises CohortSelectorError on anything malformed (fail-closed; no silent empty scan).
     """
+    try:
+        return _build_predicate(selector, limit)
+    except CohortSelectorError:
+        raise
+    except (TypeError, ValueError, AttributeError) as e:
+        # A bare int()/float() on a request value (e.g. parcel_id="abc") — a client error,
+        # not a server fault: surface it as a 400 rather than a 500 (DIC-1853).
+        raise CohortSelectorError("malformed cohort selector value") from e
+
+
+def _finite(v) -> float:
+    f = float(v)
+    if not math.isfinite(f):
+        raise CohortSelectorError("cohort selector numbers must be finite")
+    return f
+
+
+def _build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
     sel = selector or {}
     stype = (sel.get("type") or "").lower()
 
@@ -79,7 +98,7 @@ def build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
 
     if stype == "buffer":
         try:
-            dist = float(sel.get("distance_ft"))
+            dist = _finite(sel.get("distance_ft"))
         except (TypeError, ValueError):
             raise CohortSelectorError("buffer selector needs numeric distance_ft")
         if dist <= 0:
@@ -93,7 +112,7 @@ def build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
                 {"type": "buffer", "label": "Within %d ft of parcel %d" % (int(dist), pid)},
             )
         if sel.get("lng") is not None and sel.get("lat") is not None:
-            lng, lat = float(sel["lng"]), float(sel["lat"])
+            lng, lat = _finite(sel["lng"]), _finite(sel["lat"])
             return (
                 "ST_DWithin(pg.geom, ST_Transform(ST_SetSRID(ST_MakePoint(%s, %s), 4326), 2253), %s)",
                 [lng, lat, dist],

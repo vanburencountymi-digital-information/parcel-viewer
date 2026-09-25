@@ -19,9 +19,13 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+from contextlib import contextmanager
 from urllib.parse import urlparse
 
 WRITER_DSN = os.getenv("PV_WRITER_DATABASE_URL", "")
+# Same guard as the read pool (parcel_viewer.db): no config query may hang a worker.
+STATEMENT_TIMEOUT_MS = int(os.getenv("PV_STATEMENT_TIMEOUT_MS", "10000"))
 
 
 def is_configured() -> bool:
@@ -57,14 +61,46 @@ class ConfigStore:
         self.dialect = _dialect(self.dsn)
         # Postgres lives in a dedicated schema; SQLite has no schema namespace.
         self.table = "config.config_versions" if self.dialect == "postgres" else "config_versions"
+        self._pool = None
+        self._pool_lock = threading.Lock()
 
     # ── connection / dialect plumbing ───────────────────────────────────────
-    def _connect(self):
+    @contextmanager
+    def _connection(self):
+        """A connection for one unit of work. Postgres draws from a small lazily-opened
+        pool (GET /config.js hits get_published on every viewer load — DIC-1853); the
+        pool commits on clean exit and rolls back on error. SQLite (dev/tests) opens
+        and closes a file connection; callers commit explicitly."""
         if self.dialect == "sqlite":
             import sqlite3
-            return sqlite3.connect(_sqlite_path(self.dsn))
-        import psycopg  # prod
-        return psycopg.connect(self.dsn)
+            conn = sqlite3.connect(_sqlite_path(self.dsn))
+            try:
+                yield conn
+            finally:
+                conn.close()
+            return
+        with self._get_pool().connection() as conn:
+            yield conn
+
+    def _get_pool(self):
+        if self._pool is None:
+            with self._pool_lock:
+                if self._pool is None:
+                    from psycopg_pool import ConnectionPool  # prod
+                    self._pool = ConnectionPool(
+                        self.dsn,
+                        min_size=0,
+                        max_size=int(os.getenv("PV_WRITER_POOL_MAX", "4")),
+                        timeout=10,
+                        kwargs={"options": f"-c statement_timeout={STATEMENT_TIMEOUT_MS}"},
+                        open=True,
+                    )
+        return self._pool
+
+    def close(self) -> None:
+        if self._pool is not None:
+            self._pool.close()
+            self._pool = None
 
     def _q(self, sql: str) -> str:
         # Author SQL with '?' placeholders; psycopg wants '%s'.
@@ -98,12 +134,16 @@ class ConfigStore:
                 " created_by TEXT,"
                 " created_at TIMESTAMPTZ NOT NULL DEFAULT now())"
             )
-        conn = self._connect()
-        try:
+        with self._connection() as conn:
+            if self.dialect == "postgres":
+                # The writer role has USAGE (not CREATE) on schema config, and Postgres
+                # checks CREATE privilege before honoring IF NOT EXISTS — so only run
+                # the DDL when the migration hasn't already made the table (DIC-1853).
+                exists = conn.execute("SELECT to_regclass('config.config_versions')").fetchone()[0]
+                if exists is not None:
+                    return
             conn.execute(self._q(ddl))
             conn.commit()
-        finally:
-            conn.close()
 
     # ── payload (de)serialization (JSONB on PG accepts a JSON string param) ──
     def _dump(self, payload: dict) -> str:
@@ -116,41 +156,31 @@ class ConfigStore:
     def get_published(self, county: str) -> dict | None:
         sql = (f"SELECT payload FROM {self.table} WHERE county=? AND status='published'"
                " ORDER BY version DESC LIMIT 1")
-        conn = self._connect()
-        try:
+        with self._connection() as conn:
             row = conn.execute(self._q(sql), (county,)).fetchone()
             return self._load(row[0]) if row else None
-        finally:
-            conn.close()
 
     def get_draft(self, county: str) -> dict | None:
         """The working draft, or the latest published if no draft exists yet."""
         sql = f"SELECT payload FROM {self.table} WHERE county=? AND status='draft' LIMIT 1"
-        conn = self._connect()
-        try:
+        with self._connection() as conn:
             row = conn.execute(self._q(sql), (county,)).fetchone()
             if row:
                 return self._load(row[0])
-        finally:
-            conn.close()
         return self.get_published(county)
 
     def list_versions(self, county: str) -> list[dict]:
         sql = (f"SELECT version, note, created_by, created_at FROM {self.table}"
                " WHERE county=? AND status='published' ORDER BY version DESC")
-        conn = self._connect()
-        try:
+        with self._connection() as conn:
             rows = conn.execute(self._q(sql), (county,)).fetchall()
             return [{"version": r[0], "note": r[1], "created_by": r[2],
                      "created_at": str(r[3])} for r in rows]
-        finally:
-            conn.close()
 
     # ── writes ───────────────────────────────────────────────────────────────
     def save_draft(self, county: str, payload: dict, author: str | None = None) -> None:
         """Replace the single working draft for this county."""
-        conn = self._connect()
-        try:
+        with self._connection() as conn:
             conn.execute(self._q(f"DELETE FROM {self.table} WHERE county=? AND status='draft'"), (county,))
             conn.execute(
                 self._q(f"INSERT INTO {self.table} (county, status, version, payload, created_by)"
@@ -158,8 +188,6 @@ class ConfigStore:
                 (county, self._dump(payload), author),
             )
             conn.commit()
-        finally:
-            conn.close()
 
     def _next_version(self, conn, county: str) -> int:
         sql = f"SELECT COALESCE(MAX(version), 0) FROM {self.table} WHERE county=? AND status='published'"
@@ -170,8 +198,7 @@ class ConfigStore:
         draft = self.get_draft(county)
         if draft is None:
             raise ValueError(f"no draft to publish for county {county!r}")
-        conn = self._connect()
-        try:
+        with self._connection() as conn:
             version = self._next_version(conn, county)
             conn.execute(
                 self._q(f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
@@ -180,15 +207,12 @@ class ConfigStore:
             )
             conn.commit()
             return version
-        finally:
-            conn.close()
 
     def rollback(self, county: str, version: int, author: str | None = None) -> int:
         """Restore a prior version by publishing a copy of it as the new latest
         version (append-only — history is never rewritten). Returns the new version."""
         sql = f"SELECT payload FROM {self.table} WHERE county=? AND status='published' AND version=? LIMIT 1"
-        conn = self._connect()
-        try:
+        with self._connection() as conn:
             row = conn.execute(self._q(sql), (county, version)).fetchone()
             if not row:
                 raise ValueError(f"version {version} not found for county {county!r}")
@@ -201,16 +225,13 @@ class ConfigStore:
             )
             conn.commit()
             return new_version
-        finally:
-            conn.close()
 
     def seed_if_empty(self, county: str, payload: dict) -> bool:
         """Initialize a county from the baked manifest on first use. Returns True
         if it seeded (no published version existed)."""
         if self.get_published(county) is not None:
             return False
-        conn = self._connect()
-        try:
+        with self._connection() as conn:
             conn.execute(
                 self._q(f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
                         " VALUES (?, 'published', 1, ?, 'Seeded from baked manifest', 'system')"),
@@ -218,5 +239,3 @@ class ConfigStore:
             )
             conn.commit()
             return True
-        finally:
-            conn.close()
