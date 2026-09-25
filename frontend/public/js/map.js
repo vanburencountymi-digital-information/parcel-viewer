@@ -592,18 +592,14 @@
   }
 
   // ── Theme (dark / light) ───────────────────────────────────────────────
-  const CARTO_LIGHT = [
-    "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-    "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-    "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-    "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-  ];
-  const CARTO_DARK = [
-    "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-    "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-    "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-    "https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-  ];
+  // Esri Canvas basemap (keyless): base + a separate label layer, light/dark variants.
+  // Sources are defined in style.json (backend routers/parcels.py).
+  const ESRI_CANVAS = "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/";
+  const esriTiles = (svc) => [ESRI_CANVAS + svc + "/MapServer/tile/{z}/{y}/{x}"];
+  const BASEMAP_TILES = {
+    light: { base: esriTiles("World_Light_Gray_Base"), labels: esriTiles("World_Light_Gray_Reference") },
+    dark:  { base: esriTiles("World_Dark_Gray_Base"),  labels: esriTiles("World_Dark_Gray_Reference") },
+  };
 
   // ── Per-layer styling (DIC-460) ─────────────────────────────────────────────
   // styling.layers keys logical layers → { label, paint:{light,dark:{fill,stroke}},
@@ -1030,8 +1026,11 @@
     if (sunIcon)  sunIcon.toggleAttribute("hidden", !dark);
 
     if (map) {
-      const src = map.getSource("carto-positron");
-      if (src) src.setTiles(dark ? CARTO_DARK : CARTO_LIGHT);
+      const tiles = BASEMAP_TILES[dark ? "dark" : "light"];
+      const baseSrc = map.getSource("esri-canvas");
+      if (baseSrc) baseSrc.setTiles(tiles.base);
+      const labelSrc = map.getSource("esri-canvas-labels");
+      if (labelSrc) labelSrc.setTiles(tiles.labels);
 
       // Per-layer paint (DIC-460): fill (solid or choropleth ramp) + stroke for
       // every styled layer, from COUNTY.styling.layers. Scales to many layers.
@@ -1257,7 +1256,9 @@
         // its tiles — ~half the tile traffic during a cinematic, competing with
         // the aerial and causing tile aborts/redraw. Hide it → all bandwidth goes
         // to the aerial. (Hillshade, when on, sits above the basemap, unaffected.)
-        if (map.getLayer("basemap")) map.setLayoutProperty("basemap", "visibility", on ? "none" : "visible");
+        ["basemap", "basemap-labels"].forEach((id) => {
+          if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", on ? "none" : "visible");
+        });
         if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.aerial = on;
         updateZoningOpacity();
       });
