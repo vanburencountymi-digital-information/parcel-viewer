@@ -13,6 +13,8 @@
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
   <link rel="stylesheet" href="/frontend/public/css/style.css">
   <link rel="stylesheet" href="/frontend/public/css/viewer.css">
+  <!-- Must run before every other script: see the file header (DIC-1873). -->
+  <script src="/frontend/public/js/pv-storage-guard.js"></script>
 </head>
 <body>
   <a class="pv-skip-link" href="#map">Skip to map</a>
@@ -795,6 +797,7 @@
   <script src="/frontend/public/js/pv-citations.js"></script>
   <!-- Compare preset (DIC-589): the cohort-analyze 'compare' aggregator surfaced as a
        compare tray + side-by-side diff table (explicit cohort via /cohort). -->
+  <script src="/frontend/public/js/pv-dialog.js"></script>
   <script src="/frontend/public/js/pv-compare.js"></script>
   <!-- Neighborhood/Area Profile (DIC-588): the flagship cohort-analyze preset — a buffer
        cohort via /cohort → composition/value/ownership dashboard from the engine core. -->

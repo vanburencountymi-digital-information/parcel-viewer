@@ -1239,7 +1239,6 @@
   function currentParcelPin() {
     try {
       if (window.PS_STATE && window.PS_STATE.parcel && window.PS_STATE.parcel.pin) return window.PS_STATE.parcel.pin;
-      if (window.PS_SELECTED_PIN) return window.PS_SELECTED_PIN;
     } catch (_) {}
     return "";
   }

@@ -192,6 +192,7 @@
       '</div>';
     overlay.hidden = false;
     overlay.querySelector('.pv-compare-modal-x').addEventListener('click', closeOverlay);
+    if (root.PV_DIALOG) root.PV_DIALOG.opened(overlay, closeOverlay);   // Esc, focus, Tab trap
     // Removing a column from inside the table updates the set and re-renders (or closes).
     [].forEach.call(overlay.querySelectorAll('.pv-cmp-colx'), function (b) {
       b.addEventListener('click', function () {
@@ -201,7 +202,12 @@
     });
   }
 
-  function closeOverlay() { var o = el('pv-compare-overlay'); if (o) o.hidden = true; }
+  function closeOverlay() {
+    var o = el('pv-compare-overlay');
+    if (!o) return;
+    o.hidden = true;
+    if (root.PV_DIALOG) root.PV_DIALOG.closed(o);
+  }
 
   // Reuse the AI-mode toast styling for transient hints.
   function toast(msg) {

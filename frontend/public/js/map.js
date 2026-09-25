@@ -546,15 +546,24 @@
       const proto = window.location.protocol === "https:" ? "wss://" : "ws://";
       url = proto + window.location.host + "/ws";
     }
-    let socket;
+    // Only a host with an edit backend (Parcel Studio) serves /ws; the standalone viewer
+    // doesn't. Retrying every 3s forever there logged a console error every 3s for every
+    // visitor. So: if the socket has never connected, try once more and give up; once it
+    // has connected, keep reconnecting with a capped backoff (DIC-1873).
+    let socket, everOpened = false, failures = 0;
     function open() {
       try { socket = new WebSocket(url); } catch (_) { return; }
+      socket.onopen = () => { everOpened = true; failures = 0; };
       socket.onmessage = (ev) => {
         let msg = null;
         try { msg = JSON.parse(ev.data); } catch (_) { return; }
         if (msg && msg.type === "parcels-updated") refreshParcelTiles();
       };
-      socket.onclose = () => setTimeout(open, 3000);   // auto-reconnect
+      socket.onclose = () => {
+        failures++;
+        if (!everOpened && failures >= 2) return;              // no live-update backend here
+        setTimeout(open, Math.min(30000, 3000 * Math.pow(2, failures - 1)));
+      };
     }
     open();
   }
@@ -1567,6 +1576,7 @@
   document.addEventListener("keydown", (e) => {
     if (!infoPanel || infoPanel.hidden) return;
     if (selectedPins.length < 2) return;
+    if (dialogOpen()) return;
     const tag = document.activeElement && document.activeElement.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     if (e.key === "ArrowLeft")  { e.preventDefault(); cycleParcel(-1); }
@@ -2147,8 +2157,28 @@
         map.fitBounds(computeBounds(feature.geometry), { padding: 80, duration: 800, maxZoom: 17 });
       }
       return feature;
+    }).catch((err) => {
+      // Search results, bookmarks and Map Buddy all land here. Without this the pick
+      // silently did nothing (plus an unhandled rejection) when /parcel/{id} failed.
+      _focusInfoPanelOnShow = false;
+      console.warn("[map] parcel " + id + " failed to load:", err);
+      notifyUser(/\(429\)/.test(String(err && err.message))
+        ? "The parcel service is busy. Please wait a moment and try again."
+        : "Couldn’t load that parcel. Please try again.");
+      return null;
     });
   };
+
+  // Brief, announced message (same look as the menu's toasts).
+  function notifyUser(msg) {
+    const t = document.createElement("div");
+    t.className = "pv-toast";
+    t.setAttribute("role", "alert");
+    t.textContent = msg;
+    document.body.appendChild(t);
+    requestAnimationFrame(() => t.classList.add("pv-toast--show"));
+    setTimeout(() => { t.classList.remove("pv-toast--show"); setTimeout(() => t.remove(), 320); }, 4000);
+  }
 
   // Pre-warm the browser cache with aerial tiles around `center` across the zoom
   // span of the upcoming cinematic (DIC-528). MapLibre streams tiles in as the
@@ -2377,8 +2407,13 @@
 
   searchInput.addEventListener("input", () => {
     const q = searchInput.value.trim();
-    if (q.length < 2) { clearResults(); return; }
     clearTimeout(_searchTimer);
+    if (q.length < 2) {
+      // Also drop the pending/in-flight search, or its results reappear after clearing.
+      if (_searchController) { _searchController.abort(); _searchController = null; }
+      clearResults();
+      return;
+    }
     _searchTimer = setTimeout(() => runSearch(q), 250);
   });
 
@@ -2492,8 +2527,16 @@
   // Escape clears the parcel selection (and lifts the focus/dim spotlight) when
   // one is active — a universal "deselect" the map was missing. Ignored while
   // typing in a field so it doesn't fight input/search Escape handling.
+  // A dialog/overlay owns the keyboard while open: Esc closes it, and must not also clear
+  // the parcel selection behind it (DIC-1873).
+  function dialogOpen() {
+    return !!document.querySelector(
+      ".pv-modal-backdrop, .pv-compare-overlay:not([hidden]), .pv-profile-overlay:not([hidden])");
+  }
+
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || !selectedPins.length) return;
+    if (dialogOpen()) return;
     const t = e.target;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
     if (searchResults && !searchResults.hidden) return;   // search owns Escape first
@@ -3622,13 +3665,18 @@
       refresh();
     });
 
+    // The tabs are role="tab": keep aria-selected in step with the visual state, or
+    // screen readers announce every tab as "not selected" (DIC-1873).
+    function setTab(tab, on) {
+      if (!tab) return;
+      tab.classList.toggle("active", on);
+      tab.setAttribute("aria-selected", String(on));
+    }
     function refresh() {
-      if (tabParcel) {
-        tabParcel.classList.toggle("active", parcelOpen());
-        tabParcel.disabled = !hasParcel();
-      }
-      if (tabControls) tabControls.classList.toggle("active", controlsOpen());
-      if (tabBuddy)    tabBuddy.classList.toggle("active", buddyOpen());
+      if (tabParcel) tabParcel.disabled = !hasParcel();
+      setTab(tabParcel, parcelOpen());
+      setTab(tabControls, controlsOpen());
+      setTab(tabBuddy, buddyOpen());
     }
 
     window.PV_MOBILE_TABS = { refresh };
