@@ -39,7 +39,7 @@ jobs:
         working-directory: engine
         run: node --test
 
-      - name: Python — explainer contract, cohort SQL, quota, cache, citations, KB, parcel store (stdlib only)
+      - name: Python — explainer contract, cohort SQL, quota, cache, citations, KB, parcel store, workflow params (stdlib only)
         working-directory: engine
         run: |
           python -VV
@@ -49,7 +49,7 @@ jobs:
           # run_knowledge_store and run_tenant_isolation import the ZIP backend from a
           # sibling repo (../ZIP/zip-poc/backend) that isn't checked out here.
           set -e
-          for t in run_explain_contract run_cohort_query run_quota run_cost_cache run_citation_extract run_kb_resolver run_pv_parcel_store; do
+          for t in run_explain_contract run_cohort_query run_quota run_cost_cache run_citation_extract run_kb_resolver run_pv_parcel_store run_workflow_params; do
             echo "::group::$t"
             python "test/${t}_test.py"
             echo "::endgroup::"

@@ -67,6 +67,14 @@
     return !(pref === 'off' || pref === false);
   }
 
+  // Did the USER turn AI off? (vs. AI on but the service is down/unreachable — the
+  // two degrade the same way but must not be described the same way.)
+  function aiChosenOff() {
+    if (root.PV_AI_MODE && typeof root.PV_AI_MODE.isOn === 'function') return !root.PV_AI_MODE.isOn();
+    if (root.PV_PREFS && typeof root.PV_PREFS.getAiMode === 'function') return root.PV_PREFS.getAiMode() !== 'on';
+    return false;
+  }
+
   // ── Formatting helpers ─────────────────────────────────────────────────────
   function num(v) { if (v == null || v === '') return null; var n = Number(v); return isNaN(n) ? null : n; }
   function money(v) {
@@ -427,7 +435,7 @@
       loading: 'Assembling this parcel’s assessment…',
       docSubtitle: 'Property Assessment', docSlug: 'assessment',
       assemble: assembleAssessmentFacts, header: assessmentHeader,
-      fallbackTeaser: 'The figures above are this parcel’s recorded values. The AI walkthrough and statute citations couldn’t be reached right now—the educational notes above still apply.',
+      fallbackTeaser: 'The AI walkthrough couldn’t be reached right now — showing this parcel’s recorded figures and the Michigan statutes they’re based on. Try again later for the walkthrough.',
     },
     tax_description: {
       label: 'Tax Description',
@@ -436,11 +444,12 @@
       docSubtitle: 'Tax Description', docSlug: 'tax-description',
       assemble: assembleTaxDescriptionFacts, header: taxDescHeader,
       // No teaser when the description itself is empty (handled separately).
-      fallbackTeaser: 'The tax description above is this parcel’s recorded text. The AI walkthrough couldn’t be reached right now—the notes above still apply.',
+      fallbackTeaser: 'The AI walkthrough couldn’t be reached right now — the tax description above is this parcel’s recorded text. Try again later for the walkthrough.',
     },
   };
 
-  function buildData(facts, explanation, topic, statutes) {
+  // unavailable: AI was wanted but couldn't be used (service down / call failed).
+  function buildData(facts, explanation, topic, statutes, unavailable) {
     var meta = TOPICS[topic] || TOPICS.assessment;
     var data = { pin: facts.pin || '', lead: meta.lead, has_ai: !!explanation };
     var h = meta.header(facts);
@@ -460,15 +469,20 @@
       // header) + the curated statute links, no prose (§4.5). Same statutes the AI
       // narrates from when on (§4.6).
       data.statute_links_html = statuteLinksHtml(statutes);
-      data.fallback_note = (statutes && statutes.length)
-        ? "AI walkthrough is off — showing this parcel's recorded figures and the Michigan statutes they're based on."
-        : '';
+      if (unavailable) {
+        // AI on but unreachable: say so — telling the user it's "off" is untrue.
+        data.fallback_note = meta.fallbackTeaser;
+      } else {
+        data.fallback_note = (statutes && statutes.length)
+          ? "AI walkthrough is off — showing this parcel's recorded figures and the Michigan statutes they're based on."
+          : '';
+      }
     }
     return data;
   }
 
-  function renderHtml(facts, explanation, topic, statutes) {
-    return T ? T.render(TPL, buildData(facts, explanation, topic, statutes)) : '';
+  function renderHtml(facts, explanation, topic, statutes, unavailable) {
+    return T ? T.render(TPL, buildData(facts, explanation, topic, statutes, unavailable)) : '';
   }
 
   // ── Print / export document ────────────────────────────────────────────────
@@ -558,16 +572,17 @@
       Promise.all([meta.assemble(parcel), loadStatutes()])
         .then(function (res) {
           var facts = res[0], statutes = res[1];
-          function show(explanation) {
-            bodyEl.innerHTML = renderHtml(facts, explanation, topic, statutes);
+          function show(explanation, unavailable) {
+            bodyEl.innerHTML = renderHtml(facts, explanation, topic, statutes, unavailable);
             wireActions(bodyEl, facts, explanation, topic, meta, statutes);
           }
           // Degrade-to-facts (§4.5) when AI is off, or there's nothing to narrate.
           var emptyDesc = topic === 'tax_description' && !facts.description_text;
-          if (emptyDesc || !aiEnabled()) { show(null); return; }
+          if (emptyDesc || aiChosenOff()) { show(null, false); return; }
+          if (!aiEnabled()) { show(null, true); return; }          // on, but known down
           // AI on: narration over the IDENTICAL facts. fetchExplanation returns null
-          // on any failure → show(null) → auto-fallback to facts + links (§4.4b).
-          return fetchExplanation(facts, topic).then(show);
+          // on any failure → auto-fallback to facts + notes + links (§4.4b).
+          return fetchExplanation(facts, topic).then(function (x) { show(x, !x); });
         })
         .catch(function (err) { bodyEl.innerHTML = errorHtml(meta, err && err.message); });
     });

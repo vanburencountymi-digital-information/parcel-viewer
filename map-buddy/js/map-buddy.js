@@ -695,6 +695,12 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data || !Array.isArray(data.commands)) { _appendAiMsg('Couldn’t run that automation.'); return; }
+        // No commands = the server refused (e.g. a setback out of range); its note
+        // says why. Reporting "Ran …" here told the user it worked.
+        if (!data.commands.length) {
+          _appendAiMsg(data.note ? String(data.note) : 'Couldn’t run that automation.');
+          return;
+        }
         var chips = _runCommands(data.commands);
         var el = _appendAiMsg('Ran ' + _humanize(wfId) + '.');
         if (el) _appendActionChips(el, chips);
