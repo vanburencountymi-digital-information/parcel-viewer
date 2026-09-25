@@ -104,6 +104,8 @@ For a **working map in the browser**, use the full Docker stack — `npx serve` 
 | `PV_POOL_MAX` / `PV_POOL_TIMEOUT_S` | Read pool size per worker (default `10`) and max wait for a connection (default `10`s → 503) |
 | `PV_STATEMENT_TIMEOUT_MS` | Server-side cap on any one query, read and config pools (default `10000` → 503) |
 | `PV_HTTP_PORT` | Host port (default `8080`) |
+| `PV_CORS_ORIGINS` | Comma-separated origins allowed to call the API cross-origin (default: the prod viewer origins; the viewer itself is same-origin via `/api/`) |
+| `REPORT_ERROR_RATE_LIMIT` / `REPORT_ERROR_GLOBAL_LIMIT` | `/report-error` limits: per client IP (default `5/hour`) and across all callers (default `100/day`) |
 
 ---
 

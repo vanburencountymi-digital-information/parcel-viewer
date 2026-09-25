@@ -31,7 +31,7 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
 
 5. **[decide] Tenant isolation (RLS).** If the deploy is single-tenant VBC (current), migration 015 can wait. If it serves more than one tenant, apply `county-data-services/migrations/015_tenant_isolation_rls.sql` and ensure the app sets `app.current_tenant` per request.
 
-6. **[done] CI.** Harness workflow actions bumped to Node24-native majors (`4f7e043`); green on the pinned toolchain.
+6. **[done] CI.** Harness workflow actions bumped to Node24-native majors (`4f7e043`). The Python step was red from 2026-06-28 (stdlib `test` package shadowed `engine/test/`); fixed in DIC-1852 by running the test file directly.
 
 ---
 

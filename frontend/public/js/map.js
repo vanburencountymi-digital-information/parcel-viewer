@@ -1834,7 +1834,8 @@
       : "";
 
     const fmt   = (n) => n != null ? "$" + parseInt(n).toLocaleString() : "—";
-    const dash  = (v) => (v != null && v !== "") ? v : "—";
+    // Escapes: tax-roll values (owner names, addresses) are untrusted and go into innerHTML.
+    const dash  = (v) => (v != null && v !== "") ? _escHtml(v) : "—";
     const fmtAc = (v) => {
       if (v == null) return "—";
       const ac = parseFloat(v);
@@ -1921,8 +1922,8 @@
          `<div class="parcel-info-row"><span class="parcel-info-label">Address</span><span class="parcel-info-value">${dash(siteAddr)}</span></div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Parcel area calculated from the mapped boundary">Area</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
          coordRow +
-         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Michigan STC property classification code and description">Class</span><span class="parcel-info-value">${classDisplay}</span></div>` +
-         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="${schoolTip}">School</span><span class="parcel-info-value">${schoolDisplay}</span></div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Michigan STC property classification code and description">Class</span><span class="parcel-info-value">${dash(classDisplay)}</span></div>` +
+         `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="${_escHtml(schoolTip)}">School</span><span class="parcel-info-value">${dash(schoolDisplay)}</span></div>` +
          provenance)) +
       `<hr class="parcel-info-divider">` +
 
@@ -2413,9 +2414,9 @@
       row.setAttribute("role", "option");
       row.setAttribute("aria-selected", "false");
       row.innerHTML =
-        `<div class="parcel-search-result-pin">${r.pin}${r.municipality ? " &middot; " + r.municipality : ""}</div>` +
-        `<div class="parcel-search-result-owner">${r.owner_name || "—"}</div>` +
-        (r.address ? `<div class="parcel-search-result-address">${r.address}</div>` : "");
+        `<div class="parcel-search-result-pin">${_escHtml(r.pin)}${r.municipality ? " &middot; " + _escHtml(r.municipality) : ""}</div>` +
+        `<div class="parcel-search-result-owner">${r.owner_name ? _escHtml(r.owner_name) : "—"}</div>` +
+        (r.address ? `<div class="parcel-search-result-address">${_escHtml(r.address)}</div>` : "");
       const idx = i;
       row.addEventListener("click", () => selectOption(idx));
       row.addEventListener("mousemove", () => { if (_activeIdx !== idx) setActive(idx); });

@@ -13,12 +13,12 @@ from fastapi.responses import JSONResponse, Response
 from psycopg.errors import QueryCanceled
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 
 from parcel_viewer import config_store
 from parcel_viewer.db import close_pool, health_check, open_pool, pool
+from parcel_viewer.ratelimit import limiter
 from parcel_viewer.routers import feedback, parcels
 
 # ── County config manifests (DIC-465) ────────────────────────────────────────
@@ -125,23 +125,27 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Parcel Viewer API", version="0.1.0", lifespan=lifespan)
 
+# CORS (DIC-1852). The viewer and admin console call the API same-origin through
+# nginx (/api/), so CORS only governs third-party browser callers. Allow just the
+# prod viewer origins by default; override with a comma-separated PV_CORS_ORIGINS.
+# No credentials: the API uses no cookies (admin writes send X-Admin-Token).
+CORS_ORIGINS = [
+    o.strip()
+    for o in os.getenv(
+        "PV_CORS_ORIGINS", "https://parcels.dicemi.org,https://map.dicemi.org"
+    ).split(",")
+    if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT"],
+    allow_headers=["Content-Type", "X-Admin-Token"],
 )
 
-# Rate limiting (DIC-496). Applied per-endpoint via @limiter.limit — today only
-# /wms-proxy, the public unauthenticated abuse surface. Behind nginx the real
-# client IP arrives as X-Real-IP (proxy_set_header is set on /api/); fall back to
-# the socket peer for direct/local requests.
-def _client_ip(request: Request) -> str:
-    return request.headers.get("X-Real-IP") or get_remote_address(request)
-
-
-limiter = Limiter(key_func=_client_ip)
+# Rate limiting (DIC-496). Applied per-endpoint via @limiter.limit on the public
+# unauthenticated abuse surfaces: /wms-proxy and /report-error (DIC-1852).
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
