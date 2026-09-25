@@ -59,3 +59,27 @@ class ChatStreamErrorTests(TestCase):
         self.assertNotIn("SDK detail", events[-1]["message"])
         errors.report_exception.assert_called_once()
         self.assertEqual(errors.report_exception.call_args.kwargs["tags"], {"operation": "chat"})
+
+
+class EnvironmentLookupErrorTests(TestCase):
+    """CodeQL py/stack-trace-exposure (DIC-1880): lookup failures must not put exception
+    text (URLs, hostnames, network errors) into what users or the model see."""
+
+    @patch("agent._query_soils", autospec=True, side_effect=OSError("soil down"))
+    @patch("agent._arcgis_point_query", autospec=True,
+           side_effect=OSError("urlopen error https://internal.example:8443/secret"))
+    def test_failures_are_generic_to_users_and_logged(self, _mock_arcgis, _mock_soils) -> None:
+        with self.assertLogs("map_buddy.agent", level="WARNING") as logs:
+            out = agent._query_environment(-85.9, 42.2)
+
+        self.assertEqual(out["flood"], {"error": "service unavailable right now"})
+        self.assertEqual(out["wetlands"], {"error": "service unavailable right now"})
+        self.assertEqual(out["soil"], {"error": "service unavailable right now"})
+        self.assertNotIn("internal.example", str(out))
+        self.assertTrue(any("environment lookup failed: flood" in line for line in logs.output))
+
+    @patch("agent._query_environment", autospec=True, side_effect=RuntimeError("socket details"))
+    def test_workflow_note_does_not_leak_the_exception(self, _mock_env) -> None:
+        note, _cmds = agent._expand_workflow("risk_overview", {"pin": "1"}, {"centroid": [-85.9, 42.2]})
+
+        self.assertNotIn("socket details", note)

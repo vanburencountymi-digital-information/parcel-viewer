@@ -83,4 +83,6 @@ class ThreadingServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 if __name__ == "__main__":
     print(f"a11y proxy listening on http://localhost:{PORT} -> {UPSTREAM}")
-    ThreadingServer(("0.0.0.0", PORT), Proxy).serve_forever()
+    # Localhost only: on 0.0.0.0 anyone on the network could reach the dev stack
+    # through this proxy (CodeQL py/partial-ssrf, DIC-1880).
+    ThreadingServer(("127.0.0.1", PORT), Proxy).serve_forever()

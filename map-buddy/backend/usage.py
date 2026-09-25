@@ -82,7 +82,7 @@ def _parse_overrides(s: str) -> dict:
             try:
                 out[k.strip()] = int(v)
             except ValueError:
-                pass
+                pass  # a malformed "tenant=N" entry is ignored; the others still apply
     return out
 
 

@@ -1,0 +1,67 @@
+# Dependabot version updates (DIC-1880), per the team's "Production" App Checklist:
+# grouped updates that go through normal CI and review. Each ecosystem gets at most one
+# PR a week (minor + patch together); major versions come as their own PRs so a
+# breaking upgrade is never bundled with routine ones. Security updates (a separate
+# repo setting) are raised immediately regardless of this schedule.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build(deps)"      # Conventional Commits, for semantic-release
+    groups:
+      api-minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: pip
+    directory: /map-buddy/backend
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build(deps)"
+    groups:
+      map-buddy-minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: /e2e
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build(deps-dev)"
+    groups:
+      e2e-minor-and-patch:
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci(deps)"
+    groups:
+      actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  # Container base images (python:3.12-slim): most OS-level CVE fixes arrive here.
+  - package-ecosystem: docker
+    directories: [/backend, /map-buddy/backend]
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "build(docker)"
+    groups:
+      base-images:
+        patterns: ["*"]
+    open-pull-requests-limit: 2

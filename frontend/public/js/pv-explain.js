@@ -82,7 +82,6 @@
     if (n == null) return null;
     return '$' + Math.round(n).toLocaleString('en-US');
   }
-  function dash(v) { return (v == null || v === '') ? '—' : v; }
 
   // Resolve a county code → label using the same maps the popup uses
   // (window.COUNTY.labels, from county-config.js). `style:"code-name"` renders
@@ -391,21 +390,6 @@
         '<button type="button" class="pv-btn-ghost" data-xp="download">Download HTML</button>' +
       '</div>' +
     '</div>';
-
-  // Concise educational fallback per topic (used only when the AI is unreachable).
-  var FALLBACK_ITEMS = {
-    assessment: [
-      { term: 'Assessed Value (AV) & SEV', definition: 'AV is set by the assessor at 50% of True Cash (market) Value. After county/state equalization confirms that 50% level, AV becomes the State Equalized Value (SEV).' },
-      { term: 'Taxable Value (TV) & Proposal A', definition: 'TV is the value you’re actually taxed on. Under Proposal A it rises each year by the lesser of 5% or inflation—so it often sits below AV—until the property sells, when it “uncaps” to the SEV.' },
-      { term: 'Assessing vs. equalization vs. appraisal', definition: 'Assessing values every parcel for taxation; equalization checks those values are uniform across units; an appraisal is an independent market-value opinion for a specific purpose.' },
-      { term: 'Appeals', definition: 'Disagree with your assessment? Appeal first to the March Board of Review, then the Michigan Tax Tribunal.' },
-    ],
-    tax_description: [
-      { term: 'A tax description is not a legal description', definition: 'It’s an abbreviated shorthand kept on the assessment roll to identify the parcel for taxation. The recorded deed — not this text — is the controlling legal document; never use a tax description on deeds, titles, or to settle a boundary.' },
-      { term: 'Common abbreviations', definition: 'COM/BEG = commencing/beginning point · TH = thence (the next course) · FT/CH/RD = feet/chains/rods · SEC, T, R = section, town, range · “NW 1/4 of SE 1/4” = nested quarter divisions · LOT/BLK = a lot and block in a recorded plat.' },
-      { term: 'Mapping the boundary', definition: 'Tracing each call on the map is a planned future feature; for now this window explains the terminology, not the geometry.' },
-    ],
-  };
 
   // Per-topic config: how to assemble facts, what to call it, the header block,
   // and the offline fallback. New explainers register here (mirrors the backend

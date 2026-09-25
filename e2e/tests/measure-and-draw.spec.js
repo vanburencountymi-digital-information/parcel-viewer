@@ -60,6 +60,22 @@ test.describe('Measure', () => {
     expect(Math.abs(shown - r.clickedSqft) / r.clickedSqft, 'area ≈ the clicked square (snapping tolerance)').toBeLessThan(0.05);
   });
 
+  test('coordinates: every Copy button copies the whole coordinate (DMS included)', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await page.locator('#msr-tool-coords').click();
+    const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
+    await page.mouse.click(box.x + box.width / 2 + 120, box.y + box.height / 2);
+    const copies = page.locator('#msr-hud .msr-copy-btn');
+    await expect(copies.first()).toBeVisible();
+    // DMS used to lose everything after the seconds of latitude: its " ended the
+    // data-copy attribute early (CodeQL js/identity-replacement led to it, DIC-1880).
+    const dms = copies.nth(1);
+    const attr = await dms.getAttribute('data-copy');
+    expect(attr).toMatch(/^\d+° \d+' [\d.]+" N, \d+° \d+' [\d.]+" W$/);
+    await dms.click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(attr);
+  });
+
   test('distance: the reported total matches the clicked path', async ({ page }) => {
     await page.locator('#msr-tool-dist').click();
     const pts = (await squareOnMap(page)).slice(0, 3);

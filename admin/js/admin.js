@@ -70,8 +70,21 @@
     return (res.body && res.body.detail) || ('Request failed (HTTP ' + res.status + ').');
   }
 
+  // Config paths come from the manifest being edited; refuse the keys that reach
+  // JavaScript's shared object prototype (CodeQL js/prototype-pollution-utility, DIC-1880).
+  // A list, not an object: in a literal, '__proto__': … sets the prototype rather than
+  // adding a key.
+  var UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
+  function safePath(path) {
+    var parts = String(path).split('.');
+    for (var i = 0; i < parts.length; i++) {
+      if (UNSAFE_KEYS.indexOf(parts[i]) !== -1) throw new Error('Unsafe config path: ' + path);
+    }
+    return parts;
+  }
+
   function setPath(obj, path, value) {
-    var parts = path.split('.'), o = obj;
+    var parts = safePath(path), o = obj;
     for (var i = 0; i < parts.length - 1; i++) {
       if (o[parts[i]] == null || typeof o[parts[i]] !== 'object') o[parts[i]] = {};
       o = o[parts[i]];
@@ -79,7 +92,7 @@
     o[parts[parts.length - 1]] = value;
   }
   function getPath(obj, path) {
-    var parts = path.split('.'), o = obj;
+    var parts = safePath(path), o = obj;
     for (var i = 0; i < parts.length; i++) { if (o == null) return undefined; o = o[parts[i]]; }
     return o;
   }
@@ -382,16 +395,6 @@
       if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
       loadConfig().then(function () { rerender(host); loadHistory(host); flash(host, 'ok', 'Restored v' + version + ' as version ' + res.body.version + '.'); });
     });
-  }
-
-  // ── Roadmap placeholder (modules still to build) ───────────────────────────
-  function roadmap(title, sub, epic, items) {
-    return function (host) {
-      host.innerHTML = pageHead(title, sub) +
-        '<div class="ac-card ac-roadmap"><div class="ac-card-head"><h2 class="ac-card-title">Planned</h2>' +
-          '<span class="ac-epic">' + esc(epic) + '</span></div>' +
-          '<ul>' + items.map(function (i) { return '<li>' + esc(i) + '</li>'; }).join('') + '</ul></div>';
-    };
   }
 
   // ── Intelligence module: explainer-plugin admin backend (DIC-459, read-only) ─
@@ -813,7 +816,7 @@
       }
       return '<tr><td>' + esc(r.o.label) + '</td><td><code>' + esc(r.o.source || '—') + '</code></td>' +
         '<td>' + (r.o.minZoom ? ('z' + r.o.minZoom + '+') : 'all') + '</td>' +
-        '<td>' + (r.o.default ? 'on' : '') + '</td>' + (editing ? '<td></td>' : '') + '</tr>';
+        '<td>' + (r.o.default ? 'on' : '') + '</td></tr>';
     }).join('');
     if (!pgRows) {
       pgRows = '<tr><td colspan="' + (editing ? 5 : 4) + '" class="ac-readonly">No PostGIS layers yet' +

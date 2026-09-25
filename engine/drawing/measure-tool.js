@@ -78,11 +78,6 @@
 
   // ══ Number / unit helpers ══════════════════════════════════════════════════
 
-  function toFeet(dist, unit) {
-    var table = { feet:1, ft:1, chains:66, ch:66, links:0.66, lk:0.66,
-                  miles:5280, mi:5280, meters:FEET_PER_METER, m:FEET_PER_METER };
-    return dist * (table[unit] || 1);
-  }
   function toMeters(ft) { return ft / FEET_PER_METER; }
 
   function formatDist(ft) {
@@ -537,14 +532,6 @@
 
   // ══ Tool: Measure Distance ═════════════════════════════════════════════════
 
-  function totalDistFt(coords) {
-    var ft = 0;
-    for (var i = 1; i < coords.length; i++) {
-      ft += turf.distance(turf.point(coords[i-1]), turf.point(coords[i]), { units: 'feet' });
-    }
-    return ft;
-  }
-
   function updateDistPreview(cursorCoord) {
     if (_drawCoords.length < 1) { clearPreview(); return; }
     var coords = cursorCoord ? _drawCoords.concat([cursorCoord]) : _drawCoords;
@@ -661,8 +648,12 @@
     var dd  = decDegToStr(lat, 'N', 'S') + ',&nbsp;&nbsp;' + decDegToStr(lng, 'E', 'W');
     var dms = decToDMS(lat, 'N', 'S') + ',&nbsp;&nbsp;' + decToDMS(lng, 'E', 'W');
     var sp  = coordsToStatePlane(lng, lat);
-
-    var snapSnip = '';
+    // DMS text for the clipboard uses plain ' and " marks. The " must be escaped inside
+    // the data-copy attribute: bare, it ended the attribute early and Copy gave just
+    // 42°12'39.96 (DIC-1880, found by CodeQL).
+    var dmsCopy = (decToDMS(lat, 'N', 'S') + ', ' + decToDMS(lng, 'E', 'W'))
+      .replace(/′/g, "'").replace(/″/g, '"');
+    var dmsCopyAttr = dmsCopy.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
     var html =
       '<div class="msr-coord-block">' +
@@ -673,7 +664,7 @@
       '<div class="msr-coord-block">' +
         '<div class="msr-coord-label">Degrees Minutes Seconds</div>' +
         '<div class="msr-coord-value">' + dms + '</div>' +
-        '<button class="msr-copy-btn" data-copy="' + decToDMS(lat,'N','S').replace(/′/g,'\'').replace(/″/g,'"').replace(/°/g,'°') + ', ' + decToDMS(lng,'E','W').replace(/′/g,'\'').replace(/″/g,'"').replace(/°/g,'°') + '">Copy</button>' +
+        '<button class="msr-copy-btn" data-copy="' + dmsCopyAttr + '">Copy</button>' +
       '</div>';
 
     if (sp) {
@@ -753,7 +744,6 @@
     var distFt = turf.distance(turf.point(p1), turf.point(p2), { units: 'feet' });
     var az     = azimuthBetween(p1, p2);
     var backAz = backBearing(az);
-    var distMi = distFt / 5280;
 
     _bdHistory.unshift({
       bearing: azimuthToQuadrant(az),
@@ -1671,14 +1661,6 @@
     _mapEventsWired = true;
     map.on('mousemove', onMsrMouseMove);
     map.on('click',     onMsrClick);
-  }
-
-  function unwireMapEvents() {
-    var map = getMap();
-    if (!map) return;
-    map.off('mousemove', onMsrMouseMove);
-    map.off('click',     onMsrClick);
-    _mapEventsWired = false;
   }
 
   // ══ Tool button state ══════════════════════════════════════════════════════
