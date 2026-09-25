@@ -27,13 +27,9 @@
 
   // Resolve the Map Buddy service base the same way demo/index.html mounts it, so
   // the explainer talks to the same Cloud Run service (one key, one rate-limiter).
+  // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function explainBase() {
-    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-    var endpoints = countyConfig().endpoints || {};
-    return endpoints.mapBuddy ||
-      root.MAP_BUDDY_API ||
-      (isLocal && '/map-buddy-api') ||
-      'https://map-buddy-toaozre74a-uc.a.run.app';
+    return root.PV_ENDPOINTS ? root.PV_ENDPOINTS.mapBuddyBase() : (root.MAP_BUDDY_API || '/map-buddy-api');
   }
 
   // ── ISV engine bridge (A7a / DIC-572) ──────────────────────────────────────

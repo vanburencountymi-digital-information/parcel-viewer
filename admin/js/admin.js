@@ -25,12 +25,9 @@
   var API_BASE = window.ADMIN_API || '/api';
   // The explainer plugins live in the Map Buddy service; resolve its base the same
   // way the viewer does (window override first, for testing).
+  // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function explainBase() {
-    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-    return window.MAP_BUDDY_API ||
-      (window.COUNTY && COUNTY.endpoints && COUNTY.endpoints.mapBuddy) ||
-      (isLocal && '/map-buddy-api') ||
-      'https://map-buddy-toaozre74a-uc.a.run.app';
+    return window.PV_ENDPOINTS ? window.PV_ENDPOINTS.mapBuddyBase() : (window.MAP_BUDDY_API || '/map-buddy-api');
   }
   var COUNTY_KEY = window.PV_COUNTY_KEY || 'vanburen';
   var STATE = {

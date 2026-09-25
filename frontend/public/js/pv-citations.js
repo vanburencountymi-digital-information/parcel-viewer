@@ -39,11 +39,9 @@
   // Resolve the Map Buddy base the same way the explainer does (one service, one key).
   // MAP_BUDDY_API wins so a local override (window.MAP_BUDDY_API='/map-buddy-api') can point
   // at the bundled map-buddy that actually carries the /kb/resolve route.
+  // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function kbBase() {
-    var isLocal = /^(localhost|127\.0\.0\.1)$/.test(location.hostname);
-    var endpoints = countyConfig().endpoints || {};
-    return root.MAP_BUDDY_API || endpoints.mapBuddy ||
-      (isLocal && '/map-buddy-api') || 'https://map-buddy-toaozre74a-uc.a.run.app';
+    return root.PV_ENDPOINTS ? root.PV_ENDPOINTS.mapBuddyBase() : (root.MAP_BUDDY_API || '/map-buddy-api');
   }
   // Fetch a KB-resolved doc for an envelope. Returns the raw doc {id,title,citation,body,url,
   // anchorResolved,highlight?} or null (KB unreachable / nothing citable → caller falls back).

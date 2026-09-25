@@ -203,6 +203,7 @@
 
   async function resolveStyle() {
     const res = await fetch(API_BASE + "/style.json");
+    if (!res.ok) throw new Error("style.json HTTP " + res.status);
     const style = await res.json();
     const src = style.sources && style.sources.parcels;
     if (src && Array.isArray(src.tiles)) {
@@ -2386,9 +2387,32 @@
 
     fetch(API_BASE + "/search?q=" + encodeURIComponent(q) + "&limit=25",
           { signal: _searchController.signal })
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) { const e = new Error("search HTTP " + r.status); e.status = r.status; throw e; }
+        return r.json();
+      })
       .then(data => renderSearchResults(data.results || []))
-      .catch(() => { /* aborted */ });
+      .catch(err => {
+        if (err && err.name === "AbortError") return;   // superseded by a newer keystroke
+        renderSearchError(err && err.status === 429
+          ? "Too many searches — please wait a moment and try again."
+          : "Search is unavailable right now. Please try again.");
+      });
+  }
+
+  // A failed search used to be swallowed as if aborted, so the user saw nothing (DIC-1856).
+  function renderSearchError(msg) {
+    searchResults.innerHTML = "";
+    _options = [];
+    setActive(-1);
+    const el = document.createElement("div");
+    el.className = "parcel-search-no-results parcel-search-error";
+    el.setAttribute("role", "alert");
+    el.textContent = msg;
+    searchResults.appendChild(el);
+    searchResults.hidden = false;
+    setExpanded(true);
+    if (searchStatus) searchStatus.textContent = msg;
   }
 
   function renderSearchResults(results) {
@@ -3613,9 +3637,27 @@
     refresh();
   }
 
+  // The map can't start (API down, style.json failing, MapLibre missing). Without this the
+  // page stayed blank with only an unhandled rejection in the console (DIC-1856).
+  function showMapLoadError(err) {
+    console.error("[map] failed to load:", err);
+    const host = document.getElementById("map");
+    if (!host || document.getElementById("pv-map-error")) return;
+    const box = document.createElement("div");
+    box.id = "pv-map-error";
+    box.className = "pv-map-error";
+    box.setAttribute("role", "alert");
+    box.innerHTML =
+      '<p class="pv-map-error-title">The map couldn’t load</p>' +
+      '<p class="pv-map-error-text">The parcel service may be busy or offline. Check your connection and try again.</p>' +
+      '<button type="button" class="pv-map-error-retry">Try again</button>';
+    box.querySelector("button").addEventListener("click", () => window.location.reload());
+    host.appendChild(box);
+  }
+
   // ── Bootstrap ──────────────────────────────────────────────────────────
   initTheme();
-  initMap();
+  initMap().catch(showMapLoadError);
   initMapControlPanel();
   initSelectionTools();
   initMobileTabs();
