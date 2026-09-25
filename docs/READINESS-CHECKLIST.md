@@ -72,7 +72,7 @@ From DIC-1872 and DIC-1871. None of these is a blocker for a small invited group
 | Browser end-to-end (Playwright, Edge) | **169** tests in 24 files | **no:** needs a database (see 7) | `cd e2e && npm install && npx playwright test` |
 | Accessibility (axe-core, WCAG 2.1 A/AA) | 0 violations on the scanned screens | with e2e | `npx playwright test tests/a11y-scan.spec.js` |
 
-Full e2e run on 2026-09-25: ****166 passed, 2 skipped** (the paid AI tests, gated on `E2E_AI=1`), **1 failed.** The failure was a FEMA 502 through `/api/wms-proxy` during `describe_neighborhood`: a third-party outage, in a spec that was missing the URL-scoped allowance the other federal-data specs have. The allowance is now added and the test passes (23 min, 2 workers, run alone)**
+Full e2e run on 2026-09-25 (23 min, 2 workers, run alone): **166 passed, 2 skipped** (the paid AI tests, gated on `E2E_AI=1`), **1 failed.** The failure was a FEMA 502 through `/api/wms-proxy` during `describe_neighborhood`: a third-party outage, in a spec that was missing the URL-scoped allowance the other federal-data specs have. The allowance is now added and that test passes.
 
 **What the e2e suite covers** (details in `e2e/README.md`):
 - search and the parcel panel;
