@@ -1,0 +1,5 @@
+# Test-only dependencies (DIC-1879). Not installed in the container image.
+-r requirements.txt
+pytest==8.*
+parameterized==0.9.*
+httpx==0.28.*

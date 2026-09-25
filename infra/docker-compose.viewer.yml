@@ -18,6 +18,7 @@ services:
     environment:
       PV_MARTIN_PUBLIC_URL: /tiles
       PV_API_DOCS: "1"          # dev only: /api/docs (off by default, DIC-1855)
+      LOG_FORMAT: text          # dev only: readable logs (images default to JSON, DIC-1879)
     restart: unless-stopped
     expose:
       - "8000"
@@ -49,6 +50,7 @@ services:
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-${MAP_BUDDY_ANTHROPIC_API_KEY:-}}"
       ALLOWED_ORIGINS: "http://localhost:8080,http://localhost:8091,http://127.0.0.1:8080"
       MAP_BUDDY_API_DOCS: "1"   # dev only (off by default, DIC-1855)
+      LOG_FORMAT: text          # dev only: readable logs (images default to JSON, DIC-1879)
     # Bind-mount the source + hot-reload so backend edits are live in build mode
     # (mirrors how the frontend is mounted). Remove both lines for prod parity.
     volumes:

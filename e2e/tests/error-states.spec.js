@@ -52,3 +52,34 @@ test('Map Buddy down: the AI notice appears and the viewer keeps working', async
   await expect(page.locator('#pv-ai-notice')).toBeVisible({ timeout: 20_000 });
   await selectParcelViaSearch(page);
 });
+
+test('a JavaScript error in the page is reported to the server (error beacon)', async ({ page, consoleGuard }) => {
+  consoleGuard.allow(/beacon-e2e-probe/);
+  await gotoViewer(page);
+  // Capture the beacon's body on its way through (sendBeacon bodies aren't exposed on
+  // the plain request object), then let it reach the real server.
+  let captured = null;
+  await page.route('**/api/client-errors', async (route) => {
+    captured = route.request().postDataBuffer();
+    await route.continue();
+  });
+  const answered = page.waitForResponse((r) => r.url().endsWith('/api/client-errors'));
+  // Thrown from an inline <script>: counts as this site's own code.
+  await page.addScriptTag({ content: 'setTimeout(function () { throw new Error("beacon-e2e-probe"); }, 0);' });
+  expect((await answered).status()).toBe(204);
+  const body = JSON.parse(captured.toString('utf8'));
+  expect(body.kind).toBe('error');
+  expect(body.message).toContain('beacon-e2e-probe');
+  expect(body.page).toBe('/demo/');
+});
+
+test('errors from other sites (extensions, third-party scripts) are not reported', async ({ page }) => {
+  await gotoViewer(page);
+  let reported = false;
+  page.on('request', (r) => { if (r.url().endsWith('/api/client-errors')) reported = true; });
+  await page.evaluate(() => window.dispatchEvent(new ErrorEvent('error', {
+    message: 'extension noise', filename: 'chrome-extension://abc/content.js', lineno: 1, colno: 1,
+  })));
+  await page.waitForTimeout(500);
+  expect(reported).toBe(false);
+});

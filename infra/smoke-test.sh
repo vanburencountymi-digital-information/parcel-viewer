@@ -55,8 +55,11 @@ expect 200 "viewer page /demo/"              GET "$VIEWER/demo/"
 expect 200 "admin console /admin/"           GET "$VIEWER/admin/"
 req GET "$VIEWER/api/health"
 if [ "$CODE" = 200 ] && grep -q '"db": *true' "$TMP/b"; then pass "api /api/health (db reachable)"
-elif [ "$CODE" = 200 ]; then fail "api /api/health: up but db unreachable ($(cat "$TMP/b"))"
+elif [ "$CODE" = 503 ]; then fail "api /api/health: up but db unreachable (503)"
 else fail "api /api/health: $CODE"; fi
+# Observability (DIC-1879): every API response carries a request id for log lookup.
+if [ -n "$(hdr X-Request-ID)" ]; then pass "api responses carry X-Request-ID"
+else fail "api /api/health: no X-Request-ID header (request-id middleware missing?)"; fi
 expect 200 "map style /api/style.json"       GET "$VIEWER/api/style.json"
 req GET "$VIEWER/api/config.js"
 if [ "$CODE" = 200 ] && grep -q "window.COUNTY" "$TMP/b"; then pass "served config /api/config.js"
