@@ -104,6 +104,14 @@ test('parcel info panel escapes tax-roll values (fallback inline render)', () =>
   assert.ok(html.includes('SMITH &amp; JONES'), 'ampersands are escaped');
 });
 
+test('a hostile PIN in the selection key is escaped in the tool buttons (data-pin)', () => {
+  const { busHandlers, infoBody } = load();
+  busHandlers['active-feature-changed']({ ref: { sourceId: 'parcels', pin: '"><img src=x onerror=alert(1)>', properties: { owner_name: 'A' } } });
+  const html = infoBody.innerHTML;
+  assert.doesNotMatch(html, /<img/i, 'no markup escapes the data-pin attribute');
+  assert.ok(html.includes('data-pin="&quot;&gt;&lt;img'), 'the PIN is attribute-escaped');
+});
+
 test('search results escape pin, municipality, owner and address', async () => {
   const { el, created } = load([{ id: 1, pin: EVIL, municipality: EVIL, owner_name: 'A & B ' + EVIL, address: EVIL }]);
   const input = el('parcel-search-input');

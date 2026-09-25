@@ -107,7 +107,14 @@
     add(pc.id, pc.pin);
     if (_set.length < MIN) toast('Added ' + (pc.pin || pc.id) + ' — pick another parcel to compare.');
   }
-  function remove(id) { _set = _set.filter(function (p) { return String(p.id) !== String(id); }); renderTray(); }
+  // Match on id or PIN: Map Buddy adds parcels by PIN ({id:null, pin}), while the table's
+  // column buttons carry the numeric id from /cohort. Matching on id alone never removed
+  // those, and the next render fetched them straight back (DIC-1873).
+  function remove(key) {
+    var k = String(key);
+    _set = _set.filter(function (p) { return String(p.id) !== k && String(p.pin) !== k; });
+    renderTray();
+  }
   function clear() { _set = []; renderTray(); }
 
   // ── Compare TABLE (render the core's facts) ─────────────────────────────────
@@ -140,6 +147,11 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data || !data.features || !data.features.length) { toast('Couldn’t load those parcels.'); return; }
+        // Learn the ids of parcels that were added by PIN, so later removals match.
+        data.features.forEach(function (f) {
+          var pin = f.properties && (f.properties.pin || f.properties.parcel_no);
+          _set.forEach(function (p) { if (p.id == null && p.pin && pin && String(p.pin) === String(pin)) p.id = f.id; });
+        });
         renderTable(data);
       })
       .catch(function () { toast('Couldn’t reach the server to compare.'); });
@@ -192,6 +204,7 @@
       '</div>';
     overlay.hidden = false;
     overlay.querySelector('.pv-compare-modal-x').addEventListener('click', closeOverlay);
+    if (root.PV_DIALOG) root.PV_DIALOG.opened(overlay, closeOverlay);   // Esc, focus, Tab trap
     // Removing a column from inside the table updates the set and re-renders (or closes).
     [].forEach.call(overlay.querySelectorAll('.pv-cmp-colx'), function (b) {
       b.addEventListener('click', function () {
@@ -201,7 +214,12 @@
     });
   }
 
-  function closeOverlay() { var o = el('pv-compare-overlay'); if (o) o.hidden = true; }
+  function closeOverlay() {
+    var o = el('pv-compare-overlay');
+    if (!o) return;
+    o.hidden = true;
+    if (root.PV_DIALOG) root.PV_DIALOG.closed(o);
+  }
 
   // Reuse the AI-mode toast styling for transient hints.
   function toast(msg) {

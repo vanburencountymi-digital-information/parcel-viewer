@@ -1,0 +1,13 @@
+{
+  "name": "parcel-viewer-e2e",
+  "private": true,
+  "description": "Browser end-to-end tests for the Parcel Viewer (run against the local docker stack).",
+  "scripts": {
+    "test": "playwright test",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "1.55.0"
+  }
+}

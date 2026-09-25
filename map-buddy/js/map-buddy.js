@@ -87,12 +87,14 @@
     _loadAutomations();
 
     // Programmatic surface: lets the host (or the AI command path) drive the map
-    // and inspect view state. unmount() tears this down.
-    root.PV_MAP_BUDDY = {
+    // and inspect view state. unmount() tears this down. MERGE into the panel API
+    // _init() already published (open/collapse/toggle/isOpen/ask): replacing it broke
+    // the mobile Map Buddy tab and the "Ask Map Buddy" hint (DIC-1873).
+    root.PV_MAP_BUDDY = Object.assign(root.PV_MAP_BUDDY || {}, {
       runCommands:   _runCommands,
       buildMapState: _buildMapState,
       send:          function (t) { if (_inputEl) { _inputEl.value = t; _send(); } },
-    };
+    });
 
     _mounted = true;
   }
@@ -693,6 +695,12 @@
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (data) {
         if (!data || !Array.isArray(data.commands)) { _appendAiMsg('Couldn’t run that automation.'); return; }
+        // No commands = the server refused (e.g. a setback out of range); its note
+        // says why. Reporting "Ran …" here told the user it worked.
+        if (!data.commands.length) {
+          _appendAiMsg(data.note ? String(data.note) : 'Couldn’t run that automation.');
+          return;
+        }
         var chips = _runCommands(data.commands);
         var el = _appendAiMsg('Ran ' + _humanize(wfId) + '.');
         if (el) _appendActionChips(el, chips);
@@ -714,7 +722,9 @@
 
   // Resolve a parcel GeoJSON feature by PIN, defaulting to the selected parcel.
   function _resolveParcel(pin) {
-    var want = pin || (_currentParcel && _currentParcel.pin) || root.PS_SELECTED_PIN;
+    // PS_STATE.parcel is the viewer's selection (PS_SELECTED_PIN was never set anywhere).
+    var sel = root.PS_STATE && root.PS_STATE.parcel;
+    var want = pin || (_currentParcel && _currentParcel.pin) || (sel && sel.pin);
     if (!want) return null;
     // Prefer the selected parcel's full record — it carries geometry and is
     // independent of which tiles are loaded into PS_PARCEL_INDEX, so "this

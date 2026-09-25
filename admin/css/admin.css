@@ -5,10 +5,10 @@
   --ac-accent: #A3473B;            /* terracotta */
   --ac-accent-rgb: 163,71,59;
   --ac-gold: #B58D4A;              /* gold — interactive */
-  --ac-gold-dk: #8B6535;
+  --ac-gold-dk: #7d5a2f;   /* ≥5:1 on the banner / pills (was #8B6535, 4.3:1 on the banner) */
   --ac-gold-rgb: 181,141,74;
   --ac-ink: #1f2937;
-  --ac-muted: #6b7280;
+  --ac-muted: #5f6570;   /* ≥4.5:1 on --ac-bg (was #6b7280, 4.3:1) */
   --ac-line: #e5e7eb;
   --ac-bg: #f4f2ee;
   --ac-surface: #ffffff;

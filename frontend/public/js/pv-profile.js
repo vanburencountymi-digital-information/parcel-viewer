@@ -432,6 +432,7 @@
         '<div id="pv-profile-body" class="pv-profile-body">' + (loading ? '<p class="pv-prof-empty">' + esc(loading) + '</p>' : '') + '</div>' +
       '</div>';
     overlay.hidden = false;
+    if (root.PV_DIALOG) root.PV_DIALOG.opened(overlay, close);   // Esc, focus, Tab trap
     overlay.querySelector('.pv-profile-x').addEventListener('click', close);
     wireControls(overlay);
   }
@@ -556,7 +557,12 @@
     if (sub) sub.textContent = selector ? (selector.label + ' — ' + (selector.count || 0) + ' parcels') : '';
   }
 
-  function close() { var o = el('pv-profile-overlay'); if (o) o.hidden = true; }
+  function close() {
+    var o = el('pv-profile-overlay');
+    if (!o) return;
+    o.hidden = true;
+    if (root.PV_DIALOG) root.PV_DIALOG.closed(o);
+  }
 
   function hint(msg) {
     if (!doc) return;

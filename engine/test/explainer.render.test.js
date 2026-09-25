@@ -81,3 +81,15 @@ test('AI-ON adds narration over the IDENTICAL facts (render-layer facts-parity)'
   assert.match(htmlOn, /Your assessed value is \$98,000/);
   assert.doesNotMatch(htmlOff, /What these mean/);
 });
+
+test('AI ON but unreachable says so — never "AI walkthrough is off"', () => {
+  const w = makeViewer();
+  const facts = w.ISV_EXPLAINER_CORE.buildAssessmentFacts(parcel, { labels: county.labels, currentYear: 2026 });
+  const down = w.PV_EXPLAIN.renderHtml(facts, null, 'assessment', corpus.statutes, true);
+  assert.match(down, /\$98,000/, 'figures still shown');
+  assert.match(down, /MCL 211\.27a/, 'statute links still shown');
+  assert.match(down, /couldn.t be reached/);
+  assert.doesNotMatch(down, /walkthrough is off/);
+  const off = w.PV_EXPLAIN.renderHtml(facts, null, 'assessment', corpus.statutes, false);
+  assert.match(off, /walkthrough is off/);
+});

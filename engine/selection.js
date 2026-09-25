@@ -31,15 +31,18 @@
   function sameRef(a, b) { return refKey(a) === refKey(b); }
 
   // Normalize an incoming reference to the engine's feature shape. Accepts a bare id,
-  // or an object with {sourceId,id,properties} (extra fields preserved on `properties`).
+  // or an object with {sourceId,id,properties}. Any other fields the caller attaches
+  // (geometry, a display key…) are carried through: subscribers render from the ref,
+  // and dropping them left the viewer's info panel without the feature's geometry.
   function toRef(input, defaultSourceId) {
     if (input == null) return null;
     if (typeof input !== 'object') return { sourceId: defaultSourceId || null, id: input, properties: null };
-    return {
-      sourceId: input.sourceId != null ? input.sourceId : (defaultSourceId || null),
-      id: input.id != null ? input.id : null,
-      properties: input.properties || null,
-    };
+    var ref = {};
+    for (var k in input) if (Object.prototype.hasOwnProperty.call(input, k)) ref[k] = input[k];
+    ref.sourceId = input.sourceId != null ? input.sourceId : (defaultSourceId || null);
+    ref.id = input.id != null ? input.id : null;
+    ref.properties = input.properties || null;
+    return ref;
   }
 
   function createSelectionManager(opts) {
