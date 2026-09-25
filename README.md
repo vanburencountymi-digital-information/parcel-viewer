@@ -101,6 +101,8 @@ For a **working map in the browser**, use the full Docker stack — `npx serve` 
 | `PV_DATABASE_URL` | Read API → PostGIS (falls back to `PS_DATABASE_URL`) |
 | `MARTIN_DATABASE_URL` | Martin → PostGIS (`martin_ro` role) |
 | `PV_HTTP_PORT` | Host port (default `8080`) |
+| `PV_CORS_ORIGINS` | Comma-separated origins allowed to call the API cross-origin (default: the prod viewer origins; the viewer itself is same-origin via `/api/`) |
+| `REPORT_ERROR_RATE_LIMIT` / `REPORT_ERROR_GLOBAL_LIMIT` | `/report-error` limits: per client IP (default `5/hour`) and across all callers (default `100/day`) |
 
 ---
 

@@ -1289,13 +1289,17 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(data),
         })
-          .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)); })
+          .then(function (r) {
+            if (r.ok) return r.json();
+            var err = new Error("HTTP " + r.status); err.status = r.status;
+            return Promise.reject(err);
+          })
           .then(function (res) {
             if (res && res.ok === false) return Promise.reject(new Error(res.error || "Server error"));
             bodyEl.innerHTML = formSuccessHtml(successTitle, successMsg);
             bodyEl.querySelector("[data-close]").addEventListener("click", closeModal);
           })
-          .catch(function () {
+          .catch(function (err) {
             if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = submitBtn.dataset.label || "Send"; }
             var errEl = form.querySelector(".pv-form-error");
             if (!errEl) {
@@ -1304,7 +1308,9 @@
               errEl.setAttribute("role", "alert");
               form.insertBefore(errEl, form.querySelector(".pv-form-actions"));
             }
-            errEl.textContent = "Sorry — couldn’t send your report just now. Please try again.";
+            errEl.textContent = (err && err.status === 429)
+              ? "You’ve sent several reports recently. Please wait a while and try again."
+              : "Sorry — couldn’t send your report just now. Please try again.";
           });
       });
     };

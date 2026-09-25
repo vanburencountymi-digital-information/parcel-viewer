@@ -6,6 +6,10 @@ PROJECT_ID="core-db-475718"
 REGION="us-central1"
 SERVICE="map-buddy"
 IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/map-buddy/${SERVICE}"
+# Public Parcel API the agent's data tools call (DIC-1852). The in-code default
+# (http://api:8000) only resolves inside docker compose, so Cloud Run must be told.
+# nginx strips the /api/ prefix. Override if the live hostname differs.
+PARCEL_API_BASE="${PARCEL_API_BASE:-https://parcels.dicemi.org/api}"
 
 echo "==> Configuring Docker auth..."
 gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
@@ -22,7 +26,7 @@ gcloud run deploy ${SERVICE} \
   --region ${REGION} \
   --project ${PROJECT_ID} \
   --set-secrets ANTHROPIC_API_KEY=MAP_BUDDY_ANTHROPIC_API_KEY:latest \
-  --set-env-vars "^|^ALLOWED_ORIGINS=https://map.dicemi.org,https://parcels.dicemi.org,http://localhost:8080,http://localhost:5173" \
+  --set-env-vars "^|^ALLOWED_ORIGINS=https://map.dicemi.org,https://parcels.dicemi.org,http://localhost:8080,http://localhost:5173|PARCEL_API_BASE=${PARCEL_API_BASE}" \
   --allow-unauthenticated \
   --port 8000 \
   --min-instances 0 \
