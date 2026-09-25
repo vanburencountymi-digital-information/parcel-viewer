@@ -66,7 +66,15 @@ ALLOWED_ORIGINS = [
 ]
 
 limiter = Limiter(key_func=get_remote_address)
-app = FastAPI(title="Map Buddy Service", version="0.1.0")
+# Interactive API docs are off unless MAP_BUDDY_API_DOCS=1 (DIC-1855); the Cloud Run
+# service is public, so /docs would advertise /judge, /autoconfigure etc. to anyone.
+_DOCS = os.getenv("MAP_BUDDY_API_DOCS", "") == "1"
+app = FastAPI(
+    title="Map Buddy Service", version="0.1.0",
+    docs_url="/docs" if _DOCS else None,
+    redoc_url="/redoc" if _DOCS else None,
+    openapi_url="/openapi.json" if _DOCS else None,
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 

@@ -7,7 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css">
+  <!-- Third-party libs are pinned to exact versions with SRI hashes (DIC-1855): a floating
+       "@4" could change the live site on an upstream release. To upgrade: bump the version
+       and recompute the hash (openssl dgst -sha384 -binary | openssl base64 -A). -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
   <link rel="stylesheet" href="/frontend/public/css/style.css">
   <link rel="stylesheet" href="/frontend/public/css/viewer.css">
 </head>
@@ -724,10 +727,10 @@
   <!-- Local draft preview (DIC-512): merges an Admin Console draft from
        localStorage over window.COUNTY for testing, before map.js reads it. -->
   <script src="/frontend/public/js/style-preview.js"></script>
-  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
+  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.4.0/turf.min.js" integrity="sha384-G+b+P1TXEQX2nQW+hvnd1dWiV2mysujghcENksJYyeXd0Z1Bp23Ac/6IRftCtdmI" crossorigin="anonymous"></script>
   <!-- proj4.js — coordinate projection (State Plane etc.) for Measurement tab -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js" integrity="sha384-U14wzrePlI+UpXk1Jpe45fK/C0yeI7rtwKzi9eM3Lj7LYjXlHNy0YacuWZIk7Hic" crossorigin="anonymous"></script>
   <!-- Drawing tools infrastructure — load before map.js -->
   <script src="/frontend/public/js/drawing/annotation-store.js"></script>
   <script src="/frontend/public/js/drawing/undo-redo.js"></script>
