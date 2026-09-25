@@ -475,6 +475,9 @@ def _build_user_message(
 # and the deployed API URL in prod.
 PARCEL_API_BASE = os.getenv("PARCEL_API_BASE", "http://api:8000").rstrip("/")
 DATA_TOOLS = {"search_parcels", "get_parcel_info", "get_environmental_info"}
+# Tools whose calls are forwarded to the browser as map commands: every declared tool
+# except the server-side ones. Anything else the model names is dropped (DIC-1870).
+_FRONTEND_COMMANDS = {t["name"] for t in TOOLS} - DATA_TOOLS - {"run_workflow"}
 
 # Public federal services — queried directly server-side (no CORS proxy needed)
 # to ANSWER environmental questions, mirroring frontend/public/js/wms-feature-info.js.
@@ -681,9 +684,14 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
     commands = []
     try:
         for _ in range(max_iters):
+            # Prompt caching (DIC-1870): the tools + system prompt (~8k tokens) are
+            # identical on every iteration and every request, so the explicit marker
+            # on the system block caches them together; top-level automatic caching
+            # covers the growing conversation within a request's tool loop.
             response = _get_client().messages.create(
                 model=model, max_tokens=max_tokens,
-                system=SYSTEM_PROMPT, tools=TOOLS, messages=messages,
+                system=_CHAT_SYSTEM_BLOCKS, tools=TOOLS, messages=messages,
+                cache_control={"type": "ephemeral"},
             )
             messages.append({"role": "assistant", "content": response.content})
 
@@ -702,11 +710,14 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
                         # Resolved server-side; the real data goes back to the
                         # model, not to the browser.
                         result = _exec_data_tool(block.name, inp)
-                    else:
+                    elif block.name in _FRONTEND_COMMANDS:
                         # Tool name maps 1:1 to a frontend command type; forward
                         # the input verbatim as the command payload.
                         commands.append({"type": block.name, "payload": inp})
                         result = _tool_ack(block.name)
+                    else:
+                        # Only declared tools reach the browser (DIC-1870).
+                        result = "Unknown tool."
                     tool_results.append({
                         "type": "tool_result",
                         "tool_use_id": block.id,
@@ -725,8 +736,16 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
         yield {"type": "error", "message": "Map Buddy hit a problem answering that. Please try again in a moment."}
         return
 
-    if commands and not response_text.strip():
-        response_text = "Done — updated the map."
+    # The browser stores this turn in its chat history and resends it. An empty turn
+    # makes every later request fail (the API rejects empty content), and one over
+    # the request cap gets a 422 — either way the session breaks until reload
+    # (DIC-1870). So never return empty, and keep it under the cap.
+    if not response_text.strip():
+        response_text = ("Done — updated the map." if commands else
+                         "I couldn't find an answer to that. Could you rephrase it, "
+                         "or give me a parcel number or address?")
+    if len(response_text) > MAX_RESPONSE_CHARS:
+        response_text = response_text[:MAX_RESPONSE_CHARS].rstrip() + "…"
 
     # §6.4 citation envelopes for any vetted MCLs the answer cites (DIC-522): the viewer
     # renders them as clickable sources into the KB-backed Sources panel. Citation-first —
@@ -773,6 +792,11 @@ SYSTEM_PROMPT = (
     + "\n\n# Michigan property-tax statutes (cite ONLY from this list; never invent an MCL)\n"
     + _MI_TAX_STATUTES
 )
+# The chat system prompt as a cacheable block (render order is tools -> system, so this
+# one marker caches both). Must stay byte-identical across requests to hit the cache.
+_CHAT_SYSTEM_BLOCKS = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+# Stays well under main.ChatMessage's 8000-char history cap.
+MAX_RESPONSE_CHARS = int(os.getenv("MAP_BUDDY_MAX_RESPONSE_CHARS", "6000"))
 
 _ASSESSMENT_SYSTEM = """You are the Assessment Explainer for the Van Buren County, Michigan parcel viewer — a focused educational assistant that explains a single parcel's property assessment in plain, friendly language for a general audience.
 
@@ -1016,7 +1040,7 @@ def run_explain(topic: str, facts: dict) -> dict:
         "Explain this parcel using ONLY the authoritative input below. Anything "
         "not present here must be described generally, never invented.\n\n"
         "INPUT DATA:\n"
-        + json.dumps(facts, indent=2, default=str)
+        + json.dumps(facts, separators=(",", ":"), default=str)
     )
 
     max_tokens = int(os.getenv("EXPLAIN_MAX_TOKENS", "2048"))
@@ -1083,8 +1107,8 @@ def run_autoconfigure(brief: dict, draft: dict, rationale: str = "") -> dict:
         "cache_control": {"type": "ephemeral"},
     }]
     user = (
-        "BRIEF:\n" + json.dumps(brief, indent=2, default=str) +
-        "\n\nDETERMINISTIC DRAFT MANIFEST:\n" + json.dumps(draft, indent=2, default=str) +
+        "BRIEF:\n" + json.dumps(brief, separators=(",", ":"), default=str) +
+        "\n\nDETERMINISTIC DRAFT MANIFEST:\n" + json.dumps(draft, separators=(",", ":"), default=str) +
         (("\n\nBASELINE RATIONALE:\n" + rationale) if rationale else "")
     )
     model = os.getenv("AUTOCONFIGURE_MODEL", "claude-haiku-4-5")
@@ -1141,7 +1165,7 @@ def run_grounding_judge(output_text: str, grounding: dict) -> dict:
         "cache_control": {"type": "ephemeral"},
     }]
     user = (
-        "GROUNDING TRUTH:\n" + json.dumps(grounding, indent=2, default=str) +
+        "GROUNDING TRUTH:\n" + json.dumps(grounding, separators=(",", ":"), default=str) +
         "\n\nAI OUTPUT:\n" + str(output_text)
     )
     model = os.getenv("JUDGE_MODEL", "claude-haiku-4-5")
@@ -1231,7 +1255,7 @@ def run_describe_cohort(facts: dict) -> dict:
         "Describe this area using ONLY the verified facts below. Do not state any number "
         "that is not present here, and do not compute new figures.\n\n"
         "VERIFIED FACTS:\n"
-        + json.dumps(facts or {}, indent=2, default=str)
+        + json.dumps(facts or {}, separators=(",", ":"), default=str)
     )
     max_tokens = int(os.getenv("COHORT_NARRATE_MAX_TOKENS", "1536"))
     response = _get_client().messages.create(

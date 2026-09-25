@@ -104,7 +104,7 @@ class RunExplainContractTest(unittest.TestCase):
         client = self._patch_client(_Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)]))
         agent.run_explain("assessment", FACTS)
         user_msg = client.messages.calls[0]["messages"][0]["content"]
-        self.assertIn('"assessed_value": 98000', user_msg)
+        self.assertIn('"assessed_value":98000', user_msg)   # compact JSON (DIC-1870)
         self.assertIn("80-08-032-002-00", user_msg)
 
     def test_grounds_on_curated_statute_corpus(self):
@@ -158,7 +158,7 @@ class RunExplainContractTest(unittest.TestCase):
         client = self._patch_client(_Response([_Block("tool_use", name="propose_theme_refinement", input={"rationale": "ok"})]))
         agent.run_autoconfigure({"topic": "zoning"}, {"tenant": "vanburen", "id": "viewer-vanburen"})
         user_msg = client.messages.calls[0]["messages"][0]["content"]
-        self.assertIn('"tenant": "vanburen"', user_msg)
+        self.assertIn('"tenant":"vanburen"', user_msg)   # compact JSON (DIC-1870)
         self.assertIn("DETERMINISTIC DRAFT MANIFEST", user_msg)
 
     def test_autoconfigure_raises_when_tool_skipped(self):
