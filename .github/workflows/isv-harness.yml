@@ -1,24 +1,18 @@
-# ISV eval/test harness (A2 / DIC-576) — runs on every push/PR.
+# ISV eval/test harness (A2 / DIC-576).
 # Deterministic capability-core tests, the contract/engine smoke, manifest schema
 # validation, the facts-parity check, and the Python explainer narration contract.
 # No live model is ever called; no secrets are required.
+#
+# Runs on EVERY pull request and every push to main, with no path filters: it takes
+# ~10s, and a required status check that only runs for some paths leaves other PRs
+# stuck waiting for it forever. Pushes to other branches are covered by their PR run
+# (so a PR doesn't get two identical runs).
 name: ISV harness
 
 on:
   push:
-    paths:
-      - 'engine/**'
-      - '!engine/**/*.md'
-      - 'frontend/public/js/**'
-      - 'map-buddy/backend/agent.py'
-      - '.github/workflows/isv-harness.yml'
+    branches: [main]
   pull_request:
-    paths:
-      - 'engine/**'
-      - '!engine/**/*.md'
-      - 'frontend/public/js/**'
-      - 'map-buddy/backend/agent.py'
-      - '.github/workflows/isv-harness.yml'
   workflow_dispatch:
 
 jobs:
