@@ -70,8 +70,19 @@
     return (res.body && res.body.detail) || ('Request failed (HTTP ' + res.status + ').');
   }
 
+  // Config paths come from the manifest being edited; refuse the keys that reach
+  // JavaScript's shared object prototype (CodeQL js/prototype-pollution-utility, DIC-1880).
+  var UNSAFE_KEYS = { '__proto__': true, 'constructor': true, 'prototype': true };
+  function safePath(path) {
+    var parts = String(path).split('.');
+    for (var i = 0; i < parts.length; i++) {
+      if (UNSAFE_KEYS[parts[i]]) throw new Error('Unsafe config path: ' + path);
+    }
+    return parts;
+  }
+
   function setPath(obj, path, value) {
-    var parts = path.split('.'), o = obj;
+    var parts = safePath(path), o = obj;
     for (var i = 0; i < parts.length - 1; i++) {
       if (o[parts[i]] == null || typeof o[parts[i]] !== 'object') o[parts[i]] = {};
       o = o[parts[i]];
@@ -79,7 +90,7 @@
     o[parts[parts.length - 1]] = value;
   }
   function getPath(obj, path) {
-    var parts = path.split('.'), o = obj;
+    var parts = safePath(path), o = obj;
     for (var i = 0; i < parts.length; i++) { if (o == null) return undefined; o = o[parts[i]]; }
     return o;
   }

@@ -661,6 +661,12 @@
     var dd  = decDegToStr(lat, 'N', 'S') + ',&nbsp;&nbsp;' + decDegToStr(lng, 'E', 'W');
     var dms = decToDMS(lat, 'N', 'S') + ',&nbsp;&nbsp;' + decToDMS(lng, 'E', 'W');
     var sp  = coordsToStatePlane(lng, lat);
+    // DMS text for the clipboard uses plain ' and " marks. The " must be escaped inside
+    // the data-copy attribute: bare, it ended the attribute early and Copy gave just
+    // 42°12'39.96 (DIC-1880, found by CodeQL).
+    var dmsCopy = (decToDMS(lat, 'N', 'S') + ', ' + decToDMS(lng, 'E', 'W'))
+      .replace(/′/g, "'").replace(/″/g, '"');
+    var dmsCopyAttr = dmsCopy.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
     var snapSnip = '';
 
@@ -673,7 +679,7 @@
       '<div class="msr-coord-block">' +
         '<div class="msr-coord-label">Degrees Minutes Seconds</div>' +
         '<div class="msr-coord-value">' + dms + '</div>' +
-        '<button class="msr-copy-btn" data-copy="' + decToDMS(lat,'N','S').replace(/′/g,'\'').replace(/″/g,'"').replace(/°/g,'°') + ', ' + decToDMS(lng,'E','W').replace(/′/g,'\'').replace(/″/g,'"').replace(/°/g,'°') + '">Copy</button>' +
+        '<button class="msr-copy-btn" data-copy="' + dmsCopyAttr + '">Copy</button>' +
       '</div>';
 
     if (sp) {

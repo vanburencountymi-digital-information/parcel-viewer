@@ -557,6 +557,12 @@ def _query_soils(lng: float, lat: float):
     return {"name": props.get("muname"), "symbol": props.get("musym")} if props else None
 
 
+# What users (and the model) see when a federal lookup fails. The real exception goes
+# to the server log only: it can carry URLs, hostnames and network details
+# (CodeQL py/stack-trace-exposure, DIC-1880).
+_LOOKUP_UNAVAILABLE = {"error": "service unavailable right now"}
+
+
 def _query_environment(lng: float, lat: float) -> dict:
     out = {}
     try:
@@ -564,18 +570,21 @@ def _query_environment(lng: float, lat: float) -> dict:
         out["flood"] = ({"zone": a.get("FLD_ZONE"), "subtype": a.get("ZONE_SUBTY"),
                          "in_special_flood_hazard_area": a.get("SFHA_TF"), "base_flood_elev_ft": a.get("STATIC_BFE")}
                         if a else {"zone": "X", "note": "no FEMA flood hazard mapped at this point"})
-    except Exception as e:
-        out["flood"] = {"error": str(e)}
+    except Exception:
+        log.warning("environment lookup failed: flood", exc_info=True)
+        out["flood"] = dict(_LOOKUP_UNAVAILABLE)
     try:
         a = _arcgis_point_query(_NWI_WETLANDS, lng, lat)
         out["wetlands"] = ({"present": True, "type": a.get("WETLAND_TYPE"), "acres": a.get("ACRES")}
                            if a else {"present": False})
-    except Exception as e:
-        out["wetlands"] = {"error": str(e)}
+    except Exception:
+        log.warning("environment lookup failed: wetlands", exc_info=True)
+        out["wetlands"] = dict(_LOOKUP_UNAVAILABLE)
     try:
         out["soil"] = _query_soils(lng, lat) or {"note": "no soil map unit returned"}
-    except Exception as e:
-        out["soil"] = {"error": str(e)}
+    except Exception:
+        log.warning("environment lookup failed: soil", exc_info=True)
+        out["soil"] = dict(_LOOKUP_UNAVAILABLE)
     return out
 
 
@@ -619,8 +628,9 @@ def _exec_data_tool(name: str, inp: dict) -> str:
             if lng is None or lat is None:
                 return "Provide the point as lng + lat (use the selected parcel's centroid)."
             return json.dumps(_query_environment(float(lng), float(lat)))
-    except Exception as e:
-        return f"Lookup failed: {e}"
+    except Exception:
+        log.warning("data tool %s failed", name, exc_info=True)
+        return "Lookup failed; the service may be unavailable right now."
     return "Unknown data tool."
 
 
@@ -661,8 +671,9 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
         if centroid and len(centroid) >= 2:
             try:
                 env = _query_environment(float(centroid[0]), float(centroid[1]))
-            except Exception as e:
-                env = {"error": str(e)}
+            except Exception:
+                log.warning("environment lookup failed for workflow %s", name, exc_info=True)
+                env = dict(_LOOKUP_UNAVAILABLE)
 
     pin = inp.get("pin")
     cmds = []

@@ -15,6 +15,7 @@ from typing import Literal
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel, Field
 
+from parcel_viewer.common.logging_setup import safe_for_log
 from parcel_viewer.ratelimit import global_key, limiter
 
 log = logging.getLogger(__name__)
@@ -40,15 +41,19 @@ class ClientErrorReport(BaseModel):
 @limiter.limit(CLIENT_ERROR_RATE_LIMIT)
 def client_error(report: ClientErrorReport, request: Request) -> Response:
     """Takes one browser error report; logs it and returns 204 (no body)."""
-    user_agent = (request.headers.get("user-agent") or "")[:200]
+    # Everything here comes from the browser: one line each, so it can't forge log lines.
+    message = safe_for_log(report.message)
+    source = safe_for_log(report.source or "", 300)
+    page = safe_for_log(report.page or "", 300)
+    user_agent = safe_for_log(request.headers.get("user-agent") or "", 200)
     log.warning(
         "browser %s: %s (%s:%s:%s on %s)",
-        report.kind, report.message, report.source, report.line, report.column, report.page,
+        report.kind, message, source, report.line, report.column, page,
         extra={
             "browser_error_kind": report.kind,
-            "browser_error_source": report.source,
+            "browser_error_source": source,
             "browser_error_line": report.line,
-            "browser_page": report.page,
+            "browser_page": page,
             "user_agent": user_agent,
         },
     )
