@@ -3,6 +3,7 @@
 import json
 import os
 from pathlib import Path
+from typing import Literal
 
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent.parent / ".env", override=True)
@@ -10,7 +11,7 @@ load_dotenv(Path(__file__).parent.parent.parent / ".env", override=True)
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -30,6 +31,19 @@ try:
 except Exception as _kb_err:  # noqa: BLE001 — never block boot on KB wiring
     _KB_STORE = None
     print(f"[kb] resolver disabled at boot: {_kb_err}")
+
+
+# The tenant is fixed per deployment, never read from the request (DIC-1854): a
+# client-supplied tenant let callers mint a fresh quota bucket (and a cache miss)
+# per request. One Map Buddy deployment serves one county.
+SERVER_TENANT = os.getenv("MAP_BUDDY_TENANT", "vanburen")
+
+# Server-side request caps (DIC-1854). The browser trims history to 12 turns, but a
+# direct caller could send hundreds of KB per request, and /chat runs up to
+# MAP_BUDDY_MAX_ITERS model calls over it. Body size bounds every AI route at once.
+MAX_BODY_BYTES = int(os.getenv("MAP_BUDDY_MAX_BODY_BYTES", str(64 * 1024)))
+MAX_MESSAGE_CHARS = int(os.getenv("MAP_BUDDY_MAX_MESSAGE_CHARS", "2000"))
+MAX_HISTORY_TURNS = int(os.getenv("MAP_BUDDY_MAX_HISTORY", "12"))
 
 
 def _quota_block(tenant):
@@ -56,6 +70,52 @@ app = FastAPI(title="Map Buddy Service", version="0.1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
+class _BodySizeLimit:
+    """Reject request bodies over MAX_BODY_BYTES with 413 — checks Content-Length up front
+    and counts streamed (chunked) bodies, so no route ever parses an oversized payload."""
+
+    def __init__(self, app, max_bytes: int):
+        self.app, self.max_bytes = app, max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        for k, v in scope.get("headers") or []:
+            if k == b"content-length" and v.isdigit() and int(v) > self.max_bytes:
+                return await self._reject(send)
+        seen, rejected = 0, False
+
+        async def limited_receive():
+            # Streamed body: once over the cap, answer 413 ourselves and tell the app
+            # the client went away (raising here would be swallowed by body parsing).
+            nonlocal seen, rejected
+            if rejected:
+                return {"type": "http.disconnect"}
+            msg = await receive()
+            if msg["type"] == "http.request":
+                seen += len(msg.get("body", b""))
+                if seen > self.max_bytes:
+                    rejected = True
+                    await self._reject(send)
+                    return {"type": "http.disconnect"}
+            return msg
+
+        async def guarded_send(msg):
+            if not rejected:
+                await send(msg)
+
+        await self.app(scope, limited_receive, guarded_send)
+
+    async def _reject(self, send):
+        body = json.dumps({"ok": False, "error": "request too large"}).encode()
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"),
+                                (b"content-length", str(len(body)).encode())]})
+        await send({"type": "http.response.body", "body": body})
+
+
+app.add_middleware(_BodySizeLimit, max_bytes=MAX_BODY_BYTES)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -75,8 +135,10 @@ class ParcelContext(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    role: str
-    content: str
+    # Only real conversation roles: a free-form role let a client inject fake turns
+    # (or trigger an API error with an invalid one).
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=8000)
 
 
 class MapState(BaseModel):
@@ -90,8 +152,9 @@ class MapState(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    message: str
-    conversation_history: list[ChatMessage] = []
+    message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
+    # Hard ceiling on what's accepted; the route keeps only the last MAX_HISTORY_TURNS.
+    conversation_history: list[ChatMessage] = Field(default=[], max_length=50)
     parcel_context: ParcelContext | None = None
     map_state: MapState | None = None
 
@@ -176,9 +239,19 @@ async def chat(request: Request, body: ChatRequest):
             media_type="text/event-stream",
         )
 
+    # /chat had no quota at all (DIC-1854). One chat request counts as one AI call.
+    blocked = _quota_block(SERVER_TENANT)
+    if blocked:
+        return StreamingResponse(
+            iter([f'data: {json.dumps({"type": "error", "message": blocked["error"], "degraded": True})}\n\n']),
+            media_type="text/event-stream",
+        )
+    ai_usage.record(SERVER_TENANT)
+    history = body.conversation_history[-MAX_HISTORY_TURNS:] if MAX_HISTORY_TURNS > 0 else []
+
     def stream():
         ms = body.map_state.model_dump() if body.map_state else None
-        for event in run_chat_stream(body.message, body.conversation_history, body.parcel_context, ms):
+        for event in run_chat_stream(body.message, history, body.parcel_context, ms):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
@@ -199,7 +272,7 @@ async def explain(request: Request, body: ExplainRequest):
         return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
     facts = body.facts or {}
     # C3 result cache: the same parcel explained twice shouldn't pay twice. Tenant-scoped.
-    tenant = facts.get("tenant") or facts.get("county")
+    tenant = SERVER_TENANT
     ck = result_cache.cache_key("explain:" + body.topic, tenant, facts)
     if result_cache.enabled():
         hit = result_cache.get_cache().get(ck)
@@ -231,7 +304,7 @@ async def autoconfigure(request: Request, body: AutoconfigureRequest):
         return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
     if not body.draft:
         return {"ok": False, "error": "no draft manifest to refine."}
-    tenant = (body.draft or {}).get("tenant") or (body.brief or {}).get("tenant")
+    tenant = SERVER_TENANT
     ck = result_cache.cache_key("autoconfigure", tenant, {"brief": body.brief, "draft": body.draft})
     if result_cache.enabled():
         hit = result_cache.get_cache().get(ck)
@@ -258,7 +331,7 @@ async def judge(request: Request, body: JudgeRequest):
     {grounded, citations_ok, issues}} or {ok:false, error}."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
-    tenant = (body.grounding or {}).get("tenant") or (body.grounding or {}).get("county")
+    tenant = SERVER_TENANT
     ck = result_cache.cache_key("judge", tenant, {"output": body.output, "grounding": body.grounding})
     if result_cache.enabled():
         hit = result_cache.get_cache().get(ck)
@@ -288,7 +361,7 @@ async def describe_cohort(request: Request, body: DescribeCohortRequest):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
     facts = body.facts or {}
-    tenant = facts.get("tenant") or facts.get("county")
+    tenant = SERVER_TENANT
     ck = result_cache.cache_key("describe-cohort", tenant, facts)
     if result_cache.enabled():
         hit = result_cache.get_cache().get(ck)

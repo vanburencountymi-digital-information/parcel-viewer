@@ -1,5 +1,7 @@
-fastapi
-uvicorn[standard]
-anthropic
-python-dotenv
-slowapi
+# Pinned (DIC-1854) so a rebuild can't silently pick up a new major. Versions as
+# resolved and tested 2026-09-25; bump deliberately.
+fastapi==0.141.1
+uvicorn[standard]==0.54.0
+anthropic==1.8.0
+python-dotenv==1.2.3
+slowapi==0.1.10

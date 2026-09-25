@@ -161,7 +161,7 @@
         '<div id="mb-messages" class="mb-messages"' +
             ' role="log" aria-live="polite" aria-label="MapBuddy A.I. conversation"></div>' +
         '<div class="mb-input-area">' +
-          '<textarea id="mb-input" class="mb-input" rows="1"' +
+          '<textarea id="mb-input" class="mb-input" rows="1" maxlength="2000"' +
               ' placeholder="Ask about this parcel or search by owner…"' +
               ' aria-label="Message MapBuddy A.I."></textarea>' +
           '<button id="mb-send-btn" class="mb-send-btn" aria-label="Send">' +

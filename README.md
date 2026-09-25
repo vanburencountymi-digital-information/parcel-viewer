@@ -217,6 +217,11 @@ Both use forced tool calls (`render_explanation`) so the frontend always gets a 
 | `MAP_BUDDY_MAX_TOKENS` | `2048` | Max tokens per chat turn |
 | `MAP_BUDDY_MAX_ITERS` | `6` | Max tool-call iterations per chat request |
 | `KB_BACKEND` | `fixture` | `fixture` = local JSON, `dice` = live db-dice knowledge.chunks |
+| `MAP_BUDDY_TENANT` | `vanburen` | Tenant for quota + cache keys. Fixed per deployment; request bodies can't override it |
+| `AI_QUOTA_DEFAULT` / `AI_QUOTA_WINDOW` | off / `3600` | AI calls allowed per tenant per rolling window (s). `deploy.sh` sets `200` / `86400`. In-memory per instance for now |
+| `MAP_BUDDY_MAX_BODY_BYTES` | `65536` | Requests larger than this get 413 |
+| `MAP_BUDDY_MAX_MESSAGE_CHARS` / `MAP_BUDDY_MAX_HISTORY` | `2000` / `12` | Chat message length cap; history turns kept server-side |
+| `ANTHROPIC_TIMEOUT_S` / `ANTHROPIC_MAX_RETRIES` | `60` / `1` | Anthropic client timeout and retries |
 
 ---
 

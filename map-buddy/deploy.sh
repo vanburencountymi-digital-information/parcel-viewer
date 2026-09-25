@@ -10,6 +10,12 @@ IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/map-buddy/${SERVICE}"
 # (http://api:8000) only resolves inside docker compose, so Cloud Run must be told.
 # nginx strips the /api/ prefix. Override if the live hostname differs.
 PARCEL_API_BASE="${PARCEL_API_BASE:-https://parcels.dicemi.org/api}"
+# AI quota (DIC-1854): the quota is OFF unless AI_QUOTA_DEFAULT is set. Counted per
+# tenant over a rolling AI_QUOTA_WINDOW (24h here); one /chat or explainer call = 1.
+# Counters are still in-memory per instance (x --max-instances) until the shared store
+# lands (DIC-1862), so the effective daily ceiling is up to 3x this. Override to tune.
+AI_QUOTA_DEFAULT="${AI_QUOTA_DEFAULT:-200}"
+AI_QUOTA_WINDOW="${AI_QUOTA_WINDOW:-86400}"
 
 echo "==> Configuring Docker auth..."
 gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
@@ -26,7 +32,7 @@ gcloud run deploy ${SERVICE} \
   --region ${REGION} \
   --project ${PROJECT_ID} \
   --set-secrets ANTHROPIC_API_KEY=MAP_BUDDY_ANTHROPIC_API_KEY:latest \
-  --set-env-vars "^|^ALLOWED_ORIGINS=https://map.dicemi.org,https://parcels.dicemi.org,http://localhost:8080,http://localhost:5173|PARCEL_API_BASE=${PARCEL_API_BASE}" \
+  --set-env-vars "^|^ALLOWED_ORIGINS=https://map.dicemi.org,https://parcels.dicemi.org|PARCEL_API_BASE=${PARCEL_API_BASE}|MAP_BUDDY_TENANT=vanburen|AI_QUOTA_DEFAULT=${AI_QUOTA_DEFAULT}|AI_QUOTA_WINDOW=${AI_QUOTA_WINDOW}" \
   --allow-unauthenticated \
   --port 8000 \
   --min-instances 0 \
