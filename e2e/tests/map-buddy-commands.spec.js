@@ -56,7 +56,10 @@ const CASES = [
 
 test.describe('Map Buddy commands leave the map usable', () => {
   let pin;
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, consoleGuard }) => {
+    // Some commands (describe_neighborhood, flood layers) query FEMA / USFWS / NRCS
+    // through /api/wms-proxy; an upstream 502 there is their outage, not ours.
+    consoleGuard.allow(/Failed to load resource.*\/api\/wms-proxy\?url=https%3A%2F%2F(hazards\.fema\.gov|fwspublicservices|sdmdataaccess)/);
     await gotoViewer(page);
     pin = await selectParcelViaSearch(page);
     await waitForSelectedInIndex(page);
