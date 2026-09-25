@@ -129,7 +129,7 @@ async def style_json():
             {
                 "id": "parcels-line", "type": "line", "source": "parcels", "source-layer": "parcels",
                 "paint": {
-                    "line-color": "#ffffff",   # white outline (viewer adds a dark casing)
+                    "line-color": "#374151",   # light-basemap default; the viewer adapts it (dark/aerial → white)
                     "line-opacity": 0.85,
                     "line-width": ["interpolate", ["linear"], ["zoom"], 11, 0.3, 14, 0.6, 17, 1.2, 19, 2],
                 },

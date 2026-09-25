@@ -915,10 +915,24 @@
 
   // Apply a layer's paint for the active theme: solid fill (or choropleth ramp) +
   // stroke. Each setPaintProperty is guarded so layers not yet on the map are skipped.
-  // Resting parcel outline: white in every theme / color scheme / basemap, for
-  // visibility over the basemap, the class wash and aerial imagery (owner request
-  // 2026-09-25). Selection and hover keep the scheme accent.
-  const PARCEL_LINE_COLOR = "#ffffff";
+  // Adaptive resting parcel outline (owner request 2026-09-25): contrast with the
+  // background instead of one fixed color. Light basemap → dark gray line over a
+  // faint light halo; dark basemap or aerial → white, slightly transparent so it
+  // doesn't glare, over a dark casing. Same light/dark rule as the parcel labels.
+  // Selection and hover keep the scheme accent.
+  function _parcelLineScheme() {
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    const aerialEl = document.getElementById("toggle-aerial");
+    return (dark || (aerialEl && aerialEl.checked))
+      ? { line: "#ffffff", casing: "#111827", rest: 0.72, casingRest: 0.5 }
+      : { line: "#374151", casing: "#ffffff", rest: 0.85, casingRest: 0.6 };
+  }
+  function applyParcelLineColors() {
+    if (!map || !map.getLayer("parcels-line")) return;
+    const sc = _parcelLineScheme();
+    map.setPaintProperty("parcels-line", "line-color", sc.line);
+    if (map.getLayer("parcels-line-casing")) map.setPaintProperty("parcels-line-casing", "line-color", sc.casing);
+  }
 
   function applyLayerPaint(id, style, dark) {
     if (!style) return;
@@ -934,7 +948,7 @@
     }
     if (ids.line && map.getLayer(ids.line)) {
       map.setPaintProperty(ids.line, "line-color",
-        id === "parcels" ? PARCEL_LINE_COLOR : (tone.stroke || (dark ? "#b8a97a" : "#8a7a55")));
+        id === "parcels" ? _parcelLineScheme().line : (tone.stroke || (dark ? "#b8a97a" : "#8a7a55")));
     }
   }
 
@@ -1058,7 +1072,8 @@
       // ('pv-scheme-change' → applyTheme) re-tints the map live. SEMANTIC colors
       // (resting fill / class wash) are never touched by the accent.
       var _accent = mapAccent("accent", dark ? "#c9684f" : "#A3473B");
-      if (map.getLayer("parcels-line")) map.setPaintProperty("parcels-line", "line-color", PARCEL_LINE_COLOR);
+      applyParcelLineColors();
+      if (_spotlightFn) _spotlightFn();   // resting outline opacity differs light vs dark
       if (map.getLayer("parcels-hover")) map.setPaintProperty("parcels-hover", "line-color", _accent);
       if (map.getLayer("parcels-selected-line")) {
         map.setPaintProperty("parcels-selected-line", "line-color", [
@@ -1203,8 +1218,8 @@
       // Layer toggles
       const origFillOpacity = map.getPaintProperty("parcels-fill", "fill-opacity");
 
-      // Dark casing under the white parcel outline so it reads on the light basemap
-      // as well as on dark / aerial (a white line alone vanishes on light gray).
+      // Casing under the parcel outline (color set by applyParcelLineColors: a light
+      // halo under the dark line, a dark casing under the white one).
       if (!map.getLayer("parcels-line-casing")) {
         map.addLayer({
           id: "parcels-line-casing", type: "line", source: "parcels", "source-layer": "parcels",
@@ -1254,14 +1269,16 @@
         // fill doing the dimming (Plain view, or aerial where the fill isn't
         // spotlit) the outline IS the parcel, and 0.18 made the rest vanish.
         const outlineOnly = !normalFill || _choroIsPlain();
+        const sc = _parcelLineScheme();
+        applyParcelLineColors();   // background may have changed (aerial / theme)
         map.setPaintProperty("parcels-line", "line-opacity",
           active
-            ? ["case", ["boolean", ["feature-state", "selected"], false], 1, outlineOnly ? 0.55 : 0.18]
-            : 0.85);
+            ? ["case", ["boolean", ["feature-state", "selected"], false], 1, outlineOnly ? Math.min(0.55, sc.rest) : 0.18]
+            : sc.rest);
         if (map.getLayer("parcels-line-casing")) map.setPaintProperty("parcels-line-casing", "line-opacity",
           active
-            ? ["case", ["boolean", ["feature-state", "selected"], false], 0.5, outlineOnly ? 0.35 : 0.1]
-            : 0.5);
+            ? ["case", ["boolean", ["feature-state", "selected"], false], sc.casingRest, outlineOnly ? 0.35 : 0.1]
+            : sc.casingRest);
       };
 
       function updateZoningOpacity() {
@@ -1313,11 +1330,7 @@
         // Parcels checkbox controls only the parcel fill/line. Parcel LABELS are
         // owned by the "Parcel Labels" tool (DIC-504) — the Parcels toggle no
         // longer force-shows the legacy parcels-labels layer (kept hidden).
-        if (e.target.checked) {
-          map.setPaintProperty("parcels-line", "line-color", PARCEL_LINE_COLOR);
-        } else {
-          map.setPaintProperty("parcels-line", "line-color", "rgba(255,255,255,0.65)");
-        }
+        applyParcelLineColors();
         if (window.PS_MAP_PANEL) window.PS_MAP_PANEL.layers.zoning = e.target.checked;
         updateZoningOpacity();
       });

@@ -73,7 +73,7 @@ test('school district legend lists the districts present, and the choice persist
   await expect(page.locator('#parcels-choro-legend')).toContainText('School district');
 });
 
-test('Plain view: selecting a parcel keeps the other parcels visible; outlines are white with a casing', async ({ page }) => {
+test('Plain view: selecting a parcel keeps the other parcels visible', async ({ page }) => {
   await openViews(page);
   await pick(page, 'none');
   await page.evaluate(async () => {
@@ -83,16 +83,31 @@ test('Plain view: selecting a parcel keeps the other parcels visible; outlines a
   const r = await page.evaluate(() => {
     const m = window.PS_MAP;
     const unselected = (id) => { const v = m.getPaintProperty(id, 'line-opacity'); return Array.isArray(v) ? v[v.length - 1] : v; };
-    return {
-      color: m.getPaintProperty('parcels-line', 'line-color'),
-      line: unselected('parcels-line'),
-      casing: m.getLayer('parcels-line-casing') ? unselected('parcels-line-casing') : null,
-      fill: m.getPaintProperty('parcels-fill', 'fill-opacity'),
-    };
+    return { line: unselected('parcels-line'), casing: m.getLayer('parcels-line-casing') ? unselected('parcels-line-casing') : null };
   });
-  expect(r.color).toBe('#ffffff');
   expect(r.line, 'unselected outline opacity (was 0.18 → parcels vanished)').toBeGreaterThanOrEqual(0.5);
-  expect(r.casing, 'dark casing present and visible').toBeGreaterThanOrEqual(0.3);
+  expect(r.casing, 'casing present and visible').toBeGreaterThanOrEqual(0.3);
+});
+
+test('parcel outline adapts to the background: dark on light, softened white on dark and aerial', async ({ page }) => {
+  const style = () => page.evaluate(() => ({
+    line: window.PS_MAP.getPaintProperty('parcels-line', 'line-color'),
+    casing: window.PS_MAP.getPaintProperty('parcels-line-casing', 'line-color'),
+    op: window.PS_MAP.getPaintProperty('parcels-line', 'line-opacity'),
+  }));
+  const light = await style();
+  expect(light.line).not.toBe('#ffffff');
+  expect(light.casing).toBe('#ffffff');
+  await page.locator('#theme-toggle').click();
+  await expect.poll(style).toMatchObject({ line: '#ffffff', casing: '#111827' });
+  expect((await style()).op, 'white is toned down on dark').toBeLessThan(light.op);
+  await page.locator('#theme-toggle').click();                       // back to light…
+  await expect.poll(async () => (await style()).line).toBe(light.line);
+  await openViews(page);
+  await page.locator('#toggle-aerial').check();                        // …then aerial
+  await expect.poll(async () => (await style()).line).toBe('#ffffff');
+  await page.locator('#toggle-aerial').uncheck();
+  await expect.poll(async () => (await style()).line).toBe(light.line);
 });
 
 test('dark mode swaps the view to its dark palette', async ({ page }) => {
