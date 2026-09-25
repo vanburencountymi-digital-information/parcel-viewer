@@ -255,9 +255,42 @@
    * @param {string}        bodyHtml    Inner HTML for the content area
    * @param {Function|null} saveCallback  Called when Save button is clicked; null = button hidden
    */
+  // Wire the HUD's own × / Clear / Save buttons once, the first time the HUD is shown.
+  // They used to be wired only when the Measure tab opened, so a HUD opened any other way
+  // (Map Buddy's "dimension the parcel") had dead buttons and couldn't be closed.
+  var _hudWired = false;
+  function wireHudEvents(el) {
+    if (_hudWired) return;
+    _hudWired = true;
+    function resetInProgress() {
+      clearPreview();
+      _drawCoords = [];
+      _stepCount  = 0;
+      _stepPoints = [];
+    }
+    el.querySelector('.msr-hud-close').addEventListener('click', function () {
+      // deactivateTool() is a no-op when no tool is active (e.g. a dimension result from
+      // Map Buddy), so always hide the HUD first.
+      hideHud();
+      deactivateTool();
+    });
+    el.querySelector('.msr-hud-clear').addEventListener('click', function () {
+      resetInProgress();
+      hideHud();
+      if (_activeTool) activateTool(_activeTool);
+    });
+    el.querySelector('.msr-hud-save').addEventListener('click', function () {
+      if (_lastSaveCallback) _lastSaveCallback();
+      resetInProgress();
+      hideHud();
+      if (_activeTool) activateTool(_activeTool);
+    });
+  }
+
   function showHud(toolLabel, bodyHtml, saveCallback) {
     var el = getHud();
     if (!el) return;
+    wireHudEvents(el);
     _lastSaveCallback = saveCallback || null;
 
     el.querySelector('.msr-hud-title').textContent = toolLabel;
@@ -1172,6 +1205,11 @@
   }
 
   function runAutoDim(parcel) {
+    // Launched by the Measure tab's auto-dim tool (the user is dimensioning parcel after
+    // parcel), or programmatically, e.g. Map Buddy's dimension_parcel? Only the former
+    // should re-arm the tool and hold the map-click gate; otherwise the HUD can't be
+    // cleared away and parcel clicks stay blocked after it closes.
+    var fromTool = (_activeTool === 'auto-dim');
     var opts   = readAutoDimOptions();
     var props  = parcel.properties || {};
     var pin    = props.pin || props.PIN || 'Parcel';
@@ -1298,13 +1336,13 @@
           }
         }
         hideHud();
-        activateTool('auto-dim');
+        if (fromTool) activateTool('auto-dim');
       });
     }, 0);
 
     _stepCount = 0; _stepPoints = []; _drawCoords = [];
     clearPreview();
-    if (window.PS_STATE) window.PS_STATE.activeDrawTool = 'measure';
+    if (fromTool && window.PS_STATE) window.PS_STATE.activeDrawTool = 'measure';
   }
 
   // ══ Annotation helpers ════════════════════════════════════════════════════
@@ -1773,30 +1811,8 @@
       });
     });
 
-    // ── HUD close + clear + save buttons
-    var hud = getHud();
-    if (hud) {
-      hud.querySelector('.msr-hud-close').addEventListener('click', function () {
-        deactivateTool();
-      });
-      hud.querySelector('.msr-hud-clear').addEventListener('click', function () {
-        clearPreview();
-        _drawCoords = [];
-        _stepCount  = 0;
-        _stepPoints = [];
-        hideHud();
-        if (_activeTool) activateTool(_activeTool);
-      });
-      hud.querySelector('.msr-hud-save').addEventListener('click', function () {
-        if (_lastSaveCallback) _lastSaveCallback();
-        clearPreview();
-        _drawCoords = [];
-        _stepCount  = 0;
-        _stepPoints = [];
-        hideHud();
-        if (_activeTool) activateTool(_activeTool);
-      });
-    }
+    // HUD close / clear / save are wired by wireHudEvents() (from showHud), so they also
+    // work when the HUD is opened without this tab, e.g. by Map Buddy's dimension_parcel.
 
     // ── Footer: Undo / Redo
     wire('msr-undo-btn', 'click', function () {
