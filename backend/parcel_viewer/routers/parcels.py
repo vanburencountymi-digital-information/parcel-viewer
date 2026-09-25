@@ -80,16 +80,24 @@ async def style_json():
                 "maxzoom": 19,
                 "attribution": "Imagery © Esri, Maxar, Earthstar Geographics, USDA FSA, USGS, and the GIS user community",
             },
-            "carto-positron": {
+            # Street basemap: Esri Light Gray Canvas (keyless). Replaced CARTO, whose
+            # tiles now render an "API KEY REQUIRED" watermark without a key. Esri
+            # serves labels as a separate reference layer. Canvas data stops at z16
+            # (z17+ returns a "Map data not yet available" tile), so maxzoom 16 makes
+            # MapLibre overzoom the z16 tiles instead. Dark mode swaps both to Dark
+            # Gray Canvas (map.js applyTheme). ArcGIS scheme is /{z}/{y}/{x}.
+            "esri-canvas": {
                 "type": "raster",
-                "tiles": [
-                    "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-                    "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-                    "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-                    "https://d.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-                ],
+                "tiles": ["https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
                 "tileSize": 256,
-                "attribution": "(c) OpenStreetMap contributors (c) CARTO",
+                "maxzoom": 16,
+                "attribution": "Esri, HERE, Garmin, (c) OpenStreetMap contributors, and the GIS user community",
+            },
+            "esri-canvas-labels": {
+                "type": "raster",
+                "tiles": ["https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"],
+                "tileSize": 256,
+                "maxzoom": 16,
             },
             "parcels": {
                 "type": "vector",
@@ -100,7 +108,8 @@ async def style_json():
             },
         },
         "layers": [
-            {"id": "basemap", "type": "raster", "source": "carto-positron", "minzoom": 0, "maxzoom": 19},
+            {"id": "basemap", "type": "raster", "source": "esri-canvas", "minzoom": 0, "maxzoom": 24},
+            {"id": "basemap-labels", "type": "raster", "source": "esri-canvas-labels", "minzoom": 0, "maxzoom": 24},
             {
                 "id": "mi-aerial", "type": "raster", "source": "mi-aerial",
                 "minzoom": 0, "maxzoom": 19, "layout": {"visibility": "none"},
