@@ -95,7 +95,7 @@ What still blocks a deploy:
 | Lint, format, types, secrets (pre-commit: ruff, mypy, gitleaks, …) | all **11** hooks pass | yes (`Lint`) | `pre-commit run --all-files` |
 | CodeQL (Python, JS/TS, Actions) | **36** findings from the first full scan, all **fixed** (17 security) | yes (`CodeQL`, + weekly) | Security → Code scanning |
 | Secret scan, full git history (gitleaks) | **0 leaks** in all 248 non-merge commits | per commit (hook) | `pre-commit run gitleaks --all-files` |
-| Browser end-to-end (Playwright, Edge) | **172** tests in 24 files | **no:** needs a database (see 7) | `cd e2e && npm install && npx playwright test` |
+| Browser end-to-end (Playwright, Edge) | **172** tests in 24 files | **no:** needs a database (see 8) | `cd e2e && npm install && npx playwright test` |
 | Accessibility (axe-core, WCAG 2.1 A/AA) | 0 violations on the scanned screens | with e2e | `npx playwright test tests/a11y-scan.spec.js` |
 
 **Latest full e2e run (2026-09-26, after #31):** **170 passed, 0 failed, 2 skipped**. The skipped two are the paid AI tests, gated on `E2E_AI=1`.
