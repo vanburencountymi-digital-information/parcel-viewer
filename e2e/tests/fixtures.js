@@ -12,6 +12,14 @@ const base = require('@playwright/test');
 const BENIGN = [/WebSocket connection to '.*\/ws' failed/];
 
 const test = base.test.extend({
+  // E2E_MAP_BUDDY_API points the viewer at a Map Buddy on its own origin, as in production
+  // (Cloud Run), instead of the dev stack's same-origin /map-buddy-api proxy, which the
+  // production nginx doesn't have. Used to run the suite against infra/docker-compose.prod.yml.
+  mapBuddyOverride: [async ({ page }, use) => {
+    const url = process.env.E2E_MAP_BUDDY_API;
+    if (url) await page.addInitScript((u) => { window.MAP_BUDDY_API = u; }, url);
+    await use(url || null);
+  }, { auto: true }],
   consoleGuard: [async ({ page }, use, testInfo) => {
     const problems = [];
     const allowed = [];

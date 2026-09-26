@@ -25,6 +25,9 @@ from .request_context import current_request_id
 _STANDARD_ATTRS = set(vars(logging.LogRecord("", 0, "", 0, "", None, None))) | {
     "message",
     "asctime",
+    # uvicorn adds a copy of the message with terminal colour codes; it's noise in JSON
+    # logs (seen in the production rehearsal, DIC-1884).
+    "color_message",
 }
 
 
