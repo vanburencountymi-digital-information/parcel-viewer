@@ -42,6 +42,7 @@ the specs that touch them — never as a blanket rule.
 | `smoke` | Clean load (10s of console silence), Esri basemap, pinned libraries under SRI, config + Map Buddy endpoint, no `/ws` reconnect spam |
 | `search-and-panel` | Search via UI, keyboard nav, no-match message, no stale results, panel close clears selection, Esc in a dialog keeps the selection |
 | `map-click` | A real mouse click on the canvas selects the parcel |
+| `context-menu` | Right-click menu: opens at the pointer; every copy row puts exactly its shown text on the clipboard, at the clicked point; select-here keeps the camera; Shift+F10 / arrows / Esc (selection kept, stops a search orbit); a right-drag doesn't open it; map move / outside click close it; Google Maps + Street View links |
 | `map-buddy-commands` | Every command that opens a window/tool/mode: it closes, releases the map-click gate, and a real click still selects a parcel (regression guard for DIC-1875) |
 | `tool-windows` | Every Help & tools menu window and parcel tool: open, close by button, close by Esc, focus not lost |
 | `map-controls` | Every Select / Measure / Draw tool arms and exits, releasing the gate and restoring panning |
@@ -60,7 +61,7 @@ the specs that touch them — never as a blanket rule.
 | `labels` | Every Parcel Labels field renders clean text on the map (no NaN / undefined); size buttons; turning labels off removes them |
 | `explainers` | Assessment + tax-description explainers with AI off, AI on but failing (says "couldn't be reached", not "off"), AI on (mocked; model text escaped; same figures as AI-off); a statute citation opens the Sources panel |
 | `automations` | Every Map Buddy automation runs on the selected parcel; the setback input is honoured; an out-of-range setback is refused with the reason |
-| `a11y-scan` | axe-core WCAG 2.1 A/AA scan of the main screens (load, parcel, settings, Map Buddy, layers, dark mode) and the admin console; serious/critical violations fail. The phone layout is scanned in `mobile.spec` |
+| `a11y-scan` | axe-core WCAG 2.1 A/AA scan of the main screens (load, parcel, settings, Map Buddy, layers, the right-click menu in light and dark, dark mode) and the admin console; serious/critical violations fail. The phone layout is scanned in `mobile.spec` |
 | `choropleth` | Every "Color parcels by" view repaints with a legend; taxable value / acre puts each parcel's own value on the map; school legend lists the districts present; choice persists; dark palette |
 
 ## Proving a test catches its bug

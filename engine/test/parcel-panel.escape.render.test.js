@@ -76,6 +76,9 @@ function load(searchResults) {
     documentElement: stub('html', { getAttribute: () => null }),
   });
   vm.createContext(sandbox);
+  // Same order as demo/index.html: map.js uses the shared coordinate formatters (DIC-1882).
+  const coords = path.join(REPO, 'frontend/public/js/pv-coords.js');
+  vm.runInContext(fs.readFileSync(coords, 'utf8'), sandbox, { filename: coords });
   const file = path.join(REPO, 'frontend/public/js/map.js');
   try { vm.runInContext(fs.readFileSync(file, 'utf8'), sandbox, { filename: file }); }
   catch (e) { if (process.env.DEBUG_LOAD) console.error(e); /* late map-init code may trip on the stub; the handlers we need are wired earlier */ }

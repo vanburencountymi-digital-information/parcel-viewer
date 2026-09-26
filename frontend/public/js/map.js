@@ -129,37 +129,16 @@
   // ── Live coordinate readout ──────────────────────────────────────────────
   // Bottom-right pill tracking the cursor. Click cycles the format; choice is
   // persisted. (Settings can drive this later via window.PV_COORDS.setFormat.)
-  const COORD_FORMATS = ["dd", "dms", "spc"];
-  // Michigan State Plane South (EPSG:6497, us-ft) — matches the Measurement tool.
-  const MI_STATE_PLANE_DEF = "+proj=lcc +lat_0=41.5 +lon_0=-84.3666666666667 " +
-    "+lat_1=42.1 +lat_2=43.6667 +x_0=4000000 +y_0=0 +ellps=GRS80 +units=us-ft +no_defs";
-  const WGS84_DEF = "+proj=longlat +datum=WGS84 +no_defs";
+  // The formatters live in pv-coords.js (shared with the right-click menu; DIC-1882).
+  const COORD_FORMATS = window.PV_COORD_FMT.readoutFormats;
   let _lastLngLat = null;
 
   function _coordFormat() {
     const f = localStorage.getItem("pv-coord-format");
     return COORD_FORMATS.indexOf(f) !== -1 ? f : "dd";
   }
-  function _dd(v, pos, neg) { return Math.abs(v).toFixed(5) + "°" + (v >= 0 ? pos : neg); }
-  function _dms(v, pos, neg) {
-    let a = Math.abs(v), d = Math.floor(a), mf = (a - d) * 60, m = Math.floor(mf), s = Math.round((mf - m) * 60);
-    if (s === 60) { s = 0; m++; }
-    if (m === 60) { m = 0; d++; }
-    const pad = (n) => (n < 10 ? "0" + n : "" + n);
-    return d + "°" + pad(m) + "'" + pad(s) + '"' + (v >= 0 ? pos : neg);
-  }
-  function _spc(lng, lat) {
-    if (!window.proj4) return null;
-    try {
-      const xy = window.proj4(WGS84_DEF, MI_STATE_PLANE_DEF, [lng, lat]);
-      return "N " + Math.round(xy[1]).toLocaleString() + "  E " + Math.round(xy[0]).toLocaleString() + " ft";
-    } catch (_) { return null; }
-  }
   function _formatLngLat(ll) {
-    const lng = ll.lng, lat = ll.lat, f = _coordFormat();
-    if (f === "dms") return _dms(lat, "N", "S") + "  " + _dms(lng, "E", "W");
-    if (f === "spc") { const s = _spc(lng, lat); if (s) return s; }
-    return _dd(lat, "N", "S") + "  " + _dd(lng, "E", "W");
+    return window.PV_COORD_FMT.readout(ll, _coordFormat());
   }
   function _renderCoords() {
     const el = document.getElementById("pv-coords");
@@ -2302,7 +2281,15 @@
   // parcel, then settle back to flat north-up. Cancels on user interaction and
   // honors reduced-motion. Used by parcel search and MapBuddy's "fly to".
   let _cineRAF = null;
+  let _cineInteract = null;   // the running arrival's cancel handler, if any
   function _cancelCine() { if (_cineRAF) { cancelAnimationFrame(_cineRAF); _cineRAF = null; } }
+  // For interactions the map can't see (e.g. the keyboard-opened right-click menu,
+  // DIC-1882): stop the fly-in / orbit so the camera holds still.
+  window.PS_cancelCinematic = function () {
+    if (!_cineInteract) return;
+    _cineInteract();
+    if (map) map.stop();
+  };
   window.PS_cinematicFlyTo = function (geometry, zoom) {
     if (!map || !geometry) return;
     const [lng, lat] = computeCentroid(geometry);
@@ -2328,9 +2315,12 @@
     if (!orbitOn) { map.flyTo({ center, zoom: z, pitch: 0, bearing: 0, speed: 1.2, curve: 1.4, essential: true }); return; }
 
     const userEvents = ["mousedown", "touchstart", "wheel"];
-    function cleanup() { userEvents.forEach((ev) => map.off(ev, onInteract)); }
-    function onInteract() { _cancelCine(); cleanup(); _reduceCinematicDetail(false); }
+    let cancelled = false;
+    function cleanup() { userEvents.forEach((ev) => map.off(ev, onInteract)); if (_cineInteract === onInteract) _cineInteract = null; }
+    // Once cancelled, the fly's moveend (or the safety timer) must not start the spin.
+    function onInteract() { cancelled = true; _cancelCine(); cleanup(); _reduceCinematicDetail(false); }
     userEvents.forEach((ev) => map.on(ev, onInteract));
+    _cineInteract = onInteract;
 
     _reduceCinematicDetail(true);   // hide labels/overlays for the fly + spin
     let started = false;
@@ -2339,7 +2329,7 @@
     // and reduce-detail-during-motion carry the smoothness, so keep it brisk.
     map.flyTo({ center, zoom: z, pitch: 60, bearing: 0, speed: 0.85, curve: 1.5, essential: true });
     function orbit() {
-      if (started) return; started = true;
+      if (started || cancelled) return; started = true;
       const ORBIT_MS = 9000; let t0 = null;
       function frame(ts) {
         if (t0 === null) t0 = ts;
