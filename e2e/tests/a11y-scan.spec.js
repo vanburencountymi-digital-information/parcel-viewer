@@ -7,6 +7,8 @@ const AxeBuilder = require('@axe-core/playwright').default;
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
 
 async function scan(page, label) {
+  // Let entry animations finish: mid-fade, axe measures a blended (lighter) text colour.
+  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
   const res = await new AxeBuilder({ page }).withTags(TAGS).exclude('canvas.maplibregl-canvas').analyze();
   const summary = res.violations.map((v) => ({
     id: v.id, impact: v.impact, count: v.nodes.length,
