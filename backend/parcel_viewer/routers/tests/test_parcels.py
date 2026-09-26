@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -140,3 +141,42 @@ class PublicRouteHardeningTests(TestCase):
         from parcel_viewer.stores.parcel_store import _PARCEL_SQL
 
         self.assertIn("archived_at IS NULL", _PARCEL_SQL)
+
+
+class ParcelRollYearTests(TestCase):
+    """/parcel/{id} says which tax roll its value history ends at (DIC-1878)."""
+
+    def setUp(self) -> None:
+        self.client = TestClient(main.app)
+
+    def _get_with_loaded_at(self, loaded_at: datetime | None) -> dict:
+        row = {
+            "id": 7,
+            "parcel_no": "80-01-001-001-00",
+            "acres": 1.0,
+            "computed_acres": 1.2,
+            "prop_street": "1 MAIN ST",
+            "created_at": None,
+            "updated_at": None,
+            "assessed_value_yr0": 98000,
+            "assessing_loaded_at": loaded_at,
+            "geojson": None,
+        }
+        store = MagicMock()
+        store.get_parcel.return_value = {"raw": row, "canonical": {}}
+        with patch("parcel_viewer.routers.parcels._PARCEL_STORE", store):
+            response = self.client.get("/parcel/7")
+        self.assertEqual(response.status_code, 200)
+        return response.json()["properties"]
+
+    def test_roll_year_comes_from_the_load_date_not_the_calendar(self) -> None:
+        props = self._get_with_loaded_at(datetime(2027, 2, 10, tzinfo=UTC))
+
+        self.assertEqual(props["roll_year"], 2026)
+        self.assertEqual(props["assessing_loaded_at"], "2027-02-10T00:00:00+00:00")
+
+    def test_parcel_without_assessing_data_has_no_roll_year(self) -> None:
+        props = self._get_with_loaded_at(None)
+
+        self.assertIsNone(props["roll_year"])
+        self.assertIsNone(props["assessing_loaded_at"])

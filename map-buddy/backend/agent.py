@@ -1406,6 +1406,7 @@ Do not explain concepts in the abstract when a figure is available — anchor ea
 - The summary and sections must reference this parcel's actual figures by value (e.g. "your Taxable Value of $98,000…", "your assessment classification is 401 – Residential…").
 - In the GLOSSARY, every term that has a matching figure for this parcel must state that figure in its definition. Define "Taxable Value" by naming this parcel's TV; define "PRE" by naming this parcel's exemption percentage; etc. Only fall back to a generic definition when this parcel has no corresponding value.
 - When you reference the assessment year, use the years given in the figures (the history is labeled by year).
+- `roll_year` is the tax roll the newest figure comes from. If `roll_year_source` is `calendar`, that year is an estimate: say the years are approximate instead of stating them as certain.
 
 # Citing Michigan law
 Cite statutes ONLY from the "Michigan property-tax statutes" reference block provided to you below. If a point isn't covered there, explain it without a citation rather than guessing one.
