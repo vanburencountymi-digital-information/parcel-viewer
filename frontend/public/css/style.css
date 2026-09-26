@@ -4740,3 +4740,44 @@ input[type="checkbox"]:focus-visible {
 
 /* Map tool tabs: the tablist wrapper is semantic only (see demo/index.html). */
 .mcp-tablist { display: contents; }
+
+/* ── Map right-click menu (DIC-1882) ─────────────────────────────────────────
+   Opened by pv-context-menu.js at the pointer (or the map center from the keyboard).
+   Solid-enough background that the text stays AA over any basemap. */
+.pv-ctx {
+  position: fixed; z-index: 10001;
+  width: max-content; min-width: 240px; max-width: min(340px, calc(100vw - 16px));
+  padding: 6px; border-radius: var(--radius-md, 8px);
+  background: rgba(255,254,252,0.97); color: #1f2330;
+  border: 1px solid rgba(0,0,0,0.10);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.28);
+  font-size: calc(13px * var(--pv-ts, 1)); line-height: 1.3;
+}
+.pv-ctx-head {
+  padding: 4px 8px 6px; font-family: "SF Mono", "Consolas", monospace;
+  font-size: calc(12px * var(--pv-ts, 1)); color: var(--text-muted, #4b5563);
+  border-bottom: 1px solid rgba(0,0,0,0.08); margin-bottom: 4px;
+}
+.pv-ctx-group-label {
+  padding: 6px 8px 2px; font-size: calc(11px * var(--pv-ts, 1)); font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-muted, #4b5563);
+}
+.pv-ctx-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  width: 100%; padding: 6px 8px; border: 0; border-radius: 6px;
+  background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
+}
+.pv-ctx-item:hover, .pv-ctx-item:focus-visible { background: var(--ui-interactive-bg, rgba(181,141,74,0.10)); }
+.pv-ctx-item:focus-visible { outline: 2px solid var(--ui-interactive, #B58D4A); outline-offset: -2px; }
+.pv-ctx-detail {
+  font-family: "SF Mono", "Consolas", monospace; font-size: calc(12px * var(--pv-ts, 1));
+  color: var(--text-muted, #4b5563); overflow-wrap: anywhere;
+}
+.pv-ctx-sep { height: 1px; margin: 4px 2px; background: rgba(0,0,0,0.08); }
+[data-theme="dark"] .pv-ctx {
+  background: rgba(30,22,19,0.97); color: #f3ede4; border-color: rgba(255,255,255,0.12);
+}
+[data-theme="dark"] .pv-ctx-head,
+[data-theme="dark"] .pv-ctx-sep { border-color: rgba(255,255,255,0.10); }
+[data-theme="dark"] .pv-ctx-sep { background: rgba(255,255,255,0.10); }
+@media print { .pv-ctx { display: none; } }
