@@ -23,6 +23,7 @@ import kb_resolver
 import usage as ai_usage
 from agent import (
     WORKFLOWS,
+    UnsupportedTopic,
     _expand_workflow,
     explainer_profiles_public,
     run_autoconfigure,
@@ -377,7 +378,9 @@ def explain(
         if result_cache.enabled():
             result_cache.get_cache().set(ck, explanation)
         return {"ok": True, "explanation": explanation, "cached": False}
-    except ValueError as e:
+    except UnsupportedTopic as e:
+        # Only this error is the caller's to see; any other ValueError (a validation error
+        # from deep in the SDK, say) is internal and handled below (DIC-1874).
         return {"ok": False, "error": str(e)}
     except Exception as exc:  # noqa: BLE001 — surface a clean message; frontend degrades
         log.exception("explainer failed")
