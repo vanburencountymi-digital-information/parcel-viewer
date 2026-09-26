@@ -80,6 +80,53 @@ def _finite(v) -> float:
     return f
 
 
+# Input validation (DIC-1872): bad input is the caller's error (400), never a database
+# error (500). Before, out-of-range coordinates, malformed drawn polygons and numeric
+# township/school ids all reached PostGIS and came back as 500s.
+MAX_BUFFER_FT = 26400.0  # 5 miles; larger areas are a township/school-district profile
+
+
+def _lng_lat(lng, lat) -> tuple[float, float]:
+    """Takes a longitude and latitude; returns them as floats, or raises if not a real
+    point on Earth."""
+    x, y = _finite(lng), _finite(lat)
+    if not (-180.0 <= x <= 180.0 and -90.0 <= y <= 90.0):
+        raise CohortSelectorError("coordinates must be longitude -180..180 and latitude -90..90")
+    return x, y
+
+
+def _clean_ring(ring) -> list[list[float]]:
+    """Takes one GeoJSON linear ring; returns it validated and closed (the first point
+    repeated at the end), or raises."""
+    if not isinstance(ring, list):
+        raise CohortSelectorError("drawn-polygon rings must be lists of [lng, lat] points")
+    points = []
+    for pos in ring:
+        if not isinstance(pos, (list, tuple)) or len(pos) < 2:
+            raise CohortSelectorError("drawn-polygon points must be [lng, lat]")
+        points.append(list(_lng_lat(pos[0], pos[1])))
+    if points and points[0] != points[-1]:
+        points.append(points[0])
+    if len(points) < 4:
+        raise CohortSelectorError("drawn-polygon needs at least 3 distinct points")
+    return points
+
+
+def _clean_polygon_geometry(geom: dict) -> dict:
+    """Takes a GeoJSON Polygon/MultiPolygon; returns a validated copy with closed rings."""
+    coords = geom.get("coordinates")
+    if not isinstance(coords, list) or not coords:
+        raise CohortSelectorError("drawn-polygon geometry has no coordinates")
+    if geom.get("type") == "Polygon":
+        return {"type": "Polygon", "coordinates": [_clean_ring(r) for r in coords]}
+    polygons = []
+    for poly in coords:
+        if not isinstance(poly, list) or not poly:
+            raise CohortSelectorError("drawn-polygon MultiPolygon parts must be polygons")
+        polygons.append([_clean_ring(r) for r in poly])
+    return {"type": "MultiPolygon", "coordinates": polygons}
+
+
 def _build_predicate(selector: dict, limit: int) -> tuple[str, list, dict]:
     sel = selector or {}
     stype = (sel.get("type") or "").lower()
@@ -115,8 +162,8 @@ def _build_predicate(selector: dict, limit: int) -> tuple[str, list, dict]:
             dist = _finite(sel.get("distance_ft"))
         except (TypeError, ValueError) as exc:
             raise CohortSelectorError("buffer selector needs numeric distance_ft") from exc
-        if dist <= 0:
-            raise CohortSelectorError("buffer distance_ft must be > 0")
+        if dist <= 0 or dist > MAX_BUFFER_FT:
+            raise CohortSelectorError(f"buffer distance_ft must be between 0 and {MAX_BUFFER_FT:g}")
         if sel.get("parcel_id") is not None:
             pid = int(sel["parcel_id"])
             # Distance is in the geom's units (US survey feet) — direct, no conversion.
@@ -126,7 +173,7 @@ def _build_predicate(selector: dict, limit: int) -> tuple[str, list, dict]:
                 {"type": "buffer", "label": f"Within {int(dist)} ft of parcel {pid}"},
             )
         if sel.get("lng") is not None and sel.get("lat") is not None:
-            lng, lat = _finite(sel["lng"]), _finite(sel["lat"])
+            lng, lat = _lng_lat(sel["lng"], sel["lat"])
             return (
                 "ST_DWithin(pg.geom, ST_Transform(ST_SetSRID(ST_MakePoint(%s, %s), 4326), 2253), %s)",
                 [lng, lat, dist],
@@ -167,7 +214,14 @@ def _build_predicate(selector: dict, limit: int) -> tuple[str, list, dict]:
             )
 
         # attribute: a parcel column the cohort feature query already carries.
-        val = int(sel["id"]) if has_id else str(name).strip()
+        # township / school district are text columns: bind as text (an int id was
+        # compared text = integer and failed with a 500).
+        raw = sel["id"] if has_id else name
+        if isinstance(raw, bool) or not isinstance(raw, (str, int)):
+            raise CohortSelectorError("named-geography id/name must be text or a number")
+        val = str(raw).strip()
+        if not val:
+            raise CohortSelectorError("named-geography needs an id or name")
         pred = "{} = %s".format(src["column"])
         lbl = "{} {}".format(src["label"], val) if geo == "school" else str(val)
         return (pred, [val], {"type": "named-geography", "geography": geo, "label": lbl})
@@ -179,12 +233,10 @@ def _build_predicate(selector: dict, limit: int) -> tuple[str, list, dict]:
         gtype = geom.get("type") or ""
         if gtype not in ("Polygon", "MultiPolygon"):
             raise CohortSelectorError("drawn-polygon geometry must be a Polygon or MultiPolygon")
-        if not geom.get("coordinates"):
-            raise CohortSelectorError("drawn-polygon geometry has no coordinates")
         # Cap the vertex count — a drawn area is a handful of points, not a dump of a coastline.
         if _count_coords(geom.get("coordinates")) > 10000:
             raise CohortSelectorError("drawn-polygon geometry is too complex")
-        gj = json.dumps(geom)
+        gj = json.dumps(_clean_polygon_geometry(geom))
         # GeoJSON is EPSG:4326 (RFC 7946) → transform to the parcel SRID (2253) for the intersect.
         pred = (
             "pg.geom && ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 2253) "

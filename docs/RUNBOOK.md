@@ -26,6 +26,9 @@ In the container images, logs are JSON with these fields:
 | `access` line, severity ERROR | A request failed with a 5xx. Look at the lines with the same `request_id` just before it. |
 | `database busy: PoolTimeout` / `QueryCanceled` | The database is overloaded or slow; users get "try again". Check DB load and connections. |
 | `health check: database unreachable` | The API can't reach the database; `/health` returns 503. |
+| `database unavailable: OperationalError` | A DB connection was lost or refused mid-request; the user got a 503 "try again". The pool replaces dead connections by itself. Many in a row = a DB or network outage. |
+| `config store unavailable (init failed / read failed); retrying in 30s` | The writer DB (admin config) is down. The viewer keeps working from the baked manifest; admin edits return 503 until it's back. Logged once per 30s. |
+| `cohort: database rejected the selector` | Someone's area (Neighborhood Profile) was something PostGIS couldn't process; they got a 400. Worth a look if frequent. |
 | `AI quota exceeded for tenant …` | Map Buddy hit its daily limit; users get facts without AI narration. |
 | `ai call <purpose>: in=… out=… cache_read=…` | One model call and what it cost. `cache_read` should be large on chat calls; if it's 0 every time, prompt caching is broken. |
 | `wms-proxy upstream … returned 5xx` | A federal map service (FEMA, USFWS, NRCS) is down. Not ours; nothing to fix. |

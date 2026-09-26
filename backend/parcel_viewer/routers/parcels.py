@@ -5,15 +5,26 @@ All geometry leaves the API as GeoJSON in EPSG:4326; storage is EPSG:2253
 """
 
 import json
+import logging
 import math
+import time
 
 from fastapi import APIRouter, HTTPException, Query
+from psycopg.errors import DataError, InternalError_
 from pydantic import BaseModel
 
 from .. import config
 from ..cohort_query import GEOGRAPHY_SOURCES, CohortSelectorError, build_predicate
 from ..db import pool
 from ..stores.parcel_store import make_parcel_store
+
+log = logging.getLogger(__name__)
+
+MAX_SEARCH_TOKENS = 8
+
+# Named geographies change only when the county data is reloaded (DIC-1872).
+_GEOGRAPHIES_TTL_S = 600.0
+_geographies_cache: dict[str, tuple[float, list]] = {}
 
 router = APIRouter()
 
@@ -247,7 +258,7 @@ def _row_to_feature(row: dict) -> dict:
 @router.get("/parcels")
 def parcels_bbox(
     bbox: str = Query(..., description="west,south,east,north in EPSG:4326"),
-    limit: int = Query(4000, ge=1, le=10000),
+    limit: int = Query(4000, ge=1, le=4000),  # the viewer uses 4000 (DIC-1872)
 ):
     try:
         w, s, e, n = (float(v) for v in bbox.split(","))
@@ -303,20 +314,28 @@ def cohort(body: CohortRequest):
             WHERE pg.archived_at IS NULL AND {pred}
         ) q
     """
-    with pool.connection() as conn:
-        rows = conn.execute(sql, params + [limit]).fetchall()
-        crow = conn.execute(center_sql, params).fetchone()
-        # A buffer around a parcel is labelled by its parcel number (what people know),
-        # not the internal DB id cohort_query had to hand ("... of parcel 58710").
-        sel = body.selector or {}
-        if resolved.get("type") == "buffer" and sel.get("parcel_id") is not None:
-            prow = conn.execute(
-                "SELECT parcel_no FROM geo.parcel_geometry WHERE id = %s", (int(sel["parcel_id"]),)
-            ).fetchone()
-            if prow and prow.get("parcel_no"):
-                resolved["label"] = (
-                    resolved["label"].rsplit(" parcel ", 1)[0] + " parcel " + prow["parcel_no"]
-                )
+    try:
+        with pool.connection() as conn:
+            rows = conn.execute(sql, params + [limit]).fetchall()
+            crow = conn.execute(center_sql, params).fetchone()
+            # A buffer around a parcel is labelled by its parcel number (what people know),
+            # not the internal DB id cohort_query had to hand ("... of parcel 58710").
+            sel = body.selector or {}
+            if resolved.get("type") == "buffer" and sel.get("parcel_id") is not None:
+                prow = conn.execute(
+                    "SELECT parcel_no FROM geo.parcel_geometry WHERE id = %s",
+                    (int(sel["parcel_id"]),),
+                ).fetchone()
+                if prow and prow.get("parcel_no"):
+                    resolved["label"] = (
+                        resolved["label"].rsplit(" parcel ", 1)[0] + " parcel " + prow["parcel_no"]
+                    )
+    except (DataError, InternalError_) as e:
+        # Safety net behind build_predicate's validation (DIC-1872): anything PostGIS
+        # still rejects in the caller's area (e.g. a geometry it can't process) is the
+        # caller's input, so a 400, not a 500. Real outages are OperationalError (503).
+        log.warning("cohort: database rejected the selector: %s", type(e).__name__)
+        raise HTTPException(status_code=400, detail="that area couldn't be processed") from e
 
     features = [
         {"id": r["id"], "properties": {k: v for k, v in r.items() if k != "id"}} for r in rows
@@ -333,9 +352,13 @@ def cohort_geographies(type: str = Query(...)):
     cohort areas (DIC-588). `type` ∈ {subdivision, section, township, school}. Returns
     { type, geographies:[{id, name}] } — `id` is null for attribute geographies (the name
     is the selector value). The table/column come from the whitelist, never the request."""
-    src = GEOGRAPHY_SOURCES.get((type or "").lower())
+    key = (type or "").lower()
+    src = GEOGRAPHY_SOURCES.get(key)
     if not src:
         raise HTTPException(status_code=400, detail="unknown geography type")
+    cached = _geographies_cache.get(key)
+    if cached and time.monotonic() - cached[0] < _GEOGRAPHIES_TTL_S:
+        return {"type": type, "geographies": cached[1]}
     if src["kind"] == "spatial":
         sql = (
             "SELECT {} AS id, {} AS name FROM {} WHERE {} IS NOT NULL AND {} <> '' ORDER BY name"
@@ -358,6 +381,7 @@ def cohort_geographies(type: str = Query(...)):
         with pool.connection() as conn:
             rows = conn.execute(sql).fetchall()
         geos = [{"id": None, "name": r["name"]} for r in rows]
+    _geographies_cache[key] = (time.monotonic(), geos)
     return {"type": type, "geographies": geos}
 
 
@@ -443,7 +467,9 @@ def streetview_target(id: int = Query(...)):
 
 @router.get("/search")
 def search(q: str = Query(..., min_length=2, max_length=100), limit: int = Query(10, ge=1, le=50)):
-    tokens = [t for t in q.strip().split() if t]
+    # Each word adds a clause to the query; 8 is plenty for a name, address or PIN
+    # (DIC-1872).
+    tokens = [t for t in q.strip().split() if t][:MAX_SEARCH_TOKENS]
     if not tokens:
         return {"results": []}
 
@@ -533,9 +559,9 @@ def get_parcel(parcel_id: int):
 @router.get("/parcel/{parcel_id}/history")
 def parcel_history(parcel_id: int, limit: int = Query(50, ge=1, le=200)):
     sql = """
-        SELECT event_id, parcel_id, event_type, event_timestamp, operator_id,
+        SELECT event_id, parcel_id, event_type, event_timestamp,
                source_document, closure_error, precision_ratio, bowditch_applied,
-               related_parcel_ids, notes
+               related_parcel_ids
         FROM geo.parcel_ledger_events
         WHERE parcel_id = %s OR %s = ANY(COALESCE(related_parcel_ids, '{}'))
         ORDER BY event_timestamp DESC
@@ -545,7 +571,8 @@ def parcel_history(parcel_id: int, limit: int = Query(50, ge=1, le=200)):
         rows = conn.execute(sql, (parcel_id, parcel_id, limit)).fetchall()
     for r in rows:
         r["event_id"] = str(r["event_id"])
-        r["event_timestamp"] = r["event_timestamp"].isoformat()
+        ts = r.get("event_timestamp")
+        r["event_timestamp"] = ts.isoformat() if ts is not None else None
         if r.get("closure_error") is not None:
             r["closure_error"] = float(r["closure_error"])
     return {"events": rows}

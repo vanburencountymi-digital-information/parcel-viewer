@@ -919,10 +919,21 @@
     var sel = host.querySelector('#ac-pg-pick');
     var meta = host.querySelector('#ac-pg-pick-meta');
     if (!sel) return;
-    sel.innerHTML = '<option value="">Loading available layers…</option>';
     sel.disabled = true;
-    fetch(API_BASE + '/admin/discover/layers', { cache: 'no-cache' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+    // Admin-only since DIC-1872: without a token, say so instead of making a request
+    // that can only be refused.
+    if (!STATE.token) {
+      sel.innerHTML = '<option value="">Discovery needs the admin token</option>';
+      if (meta) meta.innerHTML = '<p class="ac-readonly">Layer discovery needs the admin token (interim auth until DIC-463). Set window.PV_ADMIN_TOKEN.</p>';
+      return;
+    }
+    sel.innerHTML = '<option value="">Loading available layers…</option>';
+    // Admin-only since DIC-1872 (it scans every geo table): send the interim token.
+    fetch(API_BASE + '/admin/discover/layers', { cache: 'no-cache', headers: { 'X-Admin-Token': STATE.token || '' } })
+      .then(function (r) {
+        if (r.status === 401) return Promise.reject(new Error('admin token required'));
+        return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status));
+      })
       .then(function (res) {
         var layers = (res && res.layers) || [];
         host._discovered = {};
@@ -951,7 +962,9 @@
       .catch(function (e) {
         sel.innerHTML = '<option value="">Discovery unavailable</option>';
         sel.disabled = true;
-        if (meta) meta.innerHTML = '<p class="ac-readonly">Couldn’t reach the tile server / DB (' + esc(e.message) + ').</p>';
+        if (meta) meta.innerHTML = e.message === 'admin token required'
+          ? '<p class="ac-readonly">Layer discovery needs the admin token (interim auth until DIC-463). Set window.PV_ADMIN_TOKEN.</p>'
+          : '<p class="ac-readonly">Couldn’t reach the tile server / DB (' + esc(e.message) + ').</p>';
       });
   }
 

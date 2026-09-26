@@ -41,10 +41,13 @@ class ErrorReportingTests(TestCase):
     def tearDown(self) -> None:
         main.app.dependency_overrides.clear()
 
+    @patch("app.main._ADMIN_TOKEN", "test-token")
     @patch("app.main._get_store", autospec=True, side_effect=RuntimeError("writer db down"))
     @patch("app.main.config_store.is_configured", autospec=True, return_value=True)
     def test_config_store_failure_is_reported(self, _mock_configured, _mock_store) -> None:
-        response = self.client.get("/config/vanburen/draft")
+        response = self.client.get(
+            "/config/vanburen/draft", headers={"X-Admin-Token": "test-token"}
+        )
 
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("writer db down", response.text)  # no internals to the caller
@@ -53,9 +56,13 @@ class ErrorReportingTests(TestCase):
             self.errors.report_exception.call_args.kwargs["tags"], {"operation": "config_store"}
         )
 
+    @patch("app.main._ADMIN_TOKEN", "test-token")
     @patch("app.main._discover_layers", autospec=True, side_effect=RuntimeError("boom"))
     def test_layer_discovery_failure_is_reported(self, _mock_discover) -> None:
-        response = self.client.get("/admin/discover/layers")
+        main._discovery_cache.clear()
+        response = self.client.get(
+            "/admin/discover/layers", headers={"X-Admin-Token": "test-token"}
+        )
 
         self.assertEqual(response.status_code, 500)
         self.errors.report_exception.assert_called_once()
@@ -172,3 +179,30 @@ class WmsProxyHardeningTests(TestCase):
         self.assertIsNone(
             handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/")
         )
+
+
+@patch("app.main._ADMIN_TOKEN", "test-token")
+class DiscoveryGateTests(TestCase):
+    """/admin/discover/layers runs count(*) on every geo table: admin-only and cached
+    (DIC-1872)."""
+
+    def setUp(self) -> None:
+        main._discovery_cache.clear()
+        self.client = TestClient(main.app)
+
+    @patch("app.main._discover_layers", autospec=True, return_value=[])
+    def test_requires_the_admin_token(self, mock_discover) -> None:
+        for headers in ({}, {"X-Admin-Token": "wrong"}):
+            response = self.client.get("/admin/discover/layers", headers=headers)
+            self.assertEqual(response.status_code, 401)
+        mock_discover.assert_not_called()  # no database work for unauthenticated callers
+
+    @patch("app.main._discover_layers", autospec=True, return_value=[{"id": "roads"}])
+    def test_results_are_cached(self, mock_discover) -> None:
+        for _ in range(3):
+            response = self.client.get(
+                "/admin/discover/layers", headers={"X-Admin-Token": "test-token"}
+            )
+            self.assertEqual(response.json(), {"layers": [{"id": "roads"}]})
+
+        mock_discover.assert_called_once()
