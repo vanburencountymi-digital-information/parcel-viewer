@@ -1,8 +1,11 @@
-fastapi==0.115.*
-uvicorn[standard]==0.30.*
-psycopg[binary]==3.2.*
-psycopg-pool==3.2.*
-pydantic==2.*
-python-dotenv==1.0.*
-slowapi==0.1.*
-sentry-sdk[fastapi]==2.*
+# Exact pins (DIC-1871), matching map-buddy/backend: a rebuild installs exactly what was
+# tested, and Dependabot proposes each bump as a PR. Versions as resolved in the image
+# on 2026-09-26; bump deliberately.
+fastapi==0.115.14
+uvicorn[standard]==0.30.6
+psycopg[binary]==3.2.13
+psycopg-pool==3.2.8
+pydantic==2.13.5
+python-dotenv==1.0.1
+slowapi==0.1.10
+sentry-sdk[fastapi]==2.70.0

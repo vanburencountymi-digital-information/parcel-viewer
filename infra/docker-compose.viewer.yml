@@ -1,4 +1,5 @@
-# Slim read-only stack for standalone Parcel Viewer deployments.
+# LOCAL DEVELOPMENT stack for the Parcel Viewer. Production uses
+# docker-compose.prod.yml (no local Map Buddy, no API docs, JSON logs).
 #
 # Usage (recommended — from repo root):
 #   cp .env.example .env
@@ -16,11 +17,46 @@ services:
       dockerfile: Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-0.0.0}   # e.g. APP_VERSION=$(git describe --tags --abbrev=0)
-    env_file: ../.env
     environment:
-      PV_MARTIN_PUBLIC_URL: /tiles
-      PV_API_DOCS: "1"          # dev only: /api/docs (off by default, DIC-1855)
-      LOG_FORMAT: text          # dev only: readable logs (images default to JSON, DIC-1879)
+      # Only what the API reads (DIC-1871): no Anthropic key, no Martin credentials.
+      - PV_DATABASE_URL
+      - PV_DEFAULT_COUNTY
+      - PV_CORS_ORIGINS
+      - PV_POOL_MAX
+      - PV_POOL_TIMEOUT_S
+      - PV_STATEMENT_TIMEOUT_MS
+      - PV_DB_CONNECT_TIMEOUT_S
+      - PV_DB_TCP_USER_TIMEOUT_MS
+      - PV_WRITER_DATABASE_URL
+      - PV_WRITER_POOL_MAX
+      - PV_WRITER_POOL_TIMEOUT_S
+      - PV_WRITER_CONNECT_TIMEOUT_S
+      - PV_CONFIG_STORE_RETRY_S
+      - PV_ADMIN_TOKEN
+      - PV_DISCOVERY_CACHE_S
+      - PV_SMTP_HOST
+      - PV_SMTP_PORT
+      - PV_SMTP_USER
+      - PV_SMTP_PASSWORD
+      - PV_SMTP_STARTTLS
+      - PV_REPORT_TO
+      - PV_REPORT_FROM
+      - REPORT_ERROR_RATE_LIMIT
+      - REPORT_ERROR_GLOBAL_LIMIT
+      - CLIENT_ERROR_RATE_LIMIT
+      - CLIENT_ERROR_GLOBAL_LIMIT
+      - WMS_PROXY_RATE_LIMIT
+      - WMS_PROXY_MAX_BYTES
+      # A bare name that isn't set REMOVES the variable, image ENV default included,
+      # so anything the Dockerfile defaults needs an explicit fallback here.
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
+      - SENTRY_DSN
+      - SENTRY_ENVIRONMENT
+      - SENTRY_TRACES_SAMPLE_RATE
+      - LOG_LEVEL
+      - PV_MARTIN_PUBLIC_URL=/tiles
+      - PV_API_DOCS=1             # dev only: /api/docs (off by default, DIC-1855)
+      - LOG_FORMAT=text           # dev only: readable logs (images default to JSON, DIC-1879)
     restart: unless-stopped
     expose:
       - "8000"
@@ -29,7 +65,9 @@ services:
     image: ghcr.io/maplibre/martin:1.10.1
     platform: linux/amd64
     command: ["--config", "/config/martin.yaml"]
-    env_file: ../.env
+    environment:
+      # Only its own read-only DB login (DIC-1871).
+      - MARTIN_DATABASE_URL
     volumes:
       - ./martin/martin.yaml:/config/martin.yaml:ro
     restart: unless-stopped
@@ -46,15 +84,56 @@ services:
       dockerfile: Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-0.0.0}
-    env_file: ../.env
     environment:
+      # Only what Map Buddy reads (DIC-1871): no parcel-DB or Martin credentials
+      # (KB_DATABASE_URL is its own knowledge-base login, used only when KB_BACKEND=dice).
       # Accept either name: the backend wants ANTHROPIC_API_KEY, but the project
-      # (and the Cloud Run secret) use MAP_BUDDY_ANTHROPIC_API_KEY. Prefer the plain
-      # name if set, else fall back to the MAP_BUDDY_-prefixed one from .env.
-      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-${MAP_BUDDY_ANTHROPIC_API_KEY:-}}"
-      ALLOWED_ORIGINS: "http://localhost:8080,http://localhost:8091,http://127.0.0.1:8080"
-      MAP_BUDDY_API_DOCS: "1"   # dev only (off by default, DIC-1855)
-      LOG_FORMAT: text          # dev only: readable logs (images default to JSON, DIC-1879)
+      # (and the Cloud Run secret) use MAP_BUDDY_ANTHROPIC_API_KEY.
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-${MAP_BUDDY_ANTHROPIC_API_KEY:-}}
+      - ALLOWED_ORIGINS=http://localhost:8080,http://localhost:8091,http://127.0.0.1:8080
+      - PARCEL_API_BASE=http://api:8000
+      - MAP_BUDDY_TENANT
+      - MAP_BUDDY_MODEL
+      - MAP_BUDDY_MAX_TOKENS
+      - MAP_BUDDY_MAX_ITERS
+      - MAP_BUDDY_MAX_HISTORY
+      - MAP_BUDDY_MAX_BODY_BYTES
+      - MAP_BUDDY_MAX_FACTS_BYTES
+      - MAP_BUDDY_MAX_MESSAGE_CHARS
+      - MAP_BUDDY_MAX_RESPONSE_CHARS
+      - MAP_BUDDY_RATE_LIMIT
+      - MAP_BUDDY_SYSTEM_PROMPT
+      - ANTHROPIC_TIMEOUT_S
+      - ANTHROPIC_MAX_RETRIES
+      - AI_QUOTA_DEFAULT
+      - AI_QUOTA_WINDOW
+      - AI_QUOTA_OVERRIDES
+      - AI_RESULT_CACHE
+      - AI_CACHE_MAX
+      - AI_CACHE_TTL
+      - EXPLAIN_MODEL
+      - EXPLAIN_MAX_TOKENS
+      - EXPLAIN_RATE_LIMIT
+      - JUDGE_MODEL
+      - JUDGE_MAX_TOKENS
+      - JUDGE_RATE_LIMIT
+      - AUTOCONFIGURE_MODEL
+      - AUTOCONFIGURE_MAX_TOKENS
+      - AUTOCONFIGURE_RATE_LIMIT
+      - COHORT_NARRATE_MAX_TOKENS
+      - DESCRIBE_COHORT_RATE_LIMIT
+      - KB_BACKEND
+      - KB_FIXTURE
+      - KB_JURISDICTION
+      - KB_DATABASE_URL
+      - KB_RATE_LIMIT
+      - OPENAI_API_KEY
+      - SENTRY_DSN
+      - SENTRY_ENVIRONMENT
+      - SENTRY_TRACES_SAMPLE_RATE
+      - LOG_LEVEL
+      - MAP_BUDDY_API_DOCS=1      # dev only (off by default, DIC-1855)
+      - LOG_FORMAT=text           # dev only: readable logs (images default to JSON, DIC-1879)
     # Bind-mount the source + hot-reload so backend edits are live in build mode
     # (mirrors how the frontend is mounted). Remove both lines for prod parity.
     volumes:
@@ -68,6 +147,8 @@ services:
     image: nginx:1.27-alpine
     volumes:
       - ./nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro
+      # Dev: /map-buddy-api/ proxies to the local map-buddy container (DIC-1871).
+      - ./nginx/map-buddy-api.dev.conf:/etc/nginx/pv/map-buddy-api.conf:ro
       - ../frontend/public:/usr/share/nginx/html/parcel-viewer:ro
       - ../demo:/usr/share/nginx/html/demo:ro
       # Only Map Buddy's browser assets — never its backend source, deploy script or any

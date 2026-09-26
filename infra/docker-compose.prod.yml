@@ -1,0 +1,93 @@
+# PRODUCTION stack for the Parcel Viewer (DIC-1871). Differences from the dev
+# docker-compose.viewer.yml:
+#   - no local map-buddy container: the viewer calls the Cloud Run service directly,
+#     and nginx answers /map-buddy-api/ with 404 (infra/nginx/map-buddy-api.prod.conf);
+#   - API docs off, JSON logs (the image defaults), no source bind-mounts for services;
+#   - each service receives only the settings it reads.
+#
+# Usage (from the repo root, with the release version baked in; ADR 0002):
+#   APP_VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//') \
+#     docker compose -f infra/docker-compose.prod.yml --env-file .env up --build -d
+#
+# See infra/DEPLOY-CHECKLIST.md for every setting, then run infra/smoke-test.sh.
+
+services:
+  api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+      args:
+        APP_VERSION: ${APP_VERSION:-0.0.0}
+    environment:
+      # Only what the API reads (DIC-1871): no Anthropic key, no Martin credentials.
+      - PV_DATABASE_URL
+      - PV_DEFAULT_COUNTY
+      - PV_CORS_ORIGINS
+      - PV_POOL_MAX
+      - PV_POOL_TIMEOUT_S
+      - PV_STATEMENT_TIMEOUT_MS
+      - PV_DB_CONNECT_TIMEOUT_S
+      - PV_DB_TCP_USER_TIMEOUT_MS
+      - PV_WRITER_DATABASE_URL
+      - PV_WRITER_POOL_MAX
+      - PV_WRITER_POOL_TIMEOUT_S
+      - PV_WRITER_CONNECT_TIMEOUT_S
+      - PV_CONFIG_STORE_RETRY_S
+      - PV_ADMIN_TOKEN
+      - PV_DISCOVERY_CACHE_S
+      - PV_SMTP_HOST
+      - PV_SMTP_PORT
+      - PV_SMTP_USER
+      - PV_SMTP_PASSWORD
+      - PV_SMTP_STARTTLS
+      - PV_REPORT_TO
+      - PV_REPORT_FROM
+      - REPORT_ERROR_RATE_LIMIT
+      - REPORT_ERROR_GLOBAL_LIMIT
+      - CLIENT_ERROR_RATE_LIMIT
+      - CLIENT_ERROR_GLOBAL_LIMIT
+      - WMS_PROXY_RATE_LIMIT
+      - WMS_PROXY_MAX_BYTES
+      # A bare name that isn't set REMOVES the variable, image ENV default included,
+      # so anything the Dockerfile defaults needs an explicit fallback here.
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
+      - SENTRY_DSN
+      - SENTRY_ENVIRONMENT
+      - SENTRY_TRACES_SAMPLE_RATE
+      - LOG_LEVEL
+      - PV_MARTIN_PUBLIC_URL=/tiles
+    restart: unless-stopped
+    expose:
+      - "8000"
+
+  martin:
+    image: ghcr.io/maplibre/martin:1.10.1
+    platform: linux/amd64
+    command: ["--config", "/config/martin.yaml"]
+    environment:
+      # Only its own read-only DB login (DIC-1871).
+      - MARTIN_DATABASE_URL
+    volumes:
+      - ./martin/martin.yaml:/config/martin.yaml:ro
+    restart: unless-stopped
+    expose:
+      - "3000"
+
+  web:
+    image: nginx:1.27-alpine
+    volumes:
+      - ./nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro
+      # Prod: /map-buddy-api/ is a 404; there is no local Map Buddy (DIC-1871).
+      - ./nginx/map-buddy-api.prod.conf:/etc/nginx/pv/map-buddy-api.conf:ro
+      - ../frontend/public:/usr/share/nginx/html/parcel-viewer:ro
+      - ../demo:/usr/share/nginx/html/demo:ro
+      - ../map-buddy/js:/usr/share/nginx/html/map-buddy/js:ro
+      - ../map-buddy/css:/usr/share/nginx/html/map-buddy/css:ro
+      - ../admin:/usr/share/nginx/html/admin:ro
+      - ../engine:/usr/share/nginx/html/engine:ro
+    ports:
+      - "${PV_HTTP_PORT:-8080}:80"
+    depends_on:
+      - api
+      - martin
+    restart: unless-stopped

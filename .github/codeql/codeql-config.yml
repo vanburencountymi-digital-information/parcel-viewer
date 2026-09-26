@@ -9,7 +9,7 @@ paths-ignore:
   # Generated copies of engine/drawing/ (node engine/drawing/generate.mjs). The masters
   # are scanned; scanning both would report every finding twice.
   - frontend/public/js/drawing
-  # Committed code-graph cache (graphify tool output); not served, not our code.
+  # Local code-graph cache (graphify tool output; untracked since DIC-1871), in case one exists.
   - graphify-out
   # Test code: not deployed, and full of deliberately hostile inputs.
   - e2e

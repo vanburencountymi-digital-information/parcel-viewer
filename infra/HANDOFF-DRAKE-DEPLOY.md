@@ -49,16 +49,17 @@ stack + map-buddy on Cloud Run) from current code, plus a couple of decisions (b
 
 1. **Deploy Map Buddy → Cloud Run:** `bash map-buddy/deploy.sh`
    - Already wired: image build/push to Artifact Registry, key from secret `MAP_BUDDY_ANTHROPIC_API_KEY`,
-     `ALLOWED_ORIGINS` = `https://map.dicemi.org, https://parcels.dicemi.org, localhost…`.
+     `ALLOWED_ORIGINS` = `https://gis.dicemi.org` (override with `VIEWER_ORIGINS=…`; no localhost).
    - ⚠ It sets `--min-instances 0`. First AI call cold-starts (~seconds); for the testing window I'd
      bump to `--min-instances 1` so the explainers/cohort AI don't briefly show "AI unavailable" on a
      cold ping. (We added health-check hysteresis so a single blip won't trip it, but warm is nicer.)
    - The script prints the service URL at the end — **note it for step 3.**
 
 2. **Deploy the viewer stack** (`api` + `web` + `martin`) from current `main` via your hosting.
-   - The repo only ships the **dev** compose (`infra/docker-compose.viewer.yml`); the prod hosting
-     mechanism is yours. Whatever it is, it must **rebuild `api` from `backend/`** and serve the
-     current static frontend through nginx.
+   - Use **`infra/docker-compose.prod.yml`** (not the dev `docker-compose.viewer.yml`, which adds a
+     local Map Buddy and API docs). If you host it another way, it must **rebuild `api` from
+     `backend/`**, serve the current static frontend through nginx, and mount
+     `infra/nginx/map-buddy-api.prod.conf` (see `infra/DEPLOY-CHECKLIST.md`, step 3).
    - **Caching:** there is **no content-hash build pipeline** (scripts load by literal paths). The dev
      nginx already sets `Cache-Control: no-store` on the viewer assets (`/demo/`, `/frontend/public/`,
      `/engine/`, `/map-buddy/`). For a testing phase, keep `no-store` (always fresh — we hit stale-JS
@@ -79,8 +80,9 @@ stack + map-buddy on Cloud Run) from current code, plus a couple of decisions (b
 
 ## Decisions you need to make
 
-- **Live hostname.** `ALLOWED_ORIGINS` already lists `parcels.dicemi.org` + `map.dicemi.org`. Confirm
-  the actual hostname; if it's different, add it to `ALLOWED_ORIGINS` in `deploy.sh` and redeploy map-buddy.
+- **Live hostname.** The defaults use `gis.dicemi.org` (parallel rollout), then `gis.vanburencountymi.gov`
+  at launch. Please reconfirm; for another host set `VIEWER_ORIGINS` / `PARCEL_API_BASE` when running
+  `deploy.sh`, and `PV_CORS_ORIGINS` on `api`.
 - **Single- vs multi-tenant.** If this serves **only VBC** (expected), tenant RLS isn't required — skip it.
   If it will serve more than one jurisdiction, apply `county-data-services/migrations/015_tenant_isolation_rls.sql`
   and ensure the app `SET app.current_tenant` per request (it's fail-closed: unset = no rows).

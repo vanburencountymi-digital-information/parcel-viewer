@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Post-deploy smoke test for the Parcel Viewer + Map Buddy (DIC-1856).
 #
-#   bash infra/smoke-test.sh https://parcels.dicemi.org
+#   bash infra/smoke-test.sh https://gis.dicemi.org
 #   bash infra/smoke-test.sh http://127.0.0.1:8080 --map-buddy http://127.0.0.1:8080/map-buddy-api
-#   bash infra/smoke-test.sh https://parcels.dicemi.org --rate-limit     # also bursts /api/search
+#   bash infra/smoke-test.sh https://gis.dicemi.org --rate-limit         # also bursts /api/search
 #
 # Checks the hardening from DIC-1852..1856: routes up, security headers, private files 404,
 # API docs hidden, bad input -> 4xx, CORS locked down, Map Buddy quota on. Never calls the
@@ -102,6 +102,25 @@ expect 404 "dotfile /demo/.env"              GET "$VIEWER/demo/.env"
 expect 404 "dotfile /.git/config"            GET "$VIEWER/.git/config"
 expect 404 "API docs /api/docs"              GET "$VIEWER/api/docs"
 expect 404 "API schema /api/openapi.json"    GET "$VIEWER/api/openapi.json"
+expect 404 "markdown docs /engine/README.md" GET "$VIEWER/engine/README.md"
+expect 404 "engine tests /engine/test/"      GET "$VIEWER/engine/test/"
+expect 404 "aerial: non-tile path"           GET "$VIEWER/aerial/foo"
+
+# ── Viewer: dev-only routes are off (DIC-1871) ────────────────────────────────
+section "Dev-only routes"
+# The dev compose proxies /map-buddy-api/ to a local Map Buddy; production must not
+# (docker-compose.prod.yml mounts infra/nginx/map-buddy-api.prod.conf, a 404).
+req GET "$VIEWER/map-buddy-api/status"
+if [ "$CODE" != 200 ]; then pass "/map-buddy-api/ is not proxied ($CODE)"
+else case "$VIEWER" in
+  http://localhost*|http://127.0.0.1*) warn "/map-buddy-api/ is proxied (expected on the dev stack; prod must 404)" ;;
+  *) fail "/map-buddy-api/ is proxied: the dev nginx snippet is deployed (use docker-compose.prod.yml)" ;;
+esac; fi
+req GET "$VIEWER/"
+case "$CODE:$(hdr Location)" in
+  30[12]:/demo/) pass "/ redirects to /demo/ (relative Location)" ;;
+  *) fail "/: expected a redirect to /demo/, got $CODE $(hdr Location)" ;;
+esac
 
 # ── Viewer: bad input is a client error, not a crash ─────────────────────────
 section "Input validation"
