@@ -223,10 +223,10 @@ Built to Maria's standard: Sentry through an injected `ErrorLoggingClient`, like
 | `infra/DEPLOY-CHECKLIST.md` | current through DIC-1871: prod compose, every API and Map Buddy setting (SMTP, WMS proxy, Sentry, models, caches, `KB_*`), connection budget including Martin |
 | `infra/HANDOFF-DRAKE-DEPLOY.md`, `docs/admin-console-provisioning.md` | current |
 | `docs/HANDOFF.md` | dated 2026-06-11; its localhost line is correct again now that `/` redirects relatively (DIC-1871). Superseded by `infra/DEPLOY-CHECKLIST.md` for deploys |
-| `docs/RUNBOOK.md` | **started:** "Finding out what went wrong" (request ids, every log line and what to do). Still to write: deploy, rollback (with and without migrations), rotating the Anthropic key |
+| `docs/RUNBOOK.md` | current (DIC-1883): deploying both deployables, rolling back (code, Map Buddy revisions, migrations, config), rotating every secret, and "Finding out what went wrong" |
 | `docs/adrs/` | 0001 Observability, 0002 Semantic versioning, 0003 Code checks |
-| **ARCHITECTURE.md** | **missing.** Should cover services, data flow, the AI boundary (facts vs. narration), and the engine vs. viewer split |
-| **SECURITY.md** | **missing.** Should cover the threat model, what's public, where secrets live, rate limits, admin gate, CSP status, and the data-exposure decision |
+| `ARCHITECTURE.md` | current (DIC-1883): services, request flow, the AI boundary, config and theming, observability, testing, where to change things |
+| `SECURITY.md` | current (DIC-1883): threat model, what's public, secrets and who sees them, controls, what reaches Anthropic, open decisions, reporting |
 
 ## 8. Known issues accepted for the testing window
 
