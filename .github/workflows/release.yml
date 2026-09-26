@@ -51,6 +51,8 @@ jobs:
 
       - name: Semantic version release
         if: env.HAS_RELEASE_APP == 'true'
-        uses: python-semantic-release/python-semantic-release@v10.6.2
+        # Pinned to the commit behind v10.6.2: this step holds a token that can push tags,
+        # so a moved tag must not be able to change the code it runs (CodeQL).
+        uses: python-semantic-release/python-semantic-release@9a026e9303981c866c3425723009becb2437c757 # v10.6.2
         with:
           github_token: ${{ steps.generate-token.outputs.token }}
