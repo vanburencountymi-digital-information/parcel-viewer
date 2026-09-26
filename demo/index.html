@@ -741,6 +741,8 @@
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.4.0/turf.min.js" integrity="sha384-G+b+P1TXEQX2nQW+hvnd1dWiV2mysujghcENksJYyeXd0Z1Bp23Ac/6IRftCtdmI" crossorigin="anonymous"></script>
   <!-- proj4.js — coordinate projection (State Plane etc.) for Measurement tab -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js" integrity="sha384-U14wzrePlI+UpXk1Jpe45fK/C0yeI7rtwKzi9eM3Lj7LYjXlHNy0YacuWZIk7Hic" crossorigin="anonymous"></script>
+  <!-- Coordinate formatters shared by the readout, parcel card and right-click menu (DIC-1882). -->
+  <script src="/frontend/public/js/pv-coords.js"></script>
   <!-- Drawing tools infrastructure — load before map.js -->
   <script src="/frontend/public/js/drawing/annotation-store.js"></script>
   <script src="/frontend/public/js/drawing/undo-redo.js"></script>
@@ -809,6 +811,8 @@
        cohort via /cohort → composition/value/ownership dashboard from the engine core. -->
   <script src="/frontend/public/js/pv-profile.js"></script>
   <script src="/frontend/public/js/map.js"></script>
+  <!-- Right-click (long-press, Menu key) map menu: copy coordinates, quick actions (DIC-1882). -->
+  <script src="/frontend/public/js/pv-context-menu.js"></script>
   <!-- Theme chooser (keystone): a pulldown to switch between bootable theme manifests
        (engine/themes/index.json), preserving the current view. Gated — hidden until >1
        bootable theme is registered. Loads after pv-manifest.js + map.js. -->
