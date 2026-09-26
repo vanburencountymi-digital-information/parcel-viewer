@@ -45,9 +45,12 @@ test('selecting a search result whose parcel fails to load tells the user', asyn
   await expect(page.locator('.pv-toast, [role="alert"]').filter({ hasText: /couldn|fail|unavailable|try again/i }).first()).toBeVisible();
 });
 
-test('Map Buddy down: the AI notice appears and the viewer keeps working', async ({ page, consoleGuard }) => {
+test('Map Buddy down: the AI notice appears and the viewer keeps working', async ({ page, consoleGuard, mapBuddyOverride }) => {
   consoleGuard.allow(/map-buddy-api|Failed to load resource/);
-  await page.route('**/map-buddy-api/**', (route) => route.fulfill({ status: 502, body: '' }));
+  // Wherever Map Buddy lives: the dev proxy, or its own origin (E2E_MAP_BUDDY_API).
+  const isMapBuddy = (url) => url.pathname.startsWith('/map-buddy-api/') ||
+    (mapBuddyOverride && url.href.startsWith(mapBuddyOverride));
+  await page.route(isMapBuddy, (route) => route.fulfill({ status: 502, body: '' }));
   await gotoViewer(page);
   await expect(page.locator('#pv-ai-notice')).toBeVisible({ timeout: 20_000 });
   await selectParcelViaSearch(page);

@@ -23,7 +23,10 @@ services:
       - PV_DATABASE_URL
       - PV_DEFAULT_COUNTY
       - PV_CORS_ORIGINS
-      - PV_POOL_MAX
+      # Connection-budget stopgap until PgBouncer (DIC-316, DIC-1884): 1 worker x
+      # (5 read + up to 4 config) + Martin's 8 = at most 17 connections to db-dice.
+      # Raise both only when the database's budget allows (infra/DEPLOY-CHECKLIST.md).
+      - PV_POOL_MAX=${PV_POOL_MAX:-5}
       - PV_POOL_TIMEOUT_S
       - PV_STATEMENT_TIMEOUT_MS
       - PV_DB_CONNECT_TIMEOUT_S
@@ -50,7 +53,7 @@ services:
       - WMS_PROXY_MAX_BYTES
       # A bare name that isn't set REMOVES the variable, image ENV default included,
       # so anything the Dockerfile defaults needs an explicit fallback here.
-      - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
+      - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
       - SENTRY_DSN
       - SENTRY_ENVIRONMENT
       - SENTRY_TRACES_SAMPLE_RATE
