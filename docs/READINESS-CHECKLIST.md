@@ -11,7 +11,7 @@
 
 The code side covers:
 - a 172-test browser suite, plus server tests in CI;
-- about 50 bugs and security findings fixed this week;
+- about 60 bugs and security findings fixed this week (30 bugs in #25–#27, 17 CodeQL security findings and 3 more bugs in #29, about 10 in #31);
 - clean accessibility, CodeQL and gitleaks scans;
 - observability;
 - Maria's in-repo standards: pre-commit, CodeQL, Dependabot, semantic release.
