@@ -7,6 +7,8 @@ import os
 import time
 import urllib.parse
 import urllib.request
+from typing import Any
+
 import anthropic
 
 from citations import extract_citations  # §6.4 envelope extraction (DIC-522)
@@ -15,6 +17,7 @@ from common.logging_setup import safe_for_log
 log = logging.getLogger("map_buddy.agent")
 
 _client = None
+
 
 def _get_client():
     global _client
@@ -53,8 +56,12 @@ def _create_message(purpose: str, **kwargs):
     }
     log.info(
         "ai call %s: in=%s out=%s cache_read=%s cache_write=%s %sms",
-        purpose, fields["input_tokens"], fields["output_tokens"],
-        fields["cache_read_tokens"], fields["cache_write_tokens"], duration_ms,
+        purpose,
+        fields["input_tokens"],
+        fields["output_tokens"],
+        fields["cache_read_tokens"],
+        fields["cache_write_tokens"],
+        duration_ms,
         extra=fields,
     )
     return response
@@ -124,7 +131,10 @@ SYSTEM_PROMPT = os.getenv("MAP_BUDDY_SYSTEM_PROMPT", DEFAULT_SYSTEM)
 # the browser resolves geometry and drives the map.
 _LNG = {"type": "number", "description": "Longitude (WGS84 decimal degrees)"}
 _LAT = {"type": "number", "description": "Latitude (WGS84 decimal degrees)"}
-_PIN = {"type": "string", "description": "Parcel identification number (PIN). Omit to use the selected parcel."}
+_PIN = {
+    "type": "string",
+    "description": "Parcel identification number (PIN). Omit to use the selected parcel.",
+}
 _COORDS = {
     "type": "array",
     "description": "Ordered list of [longitude, latitude] points.",
@@ -143,7 +153,7 @@ _COORDS = {
 #   {...}          → a literal payload, used verbatim
 # env_lookup: run the server-side environmental query at the parcel centroid and
 # hand the result back to the model to summarize.
-_PARAM_TYPES = ("number", "string", "boolean")     # macro param types
+_PARAM_TYPES = ("number", "string", "boolean")  # macro param types
 _COND_OPS = ("==", "!=", "in", "not_in", "truthy", "falsy")  # branching operators
 
 
@@ -190,7 +200,7 @@ def _cond_passes(when, env):
     return False
 
 
-WORKFLOWS = {
+WORKFLOWS: dict[str, dict[str, Any]] = {
     "analyze_parcel": {
         "description": "select + zoom, flood/wetlands layers, measure, and environmental data",
         "steps": [
@@ -205,18 +215,33 @@ WORKFLOWS = {
     "check_buildability": {
         "description": "dimensions + a configurable setback ring (default 30 ft); also turns on the flood overlay if the parcel is in a flood hazard area",
         "params": {
-            "setback_ft": {"type": "number", "default": 30, "minimum": 1, "maximum": 1000,
-                           "description": "Setback distance in feet for the buildable-area ring (default 30, 1-1000)."},
+            "setback_ft": {
+                "type": "number",
+                "default": 30,
+                "minimum": 1,
+                "maximum": 1000,
+                "description": "Setback distance in feet for the buildable-area ring (default 30, 1-1000).",
+            },
         },
         "steps": [
             {"type": "select_parcel", "payload": "pin_required"},
             {"type": "fly_to_parcel", "payload": "pin"},
             {"type": "dimension_parcel", "payload": "pin"},
-            {"type": "draw_parcel_buffer", "payload": {"distance_ft": "$setback_ft", "inward": True, "label": "$setback_ft ft setback"}},
+            {
+                "type": "draw_parcel_buffer",
+                "payload": {
+                    "distance_ft": "$setback_ft",
+                    "inward": True,
+                    "label": "$setback_ft ft setback",
+                },
+            },
             # Branching: only add the flood overlay when the parcel is actually in a
             # special flood hazard area (evaluated server-side against the env lookup).
-            {"type": "set_layer_visibility", "payload": {"layer_id": "flood", "visible": True},
-             "when": {"field": "flood.in_special_flood_hazard_area", "op": "==", "value": "T"}},
+            {
+                "type": "set_layer_visibility",
+                "payload": {"layer_id": "flood", "visible": True},
+                "when": {"field": "flood.in_special_flood_hazard_area", "op": "==", "value": "T"},
+            },
         ],
         "env_lookup": True,
     },
@@ -238,31 +263,37 @@ def _validate_workflows(table):
     """Fail loudly at import if a macro is malformed, rather than silently skipping."""
     for name, wf in table.items():
         if not isinstance(wf.get("description"), str) or not wf["description"]:
-            raise ValueError("Macro %r must have a non-empty 'description'." % name)
+            raise ValueError(f"Macro {name!r} must have a non-empty 'description'.")
         params = wf.get("params") or {}
         if not isinstance(params, dict):
-            raise ValueError("Macro %r 'params' must be a dict." % name)
+            raise ValueError(f"Macro {name!r} 'params' must be a dict.")
         for pname, pdef in params.items():
             if not isinstance(pdef, dict) or pdef.get("type") not in _PARAM_TYPES:
-                raise ValueError("Macro %r param %r needs a 'type' of %s." % (name, pname, "/".join(_PARAM_TYPES)))
+                raise ValueError(
+                    "Macro {!r} param {!r} needs a 'type' of {}.".format(
+                        name, pname, "/".join(_PARAM_TYPES)
+                    )
+                )
         steps = wf.get("steps")
         if not isinstance(steps, list) or not steps:
-            raise ValueError("Macro %r must have a non-empty 'steps' list." % name)
+            raise ValueError(f"Macro {name!r} must have a non-empty 'steps' list.")
         for i, step in enumerate(steps):
             if not isinstance(step.get("type"), str) or not step["type"]:
-                raise ValueError("Macro %r step %d is missing a string 'type'." % (name, i))
+                raise ValueError(f"Macro {name!r} step {i} is missing a string 'type'.")
             spec = step.get("payload")
             if not (spec in ("pin", "pin_required") or isinstance(spec, dict)):
                 raise ValueError(
-                    "Macro %r step %d (%r) has an invalid payload %r — expected "
-                    "'pin', 'pin_required', or a literal dict." % (name, i, step["type"], spec)
+                    f"Macro {name!r} step {i} ({step['type']!r}) has an invalid payload {spec!r} — "
+                    "expected 'pin', 'pin_required', or a literal dict."
                 )
             when = step.get("when")
             if when is not None:
                 if not isinstance(when, dict) or not isinstance(when.get("field"), str):
-                    raise ValueError("Macro %r step %d 'when' needs a string 'field'." % (name, i))
+                    raise ValueError(f"Macro {name!r} step {i} 'when' needs a string 'field'.")
                 if when.get("op") not in _COND_OPS:
-                    raise ValueError("Macro %r step %d 'when' has an invalid 'op' %r." % (name, i, when.get("op")))
+                    raise ValueError(
+                        f"Macro {name!r} step {i} 'when' has an invalid 'op' {when.get('op')!r}."
+                    )
     return table
 
 
@@ -272,7 +303,7 @@ _validate_workflows(WORKFLOWS)
 _WF_DESC = (
     "Run a common multi-step workflow in ONE call instead of chaining tools "
     "yourself — faster, cheaper, deterministic. "
-    + " ".join("'%s' = %s." % (k, v["description"]) for k, v in WORKFLOWS.items())
+    + " ".join("'{}' = {}.".format(k, v["description"]) for k, v in WORKFLOWS.items())
     + " The environmental results come back to you — summarize them for the user."
 )
 
@@ -289,147 +320,602 @@ def _wf_params_schema():
 
 TOOLS = [
     # ── Camera ────────────────────────────────────────────────────────────────
-    {"name": "fly_to_parcel", "description": "Quickly zoom and pan the map to frame a parcel (no flourish). Defaults to the selected parcel. For 'show me / fly to', prefer cinematic_fly_to_parcel.",
-     "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []}},
-    {"name": "cinematic_fly_to_parcel", "description": "Cinematic fly-to a parcel: tilt into 3-D, fly in, orbit a full 360° around it, then settle back to a flat north-up view. Use this whenever the user wants to SEE or be shown a parcel — 'fly to / show me / take me to / give me a look at / tour this parcel'.",
-     "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []}},
-    {"name": "fly_to_coordinates", "description": "Fly the map to a specific point. Use the map center or a parcel centroid you were given — never an invented location.",
-     "input_schema": {"type": "object", "properties": {"lng": _LNG, "lat": _LAT, "zoom": {"type": "number", "description": "Optional target zoom (10-19)"}}, "required": ["lng", "lat"]}},
-    {"name": "zoom_to", "description": "Set the map zoom level (10 = county, 16 = parcel, 19 = rooftop).",
-     "input_schema": {"type": "object", "properties": {"zoom": {"type": "number"}}, "required": ["zoom"]}},
-    {"name": "zoom_by", "description": "Zoom in (+) or out (-) by a number of levels relative to the current view.",
-     "input_schema": {"type": "object", "properties": {"delta": {"type": "number", "description": "e.g. 1 to zoom in, -2 to zoom out two levels"}}, "required": ["delta"]}},
-    {"name": "set_pitch", "description": "Tilt the camera for a 3-D perspective. 0 = straight down (2-D), 60 = strong 3-D tilt. Great with hillshade.",
-     "input_schema": {"type": "object", "properties": {"pitch": {"type": "number", "description": "Degrees, 0-85"}}, "required": ["pitch"]}},
-    {"name": "set_bearing", "description": "Rotate the map to a compass bearing (0 = north up, 90 = east up).",
-     "input_schema": {"type": "object", "properties": {"bearing": {"type": "number", "description": "Degrees, 0-359"}}, "required": ["bearing"]}},
-    {"name": "reset_north", "description": "Reset the map to north-up and remove any 3-D tilt.",
-     "input_schema": {"type": "object", "properties": {}, "required": []}},
-    {"name": "fit_map_to_parcel", "description": "Fit the currently selected parcel neatly in view.",
-     "input_schema": {"type": "object", "properties": {}, "required": []}},
-    {"name": "fit_to_annotations", "description": "Zoom/pan to fit all currently drawn annotations in view.",
-     "input_schema": {"type": "object", "properties": {}, "required": []}},
-
+    {
+        "name": "fly_to_parcel",
+        "description": "Quickly zoom and pan the map to frame a parcel (no flourish). Defaults to the selected parcel. For 'show me / fly to', prefer cinematic_fly_to_parcel.",
+        "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []},
+    },
+    {
+        "name": "cinematic_fly_to_parcel",
+        "description": "Cinematic fly-to a parcel: tilt into 3-D, fly in, orbit a full 360° around it, then settle back to a flat north-up view. Use this whenever the user wants to SEE or be shown a parcel — 'fly to / show me / take me to / give me a look at / tour this parcel'.",
+        "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []},
+    },
+    {
+        "name": "fly_to_coordinates",
+        "description": "Fly the map to a specific point. Use the map center or a parcel centroid you were given — never an invented location.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lng": _LNG,
+                "lat": _LAT,
+                "zoom": {"type": "number", "description": "Optional target zoom (10-19)"},
+            },
+            "required": ["lng", "lat"],
+        },
+    },
+    {
+        "name": "zoom_to",
+        "description": "Set the map zoom level (10 = county, 16 = parcel, 19 = rooftop).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"zoom": {"type": "number"}},
+            "required": ["zoom"],
+        },
+    },
+    {
+        "name": "zoom_by",
+        "description": "Zoom in (+) or out (-) by a number of levels relative to the current view.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "delta": {
+                    "type": "number",
+                    "description": "e.g. 1 to zoom in, -2 to zoom out two levels",
+                }
+            },
+            "required": ["delta"],
+        },
+    },
+    {
+        "name": "set_pitch",
+        "description": "Tilt the camera for a 3-D perspective. 0 = straight down (2-D), 60 = strong 3-D tilt. Great with hillshade.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"pitch": {"type": "number", "description": "Degrees, 0-85"}},
+            "required": ["pitch"],
+        },
+    },
+    {
+        "name": "set_bearing",
+        "description": "Rotate the map to a compass bearing (0 = north up, 90 = east up).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"bearing": {"type": "number", "description": "Degrees, 0-359"}},
+            "required": ["bearing"],
+        },
+    },
+    {
+        "name": "reset_north",
+        "description": "Reset the map to north-up and remove any 3-D tilt.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "fit_map_to_parcel",
+        "description": "Fit the currently selected parcel neatly in view.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "fit_to_annotations",
+        "description": "Zoom/pan to fit all currently drawn annotations in view.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
     # ── Selection ─────────────────────────────────────────────────────────────
-    {"name": "select_parcel", "description": "Select a parcel, loading it into the info panel and making it the active context. Prefer the `id` from a search result (works for any parcel in the county); a bare PIN only resolves parcels currently on screen.",
-     "input_schema": {"type": "object", "properties": {"id": {"type": ["integer", "string"], "description": "Parcel DB id from a search_parcels result"}, "pin": {"type": "string"}}, "required": []}},
-    {"name": "highlight_parcel", "description": "Flash and highlight a parcel by PIN without changing the selection.",
-     "input_schema": {"type": "object", "properties": {"pin": {"type": "string"}}, "required": ["pin"]}},
-
+    {
+        "name": "select_parcel",
+        "description": "Select a parcel, loading it into the info panel and making it the active context. Prefer the `id` from a search result (works for any parcel in the county); a bare PIN only resolves parcels currently on screen.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": ["integer", "string"],
+                    "description": "Parcel DB id from a search_parcels result",
+                },
+                "pin": {"type": "string"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "highlight_parcel",
+        "description": "Flash and highlight a parcel by PIN without changing the selection.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"pin": {"type": "string"}},
+            "required": ["pin"],
+        },
+    },
     # ── Layers ────────────────────────────────────────────────────────────────
-    {"name": "set_layer_visibility", "description": "Show or hide a map overlay layer.",
-     "input_schema": {"type": "object", "properties": {
-         "layer_id": {"type": "string", "enum": ["flood", "wetlands", "soils", "hillshade", "contours", "contours-5ft", "contours-2ft"],
-                      "description": "flood = FEMA flood hazard, wetlands = USFWS NWI, soils = USDA SSURGO, hillshade = USGS terrain, contours = 10ft elevation contours"},
-         "visible": {"type": "boolean"}}, "required": ["layer_id", "visible"]}},
-    {"name": "pulse_layer", "description": "Gently pulse an overlay to draw the eye to it WHILE you talk about it — call this whenever your reply references a layer ('this parcel is in the floodplain', 'the wetlands to the north'). It turns the layer on if needed and blooms it briefly. Prefer this over set_layer_visibility when the point is to direct attention to a layer you're discussing. The pulse self-gates on the user's Map-reactions setting, so always call it; it quietly no-ops when reactions are off.",
-     "input_schema": {"type": "object", "properties": {
-         "layer_id": {"type": "string", "description": "Layer to pulse: a federal overlay (flood, wetlands, soils, hillshade, contours) or a county PostGIS layer id"}},
-      "required": ["layer_id"]}},
-
+    {
+        "name": "set_layer_visibility",
+        "description": "Show or hide a map overlay layer.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "layer_id": {
+                    "type": "string",
+                    "enum": [
+                        "flood",
+                        "wetlands",
+                        "soils",
+                        "hillshade",
+                        "contours",
+                        "contours-5ft",
+                        "contours-2ft",
+                    ],
+                    "description": "flood = FEMA flood hazard, wetlands = USFWS NWI, soils = USDA SSURGO, hillshade = USGS terrain, contours = 10ft elevation contours",
+                },
+                "visible": {"type": "boolean"},
+            },
+            "required": ["layer_id", "visible"],
+        },
+    },
+    {
+        "name": "pulse_layer",
+        "description": "Gently pulse an overlay to draw the eye to it WHILE you talk about it — call this whenever your reply references a layer ('this parcel is in the floodplain', 'the wetlands to the north'). It turns the layer on if needed and blooms it briefly. Prefer this over set_layer_visibility when the point is to direct attention to a layer you're discussing. The pulse self-gates on the user's Map-reactions setting, so always call it; it quietly no-ops when reactions are off.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "layer_id": {
+                    "type": "string",
+                    "description": "Layer to pulse: a federal overlay (flood, wetlands, soils, hillshade, contours) or a county PostGIS layer id",
+                }
+            },
+            "required": ["layer_id"],
+        },
+    },
     # ── Drawing ───────────────────────────────────────────────────────────────
-    {"name": "draw_point", "description": "Drop a point marker. Optional label and hex color.",
-     "input_schema": {"type": "object", "properties": {"lng": _LNG, "lat": _LAT, "label": {"type": "string"}, "color": {"type": "string"}}, "required": ["lng", "lat"]}},
-    {"name": "draw_line", "description": "Draw a polyline through a list of points.",
-     "input_schema": {"type": "object", "properties": {"coordinates": _COORDS, "label": {"type": "string"}, "color": {"type": "string"}}, "required": ["coordinates"]}},
-    {"name": "draw_polygon", "description": "Draw a filled polygon from a list of points (the ring is auto-closed).",
-     "input_schema": {"type": "object", "properties": {"coordinates": _COORDS, "label": {"type": "string"}, "color": {"type": "string"}, "fill_color": {"type": "string"}}, "required": ["coordinates"]}},
-    {"name": "draw_circle", "description": "Draw a circle of a given radius in feet around a center point.",
-     "input_schema": {"type": "object", "properties": {"lng": _LNG, "lat": _LAT, "radius_ft": {"type": "number"}, "label": {"type": "string"}, "color": {"type": "string"}}, "required": ["lng", "lat", "radius_ft"]}},
-    {"name": "label_point", "description": "Place a text label at a point.",
-     "input_schema": {"type": "object", "properties": {"lng": _LNG, "lat": _LAT, "text": {"type": "string"}}, "required": ["lng", "lat", "text"]}},
-    {"name": "label_parcel_centroid", "description": "Place a text label at the center of a parcel.",
-     "input_schema": {"type": "object", "properties": {"pin": _PIN, "text": {"type": "string"}}, "required": ["text"]}},
-    {"name": "draw_parcel_buffer", "description": "Draw a buffer (outward) or setback (inward) ring around a parcel boundary at a distance in feet.",
-     "input_schema": {"type": "object", "properties": {"pin": _PIN, "distance_ft": {"type": "number"}, "inward": {"type": "boolean", "description": "true = inward setback, false = outward buffer"}, "label": {"type": "string"}}, "required": ["distance_ft"]}},
-    {"name": "place_structure_in_parcel", "description": "Place a rectangular building footprint (feet) at the center of a parcel.",
-     "input_schema": {"type": "object", "properties": {"pin": _PIN, "width_ft": {"type": "number"}, "depth_ft": {"type": "number"}, "rotation_deg": {"type": "number"}, "label": {"type": "string"}}, "required": ["width_ft", "depth_ft"]}},
-    {"name": "clear_annotations", "description": "Remove all drawings (buffers, circles, labels, lines) from the map.",
-     "input_schema": {"type": "object", "properties": {}, "required": []}},
-
+    {
+        "name": "draw_point",
+        "description": "Drop a point marker. Optional label and hex color.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lng": _LNG,
+                "lat": _LAT,
+                "label": {"type": "string"},
+                "color": {"type": "string"},
+            },
+            "required": ["lng", "lat"],
+        },
+    },
+    {
+        "name": "draw_line",
+        "description": "Draw a polyline through a list of points.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "coordinates": _COORDS,
+                "label": {"type": "string"},
+                "color": {"type": "string"},
+            },
+            "required": ["coordinates"],
+        },
+    },
+    {
+        "name": "draw_polygon",
+        "description": "Draw a filled polygon from a list of points (the ring is auto-closed).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "coordinates": _COORDS,
+                "label": {"type": "string"},
+                "color": {"type": "string"},
+                "fill_color": {"type": "string"},
+            },
+            "required": ["coordinates"],
+        },
+    },
+    {
+        "name": "draw_circle",
+        "description": "Draw a circle of a given radius in feet around a center point.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "lng": _LNG,
+                "lat": _LAT,
+                "radius_ft": {"type": "number"},
+                "label": {"type": "string"},
+                "color": {"type": "string"},
+            },
+            "required": ["lng", "lat", "radius_ft"],
+        },
+    },
+    {
+        "name": "label_point",
+        "description": "Place a text label at a point.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"lng": _LNG, "lat": _LAT, "text": {"type": "string"}},
+            "required": ["lng", "lat", "text"],
+        },
+    },
+    {
+        "name": "label_parcel_centroid",
+        "description": "Place a text label at the center of a parcel.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"pin": _PIN, "text": {"type": "string"}},
+            "required": ["text"],
+        },
+    },
+    {
+        "name": "draw_parcel_buffer",
+        "description": "Draw a buffer (outward) or setback (inward) ring around a parcel boundary at a distance in feet.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pin": _PIN,
+                "distance_ft": {"type": "number"},
+                "inward": {
+                    "type": "boolean",
+                    "description": "true = inward setback, false = outward buffer",
+                },
+                "label": {"type": "string"},
+            },
+            "required": ["distance_ft"],
+        },
+    },
+    {
+        "name": "place_structure_in_parcel",
+        "description": "Place a rectangular building footprint (feet) at the center of a parcel.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pin": _PIN,
+                "width_ft": {"type": "number"},
+                "depth_ft": {"type": "number"},
+                "rotation_deg": {"type": "number"},
+                "label": {"type": "string"},
+            },
+            "required": ["width_ft", "depth_ft"],
+        },
+    },
+    {
+        "name": "clear_annotations",
+        "description": "Remove all drawings (buffers, circles, labels, lines) from the map.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
     # ── Measurement (results are shown to the user automatically) ──────────────
-    {"name": "measure_parcel", "description": "Report a parcel's area, perimeter, and estimated dimensions.",
-     "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []}},
-    {"name": "measure_area", "description": "Measure the area and perimeter of a polygon.",
-     "input_schema": {"type": "object", "properties": {"coordinates": _COORDS}, "required": ["coordinates"]}},
-    {"name": "measure_distance", "description": "Measure the total distance along a path.",
-     "input_schema": {"type": "object", "properties": {"coordinates": _COORDS}, "required": ["coordinates"]}},
-
+    {
+        "name": "measure_parcel",
+        "description": "Report a parcel's area, perimeter, and estimated dimensions.",
+        "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []},
+    },
+    {
+        "name": "measure_area",
+        "description": "Measure the area and perimeter of a polygon.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"coordinates": _COORDS},
+            "required": ["coordinates"],
+        },
+    },
+    {
+        "name": "measure_distance",
+        "description": "Measure the total distance along a path.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"coordinates": _COORDS},
+            "required": ["coordinates"],
+        },
+    },
     # ── Data lookups (resolved server-side; results return to you) ────────────
-    {"name": "search_parcels", "description": "Search the FULL county parcel database by PIN, owner name, or address. Returns matching parcels with their id, pin, owner, address, and acres. This is how you find a parcel the user names that isn't on screen — then pass a result's `id` to select_parcel to act on it.",
-     "input_schema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}, "required": ["query"]}},
-    {"name": "get_parcel_info", "description": "Fetch the full record for a parcel by its DB `id` (owner, address, acreage, assessed/taxable/market values, class, zoning). Use after search_parcels when you need details to answer a question.",
-     "input_schema": {"type": "object", "properties": {"id": {"type": ["integer", "string"]}}, "required": ["id"]}},
-    {"name": "get_environmental_info", "description": "Look up REAL environmental constraints at a point (use the selected parcel's centroid): FEMA flood zone, USFWS wetlands, and USDA soil type. Use this to ANSWER 'is this in a floodplain / are there wetlands / what's the soil / is it buildable' — don't guess. Optionally also turn on the matching overlay so the user sees it.",
-     "input_schema": {"type": "object", "properties": {"lng": _LNG, "lat": _LAT}, "required": ["lng", "lat"]}},
-
+    {
+        "name": "search_parcels",
+        "description": "Search the FULL county parcel database by PIN, owner name, or address. Returns matching parcels with their id, pin, owner, address, and acres. This is how you find a parcel the user names that isn't on screen — then pass a result's `id` to select_parcel to act on it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}},
+            "required": ["query"],
+        },
+    },
+    {
+        "name": "get_parcel_info",
+        "description": "Fetch the full record for a parcel by its DB `id` (owner, address, acreage, assessed/taxable/market values, class, zoning). Use after search_parcels when you need details to answer a question.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"id": {"type": ["integer", "string"]}},
+            "required": ["id"],
+        },
+    },
+    {
+        "name": "get_environmental_info",
+        "description": "Look up REAL environmental constraints at a point (use the selected parcel's centroid): FEMA flood zone, USFWS wetlands, and USDA soil type. Use this to ANSWER 'is this in a floodplain / are there wetlands / what's the soil / is it buildable' — don't guess. Optionally also turn on the matching overlay so the user sees it.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"lng": _LNG, "lat": _LAT},
+            "required": ["lng", "lat"],
+        },
+    },
     # ── Interface / appearance ────────────────────────────────────────────────
-    {"name": "set_theme", "description": "Switch the viewer between dark and light mode.",
-     "input_schema": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["dark", "light"]}}, "required": ["mode"]}},
-    {"name": "set_basemap", "description": "Set the basemap: 'light' or 'dark' street map, or 'aerial' satellite imagery (aerial also dims the parcel fills).",
-     "input_schema": {"type": "object", "properties": {"basemap": {"type": "string", "enum": ["light", "dark", "aerial"]}}, "required": ["basemap"]}},
-    {"name": "set_base_layer", "description": "Toggle the aerial-imagery layer and/or the parcels layer on or off independently.",
-     "input_schema": {"type": "object", "properties": {"aerial": {"type": "boolean"}, "parcels": {"type": "boolean"}}, "required": []}},
-    {"name": "set_accessibility", "description": "Adjust accessibility settings: large_text, high_contrast, readable_font (Atkinson Hyperlegible), reduce_motion, reduce_transparency (solid panels). Or max=true for maximum accessibility, max=false to reset.",
-     "input_schema": {"type": "object", "properties": {
-         "max": {"type": "boolean"}, "large_text": {"type": "boolean"}, "high_contrast": {"type": "boolean"},
-         "readable_font": {"type": "boolean"}, "reduce_motion": {"type": "boolean"}, "reduce_transparency": {"type": "boolean"}}, "required": []}},
-    {"name": "set_panel_transparency", "description": "Set how see-through the glass panels are. alpha 0.4 = very transparent, 1.0 = solid.",
-     "input_schema": {"type": "object", "properties": {"alpha": {"type": "number"}}, "required": ["alpha"]}},
-    {"name": "open_panel", "description": "Open the map control panel to a tab (layers, select, draw, measure).",
-     "input_schema": {"type": "object", "properties": {"panel": {"type": "string"}, "tab": {"type": "string", "enum": ["layers", "select", "draw", "measure"]}}, "required": []}},
-    {"name": "set_area_units", "description": "Set area units to acres or square feet.",
-     "input_schema": {"type": "object", "properties": {"units": {"type": "string", "enum": ["acres", "sqft"]}}, "required": ["units"]}},
-    {"name": "set_coordinate_format", "description": "Set the cursor coordinate readout format: dd (decimal degrees), dms, or spc (State Plane).",
-     "input_schema": {"type": "object", "properties": {"format": {"type": "string", "enum": ["dd", "dms", "spc"]}}, "required": ["format"]}},
-    {"name": "bookmark_current", "description": "Bookmark the currently selected parcel (saved on this device).",
-     "input_schema": {"type": "object", "properties": {}, "required": []}},
-
+    {
+        "name": "set_theme",
+        "description": "Switch the viewer between dark and light mode.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"mode": {"type": "string", "enum": ["dark", "light"]}},
+            "required": ["mode"],
+        },
+    },
+    {
+        "name": "set_basemap",
+        "description": "Set the basemap: 'light' or 'dark' street map, or 'aerial' satellite imagery (aerial also dims the parcel fills).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"basemap": {"type": "string", "enum": ["light", "dark", "aerial"]}},
+            "required": ["basemap"],
+        },
+    },
+    {
+        "name": "set_base_layer",
+        "description": "Toggle the aerial-imagery layer and/or the parcels layer on or off independently.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"aerial": {"type": "boolean"}, "parcels": {"type": "boolean"}},
+            "required": [],
+        },
+    },
+    {
+        "name": "set_accessibility",
+        "description": "Adjust accessibility settings: large_text, high_contrast, readable_font (Atkinson Hyperlegible), reduce_motion, reduce_transparency (solid panels). Or max=true for maximum accessibility, max=false to reset.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "max": {"type": "boolean"},
+                "large_text": {"type": "boolean"},
+                "high_contrast": {"type": "boolean"},
+                "readable_font": {"type": "boolean"},
+                "reduce_motion": {"type": "boolean"},
+                "reduce_transparency": {"type": "boolean"},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "set_panel_transparency",
+        "description": "Set how see-through the glass panels are. alpha 0.4 = very transparent, 1.0 = solid.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"alpha": {"type": "number"}},
+            "required": ["alpha"],
+        },
+    },
+    {
+        "name": "open_panel",
+        "description": "Open the map control panel to a tab (layers, select, draw, measure).",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "panel": {"type": "string"},
+                "tab": {"type": "string", "enum": ["layers", "select", "draw", "measure"]},
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "set_area_units",
+        "description": "Set area units to acres or square feet.",
+        "input_schema": {
+            "type": "object",
+            "properties": {"units": {"type": "string", "enum": ["acres", "sqft"]}},
+            "required": ["units"],
+        },
+    },
+    {
+        "name": "set_coordinate_format",
+        "description": "Set the cursor coordinate readout format: dd (decimal degrees), dms, or spc (State Plane).",
+        "input_schema": {
+            "type": "object",
+            "properties": {"format": {"type": "string", "enum": ["dd", "dms", "spc"]}},
+            "required": ["format"],
+        },
+    },
+    {
+        "name": "bookmark_current",
+        "description": "Bookmark the currently selected parcel (saved on this device).",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
     # ── Built-in map tools (the viewer's own tooling) ─────────────────────────
-    {"name": "set_parcel_labels", "description": "Turn on on-map parcel labels and choose what they show across the whole map. Use for 'label parcels with owner names', 'show PINs', 'label by assessed value', etc.",
-     "input_schema": {"type": "object", "properties": {
-         "field": {"type": "string", "enum": ["owner", "pin", "address", "av", "sev", "tv", "tmv", "tmv_acre", "zoning", "class"],
-                   "description": "owner = owner name; av/sev/tv/tmv = assessed/SEV/taxable/market value; tmv_acre = market value per acre"},
-         "visible": {"type": "boolean", "description": "true to show (default), false to hide labels"},
-         "size": {"type": "string", "enum": ["small", "medium", "large"]}}, "required": ["field"]}},
-    {"name": "dimension_parcel", "description": "Auto-label every side of a parcel with its length and bearing, surveyor-style (uses the viewer's Auto-Dimension tool). Defaults to the selected parcel.",
-     "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []}},
-    {"name": "activate_draw_tool", "description": "Hand the user an interactive drawing tool so THEY can sketch on the map (use when the user wants to draw something themselves, then you can measure it). Optional color.",
-     "input_schema": {"type": "object", "properties": {
-         "tool": {"type": "string", "enum": ["point", "polyline", "polygon", "circle", "freehand", "text", "callout", "select"]},
-         "color": {"type": "string"}, "fill_color": {"type": "string"}}, "required": ["tool"]}},
-    {"name": "undo", "description": "Undo the last drawing/annotation action.", "input_schema": {"type": "object", "properties": {}, "required": []}},
-    {"name": "redo", "description": "Redo the last undone drawing/annotation action.", "input_schema": {"type": "object", "properties": {}, "required": []}},
-    {"name": "open_tool", "description": "Open one of the viewer's built-in tools/windows for the user. Parcel tools (a parcel must be selected first): 'packet' = the full Parcel Packet report, 'compare' = compare parcels, 'streetview' = Street View. Explainer windows: 'tax' = tax-description breakdown, 'assess' = assessment & tax breakdown. App tools: 'print', 'share', 'bookmark', 'data-request', 'report-error', 'help', 'whats-new', 'about', 'settings'. For 'show me the parcel packet', select the parcel if needed then open 'packet'.",
-     "input_schema": {"type": "object", "properties": {"tool": {"type": "string", "enum": ["packet", "compare", "streetview", "tax", "assess", "print", "share", "bookmark", "data-request", "report-error", "help", "whats-new", "about", "settings"]}}, "required": ["tool"]}},
-    {"name": "compare_parcels", "description": "Open a side-by-side comparison of 2-5 specific parcels (class, acreage, assessed/taxable value, $/acre, owner, school district) with differing rows highlighted. Use for 'compare this parcel to ...', 'why is my assessment higher than my neighbor's', or any side-by-side question. Pass the parcels by `pins` (and/or `ids` from a search_parcels result); include the currently selected parcel's PIN when the user says 'this one'.",
-     "input_schema": {"type": "object", "properties": {
-         "pins": {"type": "array", "items": {"type": "string"}, "description": "Parcel PINs to compare (2-5)"},
-         "ids": {"type": "array", "items": {"type": ["integer", "string"]}, "description": "Parcel DB ids to compare (from search_parcels results)"}},
-      "required": []}},
-    {"name": "describe_neighborhood", "description": "Open the Neighborhood / Area Profile — a rich dashboard of an area's composition (class mix), assessed values + year-over-year change, ownership concentration, and parcel sizes, with an AI plain-language 'what kind of neighborhood is this' read over the figures. Use for 'what's this neighborhood/area like', 'tell me about this neighborhood', 'profile the area around this parcel', 'what kind of area is this'. Default = a 1/4-mile buffer around the selected parcel (set distance_ft for a bigger/smaller radius). Or profile a named area instead: set geography to 'subdivision'|'section'|'township'|'school' with its name.",
-     "input_schema": {"type": "object", "properties": {
-         "pin": {"type": "string", "description": "Parcel PIN to anchor a buffer around (defaults to the selected parcel)"},
-         "id": {"type": ["integer", "string"], "description": "Parcel DB id to anchor a buffer around (from search_parcels)"},
-         "distance_ft": {"type": "number", "description": "Buffer radius in feet (default 1320 = 1/4 mile; 2640 = 1/2 mile)"},
-         "geography": {"type": "string", "enum": ["subdivision", "section", "township", "school"], "description": "Profile a named area instead of a buffer"},
-         "name": {"type": "string", "description": "The name of the geography to profile (e.g. the township or school-district name)"}},
-      "required": []}},
-
+    {
+        "name": "set_parcel_labels",
+        "description": "Turn on on-map parcel labels and choose what they show across the whole map. Use for 'label parcels with owner names', 'show PINs', 'label by assessed value', etc.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "enum": [
+                        "owner",
+                        "pin",
+                        "address",
+                        "av",
+                        "sev",
+                        "tv",
+                        "tmv",
+                        "tmv_acre",
+                        "zoning",
+                        "class",
+                    ],
+                    "description": "owner = owner name; av/sev/tv/tmv = assessed/SEV/taxable/market value; tmv_acre = market value per acre",
+                },
+                "visible": {
+                    "type": "boolean",
+                    "description": "true to show (default), false to hide labels",
+                },
+                "size": {"type": "string", "enum": ["small", "medium", "large"]},
+            },
+            "required": ["field"],
+        },
+    },
+    {
+        "name": "dimension_parcel",
+        "description": "Auto-label every side of a parcel with its length and bearing, surveyor-style (uses the viewer's Auto-Dimension tool). Defaults to the selected parcel.",
+        "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []},
+    },
+    {
+        "name": "activate_draw_tool",
+        "description": "Hand the user an interactive drawing tool so THEY can sketch on the map (use when the user wants to draw something themselves, then you can measure it). Optional color.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tool": {
+                    "type": "string",
+                    "enum": [
+                        "point",
+                        "polyline",
+                        "polygon",
+                        "circle",
+                        "freehand",
+                        "text",
+                        "callout",
+                        "select",
+                    ],
+                },
+                "color": {"type": "string"},
+                "fill_color": {"type": "string"},
+            },
+            "required": ["tool"],
+        },
+    },
+    {
+        "name": "undo",
+        "description": "Undo the last drawing/annotation action.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "redo",
+        "description": "Redo the last undone drawing/annotation action.",
+        "input_schema": {"type": "object", "properties": {}, "required": []},
+    },
+    {
+        "name": "open_tool",
+        "description": "Open one of the viewer's built-in tools/windows for the user. Parcel tools (a parcel must be selected first): 'packet' = the full Parcel Packet report, 'compare' = compare parcels, 'streetview' = Street View. Explainer windows: 'tax' = tax-description breakdown, 'assess' = assessment & tax breakdown. App tools: 'print', 'share', 'bookmark', 'data-request', 'report-error', 'help', 'whats-new', 'about', 'settings'. For 'show me the parcel packet', select the parcel if needed then open 'packet'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "tool": {
+                    "type": "string",
+                    "enum": [
+                        "packet",
+                        "compare",
+                        "streetview",
+                        "tax",
+                        "assess",
+                        "print",
+                        "share",
+                        "bookmark",
+                        "data-request",
+                        "report-error",
+                        "help",
+                        "whats-new",
+                        "about",
+                        "settings",
+                    ],
+                }
+            },
+            "required": ["tool"],
+        },
+    },
+    {
+        "name": "compare_parcels",
+        "description": "Open a side-by-side comparison of 2-5 specific parcels (class, acreage, assessed/taxable value, $/acre, owner, school district) with differing rows highlighted. Use for 'compare this parcel to ...', 'why is my assessment higher than my neighbor's', or any side-by-side question. Pass the parcels by `pins` (and/or `ids` from a search_parcels result); include the currently selected parcel's PIN when the user says 'this one'.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pins": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Parcel PINs to compare (2-5)",
+                },
+                "ids": {
+                    "type": "array",
+                    "items": {"type": ["integer", "string"]},
+                    "description": "Parcel DB ids to compare (from search_parcels results)",
+                },
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "describe_neighborhood",
+        "description": "Open the Neighborhood / Area Profile — a rich dashboard of an area's composition (class mix), assessed values + year-over-year change, ownership concentration, and parcel sizes, with an AI plain-language 'what kind of neighborhood is this' read over the figures. Use for 'what's this neighborhood/area like', 'tell me about this neighborhood', 'profile the area around this parcel', 'what kind of area is this'. Default = a 1/4-mile buffer around the selected parcel (set distance_ft for a bigger/smaller radius). Or profile a named area instead: set geography to 'subdivision'|'section'|'township'|'school' with its name.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "pin": {
+                    "type": "string",
+                    "description": "Parcel PIN to anchor a buffer around (defaults to the selected parcel)",
+                },
+                "id": {
+                    "type": ["integer", "string"],
+                    "description": "Parcel DB id to anchor a buffer around (from search_parcels)",
+                },
+                "distance_ft": {
+                    "type": "number",
+                    "description": "Buffer radius in feet (default 1320 = 1/4 mile; 2640 = 1/2 mile)",
+                },
+                "geography": {
+                    "type": "string",
+                    "enum": ["subdivision", "section", "township", "school"],
+                    "description": "Profile a named area instead of a buffer",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "The name of the geography to profile (e.g. the township or school-district name)",
+                },
+            },
+            "required": [],
+        },
+    },
     # ── Showcase ──────────────────────────────────────────────────────────────
-    {"name": "map_tour", "description": "Run a guided fly-through of several stops, pausing at each. Each stop is a parcel PIN or a coordinate, with an optional note.",
-     "input_schema": {"type": "object", "properties": {"stops": {"type": "array", "items": {"type": "object", "properties": {
-         "pin": {"type": "string"}, "lng": _LNG, "lat": _LAT, "zoom": {"type": "number"}, "note": {"type": "string"}}}}}, "required": ["stops"]}},
-
+    {
+        "name": "map_tour",
+        "description": "Run a guided fly-through of several stops, pausing at each. Each stop is a parcel PIN or a coordinate, with an optional note.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "stops": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "pin": {"type": "string"},
+                            "lng": _LNG,
+                            "lat": _LAT,
+                            "zoom": {"type": "number"},
+                            "note": {"type": "string"},
+                        },
+                    },
+                }
+            },
+            "required": ["stops"],
+        },
+    },
     # ── Workflows (one deterministic call instead of chaining tools) ──────────
-    {"name": "run_workflow", "description": _WF_DESC,
-     "input_schema": {"type": "object",
-                      "properties": dict({"workflow": {"type": "string", "enum": list(WORKFLOWS.keys())}, "pin": _PIN}, **_wf_params_schema()),
-                      "required": ["workflow"]}},
-
+    {
+        "name": "run_workflow",
+        "description": _WF_DESC,
+        "input_schema": {
+            "type": "object",
+            "properties": dict(
+                {"workflow": {"type": "string", "enum": list(WORKFLOWS.keys())}, "pin": _PIN},
+                **_wf_params_schema(),
+            ),
+            "required": ["workflow"],
+        },
+    },
     # ── Proactive offers ──────────────────────────────────────────────────────
-    {"name": "suggest_actions", "description": "Offer the user 2-4 helpful next steps as tappable suggestions so they don't have to know what to ask. Each is a short, natural first-person-imperative phrase the user could tap (e.g. 'Show flood & wetlands risk', 'Draw a 30 ft setback', 'Compare to the neighboring parcel'). Call this at the END of almost every reply, tailored to the current parcel/context.",
-     "input_schema": {"type": "object", "properties": {"suggestions": {"type": "array", "items": {"type": "string"}, "maxItems": 4}}, "required": ["suggestions"]}},
+    {
+        "name": "suggest_actions",
+        "description": "Offer the user 2-4 helpful next steps as tappable suggestions so they don't have to know what to ask. Each is a short, natural first-person-imperative phrase the user could tap (e.g. 'Show flood & wetlands risk', 'Draw a 30 ft setback', 'Compare to the neighboring parcel'). Call this at the END of almost every reply, tailored to the current parcel/context.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "suggestions": {"type": "array", "items": {"type": "string"}, "maxItems": 4}
+            },
+            "required": ["suggestions"],
+        },
+    },
 ]
 
 
@@ -473,19 +959,20 @@ def _build_user_message(
         # legacy visible-overlay labels when the registry isn't present.
         layers = map_state.get("layers")
         if layers:
+
             def _fmt(layer: dict) -> str:
                 fields = layer.get("fields") or []
                 schema = f" — fields: {', '.join(fields)}" if fields else ""
                 return f"    - {layer.get('label')} ({layer.get('type')}){schema}"
 
-            on = [l for l in layers if l.get("visible")]
-            off = [l for l in layers if not l.get("visible")]
+            on = [lyr for lyr in layers if lyr.get("visible")]
+            off = [lyr for lyr in layers if not lyr.get("visible")]
             ms_lines.append("  Layers currently ON (visible to the user):")
-            ms_lines.extend([_fmt(l) for l in on] or ["    (none)"])
+            ms_lines.extend([_fmt(lyr) for lyr in on] or ["    (none)"])
             if off:
                 ms_lines.append(
                     "  Layers available but currently OFF: "
-                    + ", ".join(l.get("label") for l in off)
+                    + ", ".join(lyr.get("label") for lyr in off)
                 )
         else:
             vis = map_state.get("visible_layers") or []
@@ -520,11 +1007,17 @@ _SSURGO_WMS = "https://sdmdataaccess.nrcs.usda.gov/Spatial/SDM.wms"
 
 
 def _arcgis_point_query(base: str, lng: float, lat: float):
-    qs = urllib.parse.urlencode({
-        "geometry": f"{lng},{lat}", "geometryType": "esriGeometryPoint",
-        "inSR": "4326", "spatialRel": "esriSpatialRelIntersects",
-        "outFields": "*", "returnGeometry": "false", "f": "json",
-    })
+    qs = urllib.parse.urlencode(
+        {
+            "geometry": f"{lng},{lat}",
+            "geometryType": "esriGeometryPoint",
+            "inSR": "4326",
+            "spatialRel": "esriSpatialRelIntersects",
+            "outFields": "*",
+            "returnGeometry": "false",
+            "f": "json",
+        }
+    )
     with urllib.request.urlopen(base + "?" + qs, timeout=12) as r:
         data = json.loads(r.read().decode())
     feats = data.get("features") or []
@@ -539,20 +1032,31 @@ def _query_soils(lng: float, lat: float):
     mx = lng * math.pi * R / 180.0
     my = math.log(math.tan(math.pi / 4 + lat * math.pi / 360.0)) * R
     half = 150.0  # ~150 m box, query the centre pixel
-    qs = urllib.parse.urlencode({
-        "SERVICE": "WMS", "VERSION": "1.1.1", "REQUEST": "GetFeatureInfo",
-        "LAYERS": "MapunitPolyExtended", "QUERY_LAYERS": "MapunitPolyExtended",
-        "BBOX": f"{mx-half},{my-half},{mx+half},{my+half}",
-        "WIDTH": "256", "HEIGHT": "256", "X": "128", "Y": "128",
-        "SRS": "EPSG:3857", "INFO_FORMAT": "text/plain", "FEATURE_COUNT": "3",
-    })
+    qs = urllib.parse.urlencode(
+        {
+            "SERVICE": "WMS",
+            "VERSION": "1.1.1",
+            "REQUEST": "GetFeatureInfo",
+            "LAYERS": "MapunitPolyExtended",
+            "QUERY_LAYERS": "MapunitPolyExtended",
+            "BBOX": f"{mx - half},{my - half},{mx + half},{my + half}",
+            "WIDTH": "256",
+            "HEIGHT": "256",
+            "X": "128",
+            "Y": "128",
+            "SRS": "EPSG:3857",
+            "INFO_FORMAT": "text/plain",
+            "FEATURE_COUNT": "3",
+        }
+    )
     with urllib.request.urlopen(_SSURGO_WMS + "?" + qs, timeout=12) as r:
         text = r.read().decode("utf-8", "replace")
     props = {}
     for line in text.splitlines():
         if "=" in line:
             k, _, v = line.partition("=")
-            k = k.strip().lower(); v = v.strip().strip("'\"")
+            k = k.strip().lower()
+            v = v.strip().strip("'\"")
             if k in ("muname", "musym") and v and k not in props:
                 props[k] = v
     return {"name": props.get("muname"), "symbol": props.get("musym")} if props else None
@@ -568,16 +1072,26 @@ def _query_environment(lng: float, lat: float) -> dict:
     out = {}
     try:
         a = _arcgis_point_query(_FEMA_NFHL, lng, lat)
-        out["flood"] = ({"zone": a.get("FLD_ZONE"), "subtype": a.get("ZONE_SUBTY"),
-                         "in_special_flood_hazard_area": a.get("SFHA_TF"), "base_flood_elev_ft": a.get("STATIC_BFE")}
-                        if a else {"zone": "X", "note": "no FEMA flood hazard mapped at this point"})
+        out["flood"] = (
+            {
+                "zone": a.get("FLD_ZONE"),
+                "subtype": a.get("ZONE_SUBTY"),
+                "in_special_flood_hazard_area": a.get("SFHA_TF"),
+                "base_flood_elev_ft": a.get("STATIC_BFE"),
+            }
+            if a
+            else {"zone": "X", "note": "no FEMA flood hazard mapped at this point"}
+        )
     except Exception:
         log.warning("environment lookup failed: flood", exc_info=True)
         out["flood"] = dict(_LOOKUP_UNAVAILABLE)
     try:
         a = _arcgis_point_query(_NWI_WETLANDS, lng, lat)
-        out["wetlands"] = ({"present": True, "type": a.get("WETLAND_TYPE"), "acres": a.get("ACRES")}
-                           if a else {"present": False})
+        out["wetlands"] = (
+            {"present": True, "type": a.get("WETLAND_TYPE"), "acres": a.get("ACRES")}
+            if a
+            else {"present": False}
+        )
     except Exception:
         log.warning("environment lookup failed: wetlands", exc_info=True)
         out["wetlands"] = dict(_LOOKUP_UNAVAILABLE)
@@ -606,9 +1120,17 @@ def _exec_data_tool(name: str, inp: dict) -> str:
             results = data.get("results", [])
             if not results:
                 return f"No parcels matched '{q}'."
-            slim = [{"id": r.get("id"), "pin": r.get("pin"), "owner": r.get("owner_name"),
-                     "address": r.get("address"), "municipality": r.get("municipality"),
-                     "acres": r.get("acres")} for r in results]
+            slim = [
+                {
+                    "id": r.get("id"),
+                    "pin": r.get("pin"),
+                    "owner": r.get("owner_name"),
+                    "address": r.get("address"),
+                    "municipality": r.get("municipality"),
+                    "acres": r.get("acres"),
+                }
+                for r in results
+            ]
             return json.dumps({"matches": slim})
         if name == "get_parcel_info":
             pid = inp.get("id") if inp.get("id") is not None else inp.get("parcel_id")
@@ -622,7 +1144,7 @@ def _exec_data_tool(name: str, inp: dict) -> str:
                 pid = 0
             if pid <= 0:
                 return "Parcel id must be the numeric id from search_parcels."
-            data = _http_get_json("/parcel/%d" % pid)
+            data = _http_get_json(f"/parcel/{pid}")
             return json.dumps(data.get("properties", data))
         if name == "get_environmental_info":
             lng, lat = inp.get("lng"), inp.get("lat")
@@ -642,7 +1164,7 @@ def _exec_data_tool(name: str, inp: dict) -> str:
 def _expand_workflow(name: str, inp: dict, ctx: dict | None):
     wf = WORKFLOWS.get(name)
     if not wf:
-        return ("Unknown workflow '%s'." % name, [])
+        return (f"Unknown workflow '{name}'.", [])
 
     # Resolve + validate params (model-supplied slot values, else the default).
     params = {}
@@ -650,19 +1172,20 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
         val = inp.get(pname)
         if val is None:
             val = pdef.get("default")
-        elif pdef["type"] == "number" and (isinstance(val, bool) or not isinstance(val, (int, float))
-                                           or not math.isfinite(val)):
-            return ("Can't run '%s': %r must be a number." % (name, pname), [])
+        elif pdef["type"] == "number" and (
+            isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val)
+        ):
+            return (f"Can't run '{name}': {pname!r} must be a number.", [])
         elif pdef["type"] == "string" and not isinstance(val, str):
-            return ("Can't run '%s': %r must be text." % (name, pname), [])
+            return (f"Can't run '{name}': {pname!r} must be text.", [])
         elif pdef["type"] == "boolean" and not isinstance(val, bool):
-            return ("Can't run '%s': %r must be true or false." % (name, pname), [])
+            return (f"Can't run '{name}': {pname!r} must be true or false.", [])
         # Range check (schema minimum/maximum): a negative setback drew an outward
         # ring labelled "-30 ft setback"; 1e9 ft is nonsense.
         if pdef["type"] == "number" and val is not None:
             lo, hi = pdef.get("minimum"), pdef.get("maximum")
             if (lo is not None and val < lo) or (hi is not None and val > hi):
-                return ("Can't run '%s': %r must be between %s and %s." % (name, pname, lo, hi), [])
+                return (f"Can't run '{name}': {pname!r} must be between {lo} and {hi}.", [])
         params[pname] = val
 
     # Environmental lookup first — needed for branching (`when`) and the summary.
@@ -673,7 +1196,11 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
             try:
                 env = _query_environment(float(centroid[0]), float(centroid[1]))
             except Exception:
-                log.warning("environment lookup failed for workflow %s", safe_for_log(name, 80), exc_info=True)
+                log.warning(
+                    "environment lookup failed for workflow %s",
+                    safe_for_log(name, 80),
+                    exc_info=True,
+                )
                 env = dict(_LOOKUP_UNAVAILABLE)
 
     pin = inp.get("pin")
@@ -694,7 +1221,7 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
             payload = {}
         cmds.append({"type": step["type"], "payload": payload})
 
-    note = "Ran workflow '%s' (%d map actions)." % (name, len(cmds))
+    note = f"Ran workflow '{name}' ({len(cmds)} map actions)."
     if env is not None:
         note += " Environmental data: " + json.dumps(env)
     note += " Now give the user a short, clean summary."
@@ -739,9 +1266,13 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None,
             # identical on every iteration and every request, so the explicit marker
             # on the system block caches them together; top-level automatic caching
             # covers the growing conversation within a request's tool loop.
-            response = _create_message("chat",
-                model=model, max_tokens=max_tokens,
-                system=_CHAT_SYSTEM_BLOCKS, tools=TOOLS, messages=messages,
+            response = _create_message(
+                "chat",
+                model=model,
+                max_tokens=max_tokens,
+                system=_CHAT_SYSTEM_BLOCKS,
+                tools=TOOLS,
+                messages=messages,
                 cache_control={"type": "ephemeral"},
             )
             messages.append({"role": "assistant", "content": response.content})
@@ -755,7 +1286,7 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None,
                     if block.name == "run_workflow":
                         # Deterministic macro: expand into a fixed command chain
                         # (+ server-side env data) so the model spends one call.
-                        result, wf_cmds = _expand_workflow(inp.get("workflow"), inp, ctx)
+                        result, wf_cmds = _expand_workflow(str(inp.get("workflow") or ""), inp, ctx)
                         commands.extend(wf_cmds)
                     elif block.name in DATA_TOOLS:
                         # Resolved server-side; the real data goes back to the
@@ -769,11 +1300,13 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None,
                     else:
                         # Only declared tools reach the browser (DIC-1870).
                         result = "Unknown tool."
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": result,
-                    })
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": block.id,
+                            "content": result,
+                        }
+                    )
 
             if response.stop_reason != "tool_use" or not tool_results:
                 break  # model produced a final (text) turn — done
@@ -786,7 +1319,10 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None,
         log.exception("chat stream failed")
         if errors is not None:
             errors.report_exception(exc, tags={"operation": "chat"})
-        yield {"type": "error", "message": "Map Buddy hit a problem answering that. Please try again in a moment."}
+        yield {
+            "type": "error",
+            "message": "Map Buddy hit a problem answering that. Please try again in a moment.",
+        }
         return
 
     # The browser stores this turn in its chat history and resends it. An empty turn
@@ -794,9 +1330,12 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None,
     # the request cap gets a 422 — either way the session breaks until reload
     # (DIC-1870). So never return empty, and keep it under the cap.
     if not response_text.strip():
-        response_text = ("Done — updated the map." if commands else
-                         "I couldn't find an answer to that. Could you rephrase it, "
-                         "or give me a parcel number or address?")
+        response_text = (
+            "Done — updated the map."
+            if commands
+            else "I couldn't find an answer to that. Could you rephrase it, "
+            "or give me a parcel number or address?"
+        )
     if len(response_text) > MAX_RESPONSE_CHARS:
         response_text = response_text[:MAX_RESPONSE_CHARS].rstrip() + "…"
 
@@ -847,7 +1386,9 @@ SYSTEM_PROMPT = (
 )
 # The chat system prompt as a cacheable block (render order is tools -> system, so this
 # one marker caches both). Must stay byte-identical across requests to hit the cache.
-_CHAT_SYSTEM_BLOCKS = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+_CHAT_SYSTEM_BLOCKS = [
+    {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}
+]
 # Stays well under main.ChatMessage's 8000-char history cap.
 MAX_RESPONSE_CHARS = int(os.getenv("MAP_BUDDY_MAX_RESPONSE_CHARS", "6000"))
 
@@ -948,7 +1489,7 @@ You will be given the VERBATIM tax description text and a detected description T
 Warm, clear, concise. Short paragraphs, no jargon without a plain-language gloss. No emojis. Write for a property owner, not a surveyor."""
 
 
-EXPLAINER_PROFILES = {
+EXPLAINER_PROFILES: dict[str, dict[str, Any]] = {
     "assessment": {
         "label": "Assessment Explainer",
         "audience": "Local residents / property owners (plain language)",
@@ -987,18 +1528,24 @@ def explainer_profiles_public() -> list:
     explainer is callable as a plugin via POST /explain with its topic id."""
     out = []
     for topic, p in EXPLAINER_PROFILES.items():
-        out.append({
-            "id": topic,
-            "label": p.get("label", topic),
-            "audience": p.get("audience"),
-            "model": p.get("model"),
-            "callable_via": f"POST /explain (topic: {topic})",
-            "system_prompt": p.get("system_prompt", ""),
-            "context_blocks": [
-                {"title": b.get("title", ""), "body": b.get("body", ""), "chars": len(b.get("body", ""))}
-                for b in p.get("context_blocks", [])
-            ],
-        })
+        out.append(
+            {
+                "id": topic,
+                "label": p.get("label", topic),
+                "audience": p.get("audience"),
+                "model": p.get("model"),
+                "callable_via": f"POST /explain (topic: {topic})",
+                "system_prompt": p.get("system_prompt", ""),
+                "context_blocks": [
+                    {
+                        "title": b.get("title", ""),
+                        "body": b.get("body", ""),
+                        "chars": len(b.get("body", "")),
+                    }
+                    for b in p.get("context_blocks", [])
+                ],
+            }
+        )
     return out
 
 
@@ -1031,7 +1578,10 @@ _EXPLAIN_TOOL = {
                     "type": "object",
                     "properties": {
                         "heading": {"type": "string"},
-                        "body": {"type": "string", "description": "A few short paragraphs of plain text. No markdown tables."},
+                        "body": {
+                            "type": "string",
+                            "description": "A few short paragraphs of plain text. No markdown tables.",
+                        },
                     },
                     "required": ["heading", "body"],
                 },
@@ -1054,9 +1604,15 @@ _EXPLAIN_TOOL = {
                 "items": {
                     "type": "object",
                     "properties": {
-                        "name": {"type": "string", "description": "e.g. 'Taxable Value cap (Proposal A)'"},
+                        "name": {
+                            "type": "string",
+                            "description": "e.g. 'Taxable Value cap (Proposal A)'",
+                        },
                         "citation": {"type": "string", "description": "e.g. 'MCL 211.27a(2)'"},
-                        "plain": {"type": "string", "description": "One-sentence plain-language summary."},
+                        "plain": {
+                            "type": "string",
+                            "description": "One-sentence plain-language summary.",
+                        },
                     },
                     "required": ["name", "citation", "plain"],
                 },
@@ -1084,20 +1640,22 @@ def run_explain(topic: str, facts: dict) -> dict:
 
     # Static, reusable across every parcel → cache it. Only the per-parcel facts
     # (the user turn) vary, so a large injected reference corpus stays cheap.
-    system = [{
-        "type": "text",
-        "text": _assemble_system(profile),
-        "cache_control": {"type": "ephemeral"},
-    }]
+    system = [
+        {
+            "type": "text",
+            "text": _assemble_system(profile),
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
     user = (
         "Explain this parcel using ONLY the authoritative input below. Anything "
         "not present here must be described generally, never invented.\n\n"
-        "INPUT DATA:\n"
-        + json.dumps(facts, separators=(",", ":"), default=str)
+        "INPUT DATA:\n" + json.dumps(facts, separators=(",", ":"), default=str)
     )
 
     max_tokens = int(os.getenv("EXPLAIN_MAX_TOKENS", "2048"))
-    response = _create_message("explain",
+    response = _create_message(
+        "explain",
         model=profile["model"],
         max_tokens=max_tokens,
         system=system,
@@ -1120,14 +1678,20 @@ _AUTOCONFIGURE_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "rationale": {"type": "string", "description": "2-4 sentences: why this theme fits the brief, for a county GIS operator."},
+            "rationale": {
+                "type": "string",
+                "description": "2-4 sentences: why this theme fits the brief, for a county GIS operator.",
+            },
             "suggestions": {
                 "type": "array",
                 "description": "Optional concrete tweaks the operator might apply in the editor.",
                 "items": {
                     "type": "object",
                     "properties": {
-                        "field": {"type": "string", "description": "manifest path, e.g. capabilities.cogo or persona.audience"},
+                        "field": {
+                            "type": "string",
+                            "description": "manifest path, e.g. capabilities.cogo or persona.audience",
+                        },
                         "change": {"type": "string", "description": "the suggested change"},
                         "why": {"type": "string", "description": "why it would help"},
                     },
@@ -1146,27 +1710,32 @@ def run_autoconfigure(brief: dict, draft: dict, rationale: str = "") -> dict:
     never originates the manifest (facts-parity §4.6). Forced structured tool call; returns
     the validated { rationale, suggestions } the frontend lays over the draft for review.
     """
-    system = [{
-        "type": "text",
-        "text": (
-            "You help a county GIS operator review an AUTO-GENERATED draft theme manifest "
-            "for the Intelligent Spatial Viewer. The draft was assembled deterministically "
-            "from the operator's brief. Your job: (1) explain in plain language why the draft "
-            "fits the brief, and (2) suggest optional concrete tweaks. You DO NOT and CANNOT "
-            "change the manifest — the operator applies any changes in the editor. Ground "
-            "every statement in the provided draft + brief; never invent capabilities or "
-            "sources that aren't present."
-        ),
-        "cache_control": {"type": "ephemeral"},
-    }]
+    system = [
+        {
+            "type": "text",
+            "text": (
+                "You help a county GIS operator review an AUTO-GENERATED draft theme manifest "
+                "for the Intelligent Spatial Viewer. The draft was assembled deterministically "
+                "from the operator's brief. Your job: (1) explain in plain language why the draft "
+                "fits the brief, and (2) suggest optional concrete tweaks. You DO NOT and CANNOT "
+                "change the manifest — the operator applies any changes in the editor. Ground "
+                "every statement in the provided draft + brief; never invent capabilities or "
+                "sources that aren't present."
+            ),
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
     user = (
-        "BRIEF:\n" + json.dumps(brief, separators=(",", ":"), default=str) +
-        "\n\nDETERMINISTIC DRAFT MANIFEST:\n" + json.dumps(draft, separators=(",", ":"), default=str) +
-        (("\n\nBASELINE RATIONALE:\n" + rationale) if rationale else "")
+        "BRIEF:\n"
+        + json.dumps(brief, separators=(",", ":"), default=str)
+        + "\n\nDETERMINISTIC DRAFT MANIFEST:\n"
+        + json.dumps(draft, separators=(",", ":"), default=str)
+        + (("\n\nBASELINE RATIONALE:\n" + rationale) if rationale else "")
     )
     model = os.getenv("AUTOCONFIGURE_MODEL", "claude-haiku-4-5")
     max_tokens = int(os.getenv("AUTOCONFIGURE_MAX_TOKENS", "1024"))
-    response = _create_message("autoconfigure",
+    response = _create_message(
+        "autoconfigure",
         model=model,
         max_tokens=max_tokens,
         system=system,
@@ -1190,9 +1759,19 @@ _JUDGE_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "grounded": {"type": "boolean", "description": "true iff every factual claim traces to the grounding truth (no invented figures/claims)."},
-            "citations_ok": {"type": "boolean", "description": "true iff every cited source appears in the grounding truth and supports the claim."},
-            "issues": {"type": "array", "items": {"type": "string"}, "description": "Specific problems found (empty if none)."},
+            "grounded": {
+                "type": "boolean",
+                "description": "true iff every factual claim traces to the grounding truth (no invented figures/claims).",
+            },
+            "citations_ok": {
+                "type": "boolean",
+                "description": "true iff every cited source appears in the grounding truth and supports the claim.",
+            },
+            "issues": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Specific problems found (empty if none).",
+            },
         },
         "required": ["grounded", "citations_ok", "issues"],
     },
@@ -1206,23 +1785,28 @@ def run_grounding_judge(output_text: str, grounding: dict) -> dict:
     prompt/model change ships, NOT per request. Forced structured tool call; returns
     { grounded, citations_ok, issues }.
     """
-    system = [{
-        "type": "text",
-        "text": (
-            "You are a strict grounding auditor for a government GIS assistant. You are given "
-            "an AI OUTPUT and the GROUNDING TRUTH it was supposed to rely on. Decide whether "
-            "every factual claim in the output traces to the truth (no invented numbers, "
-            "names, or laws) and whether any cited source actually appears in and supports "
-            "the claim. When in doubt, fail it — freelancing is worse than abstaining."
-        ),
-        "cache_control": {"type": "ephemeral"},
-    }]
+    system = [
+        {
+            "type": "text",
+            "text": (
+                "You are a strict grounding auditor for a government GIS assistant. You are given "
+                "an AI OUTPUT and the GROUNDING TRUTH it was supposed to rely on. Decide whether "
+                "every factual claim in the output traces to the truth (no invented numbers, "
+                "names, or laws) and whether any cited source actually appears in and supports "
+                "the claim. When in doubt, fail it — freelancing is worse than abstaining."
+            ),
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
     user = (
-        "GROUNDING TRUTH:\n" + json.dumps(grounding, separators=(",", ":"), default=str) +
-        "\n\nAI OUTPUT:\n" + str(output_text)
+        "GROUNDING TRUTH:\n"
+        + json.dumps(grounding, separators=(",", ":"), default=str)
+        + "\n\nAI OUTPUT:\n"
+        + str(output_text)
     )
     model = os.getenv("JUDGE_MODEL", "claude-haiku-4-5")
-    response = _create_message("judge",
+    response = _create_message(
+        "judge",
         model=model,
         max_tokens=int(os.getenv("JUDGE_MAX_TOKENS", "1024")),
         system=system,
@@ -1243,7 +1827,9 @@ def run_grounding_judge(output_text: str, grounding: dict) -> dict:
 # facts (composition / value-stats / value-change / ownership / area-distribution);
 # this only CHARACTERIZES them in plain language. It must NEVER originate a number —
 # the dashboard owns every figure (facts-parity §4.6; grounding-judge gated, DIC-586).
-COHORT_NARRATE_MODEL = os.getenv("COHORT_NARRATE_MODEL", os.getenv("MAP_BUDDY_MODEL", "claude-sonnet-4-6"))
+COHORT_NARRATE_MODEL = os.getenv(
+    "COHORT_NARRATE_MODEL", os.getenv("MAP_BUDDY_MODEL", "claude-sonnet-4-6")
+)
 
 _COHORT_NARRATE_SYSTEM = """You are the Neighborhood Profile narrator for the Van Buren County, Michigan parcel viewer — you read a deterministic, pre-computed PROFILE of an AREA (a set of parcels) and describe, in plain friendly language, what KIND of place it is.
 
@@ -1275,8 +1861,14 @@ _COHORT_NARRATE_TOOL = {
     "input_schema": {
         "type": "object",
         "properties": {
-            "headline": {"type": "string", "description": "A few words naming the area's character, e.g. 'Established lakeside residential'."},
-            "character": {"type": "string", "description": "One short line tagging the area, e.g. 'Mostly residential, stable values, fragmented ownership'."},
+            "headline": {
+                "type": "string",
+                "description": "A few words naming the area's character, e.g. 'Established lakeside residential'.",
+            },
+            "character": {
+                "type": "string",
+                "description": "One short line tagging the area, e.g. 'Mostly residential, stable values, fragmented ownership'.",
+            },
             "paragraphs": {
                 "type": "array",
                 "description": "2-4 short plain-language paragraphs covering only the dimensions the facts contain (composition / values / change / ownership / size).",
@@ -1299,19 +1891,21 @@ def run_describe_cohort(facts: dict) -> dict:
     { headline, character, paragraphs, caveats } the Profile lays over its dashboard.
     Raises if the model declines the forced tool call.
     """
-    system = [{
-        "type": "text",
-        "text": _COHORT_NARRATE_SYSTEM,
-        "cache_control": {"type": "ephemeral"},
-    }]
+    system = [
+        {
+            "type": "text",
+            "text": _COHORT_NARRATE_SYSTEM,
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
     user = (
         "Describe this area using ONLY the verified facts below. Do not state any number "
         "that is not present here, and do not compute new figures.\n\n"
-        "VERIFIED FACTS:\n"
-        + json.dumps(facts or {}, separators=(",", ":"), default=str)
+        "VERIFIED FACTS:\n" + json.dumps(facts or {}, separators=(",", ":"), default=str)
     )
     max_tokens = int(os.getenv("COHORT_NARRATE_MAX_TOKENS", "1536"))
-    response = _create_message("describe_cohort",
+    response = _create_message(
+        "describe_cohort",
         model=COHORT_NARRATE_MODEL,
         max_tokens=max_tokens,
         system=system,

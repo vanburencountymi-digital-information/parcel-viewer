@@ -19,13 +19,24 @@ Canonical parcel record (keys are stable; missing values are None, never absent)
     assessment { current {assessed,sev,taxable}, detail {<backend-specific>} },
     source_backend
 """
+
 from __future__ import annotations
 
-from typing import Optional
-
 CANONICAL_PARCEL_KEYS = (
-    "id", "pin", "county", "municipality", "gis_acres", "owner", "site", "school",
-    "prop_class", "zoning", "pre", "legal_description", "assessment", "source_backend",
+    "id",
+    "pin",
+    "county",
+    "municipality",
+    "gis_acres",
+    "owner",
+    "site",
+    "school",
+    "prop_class",
+    "zoning",
+    "pre",
+    "legal_description",
+    "assessment",
+    "source_backend",
 )
 
 
@@ -62,12 +73,17 @@ def canonical_parcel(
         "municipality": municipality,
         "gis_acres": gis_acres,
         "owner": {
-            "name": owner.get("name"), "address": owner.get("address"),
-            "city": owner.get("city"), "state": owner.get("state"), "zip": owner.get("zip"),
+            "name": owner.get("name"),
+            "address": owner.get("address"),
+            "city": owner.get("city"),
+            "state": owner.get("state"),
+            "zip": owner.get("zip"),
         },
         "site": {
-            "address": site.get("address"), "city": site.get("city"),
-            "state": site.get("state"), "zip": site.get("zip"),
+            "address": site.get("address"),
+            "city": site.get("city"),
+            "state": site.get("state"),
+            "zip": site.get("zip"),
         },
         "school": school,
         "prop_class": prop_class,
@@ -75,14 +91,18 @@ def canonical_parcel(
         "pre": {"current": pre.get("current"), "previous": pre.get("previous")},
         "legal_description": legal_description,
         "assessment": {
-            "current": {"assessed": cur.get("assessed"), "sev": cur.get("sev"), "taxable": cur.get("taxable")},
+            "current": {
+                "assessed": cur.get("assessed"),
+                "sev": cur.get("sev"),
+                "taxable": cur.get("taxable"),
+            },
             "detail": assessment_detail or {},
         },
         "source_backend": source_backend,
     }
 
 
-def tenant_predicate(column: Optional[str], tenant: Optional[str]):
+def tenant_predicate(column: str | None, tenant: str | None):
     """Row-level tenant scoping for ParcelStore queries (C1 / DIC-582). Returns
     `(sql_fragment, params)` to append to a query's WHERE clause:
 
@@ -97,8 +117,8 @@ def tenant_predicate(column: Optional[str], tenant: Optional[str]):
         return "", []
     if not tenant:
         raise ValueError(
-            "ParcelStore: tenant column %r is configured but no tenant was given "
-            "(fail-closed; would otherwise leak across tenants)" % column
+            f"ParcelStore: tenant column {column!r} is configured but no tenant was given "
+            "(fail-closed; would otherwise leak across tenants)"
         )
     return " AND " + column + " = %s", [tenant]
 
@@ -107,5 +127,5 @@ class ParcelStore:
     """Interface: return a canonical parcel record by the backend's reference key
     (pin for ZIP-local, integer id for DICE/VBC). Implementations live per-backend."""
 
-    def get_parcel(self, ref) -> Optional[dict]:
+    def get_parcel(self, ref) -> dict | None:
         raise NotImplementedError

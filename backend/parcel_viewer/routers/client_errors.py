@@ -51,7 +51,12 @@ def client_error(report: ClientErrorReport, request: Request) -> Response:
     user_agent = safe_for_log(request.headers.get("user-agent") or "", 200)
     log.warning(
         "browser %s: %s (%s:%s:%s on %s)",
-        kind, message, source, line, column, page,
+        kind,
+        message,
+        source,
+        line,
+        column,
+        page,
         extra={
             "browser_error_kind": kind,
             "browser_error_source": source,

@@ -12,6 +12,7 @@ DB or OpenAI key (connection + embedder are injected and faked):
 Zero-dependency: knowledge_store.py imports no DB/OpenAI module at load, so this runs
 under stock `python -m unittest`.
 """
+
 import sys
 import unittest
 from pathlib import Path
@@ -20,7 +21,7 @@ from pathlib import Path
 ZIP_BACKEND = Path(__file__).resolve().parents[3] / "ZIP" / "zip-poc" / "backend"
 sys.path.insert(0, str(ZIP_BACKEND))
 
-from knowledge_store import build_store, DICE_SCHEMA, ZIP_LOCAL_SCHEMA  # noqa: E402
+from knowledge_store import DICE_SCHEMA, ZIP_LOCAL_SCHEMA, build_store  # noqa: E402
 
 
 class FakeCursor:
@@ -69,13 +70,25 @@ class FakeConn:
 
 def store(backend, batches, embedder, jurisdiction="lockport-township"):
     conn = FakeConn(batches)
-    s = build_store(backend, acquire=lambda: conn, release=lambda c: None,
-                    jurisdiction=jurisdiction, embedder=embedder)
+    s = build_store(
+        backend,
+        acquire=lambda: conn,
+        release=lambda c: None,
+        jurisdiction=jurisdiction,
+        embedder=embedder,
+    )
     return s, conn
 
 
 # A canned search row: (section_id, title, page, content, source, similarity)
-SEARCH_ROW = ("section-95-1320", "Setbacks", 12, "Front yard setback is 25 feet.", "Lockport Zoning Ordinance", 0.91)
+SEARCH_ROW = (
+    "section-95-1320",
+    "Setbacks",
+    12,
+    "Front yard setback is 25 feet.",
+    "Lockport Zoning Ordinance",
+    0.91,
+)
 
 
 class KnowledgeStoreTest(unittest.TestCase):
@@ -101,8 +114,8 @@ class KnowledgeStoreTest(unittest.TestCase):
         self.assertIn("FROM knowledge_chunks", sql)
         self.assertNotIn("knowledge.chunks", sql)
         self.assertNotIn("jurisdiction", sql)
-        self.assertIn("text AS text", sql)        # content_col == 'text' for ZIP-local
-        self.assertEqual(params[1], "zoning")     # no jurisdiction param inserted before domain
+        self.assertIn("text AS text", sql)  # content_col == 'text' for ZIP-local
+        self.assertEqual(params[1], "zoning")  # no jurisdiction param inserted before domain
 
     def test_falls_back_to_fulltext_when_no_embedder(self):
         s, conn = store("dice", [[SEARCH_ROW]], embedder=lambda q: None)
@@ -115,7 +128,7 @@ class KnowledgeStoreTest(unittest.TestCase):
         s, conn = store("dice", [[], [SEARCH_ROW]], embedder=lambda q: None)
         out = s.search("setback requirements")
         self.assertIn("ILIKE", conn.last_sql())
-        self.assertIn("jurisdiction = %s", conn.last_sql())   # scope still applied
+        self.assertIn("jurisdiction = %s", conn.last_sql())  # scope still applied
         self.assertEqual(len(out), 1)
 
     def test_result_shape_is_identical_across_backends(self):
@@ -131,7 +144,7 @@ class KnowledgeStoreTest(unittest.TestCase):
         s, _ = store("dice", [[long_row]], embedder=lambda q: [0.1])
         out = s.search("q")
         self.assertTrue(out[0]["text"].endswith("..."))
-        self.assertEqual(len(out[0]["text"]), 603)   # 600 + '...'
+        self.assertEqual(len(out[0]["text"]), 603)  # 600 + '...'
 
     def test_get_section_combines_subchunks_and_scopes(self):
         rows = [

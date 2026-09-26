@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from dotenv import load_dotenv
+
 load_dotenv(Path(__file__).parent.parent.parent / ".env", override=True)
 
 from fastapi import Depends, FastAPI, Request
@@ -17,19 +18,34 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
-from agent import run_chat_stream, WORKFLOWS, _expand_workflow, run_explain, run_autoconfigure, run_grounding_judge, run_describe_cohort, explainer_profiles_public
 import cache as result_cache
-from common.error_logging_client import ErrorLoggingClient, get_error_logging_client, init_error_monitoring
+import kb_resolver
+import usage as ai_usage
+from agent import (
+    WORKFLOWS,
+    _expand_workflow,
+    explainer_profiles_public,
+    run_autoconfigure,
+    run_chat_stream,
+    run_describe_cohort,
+    run_explain,
+    run_grounding_judge,
+)
+from common.error_logging_client import (
+    ErrorLoggingClient,
+    get_error_logging_client,
+    init_error_monitoring,
+)
 from common.logging_setup import configure_logging
 from common.request_context import RequestContextMiddleware
-import usage as ai_usage
-import kb_resolver
+from kb_store import KnowledgeStore
 
 # KB-backed Citation Renderer resolver (DIC-522 / §6.4): reads through the A6 KnowledgeStore
 # seam so the viewer's Sources panel can resolve a citation to full section text + a precise
 # passage. Built lazily/fail-soft — citations are facts (not AI), so a KB outage must degrade
 # (the viewer falls back to its curated-statute resolver), never 500. Default backend is a
 # local JSON fixture (live-verifiable without db-dice/Drake; the dice live-smoke is gated).
+_KB_STORE: KnowledgeStore | None
 try:
     _KB_STORE = kb_resolver.build_kb_store()
 except Exception as _kb_err:  # noqa: BLE001 — never block boot on KB wiring
@@ -66,7 +82,7 @@ log = logging.getLogger("map_buddy")
 
 # Observability (DIC-1879, ADR 0001): stdout logs with request ids (Cloud Run's Logs
 # tab reads the JSON), and Sentry when SENTRY_DSN is set (staging/production only).
-APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
+APP_VERSION = os.getenv("APP_VERSION", "0.0.0")  # set from the git tag at build time
 configure_logging("map-buddy")
 init_error_monitoring("map-buddy", APP_VERSION)
 
@@ -76,12 +92,17 @@ def _quota_block(tenant):
     DIC-584); the viewer falls back to facts (B4). Returns None when the call may proceed.
     Call AFTER the cache check (cache hits are free) and BEFORE the model call. It
     reserves (counts) the call atomically, so callers don't record() again."""
-    allowed, remaining = ai_usage.reserve(tenant)   # counts the call if allowed
+    allowed, remaining = ai_usage.reserve(tenant)  # counts the call if allowed
     if not allowed:
         log.warning("AI quota exceeded for tenant %s", tenant, extra={"tenant": tenant})
-        return {"ok": False, "error": "AI quota exceeded for this tenant; using AI-off.",
-                "degraded": True, "quota_remaining": 0}
+        return {
+            "ok": False,
+            "error": "AI quota exceeded for this tenant; using AI-off.",
+            "degraded": True,
+            "quota_remaining": 0,
+        }
     return None
+
 
 ALLOWED_ORIGINS = [
     o.strip()
@@ -97,13 +118,16 @@ limiter = Limiter(key_func=get_remote_address)
 # service is public, so /docs would advertise /judge, /autoconfigure etc. to anyone.
 _DOCS = os.getenv("MAP_BUDDY_API_DOCS", "") == "1"
 app = FastAPI(
-    title="Map Buddy Service", version=APP_VERSION,
+    title="Map Buddy Service",
+    version=APP_VERSION,
     docs_url="/docs" if _DOCS else None,
     redoc_url="/redoc" if _DOCS else None,
     openapi_url="/openapi.json" if _DOCS else None,
 )
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# slowapi types its handler for RateLimitExceeded, not Exception; the pairing is correct.
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
 
 class _BodySizeLimit:
     """Reject request bodies over MAX_BODY_BYTES with 413 — checks Content-Length up front
@@ -145,9 +169,16 @@ class _BodySizeLimit:
 
     async def _reject(self, send):
         body = json.dumps({"ok": False, "error": "request too large"}).encode()
-        await send({"type": "http.response.start", "status": 413,
-                    "headers": [(b"content-type", b"application/json"),
-                                (b"content-length", str(len(body)).encode())]})
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
         await send({"type": "http.response.body", "body": body})
 
 
@@ -281,7 +312,11 @@ async def chat(
 ):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         return StreamingResponse(
-            iter([f'data: {json.dumps({"type": "error", "message": "ANTHROPIC_API_KEY not configured."})}\n\n']),
+            iter(
+                [
+                    f"data: {json.dumps({'type': 'error', 'message': 'ANTHROPIC_API_KEY not configured.'})}\n\n"
+                ]
+            ),
             media_type="text/event-stream",
         )
 
@@ -289,7 +324,11 @@ async def chat(
     blocked = _quota_block(SERVER_TENANT)
     if blocked:
         return StreamingResponse(
-            iter([f'data: {json.dumps({"type": "error", "message": blocked["error"], "degraded": True})}\n\n']),
+            iter(
+                [
+                    f"data: {json.dumps({'type': 'error', 'message': blocked['error'], 'degraded': True})}\n\n"
+                ]
+            ),
             media_type="text/event-stream",
         )
     history = body.conversation_history[-MAX_HISTORY_TURNS:] if MAX_HISTORY_TURNS > 0 else []
@@ -347,7 +386,9 @@ def explain(
 
 
 @app.post("/autoconfigure")
-@limiter.limit(os.getenv("AUTOCONFIGURE_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
+@limiter.limit(
+    os.getenv("AUTOCONFIGURE_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute"))
+)
 def autoconfigure(
     request: Request,
     body: AutoconfigureRequest,
@@ -397,7 +438,9 @@ def judge(
     if too_big:
         return too_big
     tenant = SERVER_TENANT
-    ck = result_cache.cache_key("judge", tenant, {"output": body.output, "grounding": body.grounding})
+    ck = result_cache.cache_key(
+        "judge", tenant, {"output": body.output, "grounding": body.grounding}
+    )
     if result_cache.enabled():
         hit = result_cache.get_cache().get(ck)
         if hit is not None:
@@ -417,7 +460,9 @@ def judge(
 
 
 @app.post("/describe-cohort")
-@limiter.limit(os.getenv("DESCRIBE_COHORT_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute")))
+@limiter.limit(
+    os.getenv("DESCRIBE_COHORT_RATE_LIMIT", os.getenv("MAP_BUDDY_RATE_LIMIT", "60/minute"))
+)
 def describe_cohort(
     request: Request,
     body: DescribeCohortRequest,
@@ -469,7 +514,9 @@ def kb_resolve(
     store = _KB_STORE
     # A request may scope to a different tenant than the default store (fail-closed inside
     # the store if the jurisdiction is unknown/empty). Rebuild only when it differs.
-    if body.jurisdiction and (store is None or getattr(store, "jurisdiction", None) != body.jurisdiction):
+    if body.jurisdiction and (
+        store is None or getattr(store, "jurisdiction", None) != body.jurisdiction
+    ):
         try:
             store = kb_resolver.build_kb_store(jurisdiction=body.jurisdiction)
         except Exception:  # noqa: BLE001 — degrade, don't 500
@@ -499,10 +546,12 @@ async def explainers():
 async def workflows():
     """Catalog of available macros for the Automations palette (DIC-432). Driven
     by the macro registry, so a new macro appears here automatically. No model."""
-    return {"workflows": [
-        {"id": k, "description": v["description"], "params": v.get("params", {})}
-        for k, v in WORKFLOWS.items()
-    ]}
+    return {
+        "workflows": [
+            {"id": k, "description": v["description"], "params": v.get("params", {})}
+            for k, v in WORKFLOWS.items()
+        ]
+    }
 
 
 @app.post("/workflow")

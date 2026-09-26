@@ -12,11 +12,17 @@ This file is kept identical in backend/parcel_viewer/common/ and map-buddy/backe
 (a test checks it).
 """
 
+from __future__ import annotations
+
 import contextvars
 import logging
 import re
 import time
 import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:  # types only: this module must import with the standard library alone
+    from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _request_id: contextvars.ContextVar[str | None] = contextvars.ContextVar("request_id", default=None)
 
@@ -31,14 +37,14 @@ def current_request_id() -> str | None:
     return _request_id.get()
 
 
-def _header(scope: dict, name: bytes) -> str:
+def _header(scope: Scope, name: bytes) -> str:
     for key, value in scope.get("headers") or []:
         if key == name:
             return value.decode("latin-1")
     return ""
 
 
-def _client_ip(scope: dict) -> str:
+def _client_ip(scope: Scope) -> str:
     # Behind nginx the real client arrives as X-Real-IP; otherwise the socket peer.
     real = _header(scope, b"x-real-ip")
     if real:
@@ -62,11 +68,11 @@ class RequestContextMiddleware:
     header, and writes the access-log line. Plain ASGI (not BaseHTTPMiddleware) so
     streamed responses such as Map Buddy's chat pass through untouched."""
 
-    def __init__(self, app, quiet_paths: tuple[str, ...] = ("/health",)) -> None:
+    def __init__(self, app: ASGIApp, quiet_paths: tuple[str, ...] = ("/health",)) -> None:
         self.app = app
         self.quiet_paths = quiet_paths
 
-    async def __call__(self, scope, receive, send) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -77,7 +83,7 @@ class RequestContextMiddleware:
         started = time.perf_counter()
         status = 500
 
-        async def send_with_id(message) -> None:
+        async def send_with_id(message: Message) -> None:
             nonlocal status
             if message["type"] == "http.response.start":
                 status = message["status"]
@@ -98,7 +104,10 @@ class RequestContextMiddleware:
             access_log.log(
                 _level_for(status, path, self.quiet_paths),
                 "%s %s %s %sms",
-                method, path, status, duration_ms,
+                method,
+                path,
+                status,
+                duration_ms,
                 extra={
                     "http_method": method,
                     "path": path,

@@ -21,6 +21,7 @@ import json
 import os
 import threading
 from contextlib import contextmanager
+from typing import Any
 from urllib.parse import urlparse
 
 WRITER_DSN = os.getenv("PV_WRITER_DATABASE_URL", "")
@@ -61,7 +62,7 @@ class ConfigStore:
         self.dialect = _dialect(self.dsn)
         # Postgres lives in a dedicated schema; SQLite has no schema namespace.
         self.table = "config.config_versions" if self.dialect == "postgres" else "config_versions"
-        self._pool = None
+        self._pool: Any = None  # psycopg_pool.ConnectionPool, created on first use
         self._pool_lock = threading.Lock()
 
     # ── connection / dialect plumbing ───────────────────────────────────────
@@ -73,6 +74,7 @@ class ConfigStore:
         and closes a file connection; callers commit explicitly."""
         if self.dialect == "sqlite":
             import sqlite3
+
             conn = sqlite3.connect(_sqlite_path(self.dsn))
             try:
                 yield conn
@@ -87,6 +89,7 @@ class ConfigStore:
             with self._pool_lock:
                 if self._pool is None:
                     from psycopg_pool import ConnectionPool  # prod
+
                     self._pool = ConnectionPool(
                         self.dsn,
                         min_size=0,
@@ -149,13 +152,15 @@ class ConfigStore:
     def _dump(self, payload: dict) -> str:
         return json.dumps(payload, ensure_ascii=False)
 
-    def _load(self, raw) -> dict:
+    def _load(self, raw: Any) -> Any:
         return raw if isinstance(raw, (dict, list)) else json.loads(raw)
 
     # ── reads ────────────────────────────────────────────────────────────────
     def get_published(self, county: str) -> dict | None:
-        sql = (f"SELECT payload FROM {self.table} WHERE county=? AND status='published'"
-               " ORDER BY version DESC LIMIT 1")
+        sql = (
+            f"SELECT payload FROM {self.table} WHERE county=? AND status='published'"
+            " ORDER BY version DESC LIMIT 1"
+        )
         with self._connection() as conn:
             row = conn.execute(self._q(sql), (county,)).fetchone()
             return self._load(row[0]) if row else None
@@ -170,21 +175,29 @@ class ConfigStore:
         return self.get_published(county)
 
     def list_versions(self, county: str) -> list[dict]:
-        sql = (f"SELECT version, note, created_by, created_at FROM {self.table}"
-               " WHERE county=? AND status='published' ORDER BY version DESC")
+        sql = (
+            f"SELECT version, note, created_by, created_at FROM {self.table}"
+            " WHERE county=? AND status='published' ORDER BY version DESC"
+        )
         with self._connection() as conn:
             rows = conn.execute(self._q(sql), (county,)).fetchall()
-            return [{"version": r[0], "note": r[1], "created_by": r[2],
-                     "created_at": str(r[3])} for r in rows]
+            return [
+                {"version": r[0], "note": r[1], "created_by": r[2], "created_at": str(r[3])}
+                for r in rows
+            ]
 
     # ── writes ───────────────────────────────────────────────────────────────
     def save_draft(self, county: str, payload: dict, author: str | None = None) -> None:
         """Replace the single working draft for this county."""
         with self._connection() as conn:
-            conn.execute(self._q(f"DELETE FROM {self.table} WHERE county=? AND status='draft'"), (county,))
             conn.execute(
-                self._q(f"INSERT INTO {self.table} (county, status, version, payload, created_by)"
-                        " VALUES (?, 'draft', NULL, ?, ?)"),
+                self._q(f"DELETE FROM {self.table} WHERE county=? AND status='draft'"), (county,)
+            )
+            conn.execute(
+                self._q(
+                    f"INSERT INTO {self.table} (county, status, version, payload, created_by)"
+                    " VALUES (?, 'draft', NULL, ?, ?)"
+                ),
                 (county, self._dump(payload), author),
             )
             conn.commit()
@@ -201,8 +214,10 @@ class ConfigStore:
         with self._connection() as conn:
             version = self._next_version(conn, county)
             conn.execute(
-                self._q(f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
-                        " VALUES (?, 'published', ?, ?, ?, ?)"),
+                self._q(
+                    f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
+                    " VALUES (?, 'published', ?, ?, ?, ?)"
+                ),
                 (county, version, self._dump(draft), note or "Published", author),
             )
             conn.commit()
@@ -219,8 +234,10 @@ class ConfigStore:
             payload = self._load(row[0])
             new_version = self._next_version(conn, county)
             conn.execute(
-                self._q(f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
-                        " VALUES (?, 'published', ?, ?, ?, ?)"),
+                self._q(
+                    f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
+                    " VALUES (?, 'published', ?, ?, ?, ?)"
+                ),
                 (county, new_version, self._dump(payload), f"Rollback to v{version}", author),
             )
             conn.commit()
@@ -233,8 +250,10 @@ class ConfigStore:
             return False
         with self._connection() as conn:
             conn.execute(
-                self._q(f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
-                        " VALUES (?, 'published', 1, ?, 'Seeded from baked manifest', 'system')"),
+                self._q(
+                    f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
+                    " VALUES (?, 'published', 1, ?, 'Seeded from baked manifest', 'system')"
+                ),
                 (county, self._dump(payload)),
             )
             conn.commit()

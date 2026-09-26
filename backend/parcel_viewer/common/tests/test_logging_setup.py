@@ -6,7 +6,12 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from parcel_viewer.common import request_context
-from parcel_viewer.common.logging_setup import JsonFormatter, RequestIdFilter, configure_logging, safe_for_log
+from parcel_viewer.common.logging_setup import (
+    JsonFormatter,
+    RequestIdFilter,
+    configure_logging,
+    safe_for_log,
+)
 
 
 def _record(message: str = "hello", level: int = logging.INFO, **extra) -> logging.LogRecord:
@@ -60,7 +65,9 @@ class JsonFormatterTests(TestCase):
 
 class SafeForLogTests(TestCase):
     def test_line_breaks_cannot_forge_a_log_line(self) -> None:
-        self.assertEqual(safe_for_log("boom\r\n2026-01-01 INFO fake line"), "boom  2026-01-01 INFO fake line")
+        self.assertEqual(
+            safe_for_log("boom\r\n2026-01-01 INFO fake line"), "boom  2026-01-01 INFO fake line"
+        )
 
     def test_other_control_characters_become_spaces(self) -> None:
         self.assertEqual(safe_for_log("a\x1b[31mb\x00c"), "a [31mb c")

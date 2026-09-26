@@ -1,9 +1,8 @@
 import asyncio
-from unittest import TestCase
-from unittest.mock import MagicMock, create_autospec, patch
-
 import urllib.error
 from email.message import Message
+from unittest import TestCase
+from unittest.mock import MagicMock, create_autospec, patch
 
 from fastapi.testclient import TestClient
 from parameterized import parameterized
@@ -50,7 +49,9 @@ class ErrorReportingTests(TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("writer db down", response.text)  # no internals to the caller
         self.errors.report_exception.assert_called_once()
-        self.assertEqual(self.errors.report_exception.call_args.kwargs["tags"], {"operation": "config_store"})
+        self.assertEqual(
+            self.errors.report_exception.call_args.kwargs["tags"], {"operation": "config_store"}
+        )
 
     @patch("app.main._discover_layers", autospec=True, side_effect=RuntimeError("boom"))
     def test_layer_discovery_failure_is_reported(self, _mock_discover) -> None:
@@ -58,7 +59,9 @@ class ErrorReportingTests(TestCase):
 
         self.assertEqual(response.status_code, 500)
         self.errors.report_exception.assert_called_once()
-        self.assertEqual(self.errors.report_exception.call_args.kwargs["tags"], {"operation": "discover_layers"})
+        self.assertEqual(
+            self.errors.report_exception.call_args.kwargs["tags"], {"operation": "discover_layers"}
+        )
 
     @patch("app.main._wms_opener.open", side_effect=OSError("upstream timeout"))
     def test_wms_proxy_upstream_failure_is_logged_not_reported(self, _mock_open) -> None:
@@ -97,17 +100,20 @@ class WmsProxyHardeningTests(TestCase):
 
     def setUp(self) -> None:
         from parcel_viewer.ratelimit import limiter
+
         limiter.reset()
         self.client = TestClient(main.app)
 
-    @parameterized.expand([
-        ("plain_http", "http://hazards.fema.gov/arcgis/x"),
-        ("other_host", "https://evil.example/x"),
-        ("lookalike_host", "https://hazards.fema.gov.evil.example/x"),
-        ("userinfo", "https://user:pw@hazards.fema.gov/x"),
-        ("odd_port", "https://hazards.fema.gov:8443/x"),
-        ("internal", "https://169.254.169.254/latest/meta-data"),
-    ])
+    @parameterized.expand(
+        [
+            ("plain_http", "http://hazards.fema.gov/arcgis/x"),
+            ("other_host", "https://evil.example/x"),
+            ("lookalike_host", "https://hazards.fema.gov.evil.example/x"),
+            ("userinfo", "https://user:pw@hazards.fema.gov/x"),
+            ("odd_port", "https://hazards.fema.gov:8443/x"),
+            ("internal", "https://169.254.169.254/latest/meta-data"),
+        ]
+    )
     def test_rejects_urls_off_the_allowlist(self, _name: str, url: str) -> None:
         with patch("app.main._wms_opener.open") as mock_open:
             response = self.client.get("/wms-proxy", params={"url": url})
@@ -119,7 +125,9 @@ class WmsProxyHardeningTests(TestCase):
     def test_passes_map_data_through(self, mock_open) -> None:
         mock_open.return_value = _upstream(b'{"features": []}', "application/json; charset=utf-8")
 
-        response = self.client.get("/wms-proxy", params={"url": "https://hazards.fema.gov/arcgis/x?f=json"})
+        response = self.client.get(
+            "/wms-proxy", params={"url": "https://hazards.fema.gov/arcgis/x?f=json"}
+        )
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"features": []})
@@ -149,7 +157,9 @@ class WmsProxyHardeningTests(TestCase):
     def test_does_not_follow_or_reflect_redirects_and_errors(self, mock_open) -> None:
         headers = Message()
         headers["Location"] = "http://169.254.169.254/"
-        mock_open.side_effect = urllib.error.HTTPError("https://hazards.fema.gov/x", 302, "Found", headers, None)
+        mock_open.side_effect = urllib.error.HTTPError(
+            "https://hazards.fema.gov/x", 302, "Found", headers, None
+        )
 
         response = self.client.get("/wms-proxy", params={"url": "https://hazards.fema.gov/x"})
 
@@ -159,4 +169,6 @@ class WmsProxyHardeningTests(TestCase):
     def test_the_opener_refuses_redirects(self) -> None:
         handler = main._NoRedirects()
 
-        self.assertIsNone(handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/"))
+        self.assertIsNone(
+            handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/")
+        )
