@@ -1752,6 +1752,16 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  // The tax-roll year the AV history (yr0 = newest) ends at (DIC-1878): the county's
+  // override (assessing.rollYear), else the API's roll_year (from when the data was
+  // loaded), else the calendar year. The rule lives in the engine's explainer core.
+  function _rollYear(p) {
+    const override = (countyConfig().assessing || {}).rollYear;
+    const core = window.ISV_EXPLAINER_CORE;
+    if (core && core.resolveRollYear) return core.resolveRollYear(p, { rollYear: override }).year;
+    return parseInt(override, 10) || parseInt(p && p.roll_year, 10) || new Date().getFullYear();
+  }
+
   function _escHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
@@ -1809,7 +1819,7 @@
       if (validVals.length === 0) {
         return '<div class="parcel-info-row"><span class="parcel-info-label"' + tipAttr("AV History") + '>AV History</span><span class="parcel-info-value">&mdash;</span></div>';
       }
-      const curYear = new Date().getFullYear();
+      const curYear = _rollYear(props);
       const maxVal = Math.max.apply(null, validVals);
       const W = 240, H = 74, labelH = 13, valueH = 11, barAreaH = H - labelH - valueH;
       const colW = W / vals.length, barW = colW * 0.55;
@@ -1921,7 +1931,7 @@
       const vals = histVals.slice().reverse();
       const validVals = vals.filter(v => v != null);
       if (validVals.length === 0) return '<div class="parcel-info-row"><span class="parcel-info-label">AV History</span><span class="parcel-info-value">—</span></div>';
-      const curYear = new Date().getFullYear();
+      const curYear = _rollYear(p);
       const maxVal = Math.max(...validVals);
       const W = 240, H = 74, labelH = 13, valueH = 11, barAreaH = H - labelH - valueH;
       const colW = W / vals.length, barW = colW * 0.55;

@@ -114,7 +114,8 @@
       .then(function (feat) {
         var p = (feat && feat.properties) || {};
         var c = core();
-        if (c) return c.buildAssessmentFacts(p, { labels: countyConfig().labels, pinFallback: parcel && parcel.pin });
+        var rollOverride = (countyConfig().assessing || {}).rollYear;
+        if (c) return c.buildAssessmentFacts(p, { labels: countyConfig().labels, pinFallback: parcel && parcel.pin, rollYear: rollOverride });
         // Inline fallback (transitional — mirrors engine/capabilities/explainer.core.js):
         var av = num(p.assessed_value);
         // DB stores assessed_value_yr0..yr4 newest-first (see map.js showParcelInfo).
@@ -122,7 +123,8 @@
                                p.assessed_value_yr3, p.assessed_value_yr4].map(num);
         // Year-labeled, oldest→newest — clearer for the model and the chart.
         var oldestFirst = histNewestFirst.slice().reverse();
-        var curYear = new Date().getFullYear();
+        // Roll year: county override, else the API's roll_year, else the calendar (DIC-1878).
+        var curYear = parseInt(rollOverride, 10) || parseInt(p.roll_year, 10) || new Date().getFullYear();
         var n = oldestFirst.length;
         var byYear = oldestFirst.map(function (v, i) {
           return { year: curYear - (n - 1 - i), assessed_value: v };
@@ -143,6 +145,8 @@
           // Newest-first for the chart (it reverses); year-labeled for the model.
           assessed_value_history: histNewestFirst,
           assessed_value_by_year: byYear,
+          roll_year: curYear,
+          roll_year_source: parseInt(rollOverride, 10) ? 'config' : (parseInt(p.roll_year, 10) ? 'data' : 'calendar'),
         };
       });
   }
@@ -260,7 +264,8 @@
     var vals = (f.assessed_value_history || []).slice().reverse();
     var valid = vals.filter(function (v) { return v != null; });
     if (valid.length < 2) return '';
-    var curYear = new Date().getFullYear();
+    // The facts carry the roll year the history ends at (DIC-1878).
+    var curYear = parseInt(f.roll_year, 10) || new Date().getFullYear();
     var maxV = Math.max.apply(null, valid), minV = Math.min.apply(null, valid);
     var W = 320, H = 96, labelH = 15, valueH = 13, areaH = H - labelH - valueH;
     var n = vals.length, colW = W / n, barW = colW * 0.5;
