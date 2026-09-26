@@ -83,7 +83,8 @@
     var histNewestFirst = [p.assessed_value_yr0, p.assessed_value_yr1, p.assessed_value_yr2,
                            p.assessed_value_yr3, p.assessed_value_yr4].map(num);
     var oldestFirst = histNewestFirst.slice().reverse();
-    var curYear = (ctx && ctx.currentYear) || _thisYear();
+    var roll = resolveRollYear(p, ctx);
+    var curYear = roll.year;
     var n = oldestFirst.length;
     var byYear = oldestFirst.map(function (v, i) {
       return { year: curYear - (n - 1 - i), assessed_value: v };
@@ -102,7 +103,28 @@
       true_cash_value_estimate: av != null ? av * 2 : null,
       assessed_value_history: histNewestFirst,
       assessed_value_by_year: byYear,
+      // Which roll the newest figure is from, and how we know: 'config' (set by the
+      // county), 'data' (from the load date), or 'calendar' (a guess; DIC-1878).
+      roll_year: roll.year,
+      roll_year_source: roll.source,
     };
+  }
+
+  // The tax-roll year the value history (yr0 = newest) ends at (DIC-1878). Precedence:
+  // an explicit override (ctx.rollYear, from county config `assessing.rollYear`), then the
+  // record's roll_year (the API derives it from when the data was loaded), and only if
+  // neither is known the calendar year (ctx.currentYear lets tests pin it).
+  function resolveRollYear(record, ctx) {
+    var cfg = _year(ctx && ctx.rollYear);
+    if (cfg) return { year: cfg, source: 'config' };
+    var data = _year(record && record.roll_year);
+    if (data) return { year: data, source: 'data' };
+    return { year: _year(ctx && ctx.currentYear) || _thisYear(), source: 'calendar' };
+  }
+  function _year(v) {
+    if (v == null || v === '') return null;
+    var n = Number(v);
+    return Number.isInteger(n) && n >= 1900 && n <= 2200 ? n : null;
   }
 
   function buildTaxDescriptionFacts(record, ctx) {
@@ -180,6 +202,7 @@
   return {
     core: core,
     buildAssessmentFacts: buildAssessmentFacts,
+    resolveRollYear: resolveRollYear,
     buildTaxDescriptionFacts: buildTaxDescriptionFacts,
     classifyDescription: classifyDescription,
     parsePinSegments: parsePinSegments,
