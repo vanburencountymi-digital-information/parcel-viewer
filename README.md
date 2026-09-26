@@ -12,10 +12,17 @@ Public-facing, read-only parcel map for Van Buren County (and other PostGIS-back
 |---------|-------|--------------|
 | **api** | `backend/` | FastAPI read-only parcel API (search, parcel records, config) |
 | **martin** | Docker image | Vector tile server — serves `geo.parcel_tiles()` as MVT |
-| **web** (nginx) | `infra/nginx.viewer.conf` | Serves static JS/CSS; proxies `/api` → api, `/tiles` → martin, `/map-buddy` → Map Buddy |
+| **web** (nginx) | `infra/nginx.viewer.conf` | Serves static JS/CSS; proxies `/api` → api, `/tiles` → martin, `/aerial` → Esri. The browser calls Map Buddy directly (in local dev, through `/map-buddy-api`) |
 | **Map Buddy** | `map-buddy/` | AI assistant microservice — deployed independently to Cloud Run |
 
 The viewer stack (api + martin + nginx) and Map Buddy are **two separate deployables**. The viewer works without Map Buddy; AI features degrade gracefully when Map Buddy is unreachable or the key is missing.
+
+**More documentation:**
+- `ARCHITECTURE.md`: how the pieces fit, request flow, the AI boundary, where to change things.
+- `SECURITY.md`: what's public, where secrets live, the controls, open decisions, and how to report a vulnerability.
+- `docs/RUNBOOK.md`: deploying, rolling back, rotating secrets, and tracing a problem.
+- `infra/DEPLOY-CHECKLIST.md`: every setting and the pre-launch steps.
+- `docs/adrs/`: decisions and their reasons.
 
 ---
 
