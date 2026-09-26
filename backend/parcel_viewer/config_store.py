@@ -111,6 +111,7 @@ class ConfigStore:
                         kwargs={
                             "options": f"-c statement_timeout={STATEMENT_TIMEOUT_MS}",
                             "connect_timeout": int(os.getenv("PV_WRITER_CONNECT_TIMEOUT_S", "3")),
+                            "application_name": "parcel-viewer-config",
                         },
                         open=True,
                     )
