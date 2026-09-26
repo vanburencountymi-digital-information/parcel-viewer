@@ -16,7 +16,7 @@ from pydantic import BaseModel
 from .. import config
 from ..cohort_query import GEOGRAPHY_SOURCES, CohortSelectorError, build_predicate
 from ..db import pool
-from ..stores.parcel_store import make_parcel_store
+from ..stores.parcel_store import make_parcel_store, roll_year_for_load
 
 log = logging.getLogger(__name__)
 
@@ -550,7 +550,9 @@ def get_parcel(parcel_id: int):
     row["pin"] = row["parcel_no"]
     row["gis_acres"] = row["computed_acres"] if row.get("computed_acres") else row["acres"]
     row["PCOMBINED"] = row["prop_street"]
-    for key in ("created_at", "updated_at"):
+    # The roll year the value history ends at, so year labels follow the data (DIC-1878).
+    row["roll_year"] = roll_year_for_load(row.get("assessing_loaded_at"))
+    for key in ("created_at", "updated_at", "assessing_loaded_at"):
         if row.get(key) is not None:
             row[key] = row[key].isoformat()
     return _row_to_feature(row)

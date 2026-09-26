@@ -35,6 +35,35 @@ test('assessment history is year-labeled oldest→newest and drops nulls', () =>
   ]);
 });
 
+// DIC-1878: the labels follow the roll the data holds, not the calendar. CTX pins the
+// calendar to 2026; the data says the history ends at the 2024 roll.
+test('history years follow the roll year in the data, not the calendar', () => {
+  const f = EXPLAINER.buildAssessmentFacts({ ...parcel, roll_year: 2024 }, CTX);
+  assert.deepEqual(f.assessed_value_by_year.map((e) => e.year), [2020, 2021, 2022, 2023, 2024]);
+  assert.equal(f.roll_year, 2024);
+  assert.equal(f.roll_year_source, 'data');
+});
+
+test('a county-config roll year overrides the data', () => {
+  const f = EXPLAINER.buildAssessmentFacts({ ...parcel, roll_year: 2024 }, { ...CTX, rollYear: 2025 });
+  assert.equal(f.assessed_value_by_year.at(-1).year, 2025);
+  assert.equal(f.roll_year_source, 'config');
+});
+
+test('without a known roll year, the calendar is the labelled fallback', () => {
+  const f = EXPLAINER.buildAssessmentFacts(parcel, CTX);
+  assert.equal(f.roll_year, 2026);
+  assert.equal(f.roll_year_source, 'calendar');
+});
+
+test('invalid roll years are ignored, not trusted', () => {
+  for (const bad of ['', 'abc', 26, 2024.5, null, 99999]) {
+    const r = EXPLAINER.resolveRollYear({ roll_year: bad }, { rollYear: bad, currentYear: 2026 });
+    assert.deepEqual(r, { year: 2026, source: 'calendar' }, String(bad));
+  }
+  assert.deepEqual(EXPLAINER.resolveRollYear({ roll_year: '2025' }, {}), { year: 2025, source: 'data' });
+});
+
 test('missing figures are omitted, never guessed', () => {
   const f = EXPLAINER.buildAssessmentFacts({ pin: 'X', assessed_value: null }, CTX);
   assert.equal(f.assessed_value, null);

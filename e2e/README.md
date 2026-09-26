@@ -42,6 +42,7 @@ the specs that touch them — never as a blanket rule.
 | `smoke` | Clean load (10s of console silence), Esri basemap, pinned libraries under SRI, config + Map Buddy endpoint, no `/ws` reconnect spam |
 | `search-and-panel` | Search via UI, keyboard nav, no-match message, no stale results, panel close clears selection, Esc in a dialog keeps the selection |
 | `map-click` | A real mouse click on the canvas selects the parcel |
+| `assessment-years` | AV history labels (panel chart, explainer chart, facts sent to the AI) follow the data's roll year, not the calendar; a county-config `assessing.rollYear` overrides it (DIC-1878) |
 | `context-menu` | Right-click menu: opens at the pointer; every copy row puts exactly its shown text on the clipboard, at the clicked point; select-here keeps the camera; Shift+F10 / arrows / Esc (selection kept, stops a search orbit); a right-drag doesn't open it; map move / outside click close it; Google Maps + Street View links |
 | `map-buddy-commands` | Every command that opens a window/tool/mode: it closes, releases the map-click gate, and a real click still selects a parcel (regression guard for DIC-1875) |
 | `tool-windows` | Every Help & tools menu window and parcel tool: open, close by button, close by Esc, focus not lost |

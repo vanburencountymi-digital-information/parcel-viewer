@@ -132,6 +132,7 @@ It checks routes + DB reachability, security headers, private files and API docs
 - Toggle dark mode; the browser console is clean — in particular **no `[Report Only]` CSP messages** (if there are, fix the CSP before enforcing it).
 
 ## Known gotchas (already handled in-repo)
+- **Assessed-value year labels** follow the roll year the API infers from `assessing.vbc_parcels.loaded_at` (loaded April onward = that year's roll; January–March = the previous roll), so they change when the data is refreshed, not on January 1. If a load doesn't fit that rule, set `assessing.rollYear` in the county config (DIC-1878).
 - `/demo/`, `/admin/`, `/frontend/public/`, `/engine/`, `/map-buddy/js|css/` send `no-store` (stale JS/HTML otherwise).
 - AI-availability uses hysteresis (no premature "unavailable" toast on a single cold-start blip).
 - Map fails to load → an in-map "The map couldn't load" card with Try again; search failures show a message (#21).

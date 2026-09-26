@@ -46,12 +46,29 @@ _PARCEL_SQL = """
            a.assessed_value, a.taxable_value, a.prev_assessed_value, a.prev_taxable_value,
            a.assessed_value_yr0, a.assessed_value_yr1, a.assessed_value_yr2,
            a.assessed_value_yr3, a.assessed_value_yr4,
-           a.legal_description,
+           a.legal_description, a.loaded_at AS assessing_loaded_at,
            ST_AsGeoJSON(ST_Transform(pg.geom, 4326), 7) AS geojson
     FROM geo.parcel_geometry pg
     LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
     WHERE pg.id = %s AND pg.archived_at IS NULL
 """
+
+
+# Which tax roll the assessed_value_yr0..yr4 history ends at (DIC-1878). The table doesn't
+# record it, so it's inferred from when the assessing data was loaded: Michigan's roll for
+# year Y is final once the March Board of Review ends, so a load from April onward carries
+# roll Y and a load in January-March still carries roll Y-1. Labels then change when the
+# data is refreshed, not on January 1. A county-config override (`assessing.rollYear`) wins
+# in the viewer when the loaded roll is known exactly. (Month is taken in the timestamp's
+# own zone; a few hours either side of April 1 don't matter for a monthly rule.)
+ROLL_FINAL_MONTH = 4
+
+
+def roll_year_for_load(loaded_at) -> int | None:
+    """The assessment roll year carried by data loaded at `loaded_at`, or None if unknown."""
+    if loaded_at is None:
+        return None
+    return loaded_at.year if loaded_at.month >= ROLL_FINAL_MONTH else loaded_at.year - 1
 
 
 def _to_canonical(r: dict) -> dict:
