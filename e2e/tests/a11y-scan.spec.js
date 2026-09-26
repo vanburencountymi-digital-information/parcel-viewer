@@ -33,6 +33,17 @@ const SCREENS = {
     if (!(await page.locator('#map-control-panel').isVisible())) await page.locator('#mcp-reopen-tab').click();
     await page.locator('.mcp-tab[data-tab="layers"]').click();
   },
+  'right-click menu': async (page) => {
+    const box = await page.locator('#map canvas.maplibregl-canvas').boundingBox();
+    await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.4, { button: 'right' });
+    await expect(page.locator('#pv-ctx-menu')).toBeVisible();
+  },
+  'right-click menu, dark': async (page) => {
+    await page.locator('#theme-toggle').click();
+    const box = await page.locator('#map canvas.maplibregl-canvas').boundingBox();
+    await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.4, { button: 'right' });
+    await expect(page.locator('#pv-ctx-menu')).toBeVisible();
+  },
   'dark mode + parcel': async (page) => {
     await page.locator('#theme-toggle').click();
     await selectParcelViaSearch(page);
