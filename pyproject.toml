@@ -1,0 +1,90 @@
+# Tool configuration only (DIC-1881). The two Python services keep their own
+# requirements.txt; this file holds shared lint, type-check and release settings,
+# matching the team boilerplate (dice-document-pipeline-api, parcel-application-portal).
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["graphify-out"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # bugbear
+    "SIM", # simplify
+]
+ignore = [
+    "E501", # line length handled by the formatter
+]
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency markers are designed to be called in default arguments.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query", "fastapi.Body", "fastapi.Path"]
+
+[tool.ruff.lint.per-file-ignores]
+# .env must be loaded before importing the modules that read it at import time.
+"map-buddy/backend/main.py" = ["E402"]
+# Standalone contract-test scripts: they stub modules (anthropic) and extend sys.path
+# before importing the code under test, and keep one-line fixtures compact.
+"engine/test/*.py" = ["E402", "E702"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "parcel_viewer", "common", "agent", "main", "cache", "usage", "citations", "kb_resolver", "kb_store"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+# Both services are checked in one run; their modules don't collide (the API's are
+# app.* / parcel_viewer.*, Map Buddy's are top-level).
+mypy_path = ["backend", "map-buddy/backend"]
+explicit_package_bases = true
+files = ["backend", "map-buddy/backend"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+# Libraries without type information.
+module = ["slowapi.*", "dotenv.*", "parameterized.*", "openai.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Tests assert on log-record extras and mocks; correctness comes from running them
+# (same rule as the team boilerplate).
+module = ["*.tests.*", "tests.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+# Modules written before type checking was adopted (DIC-1881): still type-checked,
+# but not yet required to annotate every function. New modules get no exemption.
+# Remove entries as modules gain annotations.
+module = [
+    "app.main",
+    "parcel_viewer.cohort_query",
+    "parcel_viewer.config_store",
+    "parcel_viewer.routers.feedback",
+    "parcel_viewer.routers.parcels",
+    "parcel_viewer.stores.parcel_contract",
+    "parcel_viewer.stores.parcel_store",
+    "agent",
+    "cache",
+    "kb_resolver",
+    "kb_store",
+    "main",
+    "usage",
+]
+disallow_untyped_defs = false
+
+[tool.semantic_release]
+# Tags are the only source of truth for the version (same as the team's ADR 0012):
+# version_toml / version_variables are deliberately unset, so no file is rewritten.
+commit_parser = "conventional"
+tag_format = "v{version}"

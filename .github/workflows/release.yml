@@ -1,0 +1,56 @@
+# Automatic semantic versioning (DIC-1881, ADR 0002; same as the team's ADR 0012).
+# On every push to main, python-semantic-release reads the Conventional Commit messages
+# since the last tag (fix: -> patch, feat: -> minor, feat!: / BREAKING CHANGE -> major;
+# docs/test/ci/chore -> no release) and pushes a vX.Y.Z tag + GitHub Release. The tag is
+# the only source of the version: nothing writes a version string into the repo.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      HAS_RELEASE_APP: ${{ secrets.RELEASE_APP_ID != '' }}
+
+    steps:
+      # Until an admin installs the VBCD Semantic Release App on this repo and adds its
+      # secrets, skip with a notice instead of failing every merge to main.
+      - name: Check the release app is configured
+        if: env.HAS_RELEASE_APP != 'true'
+        run: echo "::notice::Release skipped — RELEASE_APP_ID / RELEASE_APP_PRIVATE_KEY are not set (see DIC-1881)."
+
+      # main requires PRs for everyone, including the default GITHUB_TOKEN's
+      # github-actions[bot], which can't be a ruleset bypass actor. This org-owned GitHub
+      # App (Contents: read/write, on the bypass list) mints a short-lived token instead,
+      # so checkout and the tag push both authenticate as the app.
+      - name: Generate a token
+        if: env.HAS_RELEASE_APP == 'true'
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      # Must use the app token: checkout stores it as the git credential that
+      # semantic-release's push uses.
+      - name: Checkout repository
+        if: env.HAS_RELEASE_APP == 'true'
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Semantic version release
+        if: env.HAS_RELEASE_APP == 'true'
+        uses: python-semantic-release/python-semantic-release@v10.6.2
+        with:
+          github_token: ${{ steps.generate-token.outputs.token }}
