@@ -9,6 +9,11 @@ COPY parcel_viewer ./parcel_viewer
 COPY app ./app
 
 ENV PYTHONPATH=/app
+# Release version (ADR 0002): the git tag, passed in at build time
+# (--build-arg APP_VERSION=$(git describe --tags --abbrev=0)). Reported as the API version
+# and the Sentry release. 0.0.0 = an untagged local build.
+ARG APP_VERSION=0.0.0
+ENV APP_VERSION=${APP_VERSION}
 
 # Run as an unprivileged user (DIC-1879): the API writes no files.
 RUN useradd --system --uid 10001 --no-create-home appuser
