@@ -12,6 +12,8 @@ In-process rolling-window counter — the groundwork. The seam (count/record) is
 DIC-400's shared usage counters swap in for multi-instance; the policy here is unchanged.
 The clock is injectable so window/quota behavior is testable without sleeping.
 """
+
+import contextlib
 import os
 import threading
 import time
@@ -24,7 +26,7 @@ class UsageCounter:
     def __init__(self, window_seconds: int = 3600, clock=time.monotonic):
         self.window = window_seconds
         self._clock = clock
-        self._events = defaultdict(deque)  # tenant -> deque[timestamps]
+        self._events: defaultdict[str, deque[float]] = defaultdict(deque)  # tenant -> timestamps
 
     def _prune(self, tenant, now):
         dq = self._events[tenant]
@@ -79,10 +81,9 @@ def _parse_overrides(s: str) -> dict:
     for part in (s or "").split(","):
         if "=" in part:
             k, v = part.split("=", 1)
-            try:
+            # A malformed "tenant=N" entry is ignored; the others still apply.
+            with contextlib.suppress(ValueError):
                 out[k.strip()] = int(v)
-            except ValueError:
-                pass  # a malformed "tenant=N" entry is ignored; the others still apply
     return out
 
 

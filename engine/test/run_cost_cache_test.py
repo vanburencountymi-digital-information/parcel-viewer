@@ -4,6 +4,7 @@ The cache that makes "the same parcel explained twice shouldn't pay twice" true.
 logic — no model, no DB: key stability/tenant-scoping, hit/miss, TTL expiry (injected
 clock, no sleep), and LRU eviction.
 """
+
 import sys
 import unittest
 from pathlib import Path
@@ -40,26 +41,26 @@ class CacheKeyTest(unittest.TestCase):
 class ResultCacheTest(unittest.TestCase):
     def test_hit_and_miss(self):
         rc = C.ResultCache(max_size=4, ttl_seconds=100, clock=lambda: 0)
-        self.assertIsNone(rc.get("k"))            # miss
+        self.assertIsNone(rc.get("k"))  # miss
         rc.set("k", {"explanation": "x"})
-        self.assertEqual(rc.get("k"), {"explanation": "x"})   # hit
+        self.assertEqual(rc.get("k"), {"explanation": "x"})  # hit
 
     def test_ttl_expiry_with_injected_clock(self):
         now = [0]
         rc = C.ResultCache(max_size=4, ttl_seconds=10, clock=lambda: now[0])
         rc.set("k", "v")
         now[0] = 9
-        self.assertEqual(rc.get("k"), "v")        # still fresh
+        self.assertEqual(rc.get("k"), "v")  # still fresh
         now[0] = 10
-        self.assertIsNone(rc.get("k"))            # expired (and evicted)
+        self.assertIsNone(rc.get("k"))  # expired (and evicted)
         self.assertEqual(len(rc), 0)
 
     def test_lru_eviction_at_capacity(self):
         rc = C.ResultCache(max_size=2, ttl_seconds=1000, clock=lambda: 0)
         rc.set("a", 1)
         rc.set("b", 2)
-        self.assertEqual(rc.get("a"), 1)          # touch a → b is now LRU
-        rc.set("c", 3)                            # evicts b
+        self.assertEqual(rc.get("a"), 1)  # touch a → b is now LRU
+        rc.set("c", 3)  # evicts b
         self.assertIsNone(rc.get("b"))
         self.assertEqual(rc.get("a"), 1)
         self.assertEqual(rc.get("c"), 3)
@@ -67,10 +68,10 @@ class ResultCacheTest(unittest.TestCase):
 
     def test_singleton_and_toggle_present(self):
         self.assertIsInstance(C.enabled(), bool)
-        self.assertIs(C.get_cache(), C.get_cache())   # stable singleton
+        self.assertIs(C.get_cache(), C.get_cache())  # stable singleton
 
     def test_stats_shape_for_monitoring(self):
-        s = C.stats()   # C4 /status payload
+        s = C.stats()  # C4 /status payload
         self.assertEqual(set(s), {"enabled", "size", "max_size", "ttl_seconds"})
         self.assertIsInstance(s["size"], int)
 

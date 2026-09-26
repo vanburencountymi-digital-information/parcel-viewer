@@ -39,7 +39,9 @@ class InitErrorMonitoringTests(TestCase):
             before_send=scrub_event,
         )
 
-    @patch.dict(os.environ, {"SENTRY_DSN": "https://key@sentry.example/1", "SENTRY_ENVIRONMENT": "staging"})
+    @patch.dict(
+        os.environ, {"SENTRY_DSN": "https://key@sentry.example/1", "SENTRY_ENVIRONMENT": "staging"}
+    )
     @patch("parcel_viewer.common.error_logging_client.sentry_sdk.set_tag", autospec=True)
     @patch("parcel_viewer.common.error_logging_client.sentry_sdk.init", autospec=True)
     def test_dsn_and_environment_from_env(self, mock_init, mock_tag) -> None:
@@ -53,17 +55,21 @@ class InitErrorMonitoringTests(TestCase):
 
 class ScrubEventTests(TestCase):
     def test_drops_query_strings_cookies_and_bodies(self) -> None:
-        event = {"request": {
-            "url": "https://gis.dicemi.org/api/search?q=SMITH",
-            "query_string": "q=SMITH",
-            "cookies": {"a": "b"},
-            "data": {"details": "my address"},
-            "method": "GET",
-        }}
+        event = {
+            "request": {
+                "url": "https://gis.dicemi.org/api/search?q=SMITH",
+                "query_string": "q=SMITH",
+                "cookies": {"a": "b"},
+                "data": {"details": "my address"},
+                "method": "GET",
+            }
+        }
 
         scrubbed = scrub_event(event, {})
 
-        self.assertEqual(scrubbed["request"], {"url": "https://gis.dicemi.org/api/search", "method": "GET"})
+        self.assertEqual(
+            scrubbed["request"], {"url": "https://gis.dicemi.org/api/search", "method": "GET"}
+        )
 
     def test_tags_the_request_id(self) -> None:
         token = request_context._request_id.set("req-12345678")

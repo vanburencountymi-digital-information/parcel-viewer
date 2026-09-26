@@ -23,7 +23,9 @@ class ClientErrorsTests(TestCase):
 
     def test_logs_a_valid_report(self) -> None:
         with self.assertLogs("parcel_viewer.routers.client_errors", level="WARNING") as logs:
-            response = self.client.post("/client-errors", json=VALID, headers={"User-Agent": "TestBrowser/1"})
+            response = self.client.post(
+                "/client-errors", json=VALID, headers={"User-Agent": "TestBrowser/1"}
+            )
 
         self.assertEqual(response.status_code, 204)
         record = logs.records[-1]
@@ -40,12 +42,14 @@ class ClientErrorsTests(TestCase):
 
         self.assertNotIn("\n", logs.records[-1].getMessage())
 
-    @parameterized.expand([
-        ("message_too_long", {"message": "x" * 501}),
-        ("unknown_kind", {"kind": "warning"}),
-        ("negative_line", {"line": -1}),
-        ("source_too_long", {"source": "s" * 301}),
-    ])
+    @parameterized.expand(
+        [
+            ("message_too_long", {"message": "x" * 501}),
+            ("unknown_kind", {"kind": "warning"}),
+            ("negative_line", {"line": -1}),
+            ("source_too_long", {"source": "s" * 301}),
+        ]
+    )
     def test_rejects_bad_reports(self, _name: str, change: dict) -> None:
         response = self.client.post("/client-errors", json={**VALID, **change})
 

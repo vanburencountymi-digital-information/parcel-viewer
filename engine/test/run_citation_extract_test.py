@@ -4,6 +4,7 @@ Proves the chat backend turns vetted MCL mentions in an AI answer into §6.4 cit
 envelopes (so they surface into the KB-backed Sources panel), and ONLY vetted ones —
 the citation-first guard (§4.5): an invented MCL never becomes a clickable "source".
 """
+
 import sys
 import unittest
 from pathlib import Path
@@ -32,8 +33,10 @@ class CitationExtractTest(unittest.TestCase):
         self.assertEqual(out[0]["anchor"], "211.27a")
 
     def test_dedupes_and_preserves_order(self):
-        text = ("Appeals go to the Board of Review (MCL 211.30), then the Tax Tribunal "
-                "(MCL 205.731). The Board (MCL 211.30) is first.")
+        text = (
+            "Appeals go to the Board of Review (MCL 211.30), then the Tax Tribunal "
+            "(MCL 205.731). The Board (MCL 211.30) is first."
+        )
         anchors = [c["anchor"] for c in extract_citations(text)]
         self.assertEqual(anchors, ["211.30", "205.731"])  # 211.30 once, in first-seen order
 

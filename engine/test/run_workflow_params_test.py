@@ -6,6 +6,7 @@ a negative setback drew an outward ring labelled "-30 ft setback", and 1e9 ft pa
 
 Zero-dependency: the anthropic SDK is stubbed (same pattern as run_explain_contract_test).
 """
+
 import os
 import sys
 import types
@@ -14,9 +15,11 @@ from pathlib import Path
 
 if "anthropic" not in sys.modules:
     _fake = types.ModuleType("anthropic")
+
     class _FakeAnthropic:  # noqa: N801
         def __init__(self, *a, **k):
             pass
+
     _fake.Anthropic = _FakeAnthropic
     sys.modules["anthropic"] = _fake
 
