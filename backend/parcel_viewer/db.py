@@ -38,6 +38,10 @@ pool: ConnectionPool[Connection[DictRow]] = ConnectionPool(
         "keepalives_interval": 10,
         "keepalives_count": 3,
         "tcp_user_timeout": TCP_USER_TIMEOUT_MS,
+        # Names the connections in pg_stat_activity, so the viewer's share of the shared
+        # database's connection budget can be counted apart from parcel-studio's, which
+        # uses the same role (DIC-1884).
+        "application_name": "parcel-viewer-api",
     },
     open=False,
 )

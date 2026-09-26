@@ -47,7 +47,11 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
    - **Rebuild `api`** from `backend/` — it's a baked image and much of the hardening is in it.
 
 4. **[verify] Database.** `api` + `martin` must reach the shared Cloud SQL PostGIS from the prod host. Restart `martin` after deploy so it discovers the `geo.*_tiles` functions.
-   - **Connection budget:** each `api` worker holds up to `PV_POOL_MAX` (10) read connections plus up to 4 config-store connections, so ~28 at the default 2 workers; `martin` adds up to 8 (`pool_size` in `infra/martin/martin.yaml`; Martin's own default is 20). That's **~36 at peak** from one viewer stack. Check it against the instance's `max_connections` and everything else that shares it (DIC-1863 Q5; PgBouncer is DIC-316). Lower `PV_POOL_MAX` or `UVICORN_WORKERS` if it doesn't fit.
+   - **Connection budget (DIC-1884).** `infra/docker-compose.prod.yml` defaults to the stopgap until PgBouncer (DIC-316): **1 API worker with a read pool of 5**, plus up to 4 config-store connections, plus Martin's 8 (`pool_size` in `infra/martin/martin.yaml`) = **at most 17**.
+     - *Measured* during a full e2e run against the production stack (2026-09-26): the viewer peaked at **14** (API 6, Martin 8; the config store wasn't enabled). One API worker kept up: the suite took 23.9 min against 23.5 min with 2 workers.
+     - *The database:* db-dice's `max_connections` is **50** (3 reserved for superusers), not the 25 noted in June. Other clients held up to 16 at their separate peaks (10 `postgres` sessions; 6 untagged `parcel_studio_app`, probably parcel-studio, which shares the viewer's role). Everything together peaked at **27**.
+     - The old defaults (2 workers × (10 + 4) + 8 = 36) could exhaust it alongside those, which is why they're no longer the production default. Raise `UVICORN_WORKERS` / `PV_POOL_MAX` only when the budget allows.
+     - *Counting:* the API's connections are named in `pg_stat_activity` (`application_name` = `parcel-viewer-api` / `parcel-viewer-config`), so `SELECT application_name, count(*) FROM pg_stat_activity GROUP BY 1` shows the viewer's share.
    - **Admin config store (optional):** if `PV_WRITER_DATABASE_URL` is set, apply `backend/migrations/0001_config_store.sql` first (creates schema `config` + role `pv_writer`), then `0002_config_versions_unique_version.sql` (one row per published version, so simultaneous publishes get a 409 rather than a duplicate; DIC-1872). The `pv_writer` bug where the store never initialized (no `CREATE` on schema `config`) is fixed (#17).
 
 5. **[decide] Tenant isolation (RLS).** Single-tenant VBC (current) → migration 015 can wait. Multi-tenant → apply `county-data-services/migrations/015_tenant_isolation_rls.sql` and set `app.current_tenant` per request.
@@ -113,6 +117,38 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
 Still open in [DIC-1854](https://linear.app/dicelabs/issue/DIC-1854) (waiting on DIC-1862): shared quota store, real client IP behind Cloud Run, and locking down `/judge` + `/autoconfigure` (still public).
 
 ---
+
+## Rehearse locally before a deploy [verify]
+
+Run the **production** stack on your machine first. It's the same compose file, nginx
+snippet and images as the VM, and catches configuration mistakes before they reach it.
+First done 2026-09-26 (DIC-1884): smoke test 48/48 and the full e2e suite (181 passed)
+against it.
+
+```bash
+# 1. The production stack on a spare port (stop the dev stack's api and martin first:
+#    both stacks share db-dice's connections).
+PV_HTTP_PORT=8090 APP_VERSION=0.0.0-rehearsal \
+  docker compose -p pv-rehearsal -f infra/docker-compose.prod.yml --env-file .env up --build -d
+
+# 2. Map Buddy on its own origin, as Cloud Run is (the production nginx has no
+#    /map-buddy-api/ proxy). Reads MAP_BUDDY_ANTHROPIC_API_KEY from .env.
+docker build -t pv-rehearsal-mb map-buddy/backend
+(set -a; . ./.env; set +a; docker run -d --name pv-rehearsal-mb --network pv-rehearsal_default \
+  -p 127.0.0.1:8095:8000 -e ANTHROPIC_API_KEY="$MAP_BUDDY_ANTHROPIC_API_KEY" \
+  -e ALLOWED_ORIGINS=http://127.0.0.1:8090 -e PARCEL_API_BASE=http://api:8000 \
+  -e MAP_BUDDY_TENANT=vanburen -e AI_QUOTA_DEFAULT=200 -e AI_QUOTA_WINDOW=86400 pv-rehearsal-mb)
+
+# 3. Check it.
+bash infra/smoke-test.sh http://127.0.0.1:8090 --map-buddy http://127.0.0.1:8095
+cd e2e && E2E_BASE_URL=http://127.0.0.1:8090 E2E_MAP_BUDDY_API=http://127.0.0.1:8095 npx playwright test
+
+# 4. Tear down.
+docker rm -f pv-rehearsal-mb && docker compose -p pv-rehearsal -f infra/docker-compose.prod.yml down
+```
+
+Expected: the smoke test's only warnings are report-only CSP and "not HTTPS"; e2e all
+green (2 paid-AI tests skip). The API's logs are JSON lines, and it runs 1 worker.
 
 ## Post-deploy smoke test [verify]
 

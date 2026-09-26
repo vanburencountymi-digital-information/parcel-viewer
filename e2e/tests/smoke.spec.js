@@ -36,7 +36,8 @@ test('served config and Map Buddy endpoint resolve (local stack -> bundled conta
   }));
   expect(r.county).toBe('vanburen');
   expect(r.configSource).toBe('api');
-  if (/^(localhost|127\.0\.0\.1)$/.test(new URL(page.url()).hostname)) expect(r.mapBuddy).toBe('/map-buddy-api');
+  if (process.env.E2E_MAP_BUDDY_API) expect(r.mapBuddy).toBe(process.env.E2E_MAP_BUDDY_API.replace(/\/+$/, ''));
+  else if (/^(localhost|127\.0\.0\.1)$/.test(new URL(page.url()).hostname)) expect(r.mapBuddy).toBe('/map-buddy-api');
 });
 
 test('no WebSocket reconnect spam: at most 2 /ws attempts in 20s', async ({ page }) => {
