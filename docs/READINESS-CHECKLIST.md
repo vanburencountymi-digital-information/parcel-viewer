@@ -1,7 +1,7 @@
 # Parcel Viewer: testing-deployment readiness checklist
 
 **Scope.** This covers a **limited testing deployment**: invited testers, not the public. It says what's done, what blocks deployment, and what's knowingly accepted. Every claim has a way to check it.
-**Status as of 2026-09-26.** Work lives in stacked PRs #25 → #26 → #27 → #28 → #29 → #30 → #31, then the DIC-1871 infra PR on top (epic DIC-1851). Merge them in that order.
+**Status as of 2026-09-26.** Work lives in stacked PRs #25 → #26 → #27 → #28 → #29 → #30 → #31 → #32 (epic DIC-1851). Merge them in that order.
 
 ---
 
@@ -29,7 +29,7 @@ What still blocks a deploy:
    - a staging environment.
 
    The repo is already public; the history scan is clean.
-4. ~~**DIC-1871 infra**~~ (B4, B5): **done in code.** Production has its own compose file and nginx snippet; hostname defaults are `gis.dicemi.org`. Drake still needs to reconfirm the hostname.
+4. ~~**DIC-1871 infra**~~ (B4, B5): **done in code (#32).** Production has its own compose file and nginx snippet; hostname defaults are `gis.dicemi.org`. Drake still needs to reconfirm the hostname.
 5. **DIC-1862.** Map Buddy's shared quota store is unanswered; the Anthropic spend limit is the backstop (B6).
 6. **Merge the stack** (B7).
 
@@ -58,7 +58,7 @@ What still blocks a deploy:
 | ~~B4~~ | ~~Dev `/map-buddy-api/` proxy in prod nginx~~: **done (DIC-1871).** `infra/docker-compose.prod.yml` has no `map-buddy` service and mounts `infra/nginx/map-buddy-api.prod.conf` (a 404); the smoke test fails if that route answers. | DIC-1871 | — | `curl -o /dev/null -w '%{http_code}' $VIEWER/map-buddy-api/status` returns 404 |
 | ~~B5~~ | ~~Hostname defaults~~: **done (DIC-1871).** `PV_CORS_ORIGINS`, `deploy.sh` (`VIEWER_ORIGINS`, `PARCEL_API_BASE`), the deploy docs and the smoke test default to `gis.dicemi.org`. Drake to reconfirm. | DIC-1871 | Drake (confirm) | Map Buddy works from the live origin (CORS) |
 | B6 | Map Buddy cost control: shared quota store, client IP on Cloud Run, dev endpoints (`/judge`, `/autoconfigure`), min instances. *No answers yet; the Anthropic spend limit is the backstop.* | DIC-1862 | Drake | Quota survives an instance restart |
-| B7 | Merge #25 → … → #31 (stacked). Rebuild the `api` and `map-buddy` images from `main` with `APP_VERSION` from the release tag. If the writer store is used, apply migrations `0001` then `0002`. | — | Jerry | `gh pr checks` green |
+| B7 | Merge #25 → … → #32 (stacked). Rebuild the `api` and `map-buddy` images from `main` with `APP_VERSION` from the release tag. If the writer store is used, apply migrations `0001` then `0002`. | — | Jerry | `gh pr checks` green |
 | ~~B8~~ | ~~Config-store outage path~~: **done in #31.** The store is built once, fails fast with a 30s backoff, the viewer serves the baked manifest immediately, and one warning is logged. | DIC-1872 | — | — |
 
 **Still open on DIC-1863:** security-headers owner (Q3), admin gate (Q4, likely folded into B1), writer role in prod (Q6), static caching (Q7), data exposure (Q10), number of API instances (Q5). **Q8** (non-root containers + health checks) is **done in code** (#28).
@@ -97,7 +97,7 @@ What still blocks a deploy:
 | Browser end-to-end (Playwright, Edge) | **172** tests in 24 files | **no:** needs a database (see 8) | `cd e2e && npm install && npx playwright test` |
 | Accessibility (axe-core, WCAG 2.1 A/AA) | 0 violations on the scanned screens | with e2e | `npx playwright test tests/a11y-scan.spec.js` |
 
-**Latest full e2e run (2026-09-26, after #31):** **170 passed, 0 failed, 2 skipped**. The skipped two are the paid AI tests, gated on `E2E_AI=1`.
+**Latest full e2e run (2026-09-26, after #32):** **170 passed, 0 failed, 2 skipped**, with no 429s from the new tile and aerial limits. The skipped two are the paid AI tests, gated on `E2E_AI=1`.
 
 **What the e2e suite covers** (details in `e2e/README.md`):
 - search and the parcel panel;
@@ -255,4 +255,4 @@ Built to Maria's standard: Sentry through an injected `ErrorLoggingClient`, like
   - confirm nginx runs in Docker on the VM.
 - [ ] **Staging environment owner** (needed for Maria's release gate).
 - [ ] **Sentry project and DSN**, plus uptime checks.
-- [ ] **Engineer review:** this checklist plus PRs #25 to #31.
+- [ ] **Engineer review:** this checklist plus PRs #25 to #32.
