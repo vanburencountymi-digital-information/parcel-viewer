@@ -87,10 +87,11 @@ What still blocks a deploy:
 
 | Check | Result | In CI? | Command |
 |---|---|---|---|
-| Engine / viewer unit tests (Node) | **187** pass | yes (`harness`) | `cd engine && node --test` |
+| Engine / viewer unit tests (Node) | **199** pass | yes (`harness`) | `cd engine && node --test` |
 | Python contract tests | **8** files pass | yes (`harness`) | see `.github/workflows/isv-harness.yml` |
-| Server tests: parcel API + Map Buddy (FastAPI TestClient; no DB, no model) | **94 + 10** pass | yes (`server-tests`) | `pip install -r requirements-dev.txt && pytest` in `backend/` and `map-buddy/backend/` |
+| Server tests: parcel API + Map Buddy (FastAPI TestClient; no DB, no model), including the public contract: admin gate, docs off, CORS, input 4xx before the DB, no leaked errors, `/report-error` limits, 413/422 caps, quota on every AI route, server-side tenant, no unreviewed `async` routes (DIC-1874) | **152 + 43** pass | yes (`server-tests`) | `pip install -r requirements-dev.txt && pytest` in `backend/` and `map-buddy/backend/` |
 | Docker image builds | both build | yes (`docker-build`) | `docker build backend` / `docker build map-buddy/backend` |
+| nginx config (dev + prod snippet) and compose files valid; production has no local Map Buddy | pass | yes (`infra-config`) | see `.github/workflows/isv-harness.yml` |
 | Lint, format, types, secrets (pre-commit: ruff, mypy, gitleaks, …) | all **11** hooks pass | yes (`Lint`) | `pre-commit run --all-files` |
 | CodeQL (Python, JS/TS, Actions) | **36** findings from the first full scan, all **fixed** (17 security) | yes (`CodeQL`, + weekly) | Security → Code scanning |
 | Secret scan, full git history (gitleaks) | **0 leaks** in all 248 non-merge commits | per commit (hook) | `pre-commit run gitleaks --all-files` |
@@ -234,7 +235,6 @@ Built to Maria's standard: Sentry through an injected `ErrorLoggingClient`, like
 |---|---|---|
 | ~~Assessed-value year labels from the calendar year~~: **fixed (DIC-1878).** Labels follow the roll year inferred from the data's load date (April onward = that year's roll), overridable with `assessing.rollYear` in county config; the AI is told when the year is only an estimate | Still an inference until the loader records the roll year; confirm with the data owners | DIC-1878 |
 | **E2E suite isn't in CI** (needs a fixture database) | Browser-level regressions are caught only when someone runs it | suggest: seed a small PostGIS fixture |
-| **Server tests don't yet cover every route** | Some routes (CORS, `/report-error` limits, Map Buddy 413/422 caps) are untested in CI | DIC-1874 |
 | **mypy exemption list** for pre-existing modules | Those modules are type-checked but not fully annotated | ADR 0003; shrink over time |
 | **Google Fonts loaded at runtime** | Minor outage and privacy exposure | self-host the font |
 | **CSP is report-only** | No script-injection enforcement yet | enforce after a clean report period |

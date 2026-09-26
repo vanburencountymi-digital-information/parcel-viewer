@@ -1628,6 +1628,11 @@ _EXPLAIN_TOOL = {
 }
 
 
+class UnsupportedTopic(ValueError):
+    """The caller asked for an explainer that doesn't exist. Safe to show the caller; any
+    other error from run_explain is internal (DIC-1874)."""
+
+
 def run_explain(topic: str, facts: dict) -> dict:
     """Generate a structured, grounded explanation for a parcel.
 
@@ -1637,7 +1642,7 @@ def run_explain(topic: str, facts: dict) -> dict:
     """
     profile = EXPLAINER_PROFILES.get(topic)
     if not profile:
-        raise ValueError(f"unsupported explainer topic: {topic!r}")
+        raise UnsupportedTopic(f"unsupported explainer topic: {topic!r}")
 
     # Static, reusable across every parcel → cache it. Only the per-parcel facts
     # (the user turn) vary, so a large injected reference corpus stays cheap.

@@ -101,3 +101,35 @@ jobs:
       - uses: actions/checkout@v5
       - name: Build ${{ matrix.name }} image
         run: docker build --tag "parcel-viewer-${{ matrix.name }}:ci" "${{ matrix.context }}"
+
+  # The nginx config and the compose files must be valid, and production must never
+  # get the dev Map Buddy proxy (DIC-1871, DIC-1874). No containers are started.
+  infra-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: nginx -t with the dev and the prod snippet
+        run: |
+          for variant in dev prod; do
+            echo "::group::nginx -t ($variant)"
+            docker run --rm \
+              --add-host api:127.0.0.1 --add-host martin:127.0.0.1 --add-host map-buddy:127.0.0.1 \
+              -v "$PWD/infra/nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro" \
+              -v "$PWD/infra/nginx/map-buddy-api.$variant.conf:/etc/nginx/pv/map-buddy-api.conf:ro" \
+              nginx:1.27-alpine nginx -t
+            echo "::endgroup::"
+          done
+
+      - name: Compose files are valid; production has no local Map Buddy
+        run: |
+          docker compose -f infra/docker-compose.viewer.yml config --quiet
+          docker compose -f infra/docker-compose.prod.yml config --quiet
+          services=$(docker compose -f infra/docker-compose.prod.yml config --services)
+          echo "production services: $services"
+          if echo "$services" | grep -qx map-buddy; then
+            echo "::error::docker-compose.prod.yml must not run a local map-buddy (DIC-1871)"; exit 1
+          fi
+          if grep -q "map-buddy-api.dev.conf" infra/docker-compose.prod.yml; then
+            echo "::error::docker-compose.prod.yml mounts the dev /map-buddy-api/ proxy (DIC-1871)"; exit 1
+          fi
