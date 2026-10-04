@@ -51,6 +51,14 @@ class JsonFormatterTests(TestCase):
         self.assertEqual(entry["status"], 503)
         self.assertEqual(entry["path"], "/parcels")
 
+    def test_drops_uvicorns_colour_copy_of_the_message(self) -> None:
+        entry = json.loads(
+            self.formatter.format(_record("Started", color_message="\x1b[36mStarted\x1b[0m"))
+        )
+
+        self.assertNotIn("color_message", entry)
+        self.assertEqual(entry["message"], "Started")
+
     def test_includes_traceback(self) -> None:
         try:
             raise ValueError("boom")

@@ -22,6 +22,7 @@ npx playwright show-report          # HTML report with traces/screenshots of fai
 | `E2E_BASE_URL` | `http://127.0.0.1:8080` | Stack under test (e.g. a staging URL) |
 | `E2E_CHANNEL` | `msedge` | `chrome` to use Google Chrome instead |
 | `E2E_AI` | unset | `1` runs the AI chat tests, which call the real model (costs a little) |
+| `E2E_MAP_BUDDY_API` | unset | A Map Buddy on its own origin (as in production), e.g. `http://127.0.0.1:8095`. Needed when `E2E_BASE_URL` is a production-configured stack, whose nginx has no `/map-buddy-api/` proxy (see `infra/DEPLOY-CHECKLIST.md` → "Rehearse locally") |
 
 ## What every test checks, beyond its own assertions
 
