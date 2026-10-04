@@ -232,7 +232,7 @@ Built to Maria's standard: Sentry through an injected `ErrorLoggingClient`, like
 
 | Issue | Impact | Tracking |
 |---|---|---|
-| **Assessed-value year labels** come from the calendar year, not the tax roll | Wrong year labels (and AI narration) if the calendar year changes before a data refresh | DIC-1878 |
+| ~~Assessed-value year labels from the calendar year~~: **fixed (DIC-1878).** Labels follow the roll year inferred from the data's load date (April onward = that year's roll), overridable with `assessing.rollYear` in county config; the AI is told when the year is only an estimate | Still an inference until the loader records the roll year; confirm with the data owners | DIC-1878 |
 | **E2E suite isn't in CI** (needs a fixture database) | Browser-level regressions are caught only when someone runs it | suggest: seed a small PostGIS fixture |
 | **Server tests don't yet cover every route** | Some routes (CORS, `/report-error` limits, Map Buddy 413/422 caps) are untested in CI | DIC-1874 |
 | **mypy exemption list** for pre-existing modules | Those modules are type-checked but not fully annotated | ADR 0003; shrink over time |

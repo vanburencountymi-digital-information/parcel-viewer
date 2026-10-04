@@ -58,22 +58,30 @@ test('selection CSV has a header plus one row per selected parcel', async ({ pag
 });
 
 test('selection CSV neutralises spreadsheet formulas and quotes awkward text', async ({ page }) => {
+  // Plant hostile values the way bad upstream data would arrive: in the /parcels response.
+  // (Editing the in-memory index raced the index refresh after the map moved, which
+  // replaced the edited features and made this test flaky.)
+  await page.route(/\/api\/parcels\?/, async (route) => {
+    const res = await route.fetch();
+    const body = await res.json();
+    for (const f of body.features || []) {
+      f.properties.owner_name = '=HYPERLINK("http://evil","x")';
+      f.properties.prop_class = 'a,b\r\nc';
+    }
+    await route.fulfill({ response: res, json: body });
+  });
+  const refreshed = page.evaluate(() => new Promise((r) => document.addEventListener('ps:parcel-index-updated', r, { once: true })));
+  // Pan past the index's 20% padding so it really refetches (through the route above).
+  await page.evaluate(() => window.PS_MAP.panBy([window.PS_MAP.getCanvas().clientWidth * 0.6, 0], { duration: 0 }));
+  await refreshed;
   await openSelectTab(page);
-  await selectOver5Acres(page);
-  // Plant hostile values in the first selected parcel's attributes (as bad upstream data would).
-  const pin = await page.evaluate(() => window.PS_STATE.parcel.pin);
-  await page.evaluate((p) => {
-    const f = window.PS_PARCEL_INDEX.find((x) => x.properties.pin === p);
-    f.properties.owner_name = '=HYPERLINK("http://evil","x")';
-    f.properties.prop_class = 'a,b\r\nc';
-  }, pin);
-  // Re-add so the selection holds the edited props.
-  await page.locator('#clear-selection-btn').click();
   await selectOver5Acres(page);
   const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#download-csv-btn').click()]);
   const text = fs.readFileSync(await dl.path(), 'utf8');
   expect(text).toContain(`"'=HYPERLINK(""http://evil"",""x"")"`);
   expect(text).toContain('"a,b\r\nc"');
+  // An index refetch can still be in flight through the route when the page closes.
+  await page.unrouteAll({ behavior: 'ignoreErrors' });
 });
 
 test('multi-selection navigation: next/prev and arrow keys move through parcels', async ({ page }) => {

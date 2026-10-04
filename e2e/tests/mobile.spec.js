@@ -31,6 +31,9 @@ test('mobile: no serious WCAG 2.1 AA violations (load, search, parcel)', async (
   const AxeBuilder = require('@axe-core/playwright').default;
   const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
   const scan = async (label) => {
+    // Let entry animations finish: mid-fade, axe measures a blended (lighter) text colour
+    // and reports contrast the settled page doesn't have.
+    await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
     const r = await new AxeBuilder({ page }).withTags(TAGS).exclude('canvas.maplibregl-canvas').analyze();
     const v = r.violations.map((x) => ({ id: x.id, impact: x.impact, targets: x.nodes.slice(0, 4).map((n) => n.target.join(' ')),
       detail: x.nodes[0] && x.nodes[0].failureSummary.split('\n').slice(0, 3).join(' | ') }));

@@ -159,6 +159,14 @@
     "forms": { "type": "object", "additionalProperties": true, "description": "External destinations (data-request form, …)." },
     "endpoints": { "type": "object", "additionalProperties": true, "description": "Per-deployment service endpoints (mapBuddy AI, …)." },
     "integrations": { "type": "object", "additionalProperties": true, "description": "Third-party integration config (Street View key, …)." },
+    "assessing": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Assessing-data facts the data itself doesn't carry (DIC-1878).",
+      "properties": {
+        "rollYear": { "type": "integer", "minimum": 1900, "maximum": 2200, "description": "The tax roll the loaded assessed-value history ends at (yr0). Overrides the roll year the API infers from the data's load date; leave unset unless that inference is wrong." }
+      }
+    },
     "access": { "type": "object", "additionalProperties": true, "description": "Access/ops facts (model, report inbox, rate-limited flag)." }
   }
 }
