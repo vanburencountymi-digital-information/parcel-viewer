@@ -989,8 +989,17 @@
         var st = {}; if (p.color) st.strokeColor = p.color; if (p.fill_color) st.fillColor = p.fill_color;
         D.setStyle(st);
       }
+      // Open the Draw tab first, the same way a user gets there: its tool buttons show the
+      // active tool (click it again to stop), and leaving the tab exits drawing. Without
+      // it the map sat in draw mode with panning and parcel clicks disabled and nothing on
+      // screen to turn it off.
+      if (root.PS_MAP_PANEL && root.PS_MAP_PANEL.setTab) {
+        root.PS_MAP_PANEL.setTab('draw');
+        var panel = document.getElementById('map-control-panel'); if (panel) panel.hidden = false;
+        if (root.PV_MOBILE_TABS && root.PV_MOBILE_TABS.refresh) root.PV_MOBILE_TABS.refresh();
+      }
       D.setActiveDrawTool(p.tool);
-      return '✏️ ' + p.tool + ' tool — draw on the map';
+      return '✏️ ' + p.tool + ' tool — draw on the map (Esc when done)';
     },
     undo: function () { if (root.PS_UNDO_REDO && root.PS_UNDO_REDO.undo) { root.PS_UNDO_REDO.undo(); return '↩️ Undo'; } return null; },
     redo: function () { if (root.PS_UNDO_REDO && root.PS_UNDO_REDO.redo) { root.PS_UNDO_REDO.redo(); return '↪️ Redo'; } return null; },
