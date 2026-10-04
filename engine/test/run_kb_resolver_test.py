@@ -12,6 +12,7 @@ behaves honestly, WITHOUT a live DB / OpenAI / Drake:
 
 Zero-dependency: kb_resolver / knowledge_store import no DB/OpenAI module at load.
 """
+
 import sys
 import unittest
 from pathlib import Path
@@ -37,8 +38,12 @@ class FakeStore:
 
     def search(self, query, domain=None, limit=10):
         q = (query or "").lower()
-        hits = [r for r in self.rows.values()
-                if q and (q in (r.get("section_title") or "").lower() or q in (r.get("text") or "").lower())]
+        hits = [
+            r
+            for r in self.rows.values()
+            if q
+            and (q in (r.get("section_title") or "").lower() or q in (r.get("text") or "").lower())
+        ]
         return [{"section_id": r["section_id"]} for r in hits[:limit]]
 
 
@@ -55,12 +60,14 @@ ROW_27A = {
 class KbResolverTest(unittest.TestCase):
     def test_anchor_hit_is_precise(self):
         store = FakeStore([ROW_27A])
-        doc = kb_resolver.resolve_envelope(store, {"anchor": "211.27a", "source_id": "MCL 211.27a", "span": "Taxable Value cap"})
+        doc = kb_resolver.resolve_envelope(
+            store, {"anchor": "211.27a", "source_id": "MCL 211.27a", "span": "Taxable Value cap"}
+        )
         self.assertIsNotNone(doc)
-        self.assertTrue(doc["anchorResolved"])              # precise → engine 'resolves'
+        self.assertTrue(doc["anchorResolved"])  # precise → engine 'resolves'
         self.assertEqual(doc["id"], "211.27a")
         self.assertEqual(doc["citation"], "MCL 211.27a")
-        self.assertIn("True Cash Value", doc["body"])        # FULL text, not a one-liner
+        self.assertIn("True Cash Value", doc["body"])  # FULL text, not a one-liner
         self.assertEqual(doc["url"], "http://example/mcl-211-27a")
 
     def test_anchor_hit_locates_passage(self):
@@ -69,33 +76,40 @@ class KbResolverTest(unittest.TestCase):
         hl = doc.get("highlight")
         self.assertIsNotNone(hl)
         # Offsets index into the SAME body string the viewer marks.
-        self.assertEqual(doc["body"][hl["start"]:hl["end"]], "the lesser of 5% or inflation")
+        self.assertEqual(doc["body"][hl["start"] : hl["end"]], "the lesser of 5% or inflation")
 
     def test_search_fallback_is_coarse(self):
         store = FakeStore([ROW_27A])
         # No anchor match → search by span; matched by similarity, not a precise anchor.
         doc = kb_resolver.resolve_envelope(store, {"anchor": "999.999", "span": "Proposal A"})
         self.assertIsNotNone(doc)
-        self.assertFalse(doc["anchorResolved"])             # → engine 'coarse'
+        self.assertFalse(doc["anchorResolved"])  # → engine 'coarse'
 
     def test_nothing_citable_returns_none(self):
         store = FakeStore([ROW_27A])
         doc = kb_resolver.resolve_envelope(store, {"anchor": "nope", "span": "no such thing"})
-        self.assertIsNone(doc)                               # → engine 'none'
+        self.assertIsNone(doc)  # → engine 'none'
 
     def test_highlight_text_override_wins(self):
         store = FakeStore([ROW_27A])
-        doc = kb_resolver.resolve_envelope(store, {"anchor": "211.27a", "highlight_text": "True Cash Value"})
+        doc = kb_resolver.resolve_envelope(
+            store, {"anchor": "211.27a", "highlight_text": "True Cash Value"}
+        )
         hl = doc["highlight"]
-        self.assertEqual(doc["body"][hl["start"]:hl["end"]], "True Cash Value")
+        self.assertEqual(doc["body"][hl["start"] : hl["end"]], "True Cash Value")
 
     # ── Fixture corpus + fail-closed ──────────────────────────────────────────
     def test_fixture_corpus_resolves_full_statute(self):
         store = build_fixture_store(str(FIXTURE), jurisdiction="vanburen")
         # The envelope the explainer actually emits for the PRE statute.
-        doc = kb_resolver.resolve_envelope(store, {
-            "anchor": "211.7cc", "source_id": "MCL 211.7cc", "span": "Principal Residence Exemption (PRE)",
-        })
+        doc = kb_resolver.resolve_envelope(
+            store,
+            {
+                "anchor": "211.7cc",
+                "source_id": "MCL 211.7cc",
+                "span": "Principal Residence Exemption (PRE)",
+            },
+        )
         self.assertTrue(doc["anchorResolved"])
         self.assertIn("18 mills", doc["body"])
         self.assertIsNotNone(doc.get("highlight"))
@@ -103,7 +117,9 @@ class KbResolverTest(unittest.TestCase):
     def test_fixture_uncitable_span_does_not_spurious_match(self):
         # A nonsense span must not coarse-match via short noise tokens ("no" in "not").
         store = build_fixture_store(str(FIXTURE), jurisdiction="vanburen")
-        self.assertIsNone(kb_resolver.resolve_envelope(store, {"anchor": "zzz", "span": "no such thing"}))
+        self.assertIsNone(
+            kb_resolver.resolve_envelope(store, {"anchor": "zzz", "span": "no such thing"})
+        )
 
     def test_fixture_is_jurisdiction_scoped(self):
         # A tenant the fixture has no rows for resolves to nothing (fail-closed scoping).

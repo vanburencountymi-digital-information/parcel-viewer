@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from .. import config
-from ..cohort_query import CohortSelectorError, build_predicate, GEOGRAPHY_SOURCES
+from ..cohort_query import GEOGRAPHY_SOURCES, CohortSelectorError, build_predicate
 from ..db import pool
 from ..stores.parcel_store import make_parcel_store
 
@@ -42,10 +42,13 @@ _FEATURE_PROPS_SQL = """
 # Cohort feature props (DIC-587): the parcel attributes the cohort-analyze core aggregates
 # over. Superset of the bbox feature props — adds the prior-period values that back the
 # value-change aggregator. No geometry (lighter payload; aggregation is non-spatial).
-_COHORT_PROPS_SQL = _FEATURE_PROPS_SQL + """,
+_COHORT_PROPS_SQL = (
+    _FEATURE_PROPS_SQL
+    + """,
     a.prev_assessed_value AS prev_assessed_value,
     a.prev_taxable_value  AS prev_taxable_value
 """
+)
 
 
 class CohortRequest(BaseModel):
@@ -88,14 +91,18 @@ async def style_json():
             # Gray Canvas (map.js applyTheme). ArcGIS scheme is /{z}/{y}/{x}.
             "esri-canvas": {
                 "type": "raster",
-                "tiles": ["https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"],
+                "tiles": [
+                    "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}"
+                ],
                 "tileSize": 256,
                 "maxzoom": 16,
                 "attribution": "Esri, HERE, Garmin, (c) OpenStreetMap contributors, and the GIS user community",
             },
             "esri-canvas-labels": {
                 "type": "raster",
-                "tiles": ["https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"],
+                "tiles": [
+                    "https://services.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}"
+                ],
                 "tileSize": 256,
                 "maxzoom": 16,
             },
@@ -108,11 +115,27 @@ async def style_json():
             },
         },
         "layers": [
-            {"id": "basemap", "type": "raster", "source": "esri-canvas", "minzoom": 0, "maxzoom": 24},
-            {"id": "basemap-labels", "type": "raster", "source": "esri-canvas-labels", "minzoom": 0, "maxzoom": 24},
             {
-                "id": "mi-aerial", "type": "raster", "source": "mi-aerial",
-                "minzoom": 0, "maxzoom": 19, "layout": {"visibility": "none"},
+                "id": "basemap",
+                "type": "raster",
+                "source": "esri-canvas",
+                "minzoom": 0,
+                "maxzoom": 24,
+            },
+            {
+                "id": "basemap-labels",
+                "type": "raster",
+                "source": "esri-canvas-labels",
+                "minzoom": 0,
+                "maxzoom": 24,
+            },
+            {
+                "id": "mi-aerial",
+                "type": "raster",
+                "source": "mi-aerial",
+                "minzoom": 0,
+                "maxzoom": 19,
+                "layout": {"visibility": "none"},
                 # raster-fade-duration 0 (DIC-528): the default 300 ms cross-fade
                 # makes aerial tiles shimmer/redraw during the cinematic fly-orbit
                 # as new tiles stream in. 0 = tiles appear crisply, no fade — much
@@ -120,32 +143,69 @@ async def style_json():
                 "paint": {"raster-fade-duration": 0},
             },
             {
-                "id": "parcels-fill", "type": "fill", "source": "parcels", "source-layer": "parcels",
+                "id": "parcels-fill",
+                "type": "fill",
+                "source": "parcels",
+                "source-layer": "parcels",
                 "paint": {
                     "fill-color": "#FDF6E3",
-                    "fill-opacity": ["interpolate", ["linear"], ["zoom"], 11, 0.45, 14, 0.5, 17, 0.55],
+                    "fill-opacity": [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        11,
+                        0.45,
+                        14,
+                        0.5,
+                        17,
+                        0.55,
+                    ],
                 },
             },
             {
-                "id": "parcels-line", "type": "line", "source": "parcels", "source-layer": "parcels",
+                "id": "parcels-line",
+                "type": "line",
+                "source": "parcels",
+                "source-layer": "parcels",
                 "paint": {
-                    "line-color": "#374151",   # light-basemap default; the viewer adapts it (dark/aerial → white)
+                    "line-color": "#374151",  # light-basemap default; the viewer adapts it (dark/aerial → white)
                     "line-opacity": 0.85,
-                    "line-width": ["interpolate", ["linear"], ["zoom"], 11, 0.3, 14, 0.6, 17, 1.2, 19, 2],
+                    "line-width": [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        11,
+                        0.3,
+                        14,
+                        0.6,
+                        17,
+                        1.2,
+                        19,
+                        2,
+                    ],
                 },
             },
             {
-                "id": "parcels-hover", "type": "line", "source": "parcels", "source-layer": "parcels",
+                "id": "parcels-hover",
+                "type": "line",
+                "source": "parcels",
+                "source-layer": "parcels",
                 "paint": {"line-color": "#111827", "line-width": 2, "line-opacity": 0.9},
                 "filter": ["==", ["get", "pin"], ""],
             },
             {
-                "id": "parcels-selected-fill", "type": "fill", "source": "parcels", "source-layer": "parcels",
+                "id": "parcels-selected-fill",
+                "type": "fill",
+                "source": "parcels",
+                "source-layer": "parcels",
                 "paint": {"fill-color": "#ffffff", "fill-opacity": 0.18},
                 "filter": ["==", ["get", "pin"], ""],
             },
             {
-                "id": "parcels-selected-line", "type": "line", "source": "parcels", "source-layer": "parcels",
+                "id": "parcels-selected-line",
+                "type": "line",
+                "source": "parcels",
+                "source-layer": "parcels",
                 "paint": {"line-color": "#0b1220", "line-width": 3, "line-opacity": 1},
                 "filter": ["==", ["get", "pin"], ""],
             },
@@ -154,7 +214,10 @@ async def style_json():
                 # labeling is owned by the "Parcel Labels" tool (parcel-labels.js),
                 # which is richer (field picker, sizing). This layer is kept only
                 # as a stable insertion anchor (`before: "parcels-labels"` in map.js).
-                "id": "parcels-labels", "type": "symbol", "source": "parcels", "source-layer": "parcels",
+                "id": "parcels-labels",
+                "type": "symbol",
+                "source": "parcels",
+                "source-layer": "parcels",
                 "minzoom": 15,
                 "layout": {
                     "visibility": "none",
@@ -191,7 +254,7 @@ def parcels_bbox(
         if not all(math.isfinite(v) for v in (w, s, e, n)):
             raise ValueError
     except ValueError:
-        raise HTTPException(status_code=400, detail="bbox must be west,south,east,north")
+        raise HTTPException(status_code=400, detail="bbox must be west,south,east,north") from None
 
     sql = f"""
         SELECT {_FEATURE_PROPS_SQL},
@@ -220,7 +283,7 @@ def cohort(body: CohortRequest):
     try:
         pred, params, resolved = build_predicate(body.selector or {}, limit)
     except CohortSelectorError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
 
     sql = f"""
         SELECT {_COHORT_PROPS_SQL}
@@ -251,9 +314,13 @@ def cohort(body: CohortRequest):
                 "SELECT parcel_no FROM geo.parcel_geometry WHERE id = %s", (int(sel["parcel_id"]),)
             ).fetchone()
             if prow and prow.get("parcel_no"):
-                resolved["label"] = resolved["label"].rsplit(" parcel ", 1)[0] + " parcel " + prow["parcel_no"]
+                resolved["label"] = (
+                    resolved["label"].rsplit(" parcel ", 1)[0] + " parcel " + prow["parcel_no"]
+                )
 
-    features = [{"id": r["id"], "properties": {k: v for k, v in r.items() if k != "id"}} for r in rows]
+    features = [
+        {"id": r["id"], "properties": {k: v for k, v in r.items() if k != "id"}} for r in rows
+    ]
     resolved["count"] = len(features)
     if crow and crow.get("lng") is not None:
         resolved["center"] = [crow["lng"], crow["lat"]]
@@ -271,20 +338,23 @@ def cohort_geographies(type: str = Query(...)):
         raise HTTPException(status_code=400, detail="unknown geography type")
     if src["kind"] == "spatial":
         sql = (
-            "SELECT %s AS id, %s AS name FROM %s WHERE %s IS NOT NULL AND %s <> '' "
-            "ORDER BY name"
-        ) % (src["id_col"], src["name_col"], src["table"], src["name_col"], src["name_col"])
+            "SELECT {} AS id, {} AS name FROM {} WHERE {} IS NOT NULL AND {} <> '' ORDER BY name"
+        ).format(src["id_col"], src["name_col"], src["table"], src["name_col"], src["name_col"])
         with pool.connection() as conn:
             rows = conn.execute(sql).fetchall()
         geos = [{"id": r["id"], "name": r["name"]} for r in rows]
     else:
         # DISTINCT values of a parcel column (the cohort feature join), e.g. municipality / school_dist.
         col = src["column"]
-        join = "LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no" if col.startswith("a.") else ""
+        join = (
+            "LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no"
+            if col.startswith("a.")
+            else ""
+        )
         sql = (
-            "SELECT DISTINCT %s AS name FROM geo.parcel_geometry pg %s "
-            "WHERE pg.archived_at IS NULL AND %s IS NOT NULL AND %s <> '' ORDER BY name"
-        ) % (col, join, col, col)
+            f"SELECT DISTINCT {col} AS name FROM geo.parcel_geometry pg {join} "
+            f"WHERE pg.archived_at IS NULL AND {col} IS NOT NULL AND {col} <> '' ORDER BY name"
+        )
         with pool.connection() as conn:
             rows = conn.execute(sql).fetchall()
         geos = [{"id": None, "name": r["name"]} for r in rows]
@@ -357,8 +427,11 @@ def streetview_target(id: int = Query(...)):
         row = conn.execute(sql, (id,)).fetchone()
     if not row or row.get("anchor_lng") is None:
         return {"ok": False}
-    view = [row["road_lng"], row["road_lat"]] if row.get("road_lng") is not None \
+    view = (
+        [row["road_lng"], row["road_lat"]]
+        if row.get("road_lng") is not None
         else [row["anchor_lng"], row["anchor_lat"]]
+    )
     return {
         "ok": True,
         "viewpoint": view,
@@ -413,7 +486,7 @@ def search(q: str = Query(..., min_length=2, max_length=100), limit: int = Query
         FROM geo.parcel_geometry pg
         LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
         CROSS JOIN LATERAL (SELECT ST_Transform(pg.geom, 4326)::box2d::geometry AS b) bb
-        WHERE pg.archived_at IS NULL AND {' AND '.join(clauses)}
+        WHERE pg.archived_at IS NULL AND {" AND ".join(clauses)}
         ORDER BY {rank_case}, pg.parcel_no
         LIMIT %s
     """

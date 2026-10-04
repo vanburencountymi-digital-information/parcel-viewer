@@ -21,7 +21,10 @@ echo "==> Configuring Docker auth..."
 gcloud auth configure-docker ${REGION}-docker.pkg.dev --quiet
 
 echo "==> Building image..."
-docker build -f map-buddy/backend/Dockerfile -t ${IMAGE} map-buddy/backend/
+# The release tag becomes APP_VERSION (API version + Sentry release); ADR 0002.
+APP_VERSION="${APP_VERSION:-$(git describe --tags --abbrev=0 2>/dev/null || echo 0.0.0)}"
+APP_VERSION="${APP_VERSION#v}"
+docker build --build-arg APP_VERSION="${APP_VERSION}" -f map-buddy/backend/Dockerfile -t ${IMAGE} map-buddy/backend/
 
 echo "==> Pushing to Artifact Registry..."
 docker push ${IMAGE}

@@ -1,0 +1,61 @@
+# Pre-commit hooks (DIC-1881), matching the team boilerplate (dice-document-pipeline-api,
+# parcel-application-portal). One-time setup, from the repo root:
+#   pip install pre-commit
+#   pre-commit install                          # lint/format/type/secret checks
+#   pre-commit install --hook-type commit-msg   # Conventional Commit messages
+# CI runs the same hooks on every PR (.github/workflows/lint.yml).
+
+exclude: ^(graphify-out/|e2e/test-results/|e2e/playwright-report/)
+
+repos:
+  # Commit messages drive semantic-release: fix: -> patch, feat: -> minor, feat!: -> major.
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: debug-statements
+
+  # Keep rev in step with the ruff version the lint workflow reports.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # Both services in one run (mypy_path in pyproject.toml). The dependencies give mypy
+  # the libraries' types; versions follow map-buddy/backend/requirements.txt.
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v2.3.0
+    hooks:
+      - id: mypy
+        additional_dependencies:
+          - fastapi==0.141.1
+          - pydantic==2.*
+          - sentry-sdk[fastapi]==2.70.0
+          - anthropic==1.8.0
+          - psycopg[binary]==3.2.*
+          - psycopg-pool==3.2.*
+          - httpx==0.28.*
+          - slowapi==0.1.10
+        args: [--config-file=pyproject.toml]
+        pass_filenames: false
+        always_run: true
+
+  # Secrets must never be committed (team GitLeaks guidance). The full history was
+  # scanned clean on 2026-09-25 (DIC-1880).
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

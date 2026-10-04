@@ -19,16 +19,16 @@ no live DB, no OpenAI, no Drake. `build_kb_store()` wires the default (a local J
 so this is live-verifiable today); set KB_BACKEND=dice to read the converged db-dice
 knowledge.chunks once that live-smoke is unblocked.
 """
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Optional
 
 from kb_store import KnowledgeStore, build_fixture_store, build_store
 
 
-def _find_passage(body: str, needle: Optional[str]) -> Optional[dict]:
+def _find_passage(body: str, needle: str | None) -> dict | None:
     """Locate `needle` (a key passage) inside `body`, returning {start, end, text} character
     offsets so the viewer can mark exactly that span. Tries an exact match, then a
     whitespace-insensitive match. Returns None if not locatable (the section still resolves;
@@ -51,9 +51,11 @@ def _find_passage(body: str, needle: Optional[str]) -> Optional[dict]:
     return None
 
 
-def resolve_envelope(store: KnowledgeStore, envelope: dict, domain: Optional[str] = None) -> Optional[dict]:
+def resolve_envelope(
+    store: KnowledgeStore, envelope: dict, domain: str | None = None
+) -> dict | None:
     """Resolve one §6.4 envelope against `store` → a doc dict the engine resolver consumes:
-        { id, title, citation, body, url, anchorResolved, highlight? }  | None
+    { id, title, citation, body, url, anchorResolved, highlight? }  | None
     """
     env = envelope if isinstance(envelope, dict) else {}
     anchor = (env.get("anchor") or "").strip()
@@ -110,7 +112,7 @@ def resolve_envelope(store: KnowledgeStore, envelope: dict, domain: Optional[str
 _DEFAULT_FIXTURE = Path(__file__).parent / "data" / "mi-tax-statutes-kb.json"
 
 
-def build_kb_store(jurisdiction: Optional[str] = None) -> KnowledgeStore:
+def build_kb_store(jurisdiction: str | None = None) -> KnowledgeStore:
     """Construct the KnowledgeStore the resolver reads through, selected by KB_BACKEND:
       - 'fixture' (default): a local JSON corpus — live-verifiable WITHOUT db-dice/Drake.
       - 'dice'             : the converged db-dice knowledge.chunks (jurisdiction-scoped).
@@ -125,7 +127,6 @@ def build_kb_store(jurisdiction: Optional[str] = None) -> KnowledgeStore:
 
     # dice (gated): a real connection pool is required. Imported lazily so the fixture
     # path never depends on psycopg being installed in this image.
-    import psycopg
     from psycopg_pool import ConnectionPool
 
     dsn = os.environ["KB_DATABASE_URL"]

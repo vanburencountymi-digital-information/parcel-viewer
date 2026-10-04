@@ -28,6 +28,37 @@ The viewer stack (api + martin + nginx) and Map Buddy are **two separate deploya
 
 ---
 
+## Contributing: checks, commit messages, releases
+
+**One-time setup** (from the repo root):
+
+```bash
+pip install pre-commit
+pre-commit install                          # runs the checks below on every commit
+pre-commit install --hook-type commit-msg   # checks commit message format
+```
+
+Every commit then runs:
+- **ruff:** lint and formatting for Python;
+- **mypy:** type checks for both services;
+- **gitleaks:** blocks committed secrets;
+- **file hygiene:** whitespace, YAML/TOML validity, large files, merge markers.
+
+CI runs the same checks on every pull request (`.github/workflows/lint.yml`). Run them all by hand with `pre-commit run --all-files`.
+
+**Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/), because they decide the next version:
+
+| Prefix | Example | Release |
+|---|---|---|
+| `fix:` | `fix(search): ignore empty queries` | patch (1.4.2 → 1.4.3) |
+| `feat:` | `feat(profile): add school-district areas` | minor (1.4.2 → 1.5.0) |
+| `feat!:` or a `BREAKING CHANGE:` footer | `feat!: require an API token` | major (1.4.2 → 2.0.0) |
+| `docs:` `test:` `ci:` `chore:` `refactor:` `style:` | `docs: runbook for DB outages` | no release |
+
+**Releases are automatic.** Each merge to `main` that includes a `fix:` or `feat:` creates a `vX.Y.Z` git tag and GitHub Release (`.github/workflows/release.yml`). The tag is the version; no file holds it. Images get it at build time: `APP_VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//')`. The apps report it as their API version and Sentry release. See `docs/adrs/0002-automatic-semantic-versioning.md`.
+
+---
+
 ## Repo layout
 
 | Path | Contents |

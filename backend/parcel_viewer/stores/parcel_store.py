@@ -18,14 +18,19 @@ The row fetch is INJECTED (`fetch_one(sql, params) -> dict | None`), so the harn
 exercises the SQL + canonical mapping with no live DB. `make_parcel_store()` wires the
 default to the psycopg3 pool.
 """
+
 from __future__ import annotations
 
-from typing import Callable, Optional
+from collections.abc import Callable
 
 try:
     from .parcel_contract import ParcelStore, canonical_parcel, tenant_predicate
-except ImportError:   # standalone load (harness): the stores dir is on sys.path
-    from parcel_contract import ParcelStore, canonical_parcel, tenant_predicate
+except ImportError:  # standalone load (harness): the stores dir is on sys.path
+    from parcel_contract import (  # type: ignore[import-not-found, no-redef]
+        ParcelStore,
+        canonical_parcel,
+        tenant_predicate,
+    )
 
 # The full /parcel/{id} projection. Kept verbatim from the route so `raw` reproduces the
 # exact Feature the viewer expects (geometry + every property it renders).
@@ -58,18 +63,30 @@ def _to_canonical(r: dict) -> dict:
         county=r.get("county"),
         municipality=r.get("municipality"),
         gis_acres=r.get("computed_acres") if r.get("computed_acres") else r.get("acres"),
-        owner={"name": r.get("owner_name"), "address": r.get("owner_street"),
-               "city": r.get("owner_city"), "state": r.get("owner_state"), "zip": r.get("owner_zip")},
-        site={"address": r.get("prop_street"), "city": r.get("prop_city"),
-              "state": r.get("prop_state"), "zip": r.get("prop_zip")},
+        owner={
+            "name": r.get("owner_name"),
+            "address": r.get("owner_street"),
+            "city": r.get("owner_city"),
+            "state": r.get("owner_state"),
+            "zip": r.get("owner_zip"),
+        },
+        site={
+            "address": r.get("prop_street"),
+            "city": r.get("prop_city"),
+            "state": r.get("prop_state"),
+            "zip": r.get("prop_zip"),
+        },
         school=r.get("school_dist"),
         prop_class=r.get("prop_class"),
-        zoning=None,                                      # VBC parcels carry no parcel zoning
+        zoning=None,  # VBC parcels carry no parcel zoning
         pre={"current": r.get("homestead")},
         legal_description=r.get("ps_legal_description") or r.get("legal_description"),
         assessment_current={"assessed": r.get("assessed_value"), "taxable": r.get("taxable_value")},
         assessment_detail={
-            "previous": {"assessed": r.get("prev_assessed_value"), "taxable": r.get("prev_taxable_value")},
+            "previous": {
+                "assessed": r.get("prev_assessed_value"),
+                "taxable": r.get("prev_taxable_value"),
+            },
             "rolling": [r.get(f"assessed_value_yr{i}") for i in range(5)],
         },
         source_backend="dice-vbc",
@@ -86,15 +103,19 @@ class DiceVbcParcelStore(ParcelStore):
 
     SQL = _PARCEL_SQL
 
-    def __init__(self, fetch_one: Callable[[str, tuple], Optional[dict]],
-                 tenant_column: Optional[str] = None, tenant: Optional[str] = None):
+    def __init__(
+        self,
+        fetch_one: Callable[[str, tuple], dict | None],
+        tenant_column: str | None = None,
+        tenant: str | None = None,
+    ):
         self._fetch_one = fetch_one
         self._tenant_column = tenant_column
         self._tenant = tenant
         # Validate fail-closed up front (raises if a tenant column is configured w/o a tenant).
         tenant_predicate(tenant_column, tenant)
 
-    def get_parcel(self, parcel_id) -> Optional[dict]:
+    def get_parcel(self, parcel_id) -> dict | None:
         frag, tparams = tenant_predicate(self._tenant_column, self._tenant)
         row = self._fetch_one(self.SQL + frag, tuple([parcel_id] + tparams))
         if not row:
@@ -102,16 +123,19 @@ class DiceVbcParcelStore(ParcelStore):
         return {"raw": row, "canonical": _to_canonical(row)}
 
 
-def _pool_fetch_one(sql: str, params: tuple) -> Optional[dict]:
-    from ..db import pool   # lazy so the module imports without a live DB (harness)
+def _pool_fetch_one(sql: str, params: tuple) -> dict | None:
+    from ..db import pool  # lazy so the module imports without a live DB (harness)
 
     with pool.connection() as conn:
         return conn.execute(sql, params).fetchone()
 
 
-def make_parcel_store(fetch_one: Optional[Callable] = None,
-                      tenant_column: Optional[str] = None, tenant: Optional[str] = None) -> DiceVbcParcelStore:
+def make_parcel_store(
+    fetch_one: Callable | None = None, tenant_column: str | None = None, tenant: str | None = None
+) -> DiceVbcParcelStore:
     """Default store, wired to the psycopg3 pool. Pass `fetch_one` to inject (tests).
     For a multi-tenant deployment, pass `tenant_column='pg.county'` + the active `tenant`
     so every query is row-scoped; single-tenant (current VBC) omits them."""
-    return DiceVbcParcelStore(fetch_one or _pool_fetch_one, tenant_column=tenant_column, tenant=tenant)
+    return DiceVbcParcelStore(
+        fetch_one or _pool_fetch_one, tenant_column=tenant_column, tenant=tenant
+    )

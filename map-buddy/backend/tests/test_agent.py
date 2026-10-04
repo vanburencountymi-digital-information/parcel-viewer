@@ -13,12 +13,16 @@ class CreateMessageTests(TestCase):
     @patch("agent._get_client", autospec=True)
     def test_logs_tokens_cache_and_duration(self, mock_get_client) -> None:
         mock_get_client.return_value.messages.create.return_value = _response(
-            input_tokens=120, output_tokens=45,
-            cache_read_input_tokens=9299, cache_creation_input_tokens=0,
+            input_tokens=120,
+            output_tokens=45,
+            cache_read_input_tokens=9299,
+            cache_creation_input_tokens=0,
         )
 
         with self.assertLogs("map_buddy.agent", level="INFO") as logs:
-            response = agent._create_message("explain", model="claude-x", max_tokens=10, messages=[])
+            response = agent._create_message(
+                "explain", model="claude-x", max_tokens=10, messages=[]
+            )
 
         self.assertEqual(response.usage.input_tokens, 120)
         record = logs.records[-1]
@@ -34,10 +38,14 @@ class CreateMessageTests(TestCase):
     def test_passes_arguments_through(self, mock_get_client) -> None:
         mock_get_client.return_value.messages.create.return_value = _response()
 
-        agent._create_message("chat", model="m", max_tokens=5, messages=[{"role": "user", "content": "hi"}])
+        agent._create_message(
+            "chat", model="m", max_tokens=5, messages=[{"role": "user", "content": "hi"}]
+        )
 
         mock_get_client.return_value.messages.create.assert_called_once_with(
-            model="m", max_tokens=5, messages=[{"role": "user", "content": "hi"}],
+            model="m",
+            max_tokens=5,
+            messages=[{"role": "user", "content": "hi"}],
         )
 
     @patch("agent._get_client", autospec=True)
@@ -66,8 +74,11 @@ class EnvironmentLookupErrorTests(TestCase):
     text (URLs, hostnames, network errors) into what users or the model see."""
 
     @patch("agent._query_soils", autospec=True, side_effect=OSError("soil down"))
-    @patch("agent._arcgis_point_query", autospec=True,
-           side_effect=OSError("urlopen error https://internal.example:8443/secret"))
+    @patch(
+        "agent._arcgis_point_query",
+        autospec=True,
+        side_effect=OSError("urlopen error https://internal.example:8443/secret"),
+    )
     def test_failures_are_generic_to_users_and_logged(self, _mock_arcgis, _mock_soils) -> None:
         with self.assertLogs("map_buddy.agent", level="WARNING") as logs:
             out = agent._query_environment(-85.9, 42.2)
@@ -80,6 +91,8 @@ class EnvironmentLookupErrorTests(TestCase):
 
     @patch("agent._query_environment", autospec=True, side_effect=RuntimeError("socket details"))
     def test_workflow_note_does_not_leak_the_exception(self, _mock_env) -> None:
-        note, _cmds = agent._expand_workflow("risk_overview", {"pin": "1"}, {"centroid": [-85.9, 42.2]})
+        note, _cmds = agent._expand_workflow(
+            "risk_overview", {"pin": "1"}, {"centroid": [-85.9, 42.2]}
+        )
 
         self.assertNotIn("socket details", note)

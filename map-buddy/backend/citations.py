@@ -10,6 +10,7 @@ Citation-first discipline (§4.5): only statutes in the vetted KB corpus
 the KB resolver resolves) become clickable citations. A hallucinated MCL the model invents
 is NOT surfaced as a "source", so a clickable citation can never out-run its grounding.
 """
+
 from __future__ import annotations
 
 import json

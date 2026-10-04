@@ -14,6 +14,7 @@ capability contract WITHOUT a live model, a key, or even the anthropic SDK insta
 Zero-dependency: the anthropic SDK is stubbed and the model client is monkeypatched,
 so this runs under stock `python -m unittest`. (Run via pytest too if available.)
 """
+
 import json
 import os
 import sys
@@ -24,9 +25,11 @@ from pathlib import Path
 # Stub the anthropic SDK so importing agent.py needs no real dependency / API key.
 if "anthropic" not in sys.modules:
     _fake = types.ModuleType("anthropic")
+
     class _FakeAnthropic:  # noqa: N801
         def __init__(self, *a, **k):
             pass
+
     _fake.Anthropic = _FakeAnthropic
     sys.modules["anthropic"] = _fake
 
@@ -41,6 +44,7 @@ import agent  # noqa: E402
 
 class _Block:
     """Stand-in for an anthropic content block."""
+
     def __init__(self, type, name=None, input=None, text=None):
         self.type = type
         self.name = name
@@ -71,8 +75,16 @@ class _FakeClient:
 _GOOD_EXPLANATION = {
     "summary": "Your assessed value is $98,000.",
     "sections": [{"heading": "What these mean", "body": "Plain-language body."}],
-    "glossary": [{"term": "Taxable Value (TV)", "definition": "The $72,340 your taxes are levied on."}],
-    "statutes": [{"name": "Taxable Value cap (Proposal A)", "citation": "MCL 211.27a(2)", "plain": "TV rises by the lesser of 5% or CPI."}],
+    "glossary": [
+        {"term": "Taxable Value (TV)", "definition": "The $72,340 your taxes are levied on."}
+    ],
+    "statutes": [
+        {
+            "name": "Taxable Value cap (Proposal A)",
+            "citation": "MCL 211.27a(2)",
+            "plain": "TV rises by the lesser of 5% or CPI.",
+        }
+    ],
     "disclaimer": "Educational only; the assessor is the authority.",
 }
 
@@ -86,13 +98,17 @@ class RunExplainContractTest(unittest.TestCase):
         return client
 
     def test_returns_structured_explanation(self):
-        self._patch_client(_Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)]))
+        self._patch_client(
+            _Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)])
+        )
         out = agent.run_explain("assessment", FACTS)
         self.assertEqual(out["summary"], _GOOD_EXPLANATION["summary"])
         self.assertIn("statutes", out)
 
     def test_forces_render_explanation_tool(self):
-        client = self._patch_client(_Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)]))
+        client = self._patch_client(
+            _Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)])
+        )
         agent.run_explain("assessment", FACTS)
         kwargs = client.messages.calls[0]
         self.assertEqual(kwargs["tool_choice"], {"type": "tool", "name": "render_explanation"})
@@ -101,19 +117,23 @@ class RunExplainContractTest(unittest.TestCase):
     def test_narrates_only_caller_facts(self):
         # narrate-from-truth: the exact facts we pass are what the model is shown;
         # run_explain originates no figures of its own.
-        client = self._patch_client(_Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)]))
+        client = self._patch_client(
+            _Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)])
+        )
         agent.run_explain("assessment", FACTS)
         user_msg = client.messages.calls[0]["messages"][0]["content"]
-        self.assertIn('"assessed_value":98000', user_msg)   # compact JSON (DIC-1870)
+        self.assertIn('"assessed_value":98000', user_msg)  # compact JSON (DIC-1870)
         self.assertIn("80-08-032-002-00", user_msg)
 
     def test_grounds_on_curated_statute_corpus(self):
-        client = self._patch_client(_Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)]))
+        client = self._patch_client(
+            _Response([_Block("tool_use", name="render_explanation", input=_GOOD_EXPLANATION)])
+        )
         agent.run_explain("assessment", FACTS)
         system = client.messages.calls[0]["system"]
         system_text = system[0]["text"] if isinstance(system, list) else system
-        self.assertIn("MCL 211.27a", system_text)            # the corpus is injected
-        self.assertIn("cite", system_text.lower())           # "narrate, never originate" discipline
+        self.assertIn("MCL 211.27a", system_text)  # the corpus is injected
+        self.assertIn("cite", system_text.lower())  # "narrate, never originate" discipline
 
     def test_raises_when_model_skips_the_tool(self):
         # If the model freelances a text answer instead of the structured tool, fail
@@ -140,25 +160,44 @@ class RunExplainContractTest(unittest.TestCase):
 
     # ── B3 autoconfigure refinement (DIC-579) — same forced-tool discipline ──────
     def test_autoconfigure_returns_refinement(self):
-        ref = {"rationale": "Fits the brief.", "suggestions": [{"field": "capabilities.search", "change": "enable AI"}]}
-        self._patch_client(_Response([_Block("tool_use", name="propose_theme_refinement", input=ref)]))
-        out = agent.run_autoconfigure({"topic": "zoning"}, {"tenant": "vanburen", "capabilities": {"search": {"ai": "no-ai"}}})
+        ref = {
+            "rationale": "Fits the brief.",
+            "suggestions": [{"field": "capabilities.search", "change": "enable AI"}],
+        }
+        self._patch_client(
+            _Response([_Block("tool_use", name="propose_theme_refinement", input=ref)])
+        )
+        out = agent.run_autoconfigure(
+            {"topic": "zoning"}, {"tenant": "vanburen", "capabilities": {"search": {"ai": "no-ai"}}}
+        )
         self.assertEqual(out["rationale"], "Fits the brief.")
         self.assertEqual(out["suggestions"][0]["field"], "capabilities.search")
 
     def test_autoconfigure_forces_its_tool(self):
-        client = self._patch_client(_Response([_Block("tool_use", name="propose_theme_refinement", input={"rationale": "ok"})]))
+        client = self._patch_client(
+            _Response(
+                [_Block("tool_use", name="propose_theme_refinement", input={"rationale": "ok"})]
+            )
+        )
         agent.run_autoconfigure({"topic": "x"}, {"tenant": "t"})
         kwargs = client.messages.calls[0]
-        self.assertEqual(kwargs["tool_choice"], {"type": "tool", "name": "propose_theme_refinement"})
+        self.assertEqual(
+            kwargs["tool_choice"], {"type": "tool", "name": "propose_theme_refinement"}
+        )
         self.assertEqual(kwargs["tools"][0]["name"], "propose_theme_refinement")
 
     def test_autoconfigure_narrates_over_the_given_draft(self):
         # The model is shown the deterministic draft as grounding — it never originates one.
-        client = self._patch_client(_Response([_Block("tool_use", name="propose_theme_refinement", input={"rationale": "ok"})]))
-        agent.run_autoconfigure({"topic": "zoning"}, {"tenant": "vanburen", "id": "viewer-vanburen"})
+        client = self._patch_client(
+            _Response(
+                [_Block("tool_use", name="propose_theme_refinement", input={"rationale": "ok"})]
+            )
+        )
+        agent.run_autoconfigure(
+            {"topic": "zoning"}, {"tenant": "vanburen", "id": "viewer-vanburen"}
+        )
         user_msg = client.messages.calls[0]["messages"][0]["content"]
-        self.assertIn('"tenant":"vanburen"', user_msg)   # compact JSON (DIC-1870)
+        self.assertIn('"tenant":"vanburen"', user_msg)  # compact JSON (DIC-1870)
         self.assertIn("DETERMINISTIC DRAFT MANIFEST", user_msg)
 
     def test_autoconfigure_raises_when_tool_skipped(self):
@@ -169,17 +208,30 @@ class RunExplainContractTest(unittest.TestCase):
     # ── C5 LLM-judge grounding gate (DIC-586) — forced verdict tool ──────────────
     def test_judge_returns_a_verdict(self):
         verdict = {"grounded": False, "citations_ok": False, "issues": ["invented $500,000 figure"]}
-        self._patch_client(_Response([_Block("tool_use", name="report_grounding_verdict", input=verdict)]))
+        self._patch_client(
+            _Response([_Block("tool_use", name="report_grounding_verdict", input=verdict)])
+        )
         out = agent.run_grounding_judge("The value is $500,000.", {"assessed_value": 98000})
         self.assertFalse(out["grounded"])
         self.assertIn("invented $500,000 figure", out["issues"])
 
     def test_judge_forces_its_tool_and_shows_both_sides(self):
-        client = self._patch_client(_Response([_Block("tool_use", name="report_grounding_verdict",
-                                                      input={"grounded": True, "citations_ok": True, "issues": []})]))
+        client = self._patch_client(
+            _Response(
+                [
+                    _Block(
+                        "tool_use",
+                        name="report_grounding_verdict",
+                        input={"grounded": True, "citations_ok": True, "issues": []},
+                    )
+                ]
+            )
+        )
         agent.run_grounding_judge("Assessed value is $98,000.", {"assessed_value": 98000})
         kwargs = client.messages.calls[0]
-        self.assertEqual(kwargs["tool_choice"], {"type": "tool", "name": "report_grounding_verdict"})
+        self.assertEqual(
+            kwargs["tool_choice"], {"type": "tool", "name": "report_grounding_verdict"}
+        )
         user_msg = kwargs["messages"][0]["content"]
         self.assertIn("GROUNDING TRUTH", user_msg)
         self.assertIn("AI OUTPUT", user_msg)

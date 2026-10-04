@@ -2,8 +2,9 @@
 
 import os
 
+from psycopg import Connection
+from psycopg.rows import DictRow, dict_row
 from psycopg_pool import ConnectionPool
-from psycopg.rows import dict_row
 
 from .config import DATABASE_URL
 
@@ -12,8 +13,10 @@ from .config import DATABASE_URL
 # can't get a connection within PV_POOL_TIMEOUT_S fails instead of queueing forever.
 STATEMENT_TIMEOUT_MS = int(os.getenv("PV_STATEMENT_TIMEOUT_MS", "10000"))
 
-pool = ConnectionPool(
+# Typed with its row type so callers (and mypy) know every row is a dict.
+pool: ConnectionPool[Connection[DictRow]] = ConnectionPool(
     DATABASE_URL,
+    connection_class=Connection[DictRow],
     min_size=1,
     max_size=int(os.getenv("PV_POOL_MAX", "10")),
     timeout=float(os.getenv("PV_POOL_TIMEOUT_S", "10")),

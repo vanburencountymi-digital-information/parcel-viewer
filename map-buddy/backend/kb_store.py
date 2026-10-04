@@ -29,29 +29,33 @@ first for SQL backends, degrading to full-text then ILIKE when the embedder is u
 The connection and embedder are INJECTED, so the harness exercises the SQL, the jurisdiction
 scoping, and the result shape with no live DB and no OpenAI dep.
 """
+
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any
 
 
 # ── Schema descriptors (the ONLY thing that differs between the two SQL backends) ──
 @dataclass(frozen=True)
 class KnowledgeSchema:
-    table: str                              # "knowledge_chunks" | "knowledge.chunks"
-    content_col: str                        # "text" (ZIP-local) | "content" (DICE)
-    jurisdiction_col: Optional[str] = None  # "jurisdiction" on DICE; None = un-scoped
+    table: str  # "knowledge_chunks" | "knowledge.chunks"
+    content_col: str  # "text" (ZIP-local) | "content" (DICE)
+    jurisdiction_col: str | None = None  # "jurisdiction" on DICE; None = un-scoped
 
 
 ZIP_LOCAL_SCHEMA = KnowledgeSchema(table="knowledge_chunks", content_col="text")
-DICE_SCHEMA = KnowledgeSchema(table="knowledge.chunks", content_col="content", jurisdiction_col="jurisdiction")
+DICE_SCHEMA = KnowledgeSchema(
+    table="knowledge.chunks", content_col="content", jurisdiction_col="jurisdiction"
+)
 
-_SNIPPET_MAX = 600   # search-result text is truncated to this; full text via get_section
+_SNIPPET_MAX = 600  # search-result text is truncated to this; full text via get_section
 
 
-def _default_embedder(query: str) -> Optional[list]:
+def _default_embedder(query: str) -> list | None:
     """OpenAI text-embedding-3-small (A6-b). Returns None on ANY failure so the caller
     falls back to full-text search — embeddings are never on the critical path."""
     import os
@@ -63,7 +67,11 @@ def _default_embedder(query: str) -> Optional[list]:
         from openai import OpenAI
 
         client = OpenAI(api_key=key, timeout=5.0)
-        return client.embeddings.create(model="text-embedding-3-small", input=[query]).data[0].embedding
+        return (
+            client.embeddings.create(model="text-embedding-3-small", input=[query])
+            .data[0]
+            .embedding
+        )
     except Exception:
         return None
 
@@ -71,13 +79,13 @@ def _default_embedder(query: str) -> Optional[list]:
 class KnowledgeStore:
     """Interface: jurisdiction-scoped knowledge retrieval. Backends implement these."""
 
-    def search(self, query: str, domain: Optional[str] = None, limit: int = 10) -> list[dict]:
+    def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict]:
         raise NotImplementedError
 
-    def get_section(self, section_id: str) -> Optional[dict]:
+    def get_section(self, section_id: str) -> dict | None:
         raise NotImplementedError
 
-    def source_name(self, section_id: str) -> Optional[str]:
+    def source_name(self, section_id: str) -> str | None:
         raise NotImplementedError
 
 
@@ -89,18 +97,18 @@ class SqlKnowledgeStore(KnowledgeStore):
     def __init__(
         self,
         schema: KnowledgeSchema,
-        acquire: Callable[[], object],
-        release: Callable[[object], None],
-        jurisdiction: Optional[str] = None,
-        embedder: Callable[[str], Optional[list]] = _default_embedder,
+        acquire: Callable[[], Any],  # returns a DB-API connection
+        release: Callable[[Any], None],
+        jurisdiction: str | None = None,
+        embedder: Callable[[str], list | None] = _default_embedder,
     ):
         # FAIL CLOSED (C1 / DIC-582): a jurisdiction-scoped backend MUST be given a tenant,
         # else every query runs un-scoped and returns ALL tenants' rows — a cross-tenant
         # leak. Tenant isolation is security, not a feature (§4.13).
         if schema.jurisdiction_col and not jurisdiction:
             raise ValueError(
-                "KnowledgeStore: backend '%s' is jurisdiction-scoped but no jurisdiction "
-                "was provided (fail-closed; would otherwise leak across tenants)" % schema.table
+                f"KnowledgeStore: backend '{schema.table}' is jurisdiction-scoped but no jurisdiction "
+                "was provided (fail-closed; would otherwise leak across tenants)"
             )
         self.schema = schema
         self._acquire = acquire
@@ -122,18 +130,20 @@ class SqlKnowledgeStore(KnowledgeStore):
         out = []
         for r in rows:
             text = r[3] or ""
-            out.append({
-                "section_id": r[0],
-                "section_title": r[1],
-                "page_number": r[2],
-                "text": (text[:_SNIPPET_MAX] + "...") if len(text) > _SNIPPET_MAX else text,
-                "source_name": r[4],
-                "similarity": round(float(r[5]), 4) if len(r) > 5 and r[5] else 0,
-                "search_method": method,
-            })
+            out.append(
+                {
+                    "section_id": r[0],
+                    "section_title": r[1],
+                    "page_number": r[2],
+                    "text": (text[:_SNIPPET_MAX] + "...") if len(text) > _SNIPPET_MAX else text,
+                    "source_name": r[4],
+                    "similarity": round(float(r[5]), 4) if len(r) > 5 and r[5] else 0,
+                    "search_method": method,
+                }
+            )
         return out
 
-    def search(self, query: str, domain: Optional[str] = None, limit: int = 10) -> list[dict]:
+    def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict]:
         t = self.schema.table
         c = self.schema.content_col
         conn = self._acquire()
@@ -159,7 +169,9 @@ class SqlKnowledgeStore(KnowledgeStore):
                 return self._map_rows(rows, "semantic")
 
             extra = ["domain = %s"] if domain else []
-            extra.append(f"to_tsvector('english', COALESCE({c},'')) @@ plainto_tsquery('english', %s)")
+            extra.append(
+                f"to_tsvector('english', COALESCE({c},'')) @@ plainto_tsquery('english', %s)"
+            )
             where, pre = self._scope(*extra)
             dparams = ([domain] if domain else []) + [query]
             sql = (
@@ -188,7 +200,7 @@ class SqlKnowledgeStore(KnowledgeStore):
         finally:
             self._release(conn)
 
-    def get_section(self, section_id: str) -> Optional[dict]:
+    def get_section(self, section_id: str) -> dict | None:
         t = self.schema.table
         c = self.schema.content_col
         conn = self._acquire()
@@ -213,7 +225,7 @@ class SqlKnowledgeStore(KnowledgeStore):
         finally:
             self._release(conn)
 
-    def source_name(self, section_id: str) -> Optional[str]:
+    def source_name(self, section_id: str) -> str | None:
         t = self.schema.table
         conn = self._acquire()
         try:
@@ -247,7 +259,9 @@ class FixtureKnowledgeStore(KnowledgeStore):
         self.jurisdiction = jurisdiction
         # Scope rows to the jurisdiction. A row without its own jurisdiction is assumed to
         # belong to this store's jurisdiction (single-tenant fixture files).
-        self._rows = [c for c in (chunks or []) if (c.get("jurisdiction") or jurisdiction) == jurisdiction]
+        self._rows = [
+            c for c in (chunks or []) if (c.get("jurisdiction") or jurisdiction) == jurisdiction
+        ]
 
     def _doc(self, r: dict, snippet: bool = False) -> dict:
         text = r.get("text") or r.get("content") or ""
@@ -266,7 +280,7 @@ class FixtureKnowledgeStore(KnowledgeStore):
             d["highlight"] = r["highlight"]
         return d
 
-    def search(self, query: str, domain: Optional[str] = None, limit: int = 10) -> list[dict]:
+    def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict]:
         # Only score on tokens >= 4 chars (mirrors the SqlKnowledgeStore ILIKE last-resort):
         # short noise words like "no"/"of" must not substring-match (e.g. "no" inside "not")
         # and turn an UNcitable claim into a spurious coarse hit.
@@ -290,14 +304,14 @@ class FixtureKnowledgeStore(KnowledgeStore):
             out.append(d)
         return out
 
-    def get_section(self, section_id: str) -> Optional[dict]:
+    def get_section(self, section_id: str) -> dict | None:
         sid = (section_id or "").strip()
         for r in self._rows:
             if r.get("section_id") == sid:
                 return self._doc(r)
         return None
 
-    def source_name(self, section_id: str) -> Optional[str]:
+    def source_name(self, section_id: str) -> str | None:
         sec = self.get_section(section_id)
         return sec.get("source_name") if sec else None
 
@@ -306,8 +320,8 @@ def build_store(
     backend: str,
     acquire: Callable[[], object],
     release: Callable[[object], None],
-    jurisdiction: Optional[str] = None,
-    embedder: Callable[[str], Optional[list]] = _default_embedder,
+    jurisdiction: str | None = None,
+    embedder: Callable[[str], list | None] = _default_embedder,
 ) -> SqlKnowledgeStore:
     """Construct a SQL store for `backend` ('zip-local' | 'dice'). 'dice' scopes by the
     given jurisdiction key."""
@@ -329,7 +343,9 @@ def build_fixture_store(source, jurisdiction: str) -> FixtureKnowledgeStore:
         # (a request for a different tenant returns no rows — fail-closed, C1 / DIC-582).
         if file_juris:
             chunks = [dict(c, jurisdiction=c.get("jurisdiction") or file_juris) for c in chunks]
-        jurisdiction = jurisdiction or file_juris
+        # "" (not None) when nothing is declared: rows are then matched against "" and
+        # untagged rows can't slip through (fail closed, C1 / DIC-582).
+        jurisdiction = jurisdiction or file_juris or ""
     else:
         chunks = data
     return FixtureKnowledgeStore(chunks, jurisdiction=jurisdiction)

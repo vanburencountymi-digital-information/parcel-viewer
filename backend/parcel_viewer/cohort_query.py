@@ -19,11 +19,12 @@ geo.parcel_geometry.geom is EPSG:2253 (NAD83 / Michigan South, US survey FEET), 
 ST_DWithin distance in feet is used directly — no metric conversion. GeoJSON is EPSG:4326
 (RFC 7946) → transformed to 2253 for the intersect.
 """
+
 from __future__ import annotations
 
 import json
 import math
-from typing import Tuple
+from typing import Any
 
 
 class CohortSelectorError(ValueError):
@@ -36,14 +37,26 @@ class CohortSelectorError(ValueError):
 #   spatial   — a geo.* POLYGON layer; the cohort = parcels intersecting it (by id or name).
 #   attribute — a column the cohort feature query already selects; the cohort = parcels matching.
 GEOGRAPHY_SOURCES = {
-    "subdivision": {"kind": "spatial", "table": "geo.subdivisions", "id_col": "id", "name_col": "sub_name", "label": "subdivision"},
-    "section":     {"kind": "spatial", "table": "geo.plss_sections", "id_col": "id", "name_col": "twnrngsec", "label": "section"},
-    "township":    {"kind": "attribute", "column": "pg.municipality", "label": "township"},
-    "school":      {"kind": "attribute", "column": "a.school_dist", "label": "school district"},
+    "subdivision": {
+        "kind": "spatial",
+        "table": "geo.subdivisions",
+        "id_col": "id",
+        "name_col": "sub_name",
+        "label": "subdivision",
+    },
+    "section": {
+        "kind": "spatial",
+        "table": "geo.plss_sections",
+        "id_col": "id",
+        "name_col": "twnrngsec",
+        "label": "section",
+    },
+    "township": {"kind": "attribute", "column": "pg.municipality", "label": "township"},
+    "school": {"kind": "attribute", "column": "a.school_dist", "label": "school district"},
 }
 
 
-def build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
+def build_predicate(selector: dict, limit: int) -> tuple[str, list, dict]:
     """selector + limit → (where_predicate_sql, params, resolved_selector).
 
     `params` are positional (%s) in predicate order; the caller appends the LIMIT param.
@@ -67,22 +80,23 @@ def _finite(v) -> float:
     return f
 
 
-def _build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
+def _build_predicate(selector: dict, limit: int) -> tuple[str, list, dict]:
     sel = selector or {}
     stype = (sel.get("type") or "").lower()
 
     if stype == "explicit":
         ids = []
-        for x in (sel.get("ids") or []):
+        for x in sel.get("ids") or []:
             # Tolerate numeric strings ("45154"); a non-numeric value is a PIN, not an id.
             try:
                 ids.append(int(x))
-            except (TypeError, ValueError):
-                raise CohortSelectorError("explicit selector: ids must be integers")
+            except (TypeError, ValueError) as exc:
+                raise CohortSelectorError("explicit selector: ids must be integers") from exc
         pins = [str(p).strip() for p in (sel.get("pins") or []) if str(p).strip()]
         ids = ids[:limit]
         pins = pins[:limit]
-        clauses, params = [], []
+        clauses: list[str] = []
+        params: list[Any] = []
         if ids:
             clauses.append("pg.id = ANY(%s)")
             params.append(ids)
@@ -93,14 +107,14 @@ def _build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
             raise CohortSelectorError("explicit selector needs at least one id or pin")
         n = len(ids) + len(pins)
         pred = clauses[0] if len(clauses) == 1 else "(" + " OR ".join(clauses) + ")"
-        label = "%d selected parcel%s" % (n, "" if n == 1 else "s")
+        label = f"{n} selected parcel{'' if n == 1 else 's'}"
         return (pred, params, {"type": "explicit", "label": label})
 
     if stype == "buffer":
         try:
             dist = _finite(sel.get("distance_ft"))
-        except (TypeError, ValueError):
-            raise CohortSelectorError("buffer selector needs numeric distance_ft")
+        except (TypeError, ValueError) as exc:
+            raise CohortSelectorError("buffer selector needs numeric distance_ft") from exc
         if dist <= 0:
             raise CohortSelectorError("buffer distance_ft must be > 0")
         if sel.get("parcel_id") is not None:
@@ -109,14 +123,14 @@ def _build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
             return (
                 "ST_DWithin(pg.geom, (SELECT geom FROM geo.parcel_geometry WHERE id = %s), %s)",
                 [pid, dist],
-                {"type": "buffer", "label": "Within %d ft of parcel %d" % (int(dist), pid)},
+                {"type": "buffer", "label": f"Within {int(dist)} ft of parcel {pid}"},
             )
         if sel.get("lng") is not None and sel.get("lat") is not None:
             lng, lat = _finite(sel["lng"]), _finite(sel["lat"])
             return (
                 "ST_DWithin(pg.geom, ST_Transform(ST_SetSRID(ST_MakePoint(%s, %s), 4326), 2253), %s)",
                 [lng, lat, dist],
-                {"type": "buffer", "label": "Within %d ft of a point" % int(dist)},
+                {"type": "buffer", "label": f"Within {int(dist)} ft of a point"},
             )
         raise CohortSelectorError("buffer selector needs parcel_id or lng+lat")
 
@@ -124,7 +138,7 @@ def _build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
         geo = (sel.get("geography") or "").lower()
         src = GEOGRAPHY_SOURCES.get(geo)
         if not src:
-            raise CohortSelectorError("named-geography: unknown geography %r" % geo)
+            raise CohortSelectorError(f"named-geography: unknown geography {geo!r}")
         has_id = sel.get("id") is not None
         name = sel.get("name")
         has_name = name is not None and str(name).strip() != ""
@@ -136,26 +150,33 @@ def _build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
             # geometry (ST_Union folds a multi-row name match), and the table/column come from
             # the whitelist above — only the value is a parameter. Index-friendly like buffer's
             # ST_DWithin; a parcel straddling a boundary may appear in adjacent areas (v1).
+            param: int | str
             if has_id:
-                inner = "SELECT geom FROM %s WHERE %s = %%s" % (src["table"], src["id_col"])
-                param, lbl = int(sel["id"]), "%s #%s" % (src["label"], sel["id"])
+                inner = "SELECT geom FROM {} WHERE {} = %s".format(src["table"], src["id_col"])
+                param, lbl = int(sel["id"]), "{} #{}".format(src["label"], sel["id"])
             else:
-                inner = "SELECT ST_Union(geom) FROM %s WHERE %s = %%s" % (src["table"], src["name_col"])
+                inner = "SELECT ST_Union(geom) FROM {} WHERE {} = %s".format(
+                    src["table"], src["name_col"]
+                )
                 param, lbl = str(name).strip(), str(name).strip()
-            pred = "pg.geom && (%s) AND ST_Intersects(pg.geom, (%s))" % (inner, inner)
-            return (pred, [param, param], {"type": "named-geography", "geography": geo, "label": lbl})
+            pred = f"pg.geom && ({inner}) AND ST_Intersects(pg.geom, ({inner}))"
+            return (
+                pred,
+                [param, param],
+                {"type": "named-geography", "geography": geo, "label": lbl},
+            )
 
         # attribute: a parcel column the cohort feature query already carries.
         val = int(sel["id"]) if has_id else str(name).strip()
-        pred = "%s = %%s" % src["column"]
-        lbl = "%s %s" % (src["label"], val) if geo == "school" else str(val)
+        pred = "{} = %s".format(src["column"])
+        lbl = "{} {}".format(src["label"], val) if geo == "school" else str(val)
         return (pred, [val], {"type": "named-geography", "geography": geo, "label": lbl})
 
     if stype == "drawn-polygon":
         geom = sel.get("geometry")
         if not isinstance(geom, dict):
             raise CohortSelectorError("drawn-polygon needs a GeoJSON geometry object")
-        gtype = (geom.get("type") or "")
+        gtype = geom.get("type") or ""
         if gtype not in ("Polygon", "MultiPolygon"):
             raise CohortSelectorError("drawn-polygon geometry must be a Polygon or MultiPolygon")
         if not geom.get("coordinates"):
@@ -165,11 +186,13 @@ def _build_predicate(selector: dict, limit: int) -> Tuple[str, list, dict]:
             raise CohortSelectorError("drawn-polygon geometry is too complex")
         gj = json.dumps(geom)
         # GeoJSON is EPSG:4326 (RFC 7946) → transform to the parcel SRID (2253) for the intersect.
-        pred = ("pg.geom && ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 2253) "
-                "AND ST_Intersects(pg.geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 2253))")
+        pred = (
+            "pg.geom && ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 2253) "
+            "AND ST_Intersects(pg.geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 2253))"
+        )
         return (pred, [gj, gj], {"type": "drawn-polygon", "label": "drawn area"})
 
-    raise CohortSelectorError("unknown cohort selector type: %r" % stype)
+    raise CohortSelectorError(f"unknown cohort selector type: {stype!r}")
 
 
 def _count_coords(coords) -> int:

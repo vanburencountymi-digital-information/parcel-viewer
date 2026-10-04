@@ -47,12 +47,14 @@ class RequestContextMiddlewareTests(TestCase):
         self.assertEqual(response.headers["x-request-id"], "abc-123.def_456")
         self.assertEqual(response.json()["request_id"], "abc-123.def_456")
 
-    @parameterized.expand([
-        ("too_short", "abc"),
-        ("too_long", "a" * 65),
-        ("log_injection", "abcdefgh\nFAKE LOG LINE"),
-        ("spaces", "abcd efgh ijkl"),
-    ])
+    @parameterized.expand(
+        [
+            ("too_short", "abc"),
+            ("too_long", "a" * 65),
+            ("log_injection", "abcdefgh\nFAKE LOG LINE"),
+            ("spaces", "abcd efgh ijkl"),
+        ]
+    )
     def test_replaces_an_unsafe_caller_id(self, _name: str, bad_id: str) -> None:
         response = self.client.get("/echo", headers={"X-Request-ID": bad_id})
 
@@ -61,14 +63,16 @@ class RequestContextMiddlewareTests(TestCase):
     def test_no_request_id_outside_a_request(self) -> None:
         self.assertIsNone(current_request_id())
 
-    @parameterized.expand([
-        ("ok", "/status/200", logging.INFO),
-        ("not_found_is_routine", "/status/404", logging.INFO),
-        ("rate_limited", "/status/429", logging.WARNING),
-        ("client_error", "/status/400", logging.WARNING),
-        ("server_error", "/status/500", logging.ERROR),
-        ("health_is_quiet", "/health", logging.DEBUG),
-    ])
+    @parameterized.expand(
+        [
+            ("ok", "/status/200", logging.INFO),
+            ("not_found_is_routine", "/status/404", logging.INFO),
+            ("rate_limited", "/status/429", logging.WARNING),
+            ("client_error", "/status/400", logging.WARNING),
+            ("server_error", "/status/500", logging.ERROR),
+            ("health_is_quiet", "/health", logging.DEBUG),
+        ]
+    )
     def test_access_log_level(self, _name: str, path: str, level: int) -> None:
         with self.assertLogs("access", level=logging.DEBUG) as logs:
             self.client.get(path)

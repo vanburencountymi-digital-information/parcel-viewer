@@ -13,18 +13,21 @@ In-process bounded TTL cache — the groundwork. A shared/Redis cache across ins
 later step; the get/set interface here is the seam for that swap. The clock is injectable
 so TTL expiry is testable without sleeping.
 """
+
 import hashlib
 import json
 import os
 import time
 from collections import OrderedDict
+from typing import Any
 
 
 def cache_key(capability: str, tenant, typed_input) -> str:
     """Stable hash of (capability, tenant, typed input). Order-independent (sorted keys)."""
     payload = json.dumps(
         {"cap": capability, "tenant": tenant or "default", "in": typed_input},
-        sort_keys=True, default=str,
+        sort_keys=True,
+        default=str,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
@@ -34,7 +37,9 @@ class ResultCache:
         self.max_size = max_size
         self.ttl = ttl_seconds
         self._clock = clock
-        self._store = OrderedDict()  # key -> (expires_at, value)
+        self._store: OrderedDict[str, tuple[float, Any]] = (
+            OrderedDict()
+        )  # key -> (expires_at, value)
 
     def get(self, key):
         item = self._store.get(key)

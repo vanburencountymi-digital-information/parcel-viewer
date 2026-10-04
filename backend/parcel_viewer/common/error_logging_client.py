@@ -17,8 +17,10 @@ This file is kept identical in backend/parcel_viewer/common/ and map-buddy/backe
 """
 
 import os
+from typing import Any, cast
 
 import sentry_sdk
+from sentry_sdk.types import Event, Hint
 
 from .request_context import current_request_id
 
@@ -27,10 +29,11 @@ from .request_context import current_request_id
 _DROPPED_REQUEST_KEYS = ("query_string", "cookies", "data")
 
 
-def scrub_event(event: dict, _hint: dict) -> dict:
+def scrub_event(event: Event, _hint: Hint) -> Event:
     """Takes a Sentry event; returns it without query strings, cookies or bodies,
     and tagged with the current request id."""
-    request = event.get("request")
+    data = cast(dict[str, Any], event)
+    request = data.get("request")
     if isinstance(request, dict):
         for key in _DROPPED_REQUEST_KEYS:
             request.pop(key, None)
@@ -39,7 +42,7 @@ def scrub_event(event: dict, _hint: dict) -> dict:
             request["url"] = url.split("?", 1)[0]
     request_id = current_request_id()
     if request_id:
-        event.setdefault("tags", {})["request_id"] = request_id
+        data.setdefault("tags", {})["request_id"] = request_id
     return event
 
 

@@ -1,4 +1,5 @@
 """Build demo/index.html from parcel-studio index (one-time helper)."""
+
 import re
 from pathlib import Path
 

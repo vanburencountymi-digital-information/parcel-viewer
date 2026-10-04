@@ -2,17 +2,27 @@
 Lets the preview browser attach to the running Parcel Viewer for the
 DIC-376 accessibility audit without contending for the Docker-held port 8080.
 """
+
 import http.server
 import socketserver
-import urllib.request
 import urllib.error
+import urllib.request
 
 UPSTREAM = "http://localhost:8080"
 PORT = 8091
 
-HOP = {"connection", "keep-alive", "proxy-authenticate", "proxy-authorization",
-       "te", "trailers", "transfer-encoding", "upgrade", "content-length",
-       "content-encoding"}
+HOP = {
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailers",
+    "transfer-encoding",
+    "upgrade",
+    "content-length",
+    "content-encoding",
+}
 
 
 class Proxy(http.server.BaseHTTPRequestHandler):

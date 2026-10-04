@@ -1,11 +1,12 @@
 """Parcel Viewer backend — read-only FastAPI app."""
 
 import hmac
-import urllib.error
-import urllib.request
 import json
 import logging
 import os
+import re as _re
+import urllib.error
+import urllib.request
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -38,7 +39,7 @@ log = logging.getLogger("parcel_viewer.api")
 
 # Observability (DIC-1879, ADR 0001): stdout logs with request ids, and Sentry when
 # SENTRY_DSN is set (staging/production only).
-APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
+APP_VERSION = os.getenv("APP_VERSION", "0.0.0")  # set from the git tag at build time
 configure_logging("parcel-api")
 init_error_monitoring("parcel-api", APP_VERSION)
 
@@ -107,14 +108,19 @@ def _require_writer(
         except Exception as exc:  # noqa: BLE001
             log.exception("config store unavailable")
             errors.report_exception(exc, tags={"operation": "config_store"})
-            raise HTTPException(status_code=503, detail="Config store unavailable.")
+            raise HTTPException(status_code=503, detail="Config store unavailable.") from exc
     if store is None:
-        raise HTTPException(status_code=503, detail="Config store not configured (set PV_WRITER_DATABASE_URL).")
+        raise HTTPException(
+            status_code=503, detail="Config store not configured (set PV_WRITER_DATABASE_URL)."
+        )
     # Constant-time compare so response timing can't leak the token (DIC-1853).
     if not _ADMIN_TOKEN or not hmac.compare_digest(
         (x_admin_token or "").encode(), _ADMIN_TOKEN.encode()
     ):
-        raise HTTPException(status_code=401, detail="Admin auth required (interim PV_ADMIN_TOKEN; real auth is DIC-463).")
+        raise HTTPException(
+            status_code=401,
+            detail="Admin auth required (interim PV_ADMIN_TOKEN; real auth is DIC-463).",
+        )
     return store
 
 
@@ -132,6 +138,7 @@ class RollbackBody(BaseModel):
     version: int
     author: str | None = None
 
+
 ALLOWED_WMS_HOSTS = (
     "hazards.fema.gov",
     "fwspublicservices.wim.usgs.gov",
@@ -144,8 +151,15 @@ ALLOWED_WMS_HOSTS = (
 # 30x to any host would bypass the allowlist), must not pass through content a browser
 # would render as a page on our origin, and must bound what it reads.
 _WMS_ALLOWED_TYPES = (
-    "application/json", "application/geo+json", "application/xml", "text/xml",
-    "application/vnd.ogc.", "text/plain", "image/png", "image/jpeg", "image/gif",
+    "application/json",
+    "application/geo+json",
+    "application/xml",
+    "text/xml",
+    "application/vnd.ogc.",
+    "text/plain",
+    "image/png",
+    "image/jpeg",
+    "image/gif",
 )
 _WMS_MAX_BYTES = int(os.getenv("WMS_PROXY_MAX_BYTES", str(5 * 1024 * 1024)))
 
@@ -187,7 +201,9 @@ async def lifespan(app: FastAPI):
 # turns them on.
 _DOCS = os.getenv("PV_API_DOCS", "") == "1"
 app = FastAPI(
-    title="Parcel Viewer API", version=APP_VERSION, lifespan=lifespan,
+    title="Parcel Viewer API",
+    version=APP_VERSION,
+    lifespan=lifespan,
     docs_url="/docs" if _DOCS else None,
     redoc_url="/redoc" if _DOCS else None,
     openapi_url="/openapi.json" if _DOCS else None,
@@ -216,7 +232,9 @@ app.add_middleware(
 # Rate limiting (DIC-496). Applied per-endpoint via @limiter.limit on the public
 # unauthenticated abuse surfaces: /wms-proxy and /report-error (DIC-1852).
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# slowapi types its handler for RateLimitExceeded, not Exception; the pairing is correct.
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
 
 # Every route is a plain `def` (DIC-1853): the psycopg pool, config store and urllib
 # calls all block, so FastAPI must run them in its threadpool — an `async def` doing
@@ -270,11 +288,13 @@ def config_js(county: str = DEFAULT_COUNTY):
     if data is None:
         return Response(
             f"/* Parcel Viewer: unknown county {county!r} */",
-            media_type="application/javascript", status_code=404,
+            media_type="application/javascript",
+            status_code=404,
         )
     body = "window.COUNTY = " + json.dumps(data, ensure_ascii=False) + ";"
-    return Response(body, media_type="application/javascript",
-                    headers={"Cache-Control": "no-cache"})
+    return Response(
+        body, media_type="application/javascript", headers={"Cache-Control": "no-cache"}
+    )
 
 
 # ── PostGIS layer discovery (DIC-502) ─────────────────────────────────────────
@@ -283,14 +303,15 @@ def config_js(county: str = DEFAULT_COUNTY):
 # without a developer. Read-only; the data is public assessment-adjacent GIS.
 # TODO(DIC-463): gate behind admin auth once real auth lands.
 _GEOM_KIND = {  # PostGIS GeometryType() → viewer geomType
-    "POINT": "point", "MULTIPOINT": "point",
-    "LINESTRING": "line", "MULTILINESTRING": "line",
-    "POLYGON": "polygon", "MULTIPOLYGON": "polygon",
+    "POINT": "point",
+    "MULTIPOINT": "point",
+    "LINESTRING": "line",
+    "MULTILINESTRING": "line",
+    "POLYGON": "polygon",
+    "MULTIPOLYGON": "polygon",
 }
 # reference_layers is one table split into several tile functions by feature_type.
 _REFERENCE_FEATURE = {"roads": "road", "drains": "drain", "section_lines": "section_line"}
-
-import re as _re
 
 
 def _tile_fields(src: str) -> list[str]:
@@ -307,7 +328,7 @@ def _tile_fields(src: str) -> list[str]:
     if j < 0:
         return []
     out: list[str] = []
-    for part in head[j + 6:].split(","):
+    for part in head[j + 6 :].split(","):
         m = _re.match(r"\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*$", part)
         if m:
             name = m.group(1).lower()
@@ -346,37 +367,48 @@ def _discover_layers(county: str) -> list[dict]:
             try:
                 g = conn.execute(
                     f"SELECT GeometryType(geom) AS gt, ST_SRID(geom) AS srid FROM {ident}"
-                    + (clause or " WHERE geom IS NOT NULL") + " LIMIT 1",
+                    + (clause or " WHERE geom IS NOT NULL")
+                    + " LIMIT 1",
                     args,
                 ).fetchone()
                 if g:
                     geom_kind = _GEOM_KIND.get((g["gt"] or "").upper())
                     srid = g["srid"]
-                count = conn.execute(f"SELECT count(*) AS n FROM {ident}{clause}", args).fetchone()["n"]
+                row = conn.execute(f"SELECT count(*) AS n FROM {ident}{clause}", args).fetchone()
+                count = row["n"] if row else 0
             except Exception:  # noqa: BLE001 — discovery never fails the request
                 conn.rollback()
             return geom_kind, srid, count
 
         for f in funcs:
-            src = f["proname"]                          # e.g. "subdivisions_tiles"
+            src = f["proname"]  # e.g. "subdivisions_tiles"
             base = src[:-6] if src.endswith("_tiles") else src
-            if base == "parcel":                        # parcels is the base layer, not an overlay
+            if base == "parcel":  # parcels is the base layer, not an overlay
                 continue
             if base in tables:
                 geom_kind, srid, count = sample(base, None)
                 db_table = f"geo.{base}"
             elif base.startswith("reference_"):
-                ft = _REFERENCE_FEATURE.get(base[len("reference_"):])
-                geom_kind, srid, count = sample("reference_layers", ft) if ft else (None, None, None)
+                ft = _REFERENCE_FEATURE.get(base[len("reference_") :])
+                geom_kind, srid, count = (
+                    sample("reference_layers", ft) if ft else (None, None, None)
+                )
                 db_table = "geo.reference_layers" + (f" (feature_type={ft})" if ft else "")
             else:
                 geom_kind, srid, count, db_table = None, None, None, None
-            rows.append({
-                "id": base, "source": src, "sourceLayer": base,
-                "geomType": geom_kind, "srid": srid, "rowCount": count,
-                "dbSource": db_table, "registered": src in registered,
-                "fields": _tile_fields(f["def"]),
-            })
+            rows.append(
+                {
+                    "id": base,
+                    "source": src,
+                    "sourceLayer": base,
+                    "geomType": geom_kind,
+                    "srid": srid,
+                    "rowCount": count,
+                    "dbSource": db_table,
+                    "registered": src in registered,
+                    "fields": _tile_fields(f["def"]),
+                }
+            )
     return rows
 
 
@@ -405,7 +437,7 @@ def get_config_draft(county: str, store=Depends(_require_writer)):
 def put_config_draft(county: str, body: DraftBody, store=Depends(_require_writer)):
     baked = _load_county_config(county)
     if baked:
-        store.seed_if_empty(county, baked)   # establish v1 from baked before edits
+        store.seed_if_empty(county, baked)  # establish v1 from baked before edits
     store.save_draft(county, body.payload, body.author)
     return {"ok": True}
 
@@ -418,7 +450,7 @@ def publish_config(county: str, body: PublishBody, store=Depends(_require_writer
     try:
         version = store.publish(county, body.author, body.note)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     return {"ok": True, "version": version}
 
 
@@ -432,7 +464,7 @@ def rollback_config(county: str, body: RollbackBody, store=Depends(_require_writ
     try:
         version = store.rollback(county, body.version, body.author)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        raise HTTPException(status_code=404, detail=str(e)) from e
     return {"ok": True, "version": version}
 
 
@@ -448,7 +480,7 @@ def wms_proxy(request: Request, url: str):
     target = _wms_target(url)
     if target is None:
         return JSONResponse({"error": "URL not allowed"}, status_code=403)
-    host = safe_for_log(urlparse(target).hostname or "", 100)   # for log lines only
+    host = safe_for_log(urlparse(target).hostname or "", 100)  # for log lines only
 
     try:
         req = urllib.request.Request(target, headers={"User-Agent": "ParcelViewer/1.0"})
@@ -470,7 +502,10 @@ def wms_proxy(request: Request, url: str):
         return JSONResponse({"error": "upstream response too large"}, status_code=502)
     base_type = content_type.split(";", 1)[0].strip().lower()
     if not base_type.startswith(_WMS_ALLOWED_TYPES):
-        log.warning("wms-proxy upstream %s sent unexpected type %s", host, safe_for_log(base_type, 100))
+        log.warning(
+            "wms-proxy upstream %s sent unexpected type %s", host, safe_for_log(base_type, 100)
+        )
         return JSONResponse({"error": "unexpected upstream content"}, status_code=502)
-    return Response(content=content, media_type=content_type,
-                    headers={"X-Content-Type-Options": "nosniff"})
+    return Response(
+        content=content, media_type=content_type, headers={"X-Content-Type-Options": "nosniff"}
+    )

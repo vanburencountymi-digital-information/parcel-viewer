@@ -28,21 +28,32 @@ class ErrorReportingTests(TestCase):
     def tearDown(self) -> None:
         main.app.dependency_overrides.clear()
 
-    @parameterized.expand([
-        ("explain", "/explain", "run_explain", {"topic": "assessment", "facts": {"pin": "1"}}),
-        ("describe_cohort", "/describe-cohort", "run_describe_cohort", {"facts": {"parcel_count": 3}}),
-    ])
+    @parameterized.expand(
+        [
+            ("explain", "/explain", "run_explain", {"topic": "assessment", "facts": {"pin": "1"}}),
+            (
+                "describe_cohort",
+                "/describe-cohort",
+                "run_describe_cohort",
+                {"facts": {"parcel_count": 3}},
+            ),
+        ]
+    )
     def test_ai_failure_is_reported_with_a_clean_reply(self, operation, path, target, body) -> None:
-        with patch(f"main.{target}", autospec=True, side_effect=RuntimeError("SDK internals")), \
-             patch("main._quota_block", autospec=True, return_value=None), \
-             patch("main.result_cache.enabled", autospec=True, return_value=False):
+        with (
+            patch(f"main.{target}", autospec=True, side_effect=RuntimeError("SDK internals")),
+            patch("main._quota_block", autospec=True, return_value=None),
+            patch("main.result_cache.enabled", autospec=True, return_value=False),
+        ):
             response = self.client.post(path, json=body)
 
         self.assertEqual(response.status_code, 200)
         self.assertFalse(response.json()["ok"])
         self.assertNotIn("SDK internals", response.text)
         self.errors.report_exception.assert_called_once()
-        self.assertEqual(self.errors.report_exception.call_args.kwargs["tags"], {"operation": operation})
+        self.assertEqual(
+            self.errors.report_exception.call_args.kwargs["tags"], {"operation": operation}
+        )
 
 
 class QuotaLoggingTests(TestCase):
