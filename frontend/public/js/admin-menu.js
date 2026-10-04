@@ -596,8 +596,11 @@
     function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (_) {} }
     function getFlag(n) { return lsGet("pv-a11y-" + n) === "1"; }
     function setFlag(n, on) { lsSet("pv-a11y-" + n, on ? "1" : "0"); document.documentElement.classList.toggle(CLS[n], !!on); }
-    function getTs() { var v = parseFloat(lsGet("pv-a11y-ts")); return (v && v > 0) ? v : 1; }
-    function setTs(v) { v = parseFloat(v) || 1; lsSet("pv-a11y-ts", String(v)); document.documentElement.style.setProperty("--pv-ts", v); document.documentElement.classList.toggle(CLS.large, v > 1); }
+    // Clamp to a sane range: Map Buddy can set this from model output, and it persists
+    // (DIC-1870). The Settings menu offers 1 / 1.15 / 1.3.
+    function clampTs(v) { v = parseFloat(v); return (v && v > 0) ? Math.min(1.5, Math.max(1, v)) : 1; }
+    function getTs() { return clampTs(lsGet("pv-a11y-ts")); }
+    function setTs(v) { v = clampTs(v); lsSet("pv-a11y-ts", String(v)); document.documentElement.style.setProperty("--pv-ts", v); document.documentElement.classList.toggle(CLS.large, v > 1); }
     function applyAll() { ["contrast", "solid", "font", "motion"].forEach(function (n) { document.documentElement.classList.toggle(CLS[n], getFlag(n)); }); setTs(getTs()); }
     function init() {
       try {

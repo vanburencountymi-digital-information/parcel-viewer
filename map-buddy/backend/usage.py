@@ -13,6 +13,7 @@ DIC-400's shared usage counters swap in for multi-instance; the policy here is u
 The clock is injectable so window/quota behavior is testable without sleeping.
 """
 import os
+import threading
 import time
 from collections import defaultdict, deque
 
@@ -102,6 +103,24 @@ def allow(tenant):
     if not enabled():
         return True, None
     return check_quota(_counter, _quota, tenant)
+
+
+_lock = threading.Lock()
+
+
+def reserve(tenant):
+    """Atomically check the tenant's quota and, if allowed, count one call. Returns
+    (allowed, remaining). Use this before the model call: routes now run concurrently
+    in the threadpool, and a separate allow()-then-record() lets N parallel requests
+    all pass the check (DIC-1870)."""
+    if not enabled():
+        return True, None
+    t = tenant or "default"
+    with _lock:
+        allowed, remaining = check_quota(_counter, _quota, t)
+        if allowed:
+            _counter.record(t)
+    return allowed, remaining
 
 
 def record(tenant):

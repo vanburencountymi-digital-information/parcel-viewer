@@ -7,10 +7,10 @@
  * check, admin console) resolves it here, so they all hit the same service with the same
  * precedence:
  *
- *   1. window.MAP_BUDDY_API        explicit override (e.g. '/map-buddy-api' to test the
- *                                  local container) — wins everywhere
- *   2. county config endpoints.mapBuddy
- *   3. '/map-buddy-api'            same-origin proxy. With no config this fails cleanly
+ *   1. window.MAP_BUDDY_API        explicit override — wins everywhere
+ *   2. '/map-buddy-api' on localhost / 127.0.0.1 (the dev stack's bundled container)
+ *   3. county config endpoints.mapBuddy
+ *   4. '/map-buddy-api'            same-origin proxy. With no config this fails cleanly
  *                                  (the AI health check marks AI unavailable) instead of
  *                                  silently calling a URL baked into the code.
  *
@@ -23,9 +23,20 @@
     return (root.PS_CONTEXT && root.PS_CONTEXT.config) || root.COUNTY || {};
   }
 
+  // Local dev (the docker compose stack on localhost): use the bundled Map Buddy container
+  // via the same-origin proxy, so you test the code in this checkout. The deployed Cloud
+  // Run service is a different build and doesn't allow local origins.
+  function isLocalHost() {
+    var h = (root.location && root.location.hostname) || '';
+    return h === 'localhost' || h === '127.0.0.1';
+  }
+
   function mapBuddyBase() {
     var endpoints = countyConfig().endpoints || {};
-    var base = root.MAP_BUDDY_API || endpoints.mapBuddy || '/map-buddy-api';
+    var base = root.MAP_BUDDY_API ||
+      (isLocalHost() && '/map-buddy-api') ||
+      endpoints.mapBuddy ||
+      '/map-buddy-api';
     return String(base).replace(/\/+$/, '');
   }
 

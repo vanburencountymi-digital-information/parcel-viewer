@@ -68,4 +68,9 @@ test('PV_ENDPOINTS precedence: override > county config > same-origin proxy', ()
   assert.equal(resolver({ COUNTY: cfg })(), 'https://mb.example');          // trailing slash trimmed
   assert.equal(resolver({ PS_CONTEXT: { config: cfg }, COUNTY: {} })(), 'https://mb.example');
   assert.equal(resolver({ COUNTY: {} })(), '/map-buddy-api');              // never a baked-in URL
+  // Local dev stack: the bundled container, unless explicitly overridden.
+  const local = { location: { hostname: '127.0.0.1' }, COUNTY: cfg };
+  assert.equal(resolver(local)(), '/map-buddy-api');
+  assert.equal(resolver(Object.assign({ MAP_BUDDY_API: 'https://mb.test' }, local))(), 'https://mb.test');
+  assert.equal(resolver({ location: { hostname: 'parcels.dicemi.org' }, COUNTY: cfg })(), 'https://mb.example');
 });
