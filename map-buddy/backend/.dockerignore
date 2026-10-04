@@ -1,0 +1,8 @@
+# Keep tests, local caches and secrets out of the image.
+**/tests/
+**/__pycache__/
+*.pyc
+.env
+.env.*
+requirements-dev.txt
+pytest.ini

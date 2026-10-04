@@ -11,7 +11,7 @@
 
 1. **Access control (Maria, 2026-09-25): "the API should not be public."** At minimum it needs token-based access and rate limiting at both the application and hosting levels. Today the viewer and API are fully public, per the June decision on DIC-320, so this is new work (B1).
 2. **DB connection budget.** db-dice has a 25-connection ceiling, but one API instance can open about 28, before Martin's connections. PgBouncer (DIC-316) or a pool-size stopgap is required (B2).
-3. **Branch protection and release gates (Maria).** These need a staging environment, which doesn't exist yet (B3).
+3. **Branch protection and release gates (Maria).** These need a staging environment, which doesn't exist yet (B3). **The repo is already public** and her Public Release Gate was never run. Gitleaks over the full history is clean; Semgrep, CodeQL, secret scanning and push protection are still needed. Asked on DIC-1863.
 4. **DIC-1871.** Prod nginx still proxies `/map-buddy-api/` to a local dev container that holds the Anthropic key with no quota (B4).
 5. **Hostname defaults** in code say `parcels.dicemi.org`; the decision is `gis.dicemi.org` (B5).
 6. **DIC-1862.** The Map Buddy shared quota store is still unanswered. The spend limit is the backstop (B6).
@@ -69,6 +69,9 @@ From DIC-1872 and DIC-1871. None of these is a blocker for a small invited group
 |---|---|---|---|
 | Engine / viewer unit tests (Node) | **187** pass | yes (`harness`) | `cd engine && node --test` |
 | Python contract tests (explainer, cohort SQL, quota, cache, citations, KB, parcel store, workflow params) | **8** files pass | yes | see `.github/workflows/isv-harness.yml` |
+| Server tests: parcel API + Map Buddy (FastAPI TestClient; no DB, no model) | **42 + 8** pass | yes (`server-tests`) | `pip install -r requirements-dev.txt && pytest` in `backend/` and `map-buddy/backend/` |
+| Docker image builds (api, map-buddy) | build | yes (`docker-build`) | `docker build backend` / `docker build map-buddy/backend` |
+| Secret scan, full git history (gitleaks) | **0 leaks** in all 248 non-merge commits (2026-09-25) | not yet | `docker run -v "$PWD:/repo" zricethezav/gitleaks:latest git /repo --redact` |
 | Browser end-to-end (Playwright, Edge) | **169** tests in 24 files | **no:** needs a database (see 7) | `cd e2e && npm install && npx playwright test` |
 | Accessibility (axe-core, WCAG 2.1 A/AA) | 0 violations on the scanned screens | with e2e | `npx playwright test tests/a11y-scan.spec.js` |
 
@@ -123,26 +126,24 @@ Highlights. The full list is in the PR comments.
 - **Street View.** It opens Google Maps in a new tab.
 - **The real Map Buddy model.** Run `E2E_AI=1 npx playwright test tests/ai-chat.spec.js`, which costs a few cents. Prompt caching was verified: `cache_read = 9299` tokens.
 
-## 5. Observability: **the weakest area. Be honest with testers about it.**
+## 5. Observability (DIC-1879, ADR 0001)
 
-Current state (verify with `grep -rnE "\blog(ger)?\.(info|warning|error|exception)" backend map-buddy/backend`):
+Built to Maria's standard (Suggested Architecture Boilerplate, "Production" App Checklist): Sentry through an injected `ErrorLoggingClient`, like dice-document-pipeline-api. How to use it: `docs/RUNBOOK.md` → "Finding out what went wrong".
 
-- **Logging is sparse.** There are 4 log calls in the parcel API and 6 in Map Buddy. Errors are logged with `log.exception` and return generic messages, so no stack traces reach clients. Successes and slow requests are not logged.
-- **No request IDs.** You can't correlate a browser error with a server log line.
-- **No structured (JSON) logs, no metrics, no error tracking.** Nothing like Sentry is configured.
-- **Health checks.**
-  - Parcel API `/health` reports `db: true|false` but always returns 200.
-  - Map Buddy has `/health` and `/status`.
-  - nginx uses its default access log.
-
-**Minimum for a testing deployment** (roughly a day's work; suggest a ticket):
-- [ ] A request-ID middleware in both FastAPI apps. Accept or generate `X-Request-ID`, return it, and include it in every log line. nginx passes `$request_id`.
-- [ ] One JSON access-log line per request: method, path, status, duration, request ID. Cloud Logging parses JSON natively.
-- [ ] Log 4xx/5xx with the reason; log DB timeouts, pool exhaustion and AI failures as warnings, with counts.
-- [ ] Make `/health` return 503 when the DB is down.
-- [ ] Map Buddy: log daily AI spend and quota hits per tenant, to watch cost during testing.
-- [ ] Browser errors: a tiny `window.onerror` / `unhandledrejection` beacon to an API endpoint (rate-limited), so tester-side breakage is visible.
-- [ ] Uptime check on `/health` for both services, with alerting to email or chat.
+- [x] **Request ids.** Every response from the API and Map Buddy has `X-Request-ID`. nginx passes its own id through, so one id links the nginx line, the app lines and the browser. Verified live: one id traced through all three.
+- [x] **Logs.** One access line per request (method, path, status, duration, client IP). JSON in the images (Cloud Logging indexes it); text locally. No query strings in app or nginx logs, since searches can be owner names.
+- [x] **Sentry**, a no-op until `SENTRY_DSN` is set, which happens in staging and production only.
+  - Unhandled errors are reported automatically.
+  - All 10 caught-and-recovered errors also report, tagged `operation`.
+  - Personal data is scrubbed: `send_default_pii=False`; no query strings, cookies or bodies.
+- [x] **Warnings instead of Sentry reports** for load and third-party outages: DB busy (503), AI quota hits, and federal map-service outages.
+- [x] **Honest health.** API `/health` returns 503 when the DB is down. Both images have a Docker `HEALTHCHECK` and run as non-root.
+- [x] **AI cost.** Every model call logs tokens in and out, cache reads and writes, and duration. Verified live.
+- [x] **Browser errors.** `pv-error-beacon.js` → `POST /api/client-errors` (rate limited, length-capped) → a warning log line.
+- [ ] **Needs infra:**
+  - a Sentry project, with its DSN in Secret Manager (`dice-sentry-dsn`) and `SENTRY_ENVIRONMENT`;
+  - uptime checks on both `/health` endpoints, with alert routing;
+  - DB backups with a quarterly restore test (her checklist).
 
 ## 6. Documentation
 
@@ -154,7 +155,8 @@ Current state (verify with `grep -rnE "\blog(ger)?\.(info|warning|error|exceptio
 | `docs/admin-console-provisioning.md` | current |
 | **ARCHITECTURE.md** | **missing.** Should cover services, data flow, the AI boundary (facts vs. narration), and the engine vs. viewer split |
 | **SECURITY.md** | **missing.** Should cover the threat model, what's public, secrets and where each lives, rate limits, admin gate, CSP status, and the data-exposure decision |
-| **RUNBOOK.md** | **missing.** Should cover deploy, rollback, rotating the Anthropic key, what to do when the DB is down, Map Buddy over quota, a FEMA/USFWS outage, and reading the logs |
+| `docs/RUNBOOK.md` | **started**: "Finding out what went wrong" (request ids, logs, health). Still to write: deploy, rollback (with and without migrations), rotating the Anthropic key, DB down, Map Buddy over quota |
+| `docs/adrs/` | **started** per the team boilerplate: 0001 Observability. Older decisions are in `engine/DECISIONS.md` |
 
 ## 7. Known issues accepted for the testing window
 
@@ -162,7 +164,7 @@ Current state (verify with `grep -rnE "\blog(ger)?\.(info|warning|error|exceptio
 |---|---|---|
 | **Assessed-value year labels** come from the calendar year, not the tax roll. They go off by one if the calendar year changes before a data refresh. | Wrong year labels, including in AI narration | DIC-1878 |
 | **E2E suite isn't in CI.** It needs a fixture database. | Regressions caught only when someone runs it locally | suggest: seed a small PostGIS fixture |
-| **No endpoint tests in CI** for either FastAPI app | Server-side regressions can slip | DIC-1874 |
+| **Endpoint tests in CI cover observability and health only** so far | Other server routes can still regress silently | DIC-1874 |
 | **Google Fonts loaded at runtime.** An outage causes console errors, and every visit sends a request to Google. | Minor; privacy | self-host the font |
 | **CSP is report-only** | No script-injection enforcement yet | enforce after a clean report period |
 | **Annotation store has no persistence** | Drawings are per-session | product decision |

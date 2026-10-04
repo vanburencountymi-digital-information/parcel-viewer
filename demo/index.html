@@ -14,6 +14,8 @@
   <link rel="stylesheet" href="/frontend/public/css/style.css">
   <link rel="stylesheet" href="/frontend/public/css/viewer.css">
   <!-- Must run before every other script: see the file header (DIC-1873). -->
+  <!-- First: reports JS errors (incl. startup) to /api/client-errors (DIC-1879). -->
+  <script src="/frontend/public/js/pv-error-beacon.js"></script>
   <script src="/frontend/public/js/pv-storage-guard.js"></script>
 </head>
 <body>

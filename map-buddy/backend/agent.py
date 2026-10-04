@@ -4,6 +4,7 @@ import json
 import logging
 import math
 import os
+import time
 import urllib.parse
 import urllib.request
 import anthropic
@@ -25,6 +26,37 @@ def _get_client():
             max_retries=int(os.getenv("ANTHROPIC_MAX_RETRIES", "1")),
         )
     return _client
+
+
+def _create_message(purpose: str, **kwargs):
+    """Call the model and log what the call cost (DIC-1879).
+
+    Takes a short label for what the call is for ("chat", "explain", …) plus the
+    `messages.create` arguments; returns the model response. One log line per call
+    with tokens in and out, prompt-cache reads and writes, and duration, so AI spend
+    can be watched per request during testing. Errors propagate to the caller, which
+    logs and reports them.
+    """
+    started = time.perf_counter()
+    response = _get_client().messages.create(**kwargs)
+    duration_ms = round((time.perf_counter() - started) * 1000, 1)
+    usage = getattr(response, "usage", None)
+    fields = {
+        "ai_purpose": purpose,
+        "ai_model": kwargs.get("model"),
+        "input_tokens": getattr(usage, "input_tokens", None),
+        "output_tokens": getattr(usage, "output_tokens", None),
+        "cache_read_tokens": getattr(usage, "cache_read_input_tokens", None),
+        "cache_write_tokens": getattr(usage, "cache_creation_input_tokens", None),
+        "duration_ms": duration_ms,
+    }
+    log.info(
+        "ai call %s: in=%s out=%s cache_read=%s cache_write=%s %sms",
+        purpose, fields["input_tokens"], fields["output_tokens"],
+        fields["cache_read_tokens"], fields["cache_write_tokens"], duration_ms,
+        extra=fields,
+    )
+    return response
 
 
 DEFAULT_SYSTEM = """You are Map Buddy, a sharp, friendly AI assistant embedded in an interactive MapLibre parcel viewer for Van Buren County, Michigan. You help people understand parcels and you *drive the map for them* — navigating, drawing, measuring, and toggling layers so they can see the answer, not just read it.
@@ -669,7 +701,7 @@ def _tool_ack(name: str) -> str:
     return "Done — the map was updated."
 
 
-def run_chat_stream(message: str, history: list, parcel_context, map_state=None):
+def run_chat_stream(message: str, history: list, parcel_context, map_state=None, errors=None):
     """Generator yielding SSE-compatible event dicts.
 
     Runs a multi-turn agent loop: the model calls tools, we feed back synthetic
@@ -695,7 +727,7 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
             # identical on every iteration and every request, so the explicit marker
             # on the system block caches them together; top-level automatic caching
             # covers the growing conversation within a request's tool loop.
-            response = _get_client().messages.create(
+            response = _create_message("chat",
                 model=model, max_tokens=max_tokens,
                 system=_CHAT_SYSTEM_BLOCKS, tools=TOOLS, messages=messages,
                 cache_control={"type": "ephemeral"},
@@ -736,10 +768,12 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None)
 
             messages.append({"role": "user", "content": tool_results})
             yield {"type": "status", "message": "Working on it…"}
-    except Exception:
+    except Exception as exc:
         # Shown in the chat panel: keep SDK/network details (request ids, key status)
         # in the server log, not in front of the user (DIC-1855).
         log.exception("chat stream failed")
+        if errors is not None:
+            errors.report_exception(exc, tags={"operation": "chat"})
         yield {"type": "error", "message": "Map Buddy hit a problem answering that. Please try again in a moment."}
         return
 
@@ -1051,7 +1085,7 @@ def run_explain(topic: str, facts: dict) -> dict:
     )
 
     max_tokens = int(os.getenv("EXPLAIN_MAX_TOKENS", "2048"))
-    response = _get_client().messages.create(
+    response = _create_message("explain",
         model=profile["model"],
         max_tokens=max_tokens,
         system=system,
@@ -1120,7 +1154,7 @@ def run_autoconfigure(brief: dict, draft: dict, rationale: str = "") -> dict:
     )
     model = os.getenv("AUTOCONFIGURE_MODEL", "claude-haiku-4-5")
     max_tokens = int(os.getenv("AUTOCONFIGURE_MAX_TOKENS", "1024"))
-    response = _get_client().messages.create(
+    response = _create_message("autoconfigure",
         model=model,
         max_tokens=max_tokens,
         system=system,
@@ -1176,7 +1210,7 @@ def run_grounding_judge(output_text: str, grounding: dict) -> dict:
         "\n\nAI OUTPUT:\n" + str(output_text)
     )
     model = os.getenv("JUDGE_MODEL", "claude-haiku-4-5")
-    response = _get_client().messages.create(
+    response = _create_message("judge",
         model=model,
         max_tokens=int(os.getenv("JUDGE_MAX_TOKENS", "1024")),
         system=system,
@@ -1265,7 +1299,7 @@ def run_describe_cohort(facts: dict) -> dict:
         + json.dumps(facts or {}, separators=(",", ":"), default=str)
     )
     max_tokens = int(os.getenv("COHORT_NARRATE_MAX_TOKENS", "1536"))
-    response = _get_client().messages.create(
+    response = _create_message("describe_cohort",
         model=COHORT_NARRATE_MODEL,
         max_tokens=max_tokens,
         system=system,

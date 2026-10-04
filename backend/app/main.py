@@ -18,13 +18,26 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from parcel_viewer import config_store
+from parcel_viewer.common.error_logging_client import (
+    ErrorLoggingClient,
+    get_error_logging_client,
+    init_error_monitoring,
+)
+from parcel_viewer.common.logging_setup import configure_logging
+from parcel_viewer.common.request_context import RequestContextMiddleware
 from parcel_viewer.db import close_pool, health_check, open_pool, pool
 from parcel_viewer.ratelimit import limiter
-from parcel_viewer.routers import feedback, parcels
+from parcel_viewer.routers import client_errors, feedback, parcels
 
 # Unexpected errors are logged here in full; clients get a generic message, never the
 # raw exception (DB driver messages carry hostnames and role names) (DIC-1855).
 log = logging.getLogger("parcel_viewer.api")
+
+# Observability (DIC-1879, ADR 0001): stdout logs with request ids, and Sentry when
+# SENTRY_DSN is set (staging/production only).
+APP_VERSION = os.getenv("APP_VERSION", "0.1.0")
+configure_logging("parcel-api")
+init_error_monitoring("parcel-api", APP_VERSION)
 
 # ── County config manifests (DIC-465) ────────────────────────────────────────
 # Server-side source of truth for the per-county manifest the viewer & admin
@@ -78,15 +91,19 @@ def _published_config(county: str) -> dict | None:
     return baked
 
 
-def _require_writer(x_admin_token: str | None = Header(default=None)):
+def _require_writer(
+    x_admin_token: str | None = Header(default=None),
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     """Guard for write endpoints. Disabled (503) until a writer DSN is set; gated
     by an interim shared token until real auth lands (DIC-463)."""
     store = None
     if config_store.is_configured():
         try:
             store = _get_store()
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             log.exception("config store unavailable")
+            errors.report_exception(exc, tags={"operation": "config_store"})
             raise HTTPException(status_code=503, detail="Config store unavailable.")
     if store is None:
         raise HTTPException(status_code=503, detail="Config store not configured (set PV_WRITER_DATABASE_URL).")
@@ -134,7 +151,7 @@ async def lifespan(app: FastAPI):
 # turns them on.
 _DOCS = os.getenv("PV_API_DOCS", "") == "1"
 app = FastAPI(
-    title="Parcel Viewer API", version="0.1.0", lifespan=lifespan,
+    title="Parcel Viewer API", version=APP_VERSION, lifespan=lifespan,
     docs_url="/docs" if _DOCS else None,
     redoc_url="/redoc" if _DOCS else None,
     openapi_url="/openapi.json" if _DOCS else None,
@@ -157,6 +174,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST", "PUT"],
     allow_headers=["Content-Type", "X-Admin-Token"],
+    expose_headers=["X-Request-ID"],
 )
 
 # Rate limiting (DIC-496). Applied per-endpoint via @limiter.limit on the public
@@ -173,16 +191,29 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 @app.exception_handler(QueryCanceled)
 @app.exception_handler(PoolTimeout)
 async def _db_overloaded(request: Request, exc: Exception):
+    # Load, not a bug: a warning (with the request id) rather than a Sentry report.
+    log.warning("database busy: %s on %s", type(exc).__name__, request.url.path)
     return JSONResponse({"error": "database busy, try again"}, status_code=503)
 
 
 app.include_router(parcels.router, tags=["parcels"])
 app.include_router(feedback.router, tags=["feedback"])
+app.include_router(client_errors.router, tags=["client-errors"])
+
+# Added last so it wraps everything else: every response, including CORS and
+# rate-limit rejections, gets a request id and an access-log line.
+app.add_middleware(RequestContextMiddleware)
 
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "db": health_check()}
+    """Liveness + readiness: 200 when the database answers, 503 when it doesn't, so
+    uptime checks and the container health check see a real outage."""
+    db_ok = health_check()
+    if not db_ok:
+        log.warning("health check: database unreachable")
+        return JSONResponse({"status": "degraded", "db": False}, status_code=503)
+    return {"status": "ok", "db": True}
 
 
 @app.get("/config")
@@ -314,12 +345,16 @@ def _discover_layers(county: str) -> list[dict]:
 
 
 @app.get("/admin/discover/layers")
-def discover_layers(county: str = DEFAULT_COUNTY):
+def discover_layers(
+    county: str = DEFAULT_COUNTY,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     """Spatial layers Martin can serve, for Admin-Console registration (DIC-502)."""
     try:
         return {"layers": _discover_layers(county)}
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         log.exception("layer discovery failed")
+        errors.report_exception(exc, tags={"operation": "discover_layers"})
         return JSONResponse({"error": "layer discovery failed", "layers": []}, status_code=500)
 
 
@@ -389,11 +424,14 @@ def wms_proxy(request: Request, url: str):
             content_type = resp.headers.get("Content-Type", "text/xml")
         return Response(content=content, media_type=content_type)
     except urllib.error.HTTPError as e:
+        # Third-party outages (FEMA, USFWS, NRCS) aren't our bugs: logged as warnings,
+        # not sent to Sentry, so they can't bury real errors (ADR 0001).
+        log.warning("wms-proxy upstream %s returned %s", host, e.code)
         return Response(
             content=e.read(),
             status_code=e.code,
             media_type=e.headers.get("Content-Type", "text/plain"),
         )
     except Exception:
-        log.exception("wms-proxy upstream request failed: %s", host)
+        log.warning("wms-proxy upstream request failed: %s", host, exc_info=True)
         return JSONResponse({"error": "upstream map service unavailable"}, status_code=502)

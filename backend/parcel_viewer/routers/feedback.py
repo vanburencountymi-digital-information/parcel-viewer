@@ -12,11 +12,12 @@ import os
 import smtplib
 from email.message import EmailMessage
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from parcel_viewer import config
+from parcel_viewer.common.error_logging_client import ErrorLoggingClient, get_error_logging_client
 from parcel_viewer.ratelimit import global_key, limiter
 
 log = logging.getLogger(__name__)
@@ -70,7 +71,11 @@ def _send_email(report: DataErrorReport, user_agent: str) -> None:
 # so the per-IP limit sits below: requests it rejects never consume the global budget.
 @limiter.limit(REPORT_GLOBAL_LIMIT, key_func=global_key)
 @limiter.limit(REPORT_RATE_LIMIT)
-def report_error(report: DataErrorReport, request: Request):
+def report_error(
+    report: DataErrorReport,
+    request: Request,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
     """Email a resident-reported data error to the county GIS inbox."""
     if not config.SMTP_HOST:
         return JSONResponse({"ok": False, "error": "email_not_configured"}, status_code=503)
@@ -78,7 +83,8 @@ def report_error(report: DataErrorReport, request: Request):
         ua = (request.headers.get("user-agent") or "")[:500]
         _send_email(report, ua)
         return {"ok": True}
-    except Exception:
+    except Exception as exc:
         # Don't echo SMTP internals (hostnames, auth errors) to a public caller.
         log.exception("report-error: sending email failed")
+        errors.report_exception(exc, tags={"operation": "report_error_email"})
         return JSONResponse({"ok": False, "error": "send_failed"}, status_code=502)
