@@ -51,6 +51,16 @@ def _sqlite_path(dsn: str) -> str:
     return path or ":memory:"
 
 
+class PublishConflict(ValueError):
+    """Another publish took the same version number at the same moment (DIC-1872)."""
+
+
+def _is_unique_violation(exc: BaseException) -> bool:
+    # psycopg: errors.UniqueViolation; sqlite3: IntegrityError. Checked by name so this
+    # module imports neither driver at load time.
+    return type(exc).__name__ in ("UniqueViolation", "IntegrityError")
+
+
 class ConfigStore:
     """Append-only, draft-aware config store. One row per (county, version);
     drafts are the single row with status='draft' and version NULL."""
@@ -90,12 +100,18 @@ class ConfigStore:
                 if self._pool is None:
                     from psycopg_pool import ConnectionPool  # prod
 
+                    # Short waits (DIC-1872): the public /config.js path reads through
+                    # this pool, so an unreachable writer DB must fail in seconds, not
+                    # hold a viewer load for 10s.
                     self._pool = ConnectionPool(
                         self.dsn,
                         min_size=0,
                         max_size=int(os.getenv("PV_WRITER_POOL_MAX", "4")),
-                        timeout=10,
-                        kwargs={"options": f"-c statement_timeout={STATEMENT_TIMEOUT_MS}"},
+                        timeout=float(os.getenv("PV_WRITER_POOL_TIMEOUT_S", "3")),
+                        kwargs={
+                            "options": f"-c statement_timeout={STATEMENT_TIMEOUT_MS}",
+                            "connect_timeout": int(os.getenv("PV_WRITER_CONNECT_TIMEOUT_S", "3")),
+                        },
                         open=True,
                     )
         return self._pool
@@ -146,6 +162,12 @@ class ConfigStore:
                 if exists is not None:
                     return
             conn.execute(self._q(ddl))
+            if self.dialect == "sqlite":
+                # Postgres gets this from migration 0002.
+                conn.execute(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS config_versions_unique_version"
+                    " ON config_versions (county, version) WHERE status = 'published'"
+                )
             conn.commit()
 
     # ── payload (de)serialization (JSONB on PG accepts a JSON string param) ──
@@ -213,15 +235,30 @@ class ConfigStore:
             raise ValueError(f"no draft to publish for county {county!r}")
         with self._connection() as conn:
             version = self._next_version(conn, county)
+            self._insert_published(
+                conn, (county, version, self._dump(draft), note or "Published", author)
+            )
+            conn.commit()
+            return version
+
+    def _insert_published(self, conn, values: tuple) -> None:
+        """Insert one published row. Two admins publishing at once compute the same
+        next version; the unique index rejects the second, reported as a conflict
+        instead of a 500 or a duplicate version (DIC-1872)."""
+        try:
             conn.execute(
                 self._q(
                     f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
                     " VALUES (?, 'published', ?, ?, ?, ?)"
                 ),
-                (county, version, self._dump(draft), note or "Published", author),
+                values,
             )
-            conn.commit()
-            return version
+        except Exception as exc:
+            if _is_unique_violation(exc):
+                raise PublishConflict(
+                    "another version was just published; reload and try again"
+                ) from exc
+            raise
 
     def rollback(self, county: str, version: int, author: str | None = None) -> int:
         """Restore a prior version by publishing a copy of it as the new latest
@@ -233,12 +270,8 @@ class ConfigStore:
                 raise ValueError(f"version {version} not found for county {county!r}")
             payload = self._load(row[0])
             new_version = self._next_version(conn, county)
-            conn.execute(
-                self._q(
-                    f"INSERT INTO {self.table} (county, status, version, payload, note, created_by)"
-                    " VALUES (?, 'published', ?, ?, ?, ?)"
-                ),
-                (county, new_version, self._dump(payload), f"Rollback to v{version}", author),
+            self._insert_published(
+                conn, (county, new_version, self._dump(payload), f"Rollback to v{version}", author)
             )
             conn.commit()
             return new_version

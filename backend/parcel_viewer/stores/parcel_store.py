@@ -50,7 +50,7 @@ _PARCEL_SQL = """
            ST_AsGeoJSON(ST_Transform(pg.geom, 4326), 7) AS geojson
     FROM geo.parcel_geometry pg
     LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
-    WHERE pg.id = %s
+    WHERE pg.id = %s AND pg.archived_at IS NULL
 """
 
 

@@ -41,7 +41,7 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
 
 4. **[verify] Database.** `api` + `martin` must reach the shared Cloud SQL PostGIS from the prod host. Restart `martin` after deploy so it discovers the `geo.*_tiles` functions.
    - **Connection budget:** each `api` worker holds up to `PV_POOL_MAX` (10) read connections plus up to 4 config-store connections. At the default 2 workers that's ~28 per `api` instance at peak — check against the instance's `max_connections` (DIC-1863 Q5).
-   - **Admin config store (optional):** if `PV_WRITER_DATABASE_URL` is set, apply `backend/migrations/0001_config_store.sql` first (creates schema `config` + role `pv_writer`). The `pv_writer` bug where the store never initialized (no `CREATE` on schema `config`) is fixed (#17).
+   - **Admin config store (optional):** if `PV_WRITER_DATABASE_URL` is set, apply `backend/migrations/0001_config_store.sql` first (creates schema `config` + role `pv_writer`), then `0002_config_versions_unique_version.sql` (one row per published version, so simultaneous publishes get a 409 rather than a duplicate; DIC-1872). The `pv_writer` bug where the store never initialized (no `CREATE` on schema `config`) is fixed (#17).
 
 5. **[decide] Tenant isolation (RLS).** Single-tenant VBC (current) → migration 015 can wait. Multi-tenant → apply `county-data-services/migrations/015_tenant_isolation_rls.sql` and set `app.current_tenant` per request.
 
@@ -61,7 +61,11 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
 | `PV_CORS_ORIGINS` | `https://parcels.dicemi.org,https://map.dicemi.org` | Set to the real origin(s) if the hostname differs. The viewer itself is same-origin via `/api/`. |
 | `REPORT_ERROR_RATE_LIMIT` / `REPORT_ERROR_GLOBAL_LIMIT` | `5/hour` / `100/day` | `/report-error` emails the county GIS inbox; per-IP and overall caps. |
 | `PV_API_DOCS` | unset (off) | **Leave unset in prod.** `1` re-enables `/docs` + `/openapi.json` (the dev compose sets it). |
-| `PV_WRITER_DATABASE_URL` / `PV_ADMIN_TOKEN` | unset | Admin config writes. Unset → writes return 503 (safe default). |
+| `PV_WRITER_DATABASE_URL` / `PV_ADMIN_TOKEN` | unset | Admin config writes and admin layer discovery. No token → 401; no store → 503 (safe defaults). |
+| `PV_DB_CONNECT_TIMEOUT_S` / `PV_DB_TCP_USER_TIMEOUT_MS` | `5` / `10000` | Read pool: a dead DB connection fails in ~10s (then 503, and the pool recovers) instead of hanging (DIC-1872). |
+| `PV_WRITER_POOL_TIMEOUT_S` / `PV_WRITER_CONNECT_TIMEOUT_S` | `3` / `3` | Config store: the public `/config.js` path gives up on the writer DB within seconds. |
+| `PV_CONFIG_STORE_RETRY_S` | `30` | After a writer-DB failure, serve the baked manifest (and 503 admin writes) without retrying for this long. |
+| `PV_DISCOVERY_CACHE_S` | `60` | Admin layer discovery (a `count(*)` per geo table) is cached this long. |
 
 ### nginx (`infra/nginx.viewer.conf`)
 

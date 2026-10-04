@@ -63,10 +63,14 @@ test.describe('Admin console', () => {
     await expect(page.locator('body')).toContainText(/auth|token|store|not configured|unavailable|sign in/i);
   });
 
-  test('data: Add layer discovers the PostGIS tile layers', async ({ page }) => {
+  // Layer discovery is admin-only (DIC-1872: it scans every geo table). The local stack
+  // has no admin token, so the console must explain that rather than fail silently.
+  // With a token, discovery itself is covered by the API tests.
+  test('data: Add layer explains that discovery needs the admin token', async ({ page, consoleGuard }) => {
+    consoleGuard.allow(EXPECTED_HTTP);
     await gotoAdmin(page, 'data');
     await page.locator('#ac-content').getByRole('button', { name: 'Add layer' }).click();
-    await expect(page.locator('body')).toContainText(/_tiles|subdivision|reference/i, { timeout: 15_000 });
+    await expect(page.locator('#ac-content')).toContainText(/admin token/i, { timeout: 15_000 });
   });
 
   test('manifest: Validate reports a result', async ({ page }) => {

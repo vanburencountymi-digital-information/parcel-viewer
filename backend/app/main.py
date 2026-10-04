@@ -5,6 +5,8 @@ import json
 import logging
 import os
 import re as _re
+import threading
+import time
 import urllib.error
 import urllib.request
 from contextlib import asynccontextmanager
@@ -15,6 +17,7 @@ from urllib.parse import urlparse, urlunparse
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
+from psycopg import OperationalError
 from psycopg.errors import QueryCanceled
 from psycopg_pool import PoolTimeout
 from pydantic import BaseModel
@@ -67,16 +70,52 @@ def _load_county_config(key: str) -> dict | None:
 # Optional: active only when PV_WRITER_DATABASE_URL is set. The public read path
 # always falls back to the baked manifest, so the viewer never hard-depends on it.
 _ADMIN_TOKEN = os.getenv("PV_ADMIN_TOKEN", "")
-_store_singleton = None
+_store_singleton: config_store.ConfigStore | None = None
+
+# Writer-DB outage handling (DIC-1872). Before: every request built a new store, waited
+# out its connection timeout (~10s on the public /config.js path), leaked the pool, and
+# logged nothing. Now the store is built once under a lock; on failure its pool is
+# closed, one warning is logged, and callers fail fast for STORE_RETRY_S before the
+# next attempt, so the viewer gets the baked manifest immediately during an outage.
+_store_lock = threading.Lock()
+_store_down_until = 0.0  # time.monotonic() before which the store is not retried
+STORE_RETRY_S = float(os.getenv("PV_CONFIG_STORE_RETRY_S", "30"))
 
 
-def _get_store():
-    """Lazily build the store (and ensure its table), or None if not configured."""
+class ConfigStoreUnavailable(RuntimeError):
+    """The writer database is down (or was recently); try again after the backoff."""
+
+
+def _mark_store_down(reason: str) -> None:
+    """Takes a short reason; starts the backoff window and logs it once per window."""
+    global _store_down_until
+    _store_down_until = time.monotonic() + STORE_RETRY_S
+    log.warning(
+        "config store unavailable (%s); retrying in %ss", reason, STORE_RETRY_S, exc_info=True
+    )
+
+
+def _get_store() -> config_store.ConfigStore | None:
+    """Returns the store (building it and its table once), or None if not configured.
+    Raises ConfigStoreUnavailable during the backoff after a failure."""
     global _store_singleton
-    if _store_singleton is None and config_store.is_configured():
-        s = config_store.ConfigStore()
-        s.init_schema()
-        _store_singleton = s
+    if _store_singleton is not None or not config_store.is_configured():
+        return _store_singleton
+    if time.monotonic() < _store_down_until:
+        raise ConfigStoreUnavailable("config store in backoff")
+    with _store_lock:
+        if _store_singleton is not None:
+            return _store_singleton
+        if time.monotonic() < _store_down_until:
+            raise ConfigStoreUnavailable("config store in backoff")
+        store = config_store.ConfigStore()
+        try:
+            store.init_schema()
+        except Exception as exc:
+            store.close()  # don't leak the pool it opened
+            _mark_store_down("init failed")
+            raise ConfigStoreUnavailable("config store init failed") from exc
+        _store_singleton = store
     return _store_singleton
 
 
@@ -90,36 +129,50 @@ def _published_config(county: str) -> dict | None:
             data = store.get_published(county) if store else None
             if data is not None:
                 return data
+        except ConfigStoreUnavailable:
+            pass  # already logged when the backoff started
         except Exception:  # noqa: BLE001 — never let the store break the read path
-            pass
+            _mark_store_down("read failed")
     return baked
 
 
-def _require_writer(
-    x_admin_token: str | None = Header(default=None),
-    errors: ErrorLoggingClient = Depends(get_error_logging_client),
-):
-    """Guard for write endpoints. Disabled (503) until a writer DSN is set; gated
-    by an interim shared token until real auth lands (DIC-463)."""
-    store = None
-    if config_store.is_configured():
-        try:
-            store = _get_store()
-        except Exception as exc:  # noqa: BLE001
-            log.exception("config store unavailable")
-            errors.report_exception(exc, tags={"operation": "config_store"})
-            raise HTTPException(status_code=503, detail="Config store unavailable.") from exc
-    if store is None:
-        raise HTTPException(
-            status_code=503, detail="Config store not configured (set PV_WRITER_DATABASE_URL)."
-        )
-    # Constant-time compare so response timing can't leak the token (DIC-1853).
+def _require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    """Guard for admin-only endpoints: the interim shared token until real auth lands
+    (DIC-463). Constant-time compare so response timing can't leak it (DIC-1853)."""
     if not _ADMIN_TOKEN or not hmac.compare_digest(
         (x_admin_token or "").encode(), _ADMIN_TOKEN.encode()
     ):
         raise HTTPException(
             status_code=401,
             detail="Admin auth required (interim PV_ADMIN_TOKEN; real auth is DIC-463).",
+        )
+
+
+def _require_writer(
+    _admin: None = Depends(_require_admin),
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+) -> config_store.ConfigStore:
+    """Guard for write endpoints: the admin token first, then the store."""
+    # Auth runs first (team standard: "check auth first, fail immediately"), so an
+    # unauthenticated caller can't make the API touch the writer database (DIC-1872).
+    if not config_store.is_configured():
+        raise HTTPException(
+            status_code=503, detail="Config store not configured (set PV_WRITER_DATABASE_URL)."
+        )
+    try:
+        store = _get_store()
+    except ConfigStoreUnavailable as exc:
+        # An outage already logged when its backoff started: fail fast, don't re-report.
+        raise HTTPException(
+            status_code=503, detail="Config store unavailable; try again shortly."
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        log.exception("config store unavailable")
+        errors.report_exception(exc, tags={"operation": "config_store"})
+        raise HTTPException(status_code=503, detail="Config store unavailable.") from exc
+    if store is None:
+        raise HTTPException(
+            status_code=503, detail="Config store not configured (set PV_WRITER_DATABASE_URL)."
         )
     return store
 
@@ -250,6 +303,14 @@ async def _db_overloaded(request: Request, exc: Exception):
     return JSONResponse({"error": "database busy, try again"}, status_code=503)
 
 
+@app.exception_handler(OperationalError)
+async def _db_unavailable(request: Request, exc: Exception) -> JSONResponse:
+    # Lost/refused/dead DB connection (DIC-1872): an outage, not a bug, so a warning
+    # and a 503 the viewer already handles ("try again"), never a raw 500.
+    log.warning("database unavailable: %s on %s", type(exc).__name__, request.url.path)
+    return JSONResponse({"error": "database unavailable, try again"}, status_code=503)
+
+
 app.include_router(parcels.router, tags=["parcels"])
 app.include_router(feedback.router, tags=["feedback"])
 app.include_router(client_errors.router, tags=["client-errors"])
@@ -286,8 +347,10 @@ def config_js(county: str = DEFAULT_COUNTY):
     reachable and the baked copy stands as the offline fallback if it isn't."""
     data = _published_config(county)
     if data is None:
+        # Don't echo `county` into a script body: "*/" in it would close the comment and
+        # inject code into a response browsers run (DIC-1872).
         return Response(
-            f"/* Parcel Viewer: unknown county {county!r} */",
+            "/* Parcel Viewer: unknown county */",
             media_type="application/javascript",
             status_code=404,
         )
@@ -412,14 +475,25 @@ def _discover_layers(county: str) -> list[dict]:
     return rows
 
 
+# Discovery runs count(*) on every geo table, so it's admin-only and cached (DIC-1872).
+_DISCOVERY_TTL_S = float(os.getenv("PV_DISCOVERY_CACHE_S", "60"))
+_discovery_cache: dict[str, tuple[float, list]] = {}
+
+
 @app.get("/admin/discover/layers")
 def discover_layers(
     county: str = DEFAULT_COUNTY,
+    _admin: None = Depends(_require_admin),
     errors: ErrorLoggingClient = Depends(get_error_logging_client),
 ):
     """Spatial layers Martin can serve, for Admin-Console registration (DIC-502)."""
+    cached = _discovery_cache.get(county)
+    if cached and time.monotonic() - cached[0] < _DISCOVERY_TTL_S:
+        return {"layers": cached[1]}
     try:
-        return {"layers": _discover_layers(county)}
+        layers = _discover_layers(county)
+        _discovery_cache[county] = (time.monotonic(), layers)
+        return {"layers": layers}
     except Exception as exc:  # noqa: BLE001
         log.exception("layer discovery failed")
         errors.report_exception(exc, tags={"operation": "discover_layers"})
@@ -449,6 +523,8 @@ def publish_config(county: str, body: PublishBody, store=Depends(_require_writer
         store.seed_if_empty(county, baked)
     try:
         version = store.publish(county, body.author, body.note)
+    except config_store.PublishConflict as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"ok": True, "version": version}
@@ -463,6 +539,8 @@ def config_versions(county: str, store=Depends(_require_writer)):
 def rollback_config(county: str, body: RollbackBody, store=Depends(_require_writer)):
     try:
         version = store.rollback(county, body.version, body.author)
+    except config_store.PublishConflict as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     return {"ok": True, "version": version}
