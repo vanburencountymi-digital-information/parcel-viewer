@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# run-harness.sh — the full ISV eval/test harness (A2). Zero third-party deps:
+# run-harness.sh — the ISV eval/test harness (A2), exactly as CI runs it
+# (.github/workflows/isv-harness.yml, job "harness"). Zero third-party deps:
 # Node's built-in test runner for the JS capability cores + the engine contract,
-# and stdlib unittest for the Python run_explain structured-output contract.
+# and stdlib-only Python tests for the explainer contract, cohort SQL, quota, etc.
 #
-# Usage:  bash engine/run-harness.sh        (from the parcel-viewer repo root or engine/)
+# Usage:  bash engine/run-harness.sh        (from anywhere in the repo)
+#         PYTHON=python3.12 bash engine/run-harness.sh
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -13,7 +15,7 @@ echo "== ISV harness: JS capability cores + contract (node --test) =="
 node --test
 
 echo
-echo "== ISV harness: Python explainer contract + KnowledgeStore seam (unittest) =="
+echo "== ISV harness: Python contract tests (stdlib only) =="
 # Prefer a modern python (agent.py uses 3.10+ union syntax).
 PY="${PYTHON:-}"
 if [ -z "$PY" ]; then
@@ -21,7 +23,15 @@ if [ -z "$PY" ]; then
     if command -v "$c" >/dev/null 2>&1; then PY="$c"; break; fi
   done
 fi
-"$PY" -m unittest test.run_explain_contract_test test.run_knowledge_store_test test.run_kb_resolver_test test.run_citation_extract_test test.run_cohort_query_test test.run_parcel_store_test test.run_pv_parcel_store_test test.run_tenant_isolation_test test.run_cost_cache_test test.run_quota_test -v
+"$PY" -VV
+# Same list and invocation as CI. Each file runs directly: `python -m unittest test.<mod>`
+# resolves `test` to the stdlib package, not engine/test/. Not listed (as in CI):
+# run_parcel_store, run_knowledge_store and run_tenant_isolation need the ZIP backend
+# from a sibling repo (../ZIP/zip-poc/backend).
+for t in run_explain_contract run_cohort_query run_quota run_cost_cache run_citation_extract run_kb_resolver run_pv_parcel_store run_workflow_params; do
+  echo "-- $t"
+  "$PY" "test/${t}_test.py"
+done
 
 echo
 echo "ISV harness: PASS"

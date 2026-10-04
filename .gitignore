@@ -3,3 +3,15 @@
 __pycache__/
 *.pyc
 .DS_Store
+# Secrets never belong in the repo (DIC-1871): per-environment env files (the template,
+# .env.example, is tracked), keys, and Google service-account JSON.
+.env.*
+!.env.example
+*.pem
+*.key
+*service-account*.json
+*-sa.json
+credentials.json
+
+# Local code-graph cache (graphify tool output); not part of the app (DIC-1871).
+graphify-out/

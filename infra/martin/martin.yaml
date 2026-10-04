@@ -15,6 +15,10 @@ cache:
 
 postgres:
   connection_string: "${MARTIN_DATABASE_URL}"
+  # Martin's default pool is 20 connections, which alone nearly fills the shared
+  # instance's budget. 8 covers the tile rate nginx allows; count it in the DB
+  # connection budget (infra/DEPLOY-CHECKLIST.md, step 4; DIC-1871).
+  pool_size: 8
   auto_publish:
     # Publish PostGIS tile *functions* from the geo schema. Each layer has a
     # purpose-built `<name>_tiles(z,x,y)` function emitting an MVT layer named

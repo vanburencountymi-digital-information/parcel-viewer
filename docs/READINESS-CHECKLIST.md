@@ -1,7 +1,7 @@
 # Parcel Viewer: testing-deployment readiness checklist
 
 **Scope.** This covers a **limited testing deployment**: invited testers, not the public. It says what's done, what blocks deployment, and what's knowingly accepted. Every claim has a way to check it.
-**Status as of 2026-09-26.** Work lives in stacked PRs #25 → #26 → #27 → #28 → #29 → #30 → #31 (epic DIC-1851). Merge them in that order.
+**Status as of 2026-09-26.** Work lives in stacked PRs #25 → #26 → #27 → #28 → #29 → #30 → #31 → #32 (epic DIC-1851). Merge them in that order.
 
 ---
 
@@ -19,7 +19,7 @@ The code side covers:
 What still blocks a deploy:
 
 1. **Access control (Maria: "the API should not be public").** It needs token-based access plus rate limiting at the app and hosting levels. The rate limiting exists; the token part needs Maria's choice of scope and approach (B1).
-2. **DB connection budget.** One API instance can open about 28 connections against db-dice's ceiling of 25. It needs PgBouncer (DIC-316) or a pool-size stopgap (B2).
+2. **DB connection budget.** One viewer stack can open about 36 connections (API ~28 + Martin 8) against db-dice's ceiling of 25. It needs PgBouncer (DIC-316) or a pool-size stopgap (B2).
 3. **Repo admin settings and staging (Maria's release gate)** (B3):
    - the branch ruleset;
    - secret scanning and push protection;
@@ -29,9 +29,7 @@ What still blocks a deploy:
    - a staging environment.
 
    The repo is already public; the history scan is clean.
-4. **DIC-1871 infra:**
-   - prod nginx still proxies `/map-buddy-api/` to a dev container (B4);
-   - hostname defaults must change to `gis.dicemi.org` (B5).
+4. ~~**DIC-1871 infra**~~ (B4, B5): **done in code (#32).** Production has its own compose file and nginx snippet; hostname defaults are `gis.dicemi.org`. Drake still needs to reconfirm the hostname.
 5. **DIC-1862.** Map Buddy's shared quota store is unanswered; the Anthropic spend limit is the backstop (B6).
 6. **Merge the stack** (B7).
 
@@ -43,7 +41,7 @@ What still blocks a deploy:
 
 | Question | Answer | Consequence |
 |---|---|---|
-| Hostname | `gis.dicemi.org` for the parallel rollout; `gis.vanburencountymi.gov` at launch (county IT does the DNS) | Code defaults must change (B5). *Drake to reconfirm.* |
+| Hostname | `gis.dicemi.org` for the parallel rollout; `gis.vanburencountymi.gov` at launch (county IT does the DNS) | Code defaults changed (B5, DIC-1871). *Drake to reconfirm.* |
 | Where it runs | GCE VM (e2-small, us-central1), shared with parcel-studio; nginx vhosts by subdomain; **no load balancer** | nginx `limit_req` is the hosting-level limiter; `set_real_ip_from` isn't needed. nginx re-resolves container names (#29), which **assumes nginx runs in Docker** |
 | TLS | Terminates on nginx on the VM (Certbot) | *Drake to confirm.* Security-headers owner still open |
 | DB | db-dice, **25-connection ceiling**; plan is PgBouncer (transaction mode, pool 8) on the VM, Martin direct | See B2 |
@@ -55,12 +53,12 @@ What still blocks a deploy:
 | # | Item | Ticket | Owner | Check |
 |---|---|---|---|---|
 | B1 | **Access control.** A browser app can't keep a shared secret, so for a *testing* deployment the options are: (a) gate the whole testing site in nginx with per-tester credentials, or (b) a small token service issuing short-lived per-tester tokens. **Asked Maria on 2026-09-25 (DIC-1863) to choose, and to set the scope** (parcel API only, or Map Buddy too). It also covers the admin gate (Q4) and data exposure (Q10). | DIC-1863 → new ticket | Maria (decision), Jerry (build) | Anonymous `curl $VIEWER/api/parcels?bbox=…` returns 401 |
-| B2 | **DB connections.** 2 workers × (10 read + 4 config-store) ≈ 28 per API instance, against 25, plus Martin. Land PgBouncer (DIC-316), or stopgap `PV_POOL_MAX=5` (about 18). Confirm the instance count. | DIC-316 | Drake / Jerry | `SELECT count(*) FROM pg_stat_activity` under load stays < 25 |
+| B2 | **DB connections.** 2 workers × (10 read + 4 config-store) ≈ 28 per API instance, plus Martin's pool (now capped at 8; its default was 20; DIC-1871) ≈ **36**, against 25. Land PgBouncer (DIC-316), or stopgap `UVICORN_WORKERS=1` + `PV_POOL_MAX=5` (5 + 4 + 8 = 17). Confirm the instance count. | DIC-316 | Drake / Jerry | `SELECT count(*) FROM pg_stat_activity` under load stays < 25 |
 | B3 | **Repo admin settings and staging.** The repo side is **done**: CI runs server tests, Docker builds, CodeQL, lint/type/secret hooks and semantic release; Dependabot config is in place. Still needed from an admin: <br>• **main ruleset** (required checks, PRs only, up to date); <br>• **secret scanning + push protection**; <br>• **Dependabot security updates**; <br>• add the repo to the **SemGrep - vbcd** app; <br>• install the **VBCD Semantic Release App** with `RELEASE_APP_ID` / `RELEASE_APP_PRIVATE_KEY` and a ruleset bypass; <br>• a **staging environment** and its owner. | DIC-1863 Q9, DIC-1880, DIC-1881 | Maria / Drake | Settings → Rules shows the ruleset; a PR without green checks can't merge; first merge creates a `v*` tag |
-| B4 | Keep the dev `/map-buddy-api/` proxy out of prod nginx; ship a prod compose without the `map-buddy` service; smoke-check that `$VIEWER/map-buddy-api/status` is **not** 200 | DIC-1871 | Jerry | `curl -o /dev/null -w '%{http_code}' $VIEWER/map-buddy-api/status` returns 404 |
-| B5 | Hostname defaults: `PV_CORS_ORIGINS` (`backend/app/main.py`), `PARCEL_API_BASE` and `ALLOWED_ORIGINS` (`map-buddy/deploy.sh`), `infra/DEPLOY-CHECKLIST.md`, `infra/smoke-test.sh` still say `parcels.dicemi.org` / `map.dicemi.org` | DIC-1871 | Jerry (after Drake confirms) | Map Buddy works from the live origin (CORS) |
+| ~~B4~~ | ~~Dev `/map-buddy-api/` proxy in prod nginx~~: **done (DIC-1871).** `infra/docker-compose.prod.yml` has no `map-buddy` service and mounts `infra/nginx/map-buddy-api.prod.conf` (a 404); the smoke test fails if that route answers. | DIC-1871 | — | `curl -o /dev/null -w '%{http_code}' $VIEWER/map-buddy-api/status` returns 404 |
+| ~~B5~~ | ~~Hostname defaults~~: **done (DIC-1871).** `PV_CORS_ORIGINS`, `deploy.sh` (`VIEWER_ORIGINS`, `PARCEL_API_BASE`), the deploy docs and the smoke test default to `gis.dicemi.org`. Drake to reconfirm. | DIC-1871 | Drake (confirm) | Map Buddy works from the live origin (CORS) |
 | B6 | Map Buddy cost control: shared quota store, client IP on Cloud Run, dev endpoints (`/judge`, `/autoconfigure`), min instances. *No answers yet; the Anthropic spend limit is the backstop.* | DIC-1862 | Drake | Quota survives an instance restart |
-| B7 | Merge #25 → … → #31 (stacked). Rebuild the `api` and `map-buddy` images from `main` with `APP_VERSION` from the release tag. If the writer store is used, apply migrations `0001` then `0002`. | — | Jerry | `gh pr checks` green |
+| B7 | Merge #25 → … → #32 (stacked). Rebuild the `api` and `map-buddy` images from `main` with `APP_VERSION` from the release tag. If the writer store is used, apply migrations `0001` then `0002`. | — | Jerry | `gh pr checks` green |
 | ~~B8~~ | ~~Config-store outage path~~: **done in #31.** The store is built once, fails fast with a 30s backoff, the viewer serves the baked manifest immediately, and one warning is logged. | DIC-1872 | — | — |
 
 **Still open on DIC-1863:** security-headers owner (Q3), admin gate (Q4, likely folded into B1), writer role in prod (Q6), static caching (Q7), data exposure (Q10), number of API instances (Q5). **Q8** (non-root containers + health checks) is **done in code** (#28).
@@ -77,10 +75,11 @@ What still blocks a deploy:
 - [x] Log-injection, prototype-pollution and format-string findings fixed; a dev proxy no longer listens on the network (#29).
 - [x] `/config.js` 404 no longer reflects its input into a script. The public `/history` drops staff IDs and notes (#31).
 
-**Still to do (DIC-1871):**
-- [ ] **Rate-limit `/tiles/` and `/aerial/`.** Tiles are live PostGIS queries that carry owner names; aerial is an open Esri proxy.
-- [ ] **Least-privilege env in compose.** `api` and `martin` receive the Anthropic key; `map-buddy` receives the DB DSNs.
-- [ ] **Harden `deploy.sh`:** `set -euo pipefail`, refuse a dirty tree, tag images with the git SHA, and stop `--set-env-vars` from wiping other variables. (It already bakes `APP_VERSION`; #30.)
+**Done (DIC-1871):**
+- [x] **`/tiles/` and `/aerial/` are rate-limited** (60 req/s per IP, burst 300; the full e2e suite runs clean under them). `/aerial/` relays only tile paths and caches by tile, so it's no longer an open Esri proxy.
+- [x] **Least-privilege env in compose.** Each service lists only the settings it reads: `api` no longer receives the Anthropic key, `martin` sees only its own login, `map-buddy` gets no parcel-DB credentials.
+- [x] **`deploy.sh` hardened:** `set -euo pipefail`, refuses a dirty tree, tags images with the git SHA, builds `linux/amd64`, `--update-env-vars` (console-set settings survive), explicit `--concurrency` / `--timeout`, overridable origins and tenant.
+- [x] Martin's DB pool capped at 8 (its default was 20). `backend/requirements.txt` is exact-pinned. `.gitignore` covers `.env.*`, keys and service-account JSON. `/` redirects relatively; `*.md` and `/engine/test/` are 404s.
 
 ## 4. What has been verified (and how to re-run it)
 
@@ -98,7 +97,7 @@ What still blocks a deploy:
 | Browser end-to-end (Playwright, Edge) | **172** tests in 24 files | **no:** needs a database (see 8) | `cd e2e && npm install && npx playwright test` |
 | Accessibility (axe-core, WCAG 2.1 A/AA) | 0 violations on the scanned screens | with e2e | `npx playwright test tests/a11y-scan.spec.js` |
 
-**Latest full e2e run (2026-09-26, after #31):** **170 passed, 0 failed, 2 skipped**. The skipped two are the paid AI tests, gated on `E2E_AI=1`.
+**Latest full e2e run (2026-09-26, after #32):** **170 passed, 0 failed, 2 skipped**, with no 429s from the new tile and aerial limits. The skipped two are the paid AI tests, gated on `E2E_AI=1`.
 
 **What the e2e suite covers** (details in `e2e/README.md`):
 - search and the parcel panel;
@@ -211,7 +210,7 @@ Built to Maria's standard: Sentry through an injected `ErrorLoggingClient`, like
 | Staging deploy gate; prod via manual approval | **Needs an owner + infra** |
 | Error monitoring (Sentry), uptime, alerts | **Code done** (#28); **infra:** Sentry project, uptime checks |
 | Check auth first, fail immediately | **Done** for admin routes (#31) |
-| Rate limiting at app **and** hosting level | **Done** for the API; `/tiles/` and `/aerial/` pending (DIC-1871) |
+| Rate limiting at app **and** hosting level | **Done**: the API (#16–#31), `/tiles/` and `/aerial/` (DIC-1871) |
 | ADRs in `docs/adrs/` | **Done:** 0001–0003 |
 | Public API not public (token access) | **Decision pending** (B1) |
 
@@ -221,9 +220,9 @@ Built to Maria's standard: Sentry through an injected `ErrorLoggingClient`, like
 |---|---|
 | `README.md` | current, including **Contributing**: pre-commit setup, commit-message → version table, releases |
 | `e2e/README.md` | current |
-| `infra/DEPLOY-CHECKLIST.md` | current through #31 (new API settings, migration 0002). DIC-1871 lists remaining env vars (SMTP, `WMS_PROXY_RATE_LIMIT`, `KB_*`) |
+| `infra/DEPLOY-CHECKLIST.md` | current through DIC-1871: prod compose, every API and Map Buddy setting (SMTP, WMS proxy, Sentry, models, caches, `KB_*`), connection budget including Martin |
 | `infra/HANDOFF-DRAKE-DEPLOY.md`, `docs/admin-console-provisioning.md` | current |
-| `docs/HANDOFF.md` | **stale** (2026-06-11; wrong localhost line) |
+| `docs/HANDOFF.md` | dated 2026-06-11; its localhost line is correct again now that `/` redirects relatively (DIC-1871). Superseded by `infra/DEPLOY-CHECKLIST.md` for deploys |
 | `docs/RUNBOOK.md` | **started:** "Finding out what went wrong" (request ids, every log line and what to do). Still to write: deploy, rollback (with and without migrations), rotating the Anthropic key |
 | `docs/adrs/` | 0001 Observability, 0002 Semantic versioning, 0003 Code checks |
 | **ARCHITECTURE.md** | **missing.** Should cover services, data flow, the AI boundary (facts vs. narration), and the engine vs. viewer split |
@@ -241,7 +240,6 @@ Built to Maria's standard: Sentry through an injected `ErrorLoggingClient`, like
 | **CSP is report-only** | No script-injection enforcement yet | enforce after a clean report period |
 | **Annotation store has no persistence** | Drawings are per-session | product decision |
 | **Parcel Packet is sample content** | Testers may think it's real | brief testers |
-| **`graphify-out/` (2 MB tool cache) is committed** to the public repo | Repo hygiene | DIC-1871 |
 | **`kb_store.py` differs from its ZIP-repo twin** after formatting | Re-sync deliberately | noted on #30 |
 | Rare **third-party outages** (FEMA, USFWS, NRCS) | Overlay tiles or identify missing | none: not ours; logged as warnings |
 
@@ -257,4 +255,4 @@ Built to Maria's standard: Sentry through an injected `ErrorLoggingClient`, like
   - confirm nginx runs in Docker on the VM.
 - [ ] **Staging environment owner** (needed for Maria's release gate).
 - [ ] **Sentry project and DSN**, plus uptime checks.
-- [ ] **Engineer review:** this checklist plus PRs #25 to #31.
+- [ ] **Engineer review:** this checklist plus PRs #25 to #32.

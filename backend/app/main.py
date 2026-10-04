@@ -264,13 +264,12 @@ app = FastAPI(
 
 # CORS (DIC-1852). The viewer and admin console call the API same-origin through
 # nginx (/api/), so CORS only governs third-party browser callers. Allow just the
-# prod viewer origins by default; override with a comma-separated PV_CORS_ORIGINS.
+# prod viewer origin by default (gis.dicemi.org for the parallel rollout; readiness
+# checklist B5); override with a comma-separated PV_CORS_ORIGINS.
 # No credentials: the API uses no cookies (admin writes send X-Admin-Token).
 CORS_ORIGINS = [
     o.strip()
-    for o in os.getenv(
-        "PV_CORS_ORIGINS", "https://parcels.dicemi.org,https://map.dicemi.org"
-    ).split(",")
+    for o in os.getenv("PV_CORS_ORIGINS", "https://gis.dicemi.org").split(",")
     if o.strip()
 ]
 app.add_middleware(
