@@ -459,9 +459,14 @@
 
   // ── Click handler ────────────────────────────────────────────────────────
 
+  // Each identify click supersedes the previous one: a slow earlier lookup finishing last
+  // used to open a popup for the old point on top of (or instead of) the new one.
+  var _clickSeq = 0;
+
   function _onClick(e) {
     var map = window.PS_MAP;
     if (!map) return;
+    var seq = ++_clickSeq;
 
     var state      = window.PS_OVERLAY_LAYERS ? window.PS_OVERLAY_LAYERS.getState() : {};
     var visibleWms = QUERYABLE.filter(function (cfg) { return !!state[cfg.overlayId]; });
@@ -476,6 +481,7 @@
 
     Promise.all(visibleWms.map(function (cfg) { return _fetchOne(cfg, map, e.point); }))
       .then(function (wmsResults) {
+        if (seq !== _clickSeq) return;                 // a newer click owns the popup
         var html = _buildHtml(wmsResults);
         if (html === null) return;
         _popup = new maplibregl.Popup({

@@ -74,3 +74,13 @@ test('the engine selection module is source-agnostic (§4.1)', () => {
   assert.ok(!/\bparcel/i.test(src), 'selection.js must not mention parcels');
   assert.ok(!/PS_[A-Z]/.test(src), 'selection.js must not name a global');
 });
+
+test('extra ref fields (geometry, pin, selectionKey) reach subscribers', () => {
+  const { mgr, events } = harness();
+  const geometry = { type: 'Point', coordinates: [-85.9, 42.2] };
+  mgr.setActive({ sourceId: 'parcels', id: 7, pin: '80-1', selectionKey: '80-1', properties: { pin: '80-1' }, geometry });
+  const ref = events.find((e) => e[0] === 'active')[1].ref;
+  assert.equal(ref.geometry, geometry);
+  assert.equal(ref.pin, '80-1');
+  assert.equal(ref.selectionKey, '80-1');
+});

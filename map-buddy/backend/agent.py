@@ -172,8 +172,8 @@ WORKFLOWS = {
     "check_buildability": {
         "description": "dimensions + a configurable setback ring (default 30 ft); also turns on the flood overlay if the parcel is in a flood hazard area",
         "params": {
-            "setback_ft": {"type": "number", "default": 30,
-                           "description": "Setback distance in feet for the buildable-area ring (default 30)."},
+            "setback_ft": {"type": "number", "default": 30, "minimum": 1, "maximum": 1000,
+                           "description": "Setback distance in feet for the buildable-area ring (default 30, 1-1000)."},
         },
         "steps": [
             {"type": "select_parcel", "payload": "pin_required"},
@@ -607,12 +607,19 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
         val = inp.get(pname)
         if val is None:
             val = pdef.get("default")
-        elif pdef["type"] == "number" and not isinstance(val, (int, float)):
+        elif pdef["type"] == "number" and (isinstance(val, bool) or not isinstance(val, (int, float))
+                                           or not math.isfinite(val)):
             return ("Can't run '%s': %r must be a number." % (name, pname), [])
         elif pdef["type"] == "string" and not isinstance(val, str):
             return ("Can't run '%s': %r must be text." % (name, pname), [])
         elif pdef["type"] == "boolean" and not isinstance(val, bool):
             return ("Can't run '%s': %r must be true or false." % (name, pname), [])
+        # Range check (schema minimum/maximum): a negative setback drew an outward
+        # ring labelled "-30 ft setback"; 1e9 ft is nonsense.
+        if pdef["type"] == "number" and val is not None:
+            lo, hi = pdef.get("minimum"), pdef.get("maximum")
+            if (lo is not None and val < lo) or (hi is not None and val > hi):
+                return ("Can't run '%s': %r must be between %s and %s." % (name, pname, lo, hi), [])
         params[pname] = val
 
     # Environmental lookup first — needed for branching (`when`) and the summary.

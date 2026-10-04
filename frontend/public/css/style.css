@@ -4737,3 +4737,6 @@ input[type="checkbox"]:focus-visible {
 @media (max-width: 640px) {
   .pv-doc-panel { left: 8px; right: 8px; width: auto; max-width: none; bottom: 96px; }
 }
+
+/* Map tool tabs: the tablist wrapper is semantic only (see demo/index.html). */
+.mcp-tablist { display: contents; }

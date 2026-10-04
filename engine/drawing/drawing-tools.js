@@ -963,7 +963,12 @@
 
     // ── Select tool shortcuts ────────────────────────────────────────────────
     if (activeDrawTool === 'select') {
-      if (e.key === 'Escape') { deselectAll(); return; }
+      // Esc deselects the selected annotation; with nothing selected it exits the select
+      // tool (like the other draw tools), releasing the map for parcel clicks.
+      if (e.key === 'Escape') {
+        if (selectedAnnotationId) deselectAll(); else setActiveDrawTool(null);
+        return;
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedAnnotationId) {
         var store = getStore();
         if (store) store.deleteAnnotation(selectedAnnotationId);
