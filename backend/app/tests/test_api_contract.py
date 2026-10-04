@@ -10,7 +10,7 @@ import inspect
 from unittest import TestCase
 from unittest.mock import MagicMock, create_autospec, patch
 
-from fastapi.routing import APIRoute
+from fastapi.routing import APIRoute, iter_route_contexts
 from fastapi.testclient import TestClient
 from parameterized import parameterized
 
@@ -250,10 +250,13 @@ class RouteStyleTests(TestCase):
     ALLOWED_ASYNC = {"/style.json"}
 
     def test_no_unreviewed_async_routes(self) -> None:
+        # Since FastAPI 0.142, app.routes keeps included routers nested; iter_route_contexts
+        # walks into them (a plain app.routes scan silently skips every router's routes).
         async_routes = {
-            r.path
-            for r in main.app.routes
-            if isinstance(r, APIRoute) and inspect.iscoroutinefunction(r.endpoint)
+            c.path
+            for c in iter_route_contexts(main.app.routes)
+            if isinstance(c.original_route, APIRoute)
+            and inspect.iscoroutinefunction(c.original_route.endpoint)
         }
 
         self.assertEqual(async_routes, self.ALLOWED_ASYNC)
