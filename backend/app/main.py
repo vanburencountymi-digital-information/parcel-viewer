@@ -1,12 +1,15 @@
 """Parcel Viewer backend — read-only FastAPI app."""
 
 import hmac
+import urllib.error
+import urllib.request
 import json
 import logging
 import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse, urlunparse
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +26,7 @@ from parcel_viewer.common.error_logging_client import (
     get_error_logging_client,
     init_error_monitoring,
 )
-from parcel_viewer.common.logging_setup import configure_logging
+from parcel_viewer.common.logging_setup import configure_logging, safe_for_log
 from parcel_viewer.common.request_context import RequestContextMiddleware
 from parcel_viewer.db import close_pool, health_check, open_pool, pool
 from parcel_viewer.ratelimit import limiter
@@ -135,6 +138,39 @@ ALLOWED_WMS_HOSTS = (
     "sdmdataaccess.nrcs.usda.gov",
     "elevation.nationalmap.gov",
 )
+
+# /wms-proxy hardening (DIC-1880 CodeQL py/full-ssrf; DIC-1872). The proxy fetches a
+# caller-supplied URL, so beyond the host allowlist it must not follow redirects (a
+# 30x to any host would bypass the allowlist), must not pass through content a browser
+# would render as a page on our origin, and must bound what it reads.
+_WMS_ALLOWED_TYPES = (
+    "application/json", "application/geo+json", "application/xml", "text/xml",
+    "application/vnd.ogc.", "text/plain", "image/png", "image/jpeg", "image/gif",
+)
+_WMS_MAX_BYTES = int(os.getenv("WMS_PROXY_MAX_BYTES", str(5 * 1024 * 1024)))
+
+
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    """Refuse every redirect: urllib then raises HTTPError with the 30x status."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_wms_opener = urllib.request.build_opener(_NoRedirects)
+
+
+def _wms_target(url: str) -> str | None:
+    """Takes the caller's URL; returns a rebuilt https URL on an allowed host, or None."""
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if parsed.scheme != "https" or parsed.username or parsed.password:
+        return None
+    if parsed.port not in (None, 443):
+        return None
+    if not any(host == h or host.endswith("." + h) for h in ALLOWED_WMS_HOSTS):
+        return None
+    return urlunparse(("https", host, parsed.path or "/", "", parsed.query, ""))
 
 
 @asynccontextmanager
@@ -409,29 +445,32 @@ def wms_proxy(request: Request, url: str):
     Baseline is ~30–60 req/min per active user (up to 3 parallel overlay calls
     per map click), so the default 45/minute is tunable via WMS_PROXY_RATE_LIMIT.
     """
-    import urllib.error
-    import urllib.request
-    from urllib.parse import urlparse
-
-    host = urlparse(url).hostname or ""
-    if not any(host == h or host.endswith("." + h) for h in ALLOWED_WMS_HOSTS):
-        return JSONResponse({"error": f"Host not allowed: {host}"}, status_code=403)
+    target = _wms_target(url)
+    if target is None:
+        return JSONResponse({"error": "URL not allowed"}, status_code=403)
+    host = safe_for_log(urlparse(target).hostname or "", 100)   # for log lines only
 
     try:
-        req = urllib.request.Request(url, headers={"User-Agent": "ParcelViewer/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            content = resp.read()
+        req = urllib.request.Request(target, headers={"User-Agent": "ParcelViewer/1.0"})
+        with _wms_opener.open(req, timeout=10) as resp:
+            content = resp.read(_WMS_MAX_BYTES + 1)
             content_type = resp.headers.get("Content-Type", "text/xml")
-        return Response(content=content, media_type=content_type)
     except urllib.error.HTTPError as e:
         # Third-party outages (FEMA, USFWS, NRCS) aren't our bugs: logged as warnings,
-        # not sent to Sentry, so they can't bury real errors (ADR 0001).
+        # not sent to Sentry, so they can't bury real errors (ADR 0001). Redirects land
+        # here too (refused). The upstream body is never passed back.
         log.warning("wms-proxy upstream %s returned %s", host, e.code)
-        return Response(
-            content=e.read(),
-            status_code=e.code,
-            media_type=e.headers.get("Content-Type", "text/plain"),
-        )
+        return JSONResponse({"error": f"upstream map service returned {e.code}"}, status_code=502)
     except Exception:
         log.warning("wms-proxy upstream request failed: %s", host, exc_info=True)
         return JSONResponse({"error": "upstream map service unavailable"}, status_code=502)
+
+    if len(content) > _WMS_MAX_BYTES:
+        log.warning("wms-proxy upstream %s response over %s bytes", host, _WMS_MAX_BYTES)
+        return JSONResponse({"error": "upstream response too large"}, status_code=502)
+    base_type = content_type.split(";", 1)[0].strip().lower()
+    if not base_type.startswith(_WMS_ALLOWED_TYPES):
+        log.warning("wms-proxy upstream %s sent unexpected type %s", host, safe_for_log(base_type, 100))
+        return JSONResponse({"error": "unexpected upstream content"}, status_code=502)
+    return Response(content=content, media_type=content_type,
+                    headers={"X-Content-Type-Options": "nosniff"})

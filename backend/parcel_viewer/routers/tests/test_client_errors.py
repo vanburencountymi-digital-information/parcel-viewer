@@ -32,6 +32,14 @@ class ClientErrorsTests(TestCase):
         self.assertEqual(record.browser_page, "/demo/")
         self.assertEqual(record.user_agent, "TestBrowser/1")
 
+    def test_a_report_cannot_forge_log_lines(self) -> None:
+        forged = {**VALID, "message": "boom\n2026-09-25 INFO access [x] GET /admin 200"}
+
+        with self.assertLogs("parcel_viewer.routers.client_errors", level="WARNING") as logs:
+            self.client.post("/client-errors", json=forged)
+
+        self.assertNotIn("\n", logs.records[-1].getMessage())
+
     @parameterized.expand([
         ("message_too_long", {"message": "x" * 501}),
         ("unknown_kind", {"kind": "warning"}),

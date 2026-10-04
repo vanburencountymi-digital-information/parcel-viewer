@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[2] / ".." / "parcel-studio" / "frontend" / "index.html"
-SRC = Path(r"C:\Users\DID User\Documents\parcel-studio\frontend\index.html")
 OUT = Path(__file__).resolve().parents[1] / "demo" / "index.html"
 
 text = SRC.read_text(encoding="utf-8")

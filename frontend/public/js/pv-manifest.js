@@ -100,14 +100,14 @@
     return fetchRegistry().then(function (themes) {
       var entry = themes.filter(function (t) { return t && t.id === id; })[0];
       if (!entry || !entry.bootable) {
-        if (root.console && console.warn) console.warn('[pv-manifest] theme "' + id + '" is not a bootable theme; using default boot.');
+        if (root.console && console.warn) console.warn('[pv-manifest] not a bootable theme; using default boot. Theme:', id);
         return null;
       }
       return fetchJson(THEME_DIR + id + '.json').then(function (raw) {
-        if (!raw) { if (root.console && console.warn) console.warn('[pv-manifest] theme "' + id + '" file missing; using default boot.'); return null; }
+        if (!raw) { if (root.console && console.warn) console.warn('[pv-manifest] theme file missing; using default boot. Theme:', id); return null; }
         var res = load(raw);
-        if (res.ok) { publish(res); if (root.console && console.info) console.info('[pv-manifest] booted theme "' + id + '"'); return res.manifest; }
-        if (root.console && console.warn) console.warn('[pv-manifest] theme "' + id + '" failed to validate:', (res.errors || []).join('; '));
+        if (res.ok) { publish(res); if (root.console && console.info) console.info('[pv-manifest] booted theme:', id); return res.manifest; }
+        if (root.console && console.warn) console.warn('[pv-manifest] theme failed to validate:', id, (res.errors || []).join('; '));
         return null;
       });
     });

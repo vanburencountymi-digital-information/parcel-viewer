@@ -206,9 +206,9 @@
     // On mobile, always start collapsed (the unified tab bar reopens it) so the
     // viewer loads with all panels closed. Desktop restores the saved state.
     if (!_isMobile() && localStorage.getItem(STORAGE_COLLAPSED) === 'false') {
-      _openPanel(true);
+      _openPanel();
     } else {
-      _collapsePanel(true);
+      _collapsePanel();
     }
 
     var drawerHandle = _panel.querySelector('.mb-drawer-handle');

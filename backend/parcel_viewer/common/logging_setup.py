@@ -60,6 +60,15 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(entry, default=str)
 
 
+def safe_for_log(value: object, max_len: int = 500) -> str:
+    """Takes any value from outside (a browser report, a header, a URL part); returns it
+    as one short line, so it can't forge extra log lines (CodeQL py/log-injection):
+    line breaks and other control characters become spaces, and it is cut to max_len."""
+    text = str(value).replace("\r", " ").replace("\n", " ")
+    text = "".join(ch if ch.isprintable() else " " for ch in text)
+    return text[:max_len]
+
+
 TEXT_FORMAT = "%(asctime)s %(levelname)s %(name)s [%(request_id)s] %(message)s"
 
 

@@ -425,11 +425,11 @@
       '<div class="pv-profile-modal" role="dialog" aria-modal="true" aria-label="Neighborhood profile">' +
         '<div class="pv-profile-head">' +
           '<div class="pv-profile-head-l"><h2 class="pv-profile-title">Neighborhood Profile</h2>' +
-            '<div id="pv-profile-sub" class="pv-profile-sub">' + esc(loading || '') + '</div>' +
+            '<div id="pv-profile-sub" class="pv-profile-sub">' + esc(loading) + '</div>' +
             controlsHtml() + '</div>' +
           '<button type="button" class="pv-profile-x" aria-label="Close">×</button>' +
         '</div>' +
-        '<div id="pv-profile-body" class="pv-profile-body">' + (loading ? '<p class="pv-prof-empty">' + esc(loading) + '</p>' : '') + '</div>' +
+        '<div id="pv-profile-body" class="pv-profile-body"><p class="pv-prof-empty">' + esc(loading) + '</p></div>' +
       '</div>';
     overlay.hidden = false;
     if (root.PV_DIALOG) root.PV_DIALOG.opened(overlay, close);   // Esc, focus, Tab trap

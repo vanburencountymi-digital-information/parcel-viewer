@@ -57,6 +57,9 @@ test('taxable value / acre shades rendered parcels with their own values', async
 });
 
 test('school district legend lists the districts present, and the choice persists', async ({ page }) => {
+  // Loads the viewer twice (to prove the choice persists): ~30s alone, and it went
+  // past the default 60s twice under full-suite load. Give it room for both loads.
+  test.setTimeout(120_000);
   await openViews(page);
   await pick(page, 'school');
   await waitForMapIdle(page);
