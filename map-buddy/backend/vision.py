@@ -19,7 +19,9 @@ import struct
 
 from agent import _create_message
 
-VISION_MODEL = os.getenv("VISION_MODEL", "claude-opus-5-5")
+# Sonnet 5.5 (DIC-2138): on the 21-view evaluation it matched Opus 5.5 (21/21) at less
+# than half the cost (about $0.008 vs $0.02 a look) and faster (5.5 s vs 8.6 s).
+VISION_MODEL = os.getenv("VISION_MODEL", "claude-sonnet-5-5")
 # Unset → the model's default effort. A map description may hold up at "low"; set
 # VISION_EFFORT to compare once the evaluation set exists.
 VISION_EFFORT = os.getenv("VISION_EFFORT", "")

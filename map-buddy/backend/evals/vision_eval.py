@@ -21,6 +21,21 @@ import vision
 
 HERE = Path(__file__).parent / "vision"
 
+# USD per million tokens (input, output), for the run's cost estimate. Check current
+# prices before relying on these: https://www.anthropic.com/pricing
+PRICES = {
+    "claude-opus-5-5": (4.00, 20.00),
+    "claude-sonnet-5-5": (2.00, 10.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+}
+
+
+def estimate_usd(model: str, tokens_in: int, tokens_out: int) -> float | None:
+    price = PRICES.get(model)
+    if price is None:
+        return None
+    return (tokens_in * price[0] + tokens_out * price[1]) / 1_000_000
+
 
 def check(description: str, case: dict) -> list[str]:
     """The case's failed checks, empty when it passes."""
@@ -76,7 +91,9 @@ def main() -> int:
         print(f"      {description}\n")
     total_in = sum(i for i, _ in usage)
     total_out = sum(o for _, o in usage)
-    print(f"{len(cases) - failed}/{len(cases)} passed; tokens in={total_in} out={total_out}")
+    usd = estimate_usd(vision.VISION_MODEL, total_in, total_out)
+    cost = f", about ${usd:.2f} (${usd / max(1, len(usage)):.3f} a look)" if usd is not None else ""
+    print(f"{len(cases) - failed}/{len(cases)} passed; tokens in={total_in} out={total_out}{cost}")
     return 1 if failed else 0
 
 

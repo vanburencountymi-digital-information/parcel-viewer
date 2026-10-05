@@ -117,8 +117,9 @@ For "is this in a floodplain / are there wetlands / what's the soil / is it buil
 
 # Looking at the map (vision) — every look costs money
 You can have a vision model look at the map as the user sees it (look_at_map). Default to NOT looking.
-- The user asks you to look, see, or describe the map or a parcel → call look_at_map.
-- A visual question your data can't answer (outbuildings, a driveway, a pond, tree cover, how the land is used) → answer what you can from the data, then offer ONE look with offer_map_look. Look only if they accept.
+- The user's own words ask you to look at, see, or describe the map, the aerial or the imagery → call look_at_map.
+- A question about whether something is on the land ("is there a barn / a pond / a driveway", "is it wooded") is NOT a request to look. Answer what you can from the data first (get_environmental_info's wetlands result includes ponds and open water), then offer ONE look with offer_map_look. Look only if they accept.
+- Phrase an offer as a short, natural question, e.g. "The tax roll doesn't list outbuildings. Want me to look at the aerial?" Don't describe the offer mechanism ("let me offer a look").
 - The data already answers it (owner, values, acreage, zoning, flood zone, wetlands, soils, school district) → answer from the data; never offer a look.
 - At most one offer per conversation. If they declined or moved on, don't offer again unless they ask.
 - When a "visual read of the current map view" is in the message, answer the user's question from it, call it a visual read of the map rather than a record, and don't look again.
@@ -921,9 +922,11 @@ TOOLS = [
         "name": "look_at_map",
         "description": (
             "Have a vision model look at the map exactly as the user sees it and describe it. "
-            "Each look costs real money, so call this ONLY when (a) the user explicitly asks you "
-            "to look at, see, or describe the map, the imagery, or what's on a parcel, or (b) the "
-            "user accepted your offer to look. Never call it for anything the data answers: owner, "
+            "Each look costs real money, so call this ONLY when (a) the user's own words ask you "
+            "to look at, see, or describe the map, the aerial or the imagery, or (b) the user "
+            "accepted your offer to look. A question about what's on the land ('is there a pond?', "
+            "'is there a barn?') is not a request to look: use offer_map_look for those. Never "
+            "call it for anything the data answers: owner, "
             "values, acreage, zoning, flood zone, wetlands, soils, school district or addresses "
             "come from the tax roll and get_environmental_info, not from a picture. Before "
             "calling, set up the view that makes the answer visible (aerial imagery for "
@@ -952,8 +955,9 @@ TOOLS = [
             "seeing the map would clearly change your answer. Never offer for questions the data "
             "answers, never offer as a routine next step, and never put a look in "
             "suggest_actions. At most one offer per conversation: if you already offered, or the "
-            "user moved on, don't offer again unless they ask. Say in one short line why a look "
-            "would help; don't call look_at_map unless they accept."
+            "user moved on, don't offer again unless they ask. Ask it as one short, natural "
+            "question (e.g. 'The tax roll doesn't list outbuildings. Want me to look at the "
+            "aerial?'); don't call look_at_map unless they accept."
         ),
         "input_schema": {
             "type": "object",
@@ -1395,6 +1399,9 @@ def run_chat_stream(
             tool_results = []
             for block in response.content:
                 if block.type == "text":
+                    # Text from separate calls in one turn would otherwise run together.
+                    if response_text and block.text and not response_text[-1].isspace():
+                        response_text += "\n\n"
                     response_text += block.text
                 elif block.type == "tool_use":
                     inp = dict(block.input or {})

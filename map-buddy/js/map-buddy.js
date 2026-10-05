@@ -717,7 +717,9 @@
     lbl.textContent = 'AI visual read of the current map view';
     var body = document.createElement('div');
     body.className = 'mb-msg-ai-body';
-    body.textContent = String(data.description || '');
+    // Same safe Markdown subset as chat replies (escaped first): the model sometimes bolds
+    // its best guess, and raw "**" would show (DIC-2138).
+    body.innerHTML = _renderMarkdown(String(data.description || ''));
     var meta = document.createElement('div');
     meta.className = 'mb-vision-meta';
     var when = data.at ? new Date(data.at) : new Date();

@@ -33,7 +33,7 @@ def _b64(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
-def _response(*blocks, stop_reason="end_turn", model="claude-opus-5-5"):
+def _response(*blocks, stop_reason="end_turn", model="claude-sonnet-5-5"):
     return SimpleNamespace(content=list(blocks), stop_reason=stop_reason, model=model)
 
 
@@ -101,12 +101,12 @@ class DescribeViewTests(TestCase):
         )
 
         self.assertEqual(
-            result, {"description": "A barn sits near the road.", "model": "claude-opus-5-5"}
+            result, {"description": "A barn sits near the road.", "model": "claude-sonnet-5-5"}
         )
         purpose = mock_create.call_args.args[0]
         kwargs = mock_create.call_args.kwargs
         self.assertEqual(purpose, "vision")
-        self.assertEqual(kwargs["model"], "claude-opus-5-5")
+        self.assertEqual(kwargs["model"], "claude-sonnet-5-5")
         self.assertEqual(kwargs["fallbacks"], "default")
         self.assertEqual(kwargs["betas"], ["server-side-fallback-2026-07-01"])
         self.assertNotIn("output_config", kwargs)
@@ -187,6 +187,49 @@ class EvalSetTests(TestCase):
             self.assertTrue(case.get("expect_any"), case["id"])
 
 
+class OfferEvalTests(TestCase):
+    """The opt-in offer-rule evaluation's scoring and case file (no model call)."""
+
+    def test_a_look_outranks_an_offer_and_nothing_is_none(self) -> None:
+        from evals.offer_eval import vision_action
+
+        self.assertEqual(vision_action([]), "none")
+        self.assertEqual(vision_action([{"type": "fly_to_parcel"}]), "none")
+        self.assertEqual(vision_action([{"type": "offer_map_look"}]), "offer")
+        self.assertEqual(
+            vision_action([{"type": "offer_map_look"}, {"type": "look_at_map"}]), "look"
+        )
+
+    def test_summary_counts_false_offers_and_unasked_looks(self) -> None:
+        from evals.offer_eval import summarize
+
+        s = summarize(
+            [
+                ("none", "none"),
+                ("none", "offer"),
+                ("offer", "look"),
+                ("offer", "none"),
+                ("look", "look"),
+            ]
+        )
+        self.assertEqual(s["false_offer_rate"], 0.5)
+        self.assertEqual(s["unasked_looks"], 1)
+        self.assertEqual(s["missed_offers"], 1)
+        self.assertEqual(s["missed_looks"], 0)
+        self.assertEqual((s["passed"], s["total"]), (2, 5))
+
+    def test_the_case_file_is_well_formed(self) -> None:
+        from evals.offer_eval import HERE
+
+        spec = json.loads((HERE / "offer_cases.json").read_text(encoding="utf-8"))
+        ids = [c["id"] for c in spec["cases"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertTrue({c["expect"] for c in spec["cases"]} <= {"none", "offer", "look"})
+        for kind in ("none", "offer", "look"):
+            self.assertTrue(any(c["expect"] == kind for c in spec["cases"]), kind)
+        main.ParcelContext(**spec["parcel"])  # the parcel validates as the route would
+
+
 class CreateMessageBetaTests(TestCase):
     @patch("agent._get_client", autospec=True)
     def test_beta_calls_use_the_beta_client(self, mock_get_client) -> None:
@@ -223,7 +266,6 @@ class VisionRouteTests(_ApiTestCase):
         self.assertEqual(body["layers"], ["Aerial imagery", "Flood zones"])
         self.assertIn("T", body["at"])
         mock_reserve.assert_called_once_with(main.SERVER_TENANT, units=main.VISION_QUOTA_UNITS)
-        self.assertGreater(main.VISION_QUOTA_UNITS, 1)
         self.assertEqual(mock_run.call_args.kwargs["question"], "Is there a barn?")
         self.assertEqual(mock_run.call_args.kwargs["parcel"]["acres"], 12.5)
         self.assertEqual(mock_run.call_args.kwargs["view_width_ft"], 1800)
@@ -317,6 +359,14 @@ class VisionRouteTests(_ApiTestCase):
         ]
 
         self.assertEqual(codes, [200] * 10 + [429])
+
+    def test_the_default_limit_is_ten_an_hour_and_thirty_a_day(self) -> None:
+        from limits import parse_many
+
+        limits = sorted(
+            (lim.amount, lim.GRANULARITY.name) for lim in parse_many(main.VISION_RATE_LIMIT)
+        )
+        self.assertEqual(limits, [(10, "hour"), (30, "day")])
 
 
 class VisionBodySizeTests(_ApiTestCase):
@@ -435,3 +485,24 @@ class ChatVisionRuleTests(TestCase):
         self.assertTrue({"look_at_map", "offer_map_look"} <= names)
         self.assertIn("every look costs money", agent.SYSTEM_PROMPT)
         self.assertIn("At most one offer per conversation", agent.SYSTEM_PROMPT)
+
+
+class EvalCostTests(TestCase):
+    def test_estimate_uses_per_million_prices_and_skips_unknown_models(self) -> None:
+        from evals.vision_eval import estimate_usd
+
+        self.assertAlmostEqual(estimate_usd("claude-opus-5-5", 1_000_000, 100_000), 6.0)
+        self.assertIsNone(estimate_usd("some-other-model", 1, 1))
+
+
+class ResponseTextJoinTests(TestCase):
+    def test_text_from_separate_calls_in_one_turn_is_separated(self) -> None:
+        # "Let me pull up the aerial for you.Taking a close look…" (DIC-2138 offer eval).
+        replies = [
+            _response(_text("Let me look."), _tool("look_at_map", {}, "a"), stop_reason="tool_use"),
+            _response(_text("Taking a look now.")),
+        ]
+        with patch("agent._create_message", autospec=True, side_effect=replies):
+            done = list(agent.run_chat_stream("Look at the map", [], None))[-1]
+
+        self.assertEqual(done["response_text"], "Let me look.\n\nTaking a look now.")

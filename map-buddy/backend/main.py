@@ -76,8 +76,11 @@ VISION_PATH = "/vision/describe"
 VISION_MAX_BODY_BYTES = int(
     os.getenv("VISION_MAX_BODY_BYTES", str(vision.VISION_MAX_IMAGE_BYTES * 4 // 3 + 16 * 1024))
 )
-# A look costs several chat calls' worth of tokens, so it counts as several quota units.
-VISION_QUOTA_UNITS = int(os.getenv("VISION_QUOTA_UNITS", "5"))
+# A look on Sonnet 5.5 costs about $0.008, no more than one chat turn (~$0.02), so it
+# counts as one quota unit (DIC-2138). Raise it if VISION_MODEL moves to a costlier model.
+VISION_QUOTA_UNITS = int(os.getenv("VISION_QUOTA_UNITS", "1"))
+# Per client: 10 looks an hour and 30 a day while the viewer is a POC (DIC-2138).
+VISION_RATE_LIMIT = os.getenv("VISION_RATE_LIMIT", "10/hour;30/day")
 VISION_ERROR = "Couldn't analyse the map view."
 UNSUPPORTED_TOPIC_ERROR = "unsupported explainer topic"
 
@@ -402,7 +405,7 @@ async def chat(
 
 
 @app.post(VISION_PATH)
-@limiter.limit(os.getenv("VISION_RATE_LIMIT", "10/hour"))
+@limiter.limit(VISION_RATE_LIMIT)
 def vision_describe(
     request: Request,
     body: VisionRequest,
