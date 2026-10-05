@@ -189,9 +189,8 @@ class ErrorLeakTests(_ApiTestCase):
         ):
             response = self.client.post("/explain", json={"topic": "x", "facts": {"pin": "1"}})
 
-        self.assertEqual(
-            response.json(), {"ok": False, "error": "unsupported explainer topic: 'x'"}
-        )
+        # A fixed message: the caller's topic isn't echoed back (CodeQL alert #2).
+        self.assertEqual(response.json(), {"ok": False, "error": "unsupported explainer topic"})
         self.errors.report_exception.assert_not_called()
 
     def test_knowledge_base_failure_is_clean(self) -> None:

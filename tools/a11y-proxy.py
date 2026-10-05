@@ -6,6 +6,7 @@ DIC-376 accessibility audit without contending for the Docker-held port 8080.
 import http.server
 import socketserver
 import urllib.error
+import urllib.parse
 import urllib.request
 
 UPSTREAM = "http://localhost:8080"
@@ -25,11 +26,32 @@ HOP = {
 }
 
 
+def upstream_url(target: str) -> str | None:
+    """The upstream URL for a request target, or None if it isn't a plain path.
+
+    Only origin-form targets ("/path?query") are forwarded, rebuilt onto the fixed
+    UPSTREAM. An absolute URL ("http://elsewhere/"), an authority ("//host/x") or
+    anything not starting with "/" is refused, so the request can't point the proxy at
+    another host (CodeQL py/partial-ssrf).
+    """
+    if not target.startswith("/") or target.startswith("//"):
+        return None
+    parts = urllib.parse.urlsplit(target)
+    if parts.scheme or parts.netloc:
+        return None
+    path = urllib.parse.quote(parts.path, safe="/%:@!$&'()*+,;=-._~")
+    up = urllib.parse.urlsplit(UPSTREAM)
+    return urllib.parse.urlunsplit((up.scheme, up.netloc, path, parts.query, ""))
+
+
 class Proxy(http.server.BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def _proxy(self, body=None):
-        url = UPSTREAM + self.path
+        url = upstream_url(self.path)
+        if url is None:
+            self.send_error(400, "only origin-form request targets are proxied")
+            return
         req = urllib.request.Request(url, data=body, method=self.command)
         for k, v in self.headers.items():
             # Drop Accept-Encoding so upstream returns identity — otherwise nginx
@@ -66,8 +88,8 @@ class Proxy(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
-        except Exception as e:
-            self.send_error(502, f"proxy error: {e}")
+        except Exception:
+            self.send_error(502, "proxy error")
 
     def do_GET(self):
         self._proxy()
