@@ -79,6 +79,7 @@ VISION_MAX_BODY_BYTES = int(
 # A look costs several chat calls' worth of tokens, so it counts as several quota units.
 VISION_QUOTA_UNITS = int(os.getenv("VISION_QUOTA_UNITS", "5"))
 VISION_ERROR = "Couldn't analyse the map view."
+UNSUPPORTED_TOPIC_ERROR = "unsupported explainer topic"
 
 
 def _payload_too_large(obj):
@@ -478,10 +479,11 @@ def explain(
         if result_cache.enabled():
             result_cache.get_cache().set(ck, explanation)
         return {"ok": True, "explanation": explanation, "cached": False}
-    except UnsupportedTopic as e:
-        # Only this error is the caller's to see; any other ValueError (a validation error
-        # from deep in the SDK, say) is internal and handled below (DIC-1874).
-        return {"ok": False, "error": str(e)}
+    except UnsupportedTopic:
+        # The caller asked for an explainer that doesn't exist. Answer with a fixed message,
+        # not the exception text (CodeQL py/stack-trace-exposure); any other error is
+        # internal and handled below (DIC-1874).
+        return {"ok": False, "error": UNSUPPORTED_TOPIC_ERROR}
     except Exception as exc:  # noqa: BLE001 — surface a clean message; frontend degrades
         log.exception("explainer failed")
         errors.report_exception(exc, tags={"operation": "explain"})
