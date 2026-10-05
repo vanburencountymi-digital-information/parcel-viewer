@@ -6,3 +6,5 @@
 .env.*
 requirements-dev.txt
 pytest.ini
+# The vision evaluation set (images + an opt-in live runner, DIC-2135).
+**/evals/

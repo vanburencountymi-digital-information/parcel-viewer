@@ -1,0 +1,30 @@
+{
+  "_about": "Map vision evaluation set (DIC-2135). Each image is exactly what a look sends: captured by PV_VISION.capture from the dev viewer (straight down, north up). 'expect_any' groups: the description must contain at least one word from EACH group (case-insensitive). 'forbid': words that must not appear. Grow this to about 20 views (aerial, wetlands, flood, structures, zoomed out) before choosing the model and effort.",
+  "cases": [
+    {
+      "id": "ballfields-east-of-wooded-parcel",
+      "image": "ballfields-east-of-wooded-parcel.jpg",
+      "note": "First live look (2026-10-05), taken tilted mid-orbit, called these ballfields 'tan basins ... ponds or lagoons'. Here they show only partly, at the top-right edge.",
+      "question": null,
+      "parcel": { "pin": "80-14-014-015-00", "site_address": "PAW PAW RD", "acres": 9.48, "municipality": "Paw Paw Township" },
+      "layers": ["Aerial imagery"],
+      "view_width_ft": 2215,
+      "expect_any": [
+        ["wooded", "woods", "trees", "tree cover", "forest"],
+        ["ballfield", "ball field", "baseball", "softball", "ball diamond", "athletic field", "infield"]
+      ],
+      "forbid": ["lagoon"]
+    },
+    {
+      "id": "county-zoomed-out",
+      "image": "county-zoomed-out.jpg",
+      "note": "Zoomed out to about 31 miles across: parcel detail can't be seen, so the answer should say to zoom in rather than describe the parcel.",
+      "question": "Is there a barn on this parcel?",
+      "parcel": { "pin": "80-14-014-015-00", "site_address": "PAW PAW RD", "acres": 9.48, "municipality": "Paw Paw Township" },
+      "layers": ["Aerial imagery"],
+      "view_width_ft": 163897,
+      "expect_any": [["zoom"]],
+      "forbid": []
+    }
+  ]
+}

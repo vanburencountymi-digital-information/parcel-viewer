@@ -153,6 +153,25 @@
 }
 .mb-context-empty #mb-context-text { color: #646a75; }   /* 5.0:1 on the panel (was 2.3:1) */
 
+/* "Describe this view" (DIC-2135): an explicit, user-started map look. */
+.mb-look-btn {
+  margin-left: auto; flex-shrink: 0;
+  font: inherit; font-size: 10.5px; font-weight: 600; line-height: 1.2;
+  padding: 3px 8px; border-radius: 999px; cursor: pointer;
+  background: #fff;
+  color: var(--ui-interactive-dk, #8a6a2f);
+  border: 1px solid var(--ui-interactive-bd, rgba(181,141,74,0.4));
+}
+.mb-look-btn:hover:not(:disabled) { background: var(--ui-interactive-bg, rgba(181,141,74,0.12)); }
+.mb-look-btn:focus-visible { outline: 2px solid var(--ui-interactive); outline-offset: 1px; }
+.mb-look-btn:disabled { opacity: 0.55; cursor: default; }
+[data-theme="dark"] .mb-look-btn { background: #1c1612; color: #e8d8c4; border-color: rgba(181,141,74,0.5); }
+
+/* The vision read: labelled as an AI reading of the imagery, set apart from answers. */
+.mb-msg-vision { border-left: 3px solid var(--ui-interactive, #b58d4a); }
+.mb-vision-meta { margin-top: 6px; font-size: 10.5px; color: #646a75; }
+[data-theme="dark"] .mb-vision-meta { color: #9e9087; }
+
 /* ── Messages area ── */
 .mb-messages {
   flex: 1;

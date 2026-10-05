@@ -41,7 +41,10 @@
   var _apiBase, _isCollapsed, _panelWidth, _currentParcel, _history, _streaming;
   var _resizing, _startX, _startW;
   var _tabBtn, _collapseBtn, _resizeHandle, _contextEl, _contextText;
-  var _messagesEl, _inputEl, _sendBtn;
+  var _messagesEl, _inputEl, _sendBtn, _lookBtn;
+  // Map vision (DIC-2135): a look the AI asked for runs after its reply finishes, and the
+  // AI may offer a look at most once per conversation (each look is a paid model call).
+  var _pendingLook, _visionOffered;
 
   // Stored listener refs for clean removal on unmount
   var _onDocMousemove = null;
@@ -161,6 +164,8 @@
         '<div id="mb-context" class="mb-context mb-context-empty">' +
           '<span class="mb-context-dot"></span>' +
           '<span id="mb-context-text">No parcel selected</span>' +
+          '<button id="mb-look-btn" class="mb-look-btn" type="button"' +
+              ' title="An AI image model describes the map as you see it">Describe this view</button>' +
         '</div>' +
         '<div id="mb-automations" class="mb-automations" hidden></div>' +
         '<div id="mb-messages" class="mb-messages"' +
@@ -190,6 +195,7 @@
     _messagesEl   = document.getElementById('mb-messages');
     _inputEl      = document.getElementById('mb-input');
     _sendBtn      = document.getElementById('mb-send-btn');
+    _lookBtn      = document.getElementById('mb-look-btn');
 
     _isCollapsed   = true;
     _panelWidth    = DEFAULT_WIDTH;
@@ -197,6 +203,8 @@
     _history       = [];
     _streaming     = false;
     _resizing      = false;
+    _pendingLook   = null;
+    _visionOffered = false;
 
     var savedW = parseInt(localStorage.getItem(STORAGE_WIDTH), 10);
     if (savedW && !isNaN(savedW)) {
@@ -282,6 +290,9 @@
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _send(); }
     });
     _sendBtn.addEventListener('click', _send);
+    _lookBtn.addEventListener('click', function () {
+      _startLook({ question: null, userLabel: 'Describe this view' });
+    });
 
     _onWinResize = function () {
       _applyWidth();
@@ -303,6 +314,11 @@
       ask: function (q) {
         if (!_isCollapsed) { _inputEl.value = q; _send(); }
         else { _openPanel(); _inputEl.value = q; _send(); }
+      },
+      // An explicit "look at the map" from another control (the right-click menu).
+      lookAtMap: function (question, userLabel) {
+        if (_isCollapsed) _openPanel();
+        return _startLook({ question: question || null, userLabel: userLabel || 'Describe this view' });
       },
     };
   }
@@ -388,12 +404,11 @@
     _inputEl.value       = '';
     _inputEl.style.height = '';
     _sendBtn.disabled    = true;
+    _lookBtn.disabled    = true;
     _streaming           = true;
 
-    _streamChat(text).then(
-      function () { _sendBtn.disabled = false; _streaming = false; },
-      function () { _sendBtn.disabled = false; _streaming = false; }
-    );
+    var finish = function () { _sendBtn.disabled = false; _lookBtn.disabled = false; _streaming = false; };
+    _streamChat(text).then(finish, finish);
   }
 
   // ── Message rendering ─────────────────────────────────────────────────────
@@ -505,14 +520,18 @@
   }
 
   // ── SSE streaming ─────────────────────────────────────────────────────────
-  function _streamChat(userMessage) {
+  // opts.visionRead: the look this turn answers from (DIC-2135).
+  function _streamChat(userMessage, opts) {
+    opts = opts || {};
     var thinkEl = _showThinking();
     var payload = {
       message:              userMessage,
       conversation_history: _history.slice(-12),
       parcel_context:       _currentParcel ? _buildContext() : null,
       map_state:            _buildMapState(),
+      vision_offered:       _visionOffered,
     };
+    if (opts.visionRead) payload.vision_read = opts.visionRead;
 
     // A request can legitimately take a while (several tool rounds), but never forever:
     // abort so the Send button and the "Thinking…" bubble can't stay stuck (DIC-1870).
@@ -600,7 +619,134 @@
       console.error('[Map Buddy]', err);
     }).then(function () {
       if (timer) clearTimeout(timer);
+      // The AI asked to look (look_at_map): run it now its reply is on screen; the
+      // answer follows as one more turn, so the user never has to ask again.
+      var look = _pendingLook;
+      _pendingLook = null;
+      if (look) return _lookAtMap(look);
     });
+  }
+
+  // ── Map vision (DIC-2135) ─────────────────────────────────────────────────
+  // A look = capture the map canvas (pv-vision.js) → /vision/describe → show the read,
+  // labelled as an AI reading of the imagery → one more chat turn that answers from it.
+  function _visibleLayerLabels() {
+    var ms = _buildMapState() || {};
+    if (ms.layers && ms.layers.length) {
+      return ms.layers.filter(function (l) { return l && l.visible; })
+        .map(function (l) { return String(l.label || l.id || ''); }).filter(Boolean).slice(0, 40);
+    }
+    return (ms.visible_layers || []).map(String).slice(0, 40);
+  }
+
+  // Entry points the user triggers (the panel button, an accepted offer, the right-click
+  // menu): one look at a time, with the input locked like a normal send.
+  function _startLook(look) {
+    if (_streaming) return Promise.resolve();
+    var emptyState = _messagesEl.querySelector('.mb-empty-state');
+    if (emptyState) emptyState.remove();
+    if (look.userLabel) _appendUserMsg(look.userLabel);
+    _sendBtn.disabled = true;
+    _lookBtn.disabled = true;
+    _streaming = true;
+    var finish = function () { _sendBtn.disabled = false; _lookBtn.disabled = false; _streaming = false; };
+    return _lookAtMap(look).then(finish, finish);
+  }
+
+  function _visionFailureText(status, data) {
+    if (status === 429) return 'You’ve reached the limit for map looks for now. Please try again later.';
+    if (data && data.degraded) return 'Map looks are paused for now because the AI limit was reached.';
+    if (status === 400 && data && data.error) return 'Couldn’t analyse the map view: ' + data.error;
+    return 'Couldn’t analyse the map view. Please try again in a moment.';
+  }
+
+  function _lookAtMap(look) {
+    var thinkEl = _showThinking();
+    _updateThinking(thinkEl, 'Looking at the map…');
+    var layers = _visibleLayerLabels();
+    var p = _currentParcel;
+    var status = 0;
+    if (!root.PV_VISION) {
+      thinkEl.remove();
+      _appendAiMsg('Map looks aren’t available in this viewer.');
+      return Promise.resolve();
+    }
+    _cancelCinematic();   // Map Buddy's own fly-around; pv-vision stops the map's
+    return root.PV_VISION.capture(_map()).then(function (img) {
+      return fetch(_apiBase + '/vision/describe', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image:      img.data,
+          media_type: img.media_type,
+          view_width_ft: img.view_width_ft || null,
+          question:   look.question || null,
+          parcel:     p ? { pin: p.pin, site_address: p.site_address, acres: p.acres, municipality: p.municipality } : null,
+          layers:     layers,
+        }),
+      });
+    }).then(function (res) {
+      status = res.status;
+      return res.json().catch(function () { return null; });
+    }).then(function (data) {
+      thinkEl.remove();
+      if (status !== 200 || !data || !data.ok || !data.description) {
+        _appendAiMsg(_visionFailureText(status, data));
+        return;
+      }
+      _appendVisionRead(data);
+      var question = look.question || 'What do you see in the current map view?';
+      return _streamChat(question, {
+        visionRead: { description: String(data.description).slice(0, 4000), layers: data.layers || layers },
+      });
+    }).catch(function (err) {
+      thinkEl.remove();
+      _appendAiMsg(err && err.message && /map/i.test(err.message)
+        ? 'Couldn’t analyse the map view: ' + err.message
+        : 'Couldn’t analyse the map view. Please try again in a moment.');
+      console.error('[Map Buddy] vision', err);
+    });
+  }
+
+  // The read itself, labelled so it's never mistaken for a record (DIC-2135).
+  function _appendVisionRead(data) {
+    var el = document.createElement('div');
+    el.className = 'mb-msg-ai mb-msg-vision';
+    var lbl = document.createElement('div');
+    lbl.className = 'mb-msg-ai-label';
+    lbl.textContent = 'AI visual read of the current map view';
+    var body = document.createElement('div');
+    body.className = 'mb-msg-ai-body';
+    body.textContent = String(data.description || '');
+    var meta = document.createElement('div');
+    meta.className = 'mb-vision-meta';
+    var when = data.at ? new Date(data.at) : new Date();
+    var time = isNaN(when) ? '' : when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    var layers = (data.layers || []).join(', ');
+    meta.textContent = (layers ? 'Layers: ' + layers : 'Base map only') + (time ? ' · ' + time : '') +
+      ' · An interpretation of the imagery, not a survey or tax record';
+    el.appendChild(lbl);
+    el.appendChild(body);
+    el.appendChild(meta);
+    _messagesEl.appendChild(el);
+    _scrollBottom();
+  }
+
+  // The AI's single offer: one button; nothing is spent unless the user taps it.
+  function _appendLookOffer(question) {
+    var row = document.createElement('div');
+    row.className = 'mb-suggest-row mb-look-offer';
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'mb-suggest-chip mb-look-chip';
+    b.textContent = 'Look at the map';
+    b.addEventListener('click', function () {
+      row.remove();
+      _startLook({ question: question || null, userLabel: 'Look at the map' });
+    });
+    row.appendChild(b);
+    _messagesEl.appendChild(row);
+    _scrollBottom();
   }
 
   function _buildContext() {
@@ -1176,6 +1322,18 @@
 
     // ── Proactive offers — render tappable "next step" suggestions ────────────
     suggest_actions: function (p) { _appendSuggestions(p.suggestions || p.actions || []); return null; },
+
+    // ── Map vision (DIC-2135): the server already enforces one offer and one look ──
+    look_at_map: function (p) {
+      _pendingLook = { question: (p && p.question) ? String(p.question).slice(0, 500) : null };
+      return '👁️ Looking at the map';
+    },
+    offer_map_look: function (p) {
+      if (_visionOffered) return null;   // never a second offer in one conversation
+      _visionOffered = true;
+      _appendLookOffer(p && p.question ? String(p.question).slice(0, 500) : null);
+      return null;
+    },
 
     // ── Showcase: a guided fly-through tour ───────────────────────────────────
     map_tour: function (p) {

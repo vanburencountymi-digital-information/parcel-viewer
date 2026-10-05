@@ -65,14 +65,15 @@ class QuotaConfig:
         return bool(self.default_limit) or any(self.overrides.values())
 
 
-def check_quota(counter: UsageCounter, quota: QuotaConfig, tenant):
-    """Return (allowed, remaining). A falsy limit → unlimited → always allowed."""
+def check_quota(counter: UsageCounter, quota: QuotaConfig, tenant, units: int = 1):
+    """Return (allowed, remaining) for a call costing `units`. A falsy limit → unlimited
+    → always allowed."""
     t = tenant or "default"
     limit = quota.limit_for(t)
     if not limit:
         return True, None
     used = counter.count(t)
-    return used < limit, max(0, limit - used)
+    return used + units <= limit, max(0, limit - used)
 
 
 def _parse_overrides(s: str) -> dict:
@@ -109,18 +110,20 @@ def allow(tenant):
 _lock = threading.Lock()
 
 
-def reserve(tenant):
-    """Atomically check the tenant's quota and, if allowed, count one call. Returns
+def reserve(tenant, units: int = 1):
+    """Atomically check the tenant's quota and, if allowed, count the call. Returns
     (allowed, remaining). Use this before the model call: routes now run concurrently
     in the threadpool, and a separate allow()-then-record() lets N parallel requests
-    all pass the check (DIC-1870)."""
+    all pass the check (DIC-1870). A costlier call (a map look, DIC-2135) counts as
+    `units` calls."""
     if not enabled():
         return True, None
     t = tenant or "default"
     with _lock:
-        allowed, remaining = check_quota(_counter, _quota, t)
+        allowed, remaining = check_quota(_counter, _quota, t, units)
         if allowed:
-            _counter.record(t)
+            for _ in range(units):
+                _counter.record(t)
     return allowed, remaining
 
 

@@ -3,17 +3,19 @@
 import json
 import logging
 import os
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).parent.parent.parent / ".env", override=True)
 
+import vision
 from fastapi import Depends, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field, StringConstraints
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
@@ -68,6 +70,15 @@ MAX_HISTORY_TURNS = int(os.getenv("MAP_BUDDY_MAX_HISTORY", "12"))
 # Free-form payloads (facts/grounding) go straight into the prompt, so bound them well
 # below the body cap: the frontend's real payloads are a few KB (DIC-1870).
 MAX_FACTS_BYTES = int(os.getenv("MAP_BUDDY_MAX_FACTS_BYTES", str(24 * 1024)))
+# Map vision (DIC-2135): the one route that takes an image. Its body cap is raised to fit
+# a base64 image of up to VISION_MAX_IMAGE_BYTES; every other route keeps MAX_BODY_BYTES.
+VISION_PATH = "/vision/describe"
+VISION_MAX_BODY_BYTES = int(
+    os.getenv("VISION_MAX_BODY_BYTES", str(vision.VISION_MAX_IMAGE_BYTES * 4 // 3 + 16 * 1024))
+)
+# A look costs several chat calls' worth of tokens, so it counts as several quota units.
+VISION_QUOTA_UNITS = int(os.getenv("VISION_QUOTA_UNITS", "5"))
+VISION_ERROR = "Couldn't analyse the map view."
 
 
 def _payload_too_large(obj):
@@ -88,12 +99,12 @@ configure_logging("map-buddy")
 init_error_monitoring("map-buddy", APP_VERSION)
 
 
-def _quota_block(tenant):
+def _quota_block(tenant, units=1):
     """If the tenant is over its AI quota, return a degrade-to-AI-off response (C3 /
     DIC-584); the viewer falls back to facts (B4). Returns None when the call may proceed.
     Call AFTER the cache check (cache hits are free) and BEFORE the model call. It
     reserves (counts) the call atomically, so callers don't record() again."""
-    allowed, remaining = ai_usage.reserve(tenant)  # counts the call if allowed
+    allowed, remaining = ai_usage.reserve(tenant, units=units)  # counts the call if allowed
     if not allowed:
         log.warning("AI quota exceeded for tenant %s", tenant, extra={"tenant": tenant})
         return {
@@ -134,15 +145,17 @@ class _BodySizeLimit:
     """Reject request bodies over MAX_BODY_BYTES with 413 — checks Content-Length up front
     and counts streamed (chunked) bodies, so no route ever parses an oversized payload."""
 
-    def __init__(self, app, max_bytes: int):
+    def __init__(self, app, max_bytes: int, per_path: dict[str, int] | None = None):
         self.app, self.max_bytes = app, max_bytes
+        self.per_path = per_path or {}
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
+        max_bytes = self.per_path.get(scope.get("path", ""), self.max_bytes)
         for k, v in scope.get("headers") or []:
-            if k == b"content-length" and v.isdigit() and int(v) > self.max_bytes:
+            if k == b"content-length" and v.isdigit() and int(v) > max_bytes:
                 await self._reject(send)
                 return
         seen, rejected = 0, False
@@ -156,7 +169,7 @@ class _BodySizeLimit:
             msg = await receive()
             if msg["type"] == "http.request":
                 seen += len(msg.get("body", b""))
-                if seen > self.max_bytes:
+                if seen > max_bytes:
                     rejected = True
                     await self._reject(send)
                     return {"type": "http.disconnect"}
@@ -183,7 +196,9 @@ class _BodySizeLimit:
         await send({"type": "http.response.body", "body": body})
 
 
-app.add_middleware(_BodySizeLimit, max_bytes=MAX_BODY_BYTES)
+app.add_middleware(
+    _BodySizeLimit, max_bytes=MAX_BODY_BYTES, per_path={VISION_PATH: VISION_MAX_BODY_BYTES}
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -225,12 +240,43 @@ class MapState(BaseModel):
     layers: list | None = None
 
 
+_LayerName = Annotated[str, StringConstraints(max_length=80)]
+
+
+class VisionRead(BaseModel):
+    """A look's result, sent back with the follow-up chat turn (DIC-2135)."""
+
+    description: str = Field(min_length=1, max_length=4000)
+    layers: list[_LayerName] | None = Field(default=None, max_length=40)
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
     # Hard ceiling on what's accepted; the route keeps only the last MAX_HISTORY_TURNS.
     conversation_history: list[ChatMessage] = Field(default=[], max_length=50)
     parcel_context: ParcelContext | None = None
     map_state: MapState | None = None
+    # Map vision (DIC-2135): the look this turn answers from, and whether a look was
+    # already offered in this conversation (one offer per conversation).
+    vision_read: VisionRead | None = None
+    vision_offered: bool = False
+
+
+class VisionParcel(BaseModel):
+    pin: str | None = Field(default=None, max_length=64)
+    site_address: str | None = Field(default=None, max_length=200)
+    acres: float | None = None
+    municipality: str | None = Field(default=None, max_length=120)
+
+
+class VisionRequest(BaseModel):
+    image: str = Field(min_length=1)  # base64; size is checked after decoding
+    media_type: Literal["image/jpeg", "image/png"]
+    # East-west span of the captured view, for the model's sense of scale.
+    view_width_ft: float | None = Field(default=None, gt=0, le=1_000_000)
+    question: str | None = Field(default=None, max_length=500)
+    parcel: VisionParcel | None = None
+    layers: list[_LayerName] | None = Field(default=None, max_length=40)
 
 
 class WorkflowRequest(BaseModel):
@@ -301,7 +347,7 @@ async def status():
 
 @app.get("/config")
 async def config():
-    return {"version": "0.1.0", "capabilities": ["chat", "map_commands"]}
+    return {"version": "0.1.0", "capabilities": ["chat", "map_commands", "vision"]}
 
 
 @app.post("/chat")
@@ -336,7 +382,15 @@ async def chat(
 
     def stream():
         ms = body.map_state.model_dump() if body.map_state else None
-        for event in run_chat_stream(body.message, history, body.parcel_context, ms, errors=errors):
+        for event in run_chat_stream(
+            body.message,
+            history,
+            body.parcel_context,
+            ms,
+            errors=errors,
+            vision_read=body.vision_read,
+            vision_offered=body.vision_offered,
+        ):
             yield f"data: {json.dumps(event)}\n\n"
 
     return StreamingResponse(
@@ -344,6 +398,51 @@ async def chat(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.post(VISION_PATH)
+@limiter.limit(os.getenv("VISION_RATE_LIMIT", "10/hour"))
+def vision_describe(
+    request: Request,
+    body: VisionRequest,
+    errors: ErrorLoggingClient = Depends(get_error_logging_client),
+):
+    """Describe the current map view with a vision model (DIC-2135). The browser sends a
+    screenshot of the map canvas; the answer is an AI reading of the imagery, which the
+    viewer labels as such. Returns {ok, description, model, layers, at} or {ok:false,
+    error}; a rejected image is a 400 with a reason the caller can show."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return {"ok": False, "error": "ANTHROPIC_API_KEY not configured."}
+    try:
+        image, _w, _h = vision.check_image(body.image, body.media_type)
+    except vision.ImageRejected as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+    blocked = _quota_block(SERVER_TENANT, units=VISION_QUOTA_UNITS)
+    if blocked:
+        return blocked
+    try:
+        result = vision.run_describe_view(
+            image,
+            body.media_type,
+            question=body.question,
+            parcel=body.parcel.model_dump() if body.parcel else None,
+            layers=body.layers,
+            view_width_ft=body.view_width_ft,
+        )
+    except vision.VisionRefused:
+        log.warning("vision call refused or empty")
+        return {"ok": False, "error": VISION_ERROR}
+    except Exception as exc:  # noqa: BLE001 — fixed message; the chat carries on without it
+        log.exception("vision failed")
+        errors.report_exception(exc, tags={"operation": "vision"})
+        return {"ok": False, "error": VISION_ERROR}
+    return {
+        "ok": True,
+        "description": result["description"],
+        "model": result["model"],
+        "layers": body.layers or [],
+        "at": datetime.now(UTC).isoformat(timespec="seconds"),
+    }
 
 
 @app.post("/explain")

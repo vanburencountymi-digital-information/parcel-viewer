@@ -157,6 +157,19 @@
       close(true);
       map.easeTo({ center: [ll.lng, ll.lat], duration: 500 });
     }, 'center'));
+    // Map vision (DIC-2135): only while Map Buddy is mounted and AI is on.
+    var buddy = root.PV_MAP_BUDDY;
+    var aiOn = !root.PV_AI_MODE || !root.PV_AI_MODE.isEffective || root.PV_AI_MODE.isEffective();
+    if (buddy && buddy.lookAtMap && aiOn) {
+      actions.push(item('Describe this spot', 'AI', function () {
+        close(true);
+        map.jumpTo({ center: [ll.lng, ll.lat] });
+        buddy.lookAtMap(
+          'Describe what is at the center of the map view and its immediate surroundings.',
+          'Describe this spot'
+        );
+      }, 'describe'));
+    }
     actions.push(item('Open in Google Maps', null, function () {
       close(true);
       root.open(googleMapsUrl(ll), '_blank', 'noopener');
