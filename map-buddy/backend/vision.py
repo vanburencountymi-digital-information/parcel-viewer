@@ -37,8 +37,29 @@ _JPEG_SIG = b"\xff\xd8\xff"
 _SOF_MARKERS = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
 
 
+# What the caller is told for each rejection. The route sends these fixed strings, looked
+# up by code, never text taken from the exception (CodeQL py/stack-trace-exposure).
+IMAGE_ERRORS = {
+    "base64": "The image isn't valid base64.",
+    "empty": "The image is empty.",
+    "too_large": "The image is too large.",
+    "type": "Only JPEG or PNG images are accepted.",
+    "unreadable": "The image couldn't be read.",
+    "too_big_px": f"The image is larger than {MAX_LONG_EDGE} px on its long edge.",
+}
+
+
 class ImageRejected(ValueError):
-    """The upload isn't an image we accept. The message is safe to show the caller."""
+    """The upload isn't an image we accept. `code` is a key of IMAGE_ERRORS."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+def image_error_message(code: str) -> str:
+    """The fixed message for a rejection code."""
+    return IMAGE_ERRORS.get(code, IMAGE_ERRORS["unreadable"])
 
 
 class VisionRefused(RuntimeError):
@@ -47,7 +68,7 @@ class VisionRefused(RuntimeError):
 
 def _png_size(data: bytes) -> tuple[int, int]:
     if len(data) < 24 or data[12:16] != b"IHDR":
-        raise ImageRejected("The image couldn't be read.")
+        raise ImageRejected("unreadable")
     width, height = struct.unpack(">II", data[16:24])
     return width, height
 
@@ -56,7 +77,7 @@ def _jpeg_size(data: bytes) -> tuple[int, int]:
     i = 2
     while i + 4 <= len(data):
         if data[i] != 0xFF:
-            raise ImageRejected("The image couldn't be read.")
+            raise ImageRejected("unreadable")
         marker = data[i + 1]
         if marker == 0xFF:  # fill byte
             i += 1
@@ -71,7 +92,7 @@ def _jpeg_size(data: bytes) -> tuple[int, int]:
             height, width = struct.unpack(">HH", data[i + 5 : i + 9])
             return width, height
         i += 2 + length
-    raise ImageRejected("The image couldn't be read.")
+    raise ImageRejected("unreadable")
 
 
 def check_image(image_b64: str, media_type: str) -> tuple[bytes, int, int]:
@@ -79,21 +100,21 @@ def check_image(image_b64: str, media_type: str) -> tuple[bytes, int, int]:
     try:
         data = base64.b64decode(image_b64, validate=True)
     except (binascii.Error, ValueError):
-        raise ImageRejected("The image isn't valid base64.") from None
+        raise ImageRejected("base64") from None
     if not data:
-        raise ImageRejected("The image is empty.")
+        raise ImageRejected("empty")
     if len(data) > VISION_MAX_IMAGE_BYTES:
-        raise ImageRejected("The image is too large.")
+        raise ImageRejected("too_large")
     if media_type == "image/png" and data.startswith(_PNG_SIG):
         width, height = _png_size(data)
     elif media_type == "image/jpeg" and data.startswith(_JPEG_SIG):
         width, height = _jpeg_size(data)
     else:
-        raise ImageRejected("Only JPEG or PNG images are accepted.")
+        raise ImageRejected("type")
     if not width or not height:
-        raise ImageRejected("The image couldn't be read.")
+        raise ImageRejected("unreadable")
     if max(width, height) > MAX_LONG_EDGE:
-        raise ImageRejected(f"The image is larger than {MAX_LONG_EDGE} px on its long edge.")
+        raise ImageRejected("too_big_px")
     return data, width, height
 
 

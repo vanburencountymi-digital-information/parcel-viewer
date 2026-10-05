@@ -42,6 +42,12 @@ def _text(t: str):
 
 
 class CheckImageTests(TestCase):
+    def test_every_rejection_code_has_a_fixed_message(self) -> None:
+        self.assertEqual(
+            vision.image_error_message("type"), "Only JPEG or PNG images are accepted."
+        )
+        self.assertEqual(vision.image_error_message("nope"), "The image couldn't be read.")
+
     @parameterized.expand(
         [
             ("png", _png(1600, 900), "image/png", (1600, 900)),
@@ -69,14 +75,14 @@ class CheckImageTests(TestCase):
         with self.assertRaises(vision.ImageRejected) as cm:
             vision.check_image(image, media)
 
-        self.assertIn(reason, str(cm.exception))
+        self.assertIn(reason, vision.image_error_message(cm.exception.code))
 
     @patch("vision.VISION_MAX_IMAGE_BYTES", 100)
     def test_rejects_an_image_over_the_byte_limit(self) -> None:
         with self.assertRaises(vision.ImageRejected) as cm:
             vision.check_image(_b64(_png(10, 10) + b"\x00" * 200), "image/png")
 
-        self.assertIn("too large", str(cm.exception))
+        self.assertEqual(cm.exception.code, "too_large")
 
 
 class DescribeViewTests(TestCase):

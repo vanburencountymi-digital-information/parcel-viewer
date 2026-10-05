@@ -416,7 +416,8 @@ def vision_describe(
     try:
         image, _w, _h = vision.check_image(body.image, body.media_type)
     except vision.ImageRejected as e:
-        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        message = vision.image_error_message(e.code)
+        return JSONResponse({"ok": False, "error": message}, status_code=400)
     blocked = _quota_block(SERVER_TENANT, units=VISION_QUOTA_UNITS)
     if blocked:
         return blocked
