@@ -156,7 +156,7 @@ class QuotaTests(_ApiTestCase):
             response = self.client.post(path, json=spoofed, headers={"X-Tenant": "someone-else"})
 
         self.assertEqual(response.status_code, 200)
-        mock_reserve.assert_called_once_with(main.SERVER_TENANT)
+        mock_reserve.assert_called_once_with(main.SERVER_TENANT, units=1)
 
 
 class ErrorLeakTests(_ApiTestCase):

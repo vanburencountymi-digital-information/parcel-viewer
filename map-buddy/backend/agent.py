@@ -42,7 +42,10 @@ def _create_message(purpose: str, **kwargs):
     logs and reports them.
     """
     started = time.perf_counter()
-    response = _get_client().messages.create(**kwargs)
+    # Beta features (the vision call's refusal fallback, DIC-2135) go through the beta client.
+    client = _get_client()
+    create = client.beta.messages.create if kwargs.get("betas") else client.messages.create
+    response = create(**kwargs)
     duration_ms = round((time.perf_counter() - started) * 1000, 1)
     usage = getattr(response, "usage", None)
     fields = {
@@ -111,6 +114,14 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor 
 # Answering environmental / risk questions
 For "is this in a floodplain / are there wetlands / what's the soil / is it buildable", call get_environmental_info with the selected parcel's centroid and answer from the REAL result — never guess. It's good to ALSO turn on the matching overlay (flood/wetlands/soils) so the user sees it.
 - Showcase: map_tour for a guided fly-through of several stops.
+
+# Looking at the map (vision) — every look costs money
+You can have a vision model look at the map as the user sees it (look_at_map). Default to NOT looking.
+- The user asks you to look, see, or describe the map or a parcel → call look_at_map.
+- A visual question your data can't answer (outbuildings, a driveway, a pond, tree cover, how the land is used) → answer what you can from the data, then offer ONE look with offer_map_look. Look only if they accept.
+- The data already answers it (owner, values, acreage, zoning, flood zone, wetlands, soils, school district) → answer from the data; never offer a look.
+- At most one offer per conversation. If they declined or moved on, don't offer again unless they ask.
+- When a "visual read of the current map view" is in the message, answer the user's question from it, call it a visual read of the map rather than a record, and don't look again.
 
 # Citing Michigan law (assessment / tax questions)
 When you explain how Michigan's assessment or property-tax system works (assessed vs. taxable value, Proposal A and the cap, uncapping, the Principal Residence Exemption, classification, equalization/SEV, appeals to the Board of Review or Tax Tribunal), cite the governing statute inline by its MCL number — e.g. "(MCL 211.27a)" — drawing ONLY from the "Michigan property-tax statutes" reference block below. Never write an MCL number that isn't in that list; if a point isn't covered there, explain it without a citation rather than guessing one. These MCL citations become clickable Sources the user can open and verify against the full statute text — so cite the specific section, not a vague reference.
@@ -905,6 +916,56 @@ TOOLS = [
         },
     },
     # ── Proactive offers ──────────────────────────────────────────────────────
+    # ── Map vision (DIC-2135): each look is a paid image-model call ────────────
+    {
+        "name": "look_at_map",
+        "description": (
+            "Have a vision model look at the map exactly as the user sees it and describe it. "
+            "Each look costs real money, so call this ONLY when (a) the user explicitly asks you "
+            "to look at, see, or describe the map, the imagery, or what's on a parcel, or (b) the "
+            "user accepted your offer to look. Never call it for anything the data answers: owner, "
+            "values, acreage, zoning, flood zone, wetlands, soils, school district or addresses "
+            "come from the tax roll and get_environmental_info, not from a picture. Before "
+            "calling, set up the view that makes the answer visible (aerial imagery for "
+            "structures, driveways, tree cover or land use; the matching overlay for flood or "
+            "wetlands) and frame the parcel. The description arrives in a follow-up message; in "
+            "this reply say in one short line that you're taking a look, and don't describe the "
+            "map yourself."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The specific question the look should answer, e.g. 'Are there outbuildings on this parcel?'. Omit for a general description.",
+                }
+            },
+            "required": [],
+        },
+    },
+    {
+        "name": "offer_map_look",
+        "description": (
+            "Offer the user one 'Look at the map' button. Use it ONLY when all of these are true: "
+            "the question is about something visible (outbuildings, driveways, ponds, tree cover, "
+            "how the land is used, what's next door); the data you have can't answer it; and "
+            "seeing the map would clearly change your answer. Never offer for questions the data "
+            "answers, never offer as a routine next step, and never put a look in "
+            "suggest_actions. At most one offer per conversation: if you already offered, or the "
+            "user moved on, don't offer again unless they ask. Say in one short line why a look "
+            "would help; don't call look_at_map unless they accept."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "The question the look would answer, e.g. 'Is there a barn on this parcel?'",
+                }
+            },
+            "required": ["question"],
+        },
+    },
     {
         "name": "suggest_actions",
         "description": "Offer the user 2-4 helpful next steps as tappable suggestions so they don't have to know what to ask. Each is a short, natural first-person-imperative phrase the user could tap (e.g. 'Show flood & wetlands risk', 'Draw a 30 ft setback', 'Compare to the neighboring parcel'). Call this at the END of almost every reply, tailored to the current parcel/context.",
@@ -920,11 +981,26 @@ TOOLS = [
 
 
 def _build_user_message(
-    message: str, parcel_context: dict | None, map_state: dict | None, history: list[dict]
+    message: str,
+    parcel_context: dict | None,
+    map_state: dict | None,
+    history: list[dict],
+    vision_read: dict | None = None,
 ) -> list[dict]:
     messages = list(history)
 
     blocks = []
+    if vision_read and vision_read.get("description"):
+        # The look the user asked for or accepted (DIC-2135): an AI reading of the image,
+        # so it's framed as that, not as data.
+        vr_lines = [
+            "Visual read of the current map view (from the vision model; an interpretation "
+            "of the imagery, not survey or tax-roll data):",
+            str(vision_read["description"]),
+        ]
+        if vision_read.get("layers"):
+            vr_lines.append("Layers shown: " + ", ".join(vision_read["layers"]))
+        blocks.append("\n".join(vr_lines))
     if parcel_context:
         ctx_lines = ["Currently selected parcel:"]
         if parcel_context.get("pin"):
@@ -995,6 +1071,8 @@ def _build_user_message(
 # and the deployed API URL in prod.
 PARCEL_API_BASE = os.getenv("PARCEL_API_BASE", "http://api:8000").rstrip("/")
 DATA_TOOLS = {"search_parcels", "get_parcel_info", "get_environmental_info"}
+# Browser commands with cost rules enforced here before they're forwarded (DIC-2135).
+VISION_TOOLS = {"look_at_map", "offer_map_look"}
 # Tools whose calls are forwarded to the browser as map commands: every declared tool
 # except the server-side ones. Anything else the model names is dropped (DIC-1870).
 _FRONTEND_COMMANDS = {t["name"] for t in TOOLS} - DATA_TOOLS - {"run_workflow"}
@@ -1240,7 +1318,42 @@ def _tool_ack(name: str) -> str:
     return "Done — the map was updated."
 
 
-def run_chat_stream(message: str, history: list, parcel_context, map_state=None, errors=None):
+def _vision_tool(name: str, state: dict) -> tuple[dict | None, str]:
+    """Gate the map-vision tools (DIC-2135). Returns (command or None, tool result).
+
+    Code backs up the prompt's cost rules: one offer per conversation (the browser reports
+    an earlier offer as vision_offered), one look per request, and no new look in the turn
+    that is answering from a visual read.
+    """
+    if name == "offer_map_look":
+        if state["offered"]:
+            return None, (
+                "Not shown: a look was already offered in this conversation. Don't offer "
+                "again; answer from the data you have."
+            )
+        state["offered"] = True
+        return {}, (
+            "Offer shown as a 'Look at the map' button. Say in one short line why a look "
+            "would help. Don't call look_at_map unless the user accepts."
+        )
+    if state["has_read"] or state["looked"]:
+        return None, ("Not run: you already have a visual read for this question. Answer from it.")
+    state["looked"] = True
+    return {}, (
+        "Look started. The description will arrive in a follow-up message. Say in one "
+        "short line that you're taking a look; don't describe the map yourself."
+    )
+
+
+def run_chat_stream(
+    message: str,
+    history: list,
+    parcel_context,
+    map_state=None,
+    errors=None,
+    vision_read=None,
+    vision_offered=False,
+):
     """Generator yielding SSE-compatible event dicts.
 
     Runs a multi-turn agent loop: the model calls tools, we feed back synthetic
@@ -1252,7 +1365,9 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None,
 
     ctx = parcel_context.model_dump() if parcel_context else None
     hist = [{"role": m.role, "content": m.content} for m in history]
-    messages = _build_user_message(message, ctx, map_state, hist)
+    vr = vision_read.model_dump() if vision_read is not None else None
+    messages = _build_user_message(message, ctx, map_state, hist, vr)
+    vision_state = {"offered": bool(vision_offered), "looked": False, "has_read": bool(vr)}
 
     model = os.getenv("MAP_BUDDY_MODEL", "claude-sonnet-4-6")
     max_tokens = int(os.getenv("MAP_BUDDY_MAX_TOKENS", "2048"))
@@ -1292,6 +1407,10 @@ def run_chat_stream(message: str, history: list, parcel_context, map_state=None,
                         # Resolved server-side; the real data goes back to the
                         # model, not to the browser.
                         result = _exec_data_tool(block.name, inp)
+                    elif block.name in VISION_TOOLS:
+                        allowed, result = _vision_tool(block.name, vision_state)
+                        if allowed is not None:
+                            commands.append({"type": block.name, "payload": inp})
                     elif block.name in _FRONTEND_COMMANDS:
                         # Tool name maps 1:1 to a frontend command type; forward
                         # the input verbatim as the command payload.
