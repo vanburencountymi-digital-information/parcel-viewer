@@ -424,7 +424,9 @@ def streetview_target(id: int = Query(...)):
             SELECT geom FROM geo.parcel_geometry WHERE id = %s AND archived_at IS NULL
         ),
         ap AS (
-            SELECT a.geom, a.full_address
+            -- The county's address-point layer calls the full address `fulladdr`
+            -- (reloaded from its shapefile; it was `full_address` before, DIC-2152).
+            SELECT a.geom, a.fulladdr AS full_address
             FROM geo.address_points a, p
             WHERE ST_Contains(p.geom, a.geom)
             LIMIT 1
