@@ -103,6 +103,8 @@ jobs:
           --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       DJANGO_SETTINGS_MODULE: config.settings.test
+      # mypy's Django plugin loads the base settings, which need a key.
+      SECRET_KEY: ci-only-secret-key
       DATABASE_URL: postgis://api:api@localhost:5432/parcel_viewer_api
       PV_DATABASE_URL: postgis://api:api@localhost:5432/parcel_viewer_api
     defaults:
@@ -138,6 +140,9 @@ jobs:
       # cutover (DIC-2149); the two copies must not drift.
       - name: cohort_query matches the FastAPI copy
         run: cmp ../backend/parcel_viewer/cohort_query.py parcels/cohort_query.py
+
+      - name: Baked county manifests match the FastAPI copies
+        run: diff -r ../backend/parcel_viewer/county_configs county_config/baked
 
       - name: Tests
         run: python manage.py test --noinput

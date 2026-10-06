@@ -212,6 +212,11 @@ services:
       - DATABASE_URL=postgis://api:api@api-db:5432/parcel_viewer_api
       - PV_DATABASE_URL
       - PV_WRITER_DATABASE_URL
+      # The same config switches the FastAPI service reads, so the two answer alike.
+      - PV_DEFAULT_COUNTY
+      - PV_ADMIN_TOKEN
+      - PV_CONFIG_STORE_RETRY_S
+      - PV_DISCOVERY_CACHE_S
       - SECRET_KEY=${DJANGO_SECRET_KEY:-insecure-local-dev-key-change-me}
       - DEBUG=${DJANGO_DEBUG:-1}
       - ALLOWED_HOSTS=localhost,127.0.0.1,django-api

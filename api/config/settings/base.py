@@ -200,11 +200,23 @@ REST_FRAMEWORK = {
         # The viewer's own reads (/parcels on every map move, search as you type). Many
         # county staff can share one public IP, so this is per client but generous.
         "parcel_read": env.str("THROTTLE_PARCEL_READ", default="600/min"),
+        # The config admin routes (shared admin key until phase 5, ADR 0008).
+        "admin": env.str("THROTTLE_ADMIN", default="120/min"),
     },
     # JSON only, encoded like the FastAPI backend (ADR 0012); no browsable API.
     "DEFAULT_RENDERER_CLASSES": ["common.renderers.FastApiCompatibleJSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
 }
+
+# County config (DIC-465): the default county, the interim shared admin key (ADR 0008)
+# and the config store's switches, named as the FastAPI backend named them.
+DEFAULT_COUNTY = env.str("PV_DEFAULT_COUNTY", default="vanburen")
+ADMIN_TOKEN = env.str("PV_ADMIN_TOKEN", default="")
+# Store reads and writes need a real writer database; without one the API serves the baked
+# manifests, as FastAPI did (the config_store alias's local fallback is for tests).
+CONFIG_STORE_CONFIGURED = bool(env.str("PV_WRITER_DATABASE_URL", default=""))
+CONFIG_STORE_RETRY_S = env.float("PV_CONFIG_STORE_RETRY_S", default=30.0)
+DISCOVERY_CACHE_S = env.float("PV_DISCOVERY_CACHE_S", default=60.0)
 
 # API docs exist for staff only (ADR 0009): the public FastAPI docs were turned off for
 # security (DIC-1855), and the schema stays off the public internet.

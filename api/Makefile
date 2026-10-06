@@ -44,7 +44,7 @@ fmt:
 	$(RUN) sh -c "ruff check --fix . && ruff format ."
 
 typecheck:
-	$(COMPOSE) run --rm -e DJANGO_SETTINGS_MODULE=config.settings.test django-api mypy .
+	$(COMPOSE) run --rm -e DJANGO_SETTINGS_MODULE=config.settings.test -e SECRET_KEY=typecheck-only django-api mypy .
 
 # Fails if a model change is missing its migration. CI runs this too.
 check:

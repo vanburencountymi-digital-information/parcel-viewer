@@ -23,4 +23,6 @@ module = "*.tests.*"
 ignore_errors = true
 
 [tool.django-stubs]
-django_settings_module = "config.settings.test"
+# The base settings, not the test ones: test.py copies settings in with globals().update
+# (no star import, for CodeQL), which the plugin can't see statically.
+django_settings_module = "config.settings.base"
