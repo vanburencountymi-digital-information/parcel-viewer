@@ -1,0 +1,1973 @@
+{
+  "health": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "status": "string",
+      "db": "bool"
+    }
+  },
+  "config-default": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "name": "string",
+      "state": "string",
+      "tenant": "string",
+      "map": {
+        "extent": [
+          [
+            "number"
+          ]
+        ],
+        "center": [
+          "number"
+        ],
+        "zoom": "number"
+      },
+      "forms": {
+        "dataRequest": "string"
+      },
+      "endpoints": {
+        "mapBuddy": "string"
+      },
+      "integrations": {
+        "googleMapsEmbedKey": "string"
+      },
+      "parcelNumber": {
+        "label": "string",
+        "separator": "string",
+        "example": "string",
+        "intro": "string",
+        "segments": [
+          {
+            "name": "string",
+            "description": "string"
+          }
+        ]
+      },
+      "labels": {
+        "propClass": {
+          "001": "string",
+          "002": "string",
+          "003": "string",
+          "004": "string",
+          "005": "string",
+          "006": "string",
+          "007": "string",
+          "101": "string",
+          "102": "string",
+          "110": "string",
+          "111": "string",
+          "120": "string",
+          "201": "string",
+          "202": "string",
+          "203": "string",
+          "210": "string",
+          "251": "string",
+          "260": "string",
+          "301": "string",
+          "302": "string",
+          "310": "string",
+          "351": "string",
+          "401": "string",
+          "402": "string",
+          "403": "string",
+          "407": "string",
+          "408": "string",
+          "410": "string",
+          "501": "string",
+          "502": "string",
+          "551": "string",
+          "601": "string",
+          "700": "string",
+          "701": "string",
+          "702": "string",
+          "703": "string",
+          "704": "string",
+          "705": "string",
+          "706": "string",
+          "707": "string",
+          "708": "string",
+          "709": "string",
+          "710": "string"
+        },
+        "schoolDist": {
+          "80010": "string",
+          "80020": "string",
+          "80040": "string",
+          "80050": "string",
+          "80090": "string",
+          "80110": "string",
+          "80120": "string",
+          "80130": "string",
+          "80140": "string",
+          "80150": "string",
+          "80160": "string",
+          "80240": "string",
+          "03020": "string",
+          "11320": "string",
+          "11330": "string",
+          "14020": "string",
+          "14050": "string"
+        }
+      },
+      "styling": {
+        "colorScheme": "string",
+        "schemes": [
+          {
+            "id": "string",
+            "label": "string",
+            "accent": "string",
+            "interactive": "string"
+          }
+        ],
+        "theme": "string",
+        "basemap": "string",
+        "hillshade": {
+          "defaultOn": "bool"
+        },
+        "labels": {
+          "defaultField": "string",
+          "fields": [
+            "string"
+          ],
+          "defaultSize": "string",
+          "sizes": [
+            "string"
+          ],
+          "zoom": {
+            "largeParcels": "number",
+            "smallParcels": "number"
+          }
+        },
+        "layers": {
+          "parcels": {
+            "label": "string",
+            "paint": {
+              "light": {
+                "fill": "string",
+                "stroke": "string"
+              },
+              "dark": {
+                "fill": "string",
+                "stroke": "string"
+              }
+            },
+            "choroplethViews": [
+              {
+                "id": "string",
+                "label": "string",
+                "engine": "string",
+                "default": "bool|missing",
+                "opacity": "missing|number",
+                "attribute": "missing|string",
+                "mode": "missing|string",
+                "transform": "missing|string",
+                "fields": "[\"string\"]|missing",
+                "fallback": "missing|string",
+                "fallbackDark": "missing|string",
+                "categories": "[{\"color\": \"string\", \"colorDark\": \"string\", \"label\": \"string\", \"value\": \"string\"}]|missing",
+                "legendTitle": "missing|string",
+                "stops": "[{\"color\": \"string\", \"colorDark\": \"string\", \"label\": \"string\", \"min\": \"number\"}]|missing",
+                "stateKey": "missing|string",
+                "compute": "missing|string",
+                "dynamic": "bool|missing"
+              }
+            ]
+          },
+          "subdivisions": {
+            "label": "string",
+            "paint": {
+              "light": {
+                "fill": "string",
+                "stroke": "string"
+              },
+              "dark": {
+                "fill": "string",
+                "stroke": "string"
+              }
+            },
+            "labels": {
+              "enabled": "bool",
+              "field": "string",
+              "size": "number",
+              "minZoom": "number",
+              "haloWidth": "number",
+              "light": {
+                "color": "string",
+                "haloColor": "string"
+              },
+              "dark": {
+                "color": "string",
+                "haloColor": "string"
+              }
+            }
+          },
+          "plss_sections": {
+            "label": "string",
+            "paint": {
+              "light": {
+                "fill": "string",
+                "stroke": "string"
+              },
+              "dark": {
+                "fill": "string",
+                "stroke": "string"
+              }
+            },
+            "labels": {
+              "enabled": "bool",
+              "field": "string",
+              "size": "number",
+              "minZoom": "number",
+              "haloWidth": "number",
+              "light": {
+                "color": "string",
+                "haloColor": "string"
+              },
+              "dark": {
+                "color": "string",
+                "haloColor": "string"
+              }
+            }
+          },
+          "reference_roads": {
+            "label": "string",
+            "line": {
+              "width": "number",
+              "opacity": "number",
+              "dash": "string",
+              "casingWidth": "number",
+              "glowWidth": "number",
+              "light": {
+                "color": "string",
+                "casingColor": "string",
+                "glowColor": "string"
+              },
+              "dark": {
+                "color": "string",
+                "casingColor": "string",
+                "glowColor": "string"
+              }
+            },
+            "labels": {
+              "enabled": "bool",
+              "field": "string",
+              "size": "number",
+              "minZoom": "number",
+              "haloWidth": "number",
+              "light": {
+                "color": "string",
+                "haloColor": "string"
+              },
+              "dark": {
+                "color": "string",
+                "haloColor": "string"
+              }
+            }
+          }
+        }
+      },
+      "layers": {
+        "tileServer": {
+          "provider": "string",
+          "url": "string"
+        },
+        "baseLayers": [
+          {
+            "id": "string",
+            "label": "string",
+            "source": "string",
+            "default": "bool",
+            "idField": "missing|string",
+            "popup": "missing|{\"sections\": [\"string\"]}"
+          }
+        ],
+        "overlays": [
+          {
+            "id": "string",
+            "label": "string",
+            "type": "string",
+            "source": "string",
+            "sourceLayer": "missing|string",
+            "geomType": "missing|string",
+            "minZoom": "number",
+            "default": "bool|missing",
+            "dbSource": "missing|string",
+            "fields": "[\"string\"]|missing",
+            "outlineOnly": "bool|missing"
+          }
+        ],
+        "countyOverlays": [
+          {
+            "id": "string",
+            "label": "string",
+            "martin": "string",
+            "sourceLayer": "string",
+            "geom": "string",
+            "minzoom": "number"
+          }
+        ],
+        "dataSources": [
+          {
+            "id": "string",
+            "label": "string",
+            "source": "string"
+          }
+        ]
+      },
+      "access": {
+        "model": "string",
+        "assessmentDataPublic": "bool",
+        "reportTo": "string",
+        "rateLimited": "bool"
+      }
+    }
+  },
+  "config-vanburen": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "name": "string",
+      "state": "string",
+      "tenant": "string",
+      "map": {
+        "extent": [
+          [
+            "number"
+          ]
+        ],
+        "center": [
+          "number"
+        ],
+        "zoom": "number"
+      },
+      "forms": {
+        "dataRequest": "string"
+      },
+      "endpoints": {
+        "mapBuddy": "string"
+      },
+      "integrations": {
+        "googleMapsEmbedKey": "string"
+      },
+      "parcelNumber": {
+        "label": "string",
+        "separator": "string",
+        "example": "string",
+        "intro": "string",
+        "segments": [
+          {
+            "name": "string",
+            "description": "string"
+          }
+        ]
+      },
+      "labels": {
+        "propClass": {
+          "001": "string",
+          "002": "string",
+          "003": "string",
+          "004": "string",
+          "005": "string",
+          "006": "string",
+          "007": "string",
+          "101": "string",
+          "102": "string",
+          "110": "string",
+          "111": "string",
+          "120": "string",
+          "201": "string",
+          "202": "string",
+          "203": "string",
+          "210": "string",
+          "251": "string",
+          "260": "string",
+          "301": "string",
+          "302": "string",
+          "310": "string",
+          "351": "string",
+          "401": "string",
+          "402": "string",
+          "403": "string",
+          "407": "string",
+          "408": "string",
+          "410": "string",
+          "501": "string",
+          "502": "string",
+          "551": "string",
+          "601": "string",
+          "700": "string",
+          "701": "string",
+          "702": "string",
+          "703": "string",
+          "704": "string",
+          "705": "string",
+          "706": "string",
+          "707": "string",
+          "708": "string",
+          "709": "string",
+          "710": "string"
+        },
+        "schoolDist": {
+          "80010": "string",
+          "80020": "string",
+          "80040": "string",
+          "80050": "string",
+          "80090": "string",
+          "80110": "string",
+          "80120": "string",
+          "80130": "string",
+          "80140": "string",
+          "80150": "string",
+          "80160": "string",
+          "80240": "string",
+          "03020": "string",
+          "11320": "string",
+          "11330": "string",
+          "14020": "string",
+          "14050": "string"
+        }
+      },
+      "styling": {
+        "colorScheme": "string",
+        "schemes": [
+          {
+            "id": "string",
+            "label": "string",
+            "accent": "string",
+            "interactive": "string"
+          }
+        ],
+        "theme": "string",
+        "basemap": "string",
+        "hillshade": {
+          "defaultOn": "bool"
+        },
+        "labels": {
+          "defaultField": "string",
+          "fields": [
+            "string"
+          ],
+          "defaultSize": "string",
+          "sizes": [
+            "string"
+          ],
+          "zoom": {
+            "largeParcels": "number",
+            "smallParcels": "number"
+          }
+        },
+        "layers": {
+          "parcels": {
+            "label": "string",
+            "paint": {
+              "light": {
+                "fill": "string",
+                "stroke": "string"
+              },
+              "dark": {
+                "fill": "string",
+                "stroke": "string"
+              }
+            },
+            "choroplethViews": [
+              {
+                "id": "string",
+                "label": "string",
+                "engine": "string",
+                "default": "bool|missing",
+                "opacity": "missing|number",
+                "attribute": "missing|string",
+                "mode": "missing|string",
+                "transform": "missing|string",
+                "fields": "[\"string\"]|missing",
+                "fallback": "missing|string",
+                "fallbackDark": "missing|string",
+                "categories": "[{\"color\": \"string\", \"colorDark\": \"string\", \"label\": \"string\", \"value\": \"string\"}]|missing",
+                "legendTitle": "missing|string",
+                "stops": "[{\"color\": \"string\", \"colorDark\": \"string\", \"label\": \"string\", \"min\": \"number\"}]|missing",
+                "stateKey": "missing|string",
+                "compute": "missing|string",
+                "dynamic": "bool|missing"
+              }
+            ]
+          },
+          "subdivisions": {
+            "label": "string",
+            "paint": {
+              "light": {
+                "fill": "string",
+                "stroke": "string"
+              },
+              "dark": {
+                "fill": "string",
+                "stroke": "string"
+              }
+            },
+            "labels": {
+              "enabled": "bool",
+              "field": "string",
+              "size": "number",
+              "minZoom": "number",
+              "haloWidth": "number",
+              "light": {
+                "color": "string",
+                "haloColor": "string"
+              },
+              "dark": {
+                "color": "string",
+                "haloColor": "string"
+              }
+            }
+          },
+          "plss_sections": {
+            "label": "string",
+            "paint": {
+              "light": {
+                "fill": "string",
+                "stroke": "string"
+              },
+              "dark": {
+                "fill": "string",
+                "stroke": "string"
+              }
+            },
+            "labels": {
+              "enabled": "bool",
+              "field": "string",
+              "size": "number",
+              "minZoom": "number",
+              "haloWidth": "number",
+              "light": {
+                "color": "string",
+                "haloColor": "string"
+              },
+              "dark": {
+                "color": "string",
+                "haloColor": "string"
+              }
+            }
+          },
+          "reference_roads": {
+            "label": "string",
+            "line": {
+              "width": "number",
+              "opacity": "number",
+              "dash": "string",
+              "casingWidth": "number",
+              "glowWidth": "number",
+              "light": {
+                "color": "string",
+                "casingColor": "string",
+                "glowColor": "string"
+              },
+              "dark": {
+                "color": "string",
+                "casingColor": "string",
+                "glowColor": "string"
+              }
+            },
+            "labels": {
+              "enabled": "bool",
+              "field": "string",
+              "size": "number",
+              "minZoom": "number",
+              "haloWidth": "number",
+              "light": {
+                "color": "string",
+                "haloColor": "string"
+              },
+              "dark": {
+                "color": "string",
+                "haloColor": "string"
+              }
+            }
+          }
+        }
+      },
+      "layers": {
+        "tileServer": {
+          "provider": "string",
+          "url": "string"
+        },
+        "baseLayers": [
+          {
+            "id": "string",
+            "label": "string",
+            "source": "string",
+            "default": "bool",
+            "idField": "missing|string",
+            "popup": "missing|{\"sections\": [\"string\"]}"
+          }
+        ],
+        "overlays": [
+          {
+            "id": "string",
+            "label": "string",
+            "type": "string",
+            "source": "string",
+            "sourceLayer": "missing|string",
+            "geomType": "missing|string",
+            "minZoom": "number",
+            "default": "bool|missing",
+            "dbSource": "missing|string",
+            "fields": "[\"string\"]|missing",
+            "outlineOnly": "bool|missing"
+          }
+        ],
+        "countyOverlays": [
+          {
+            "id": "string",
+            "label": "string",
+            "martin": "string",
+            "sourceLayer": "string",
+            "geom": "string",
+            "minzoom": "number"
+          }
+        ],
+        "dataSources": [
+          {
+            "id": "string",
+            "label": "string",
+            "source": "string"
+          }
+        ]
+      },
+      "access": {
+        "model": "string",
+        "assessmentDataPublic": "bool",
+        "reportTo": "string",
+        "rateLimited": "bool"
+      }
+    }
+  },
+  "config-unknown-county": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "error": "string"
+    }
+  },
+  "config-js-default": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/javascript",
+      "cache-control": "no-cache",
+      "x-content-type-options": "nosniff"
+    },
+    "text": "string"
+  },
+  "config-js-unknown-county": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/javascript",
+      "x-content-type-options": "nosniff"
+    },
+    "text": "string"
+  },
+  "style-json": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "version": "number",
+      "name": "string",
+      "center": [
+        "number"
+      ],
+      "zoom": "number",
+      "glyphs": "string",
+      "sources": {
+        "mi-aerial": {
+          "type": "string",
+          "tiles": [
+            "string"
+          ],
+          "tileSize": "number",
+          "maxzoom": "number",
+          "attribution": "string"
+        },
+        "esri-canvas": {
+          "type": "string",
+          "tiles": [
+            "string"
+          ],
+          "tileSize": "number",
+          "maxzoom": "number",
+          "attribution": "string"
+        },
+        "esri-canvas-labels": {
+          "type": "string",
+          "tiles": [
+            "string"
+          ],
+          "tileSize": "number",
+          "maxzoom": "number"
+        },
+        "parcels": {
+          "type": "string",
+          "tiles": [
+            "string"
+          ],
+          "minzoom": "number",
+          "maxzoom": "number",
+          "promoteId": {
+            "parcels": "string"
+          }
+        }
+      },
+      "layers": [
+        {
+          "id": "string",
+          "type": "string",
+          "source": "string",
+          "minzoom": "missing|number",
+          "maxzoom": "missing|number",
+          "layout": "missing|{\"symbol-placement\": \"string\", \"text-allow-overlap\": \"bool\", \"text-field\": [\"string\"], \"text-font\": [\"string\"], \"text-padding\": \"number\", \"text-size\": [\"[\\\"string\\\"]|number|string\"], \"visibility\": \"string\"}|{\"visibility\": \"string\"}",
+          "paint": "missing|number|string\"]}|{\"fill-color\": \"string\", \"fill-opacity\": \"number\"}|{\"fill-color\": \"string\", \"fill-opacity\": [\"[\\\"string\\\"]|{\"line-color\": \"string\", \"line-opacity\": \"number\", \"line-width\": \"number\"}|{\"line-color\": \"string\", \"line-opacity\": \"number\", \"line-width\": [\"[\\\"string\\\"]|{\"raster-fade-duration\": \"number\"}|{\"text-color\": \"string\", \"text-halo-blur\": \"number\", \"text-halo-color\": \"string\", \"text-halo-width\": \"number\"}",
+          "source-layer": "missing|string",
+          "filter": "[\"[\\\"string\\\"]|missing|string\"]"
+        }
+      ]
+    }
+  },
+  "parcel-36534": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "id": "number",
+      "geometry": {
+        "type": "string",
+        "coordinates": [
+          [
+            [
+              [
+                "number"
+              ]
+            ]
+          ]
+        ]
+      },
+      "properties": {
+        "id": "number",
+        "parcel_no": "string",
+        "county": "string",
+        "municipality": "string",
+        "acres": "number",
+        "area": "number",
+        "computed_acres": "number",
+        "source": "string",
+        "source_file": "string",
+        "cogo_legs": "null",
+        "ps_legal_description": "null",
+        "tax_description": "null",
+        "created_at": "string",
+        "updated_at": "string",
+        "owner_name": "string",
+        "prop_street": "string",
+        "prop_city": "string",
+        "prop_state": "string",
+        "prop_zip": "string",
+        "owner_street": "string",
+        "owner_city": "string",
+        "owner_state": "string",
+        "owner_zip": "string",
+        "school_dist": "string",
+        "prop_class": "string",
+        "homestead": "number",
+        "qual_ag": "null",
+        "frontage": "number",
+        "avg_depth": "number",
+        "assessed_value": "number",
+        "taxable_value": "number",
+        "prev_assessed_value": "number",
+        "prev_taxable_value": "number",
+        "assessed_value_yr0": "number",
+        "assessed_value_yr1": "number",
+        "assessed_value_yr2": "number",
+        "assessed_value_yr3": "number",
+        "assessed_value_yr4": "number",
+        "legal_description": "string",
+        "assessing_loaded_at": "string",
+        "pin": "string",
+        "gis_acres": "number",
+        "PCOMBINED": "string",
+        "roll_year": "number"
+      }
+    }
+  },
+  "parcel-not-found": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "parcel-id-not-int": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string"
+        }
+      ]
+    }
+  },
+  "history-36534": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "events": [
+        "empty"
+      ]
+    }
+  },
+  "history-36534-limit-2": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "events": [
+        "empty"
+      ]
+    }
+  },
+  "history-limit-too-big": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string",
+          "ctx": {
+            "le": "number"
+          }
+        }
+      ]
+    }
+  },
+  "history-not-found": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "events": [
+        "empty"
+      ]
+    }
+  },
+  "parcels-bbox-small": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "features": [
+        {
+          "type": "string",
+          "id": "number",
+          "geometry": {
+            "type": "string",
+            "coordinates": [
+              [
+                [
+                  [
+                    "number"
+                  ]
+                ]
+              ]
+            ]
+          },
+          "properties": {
+            "id": "number",
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "parcels-bbox-limit-5": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "features": [
+        {
+          "type": "string",
+          "id": "number",
+          "geometry": {
+            "type": "string",
+            "coordinates": [
+              [
+                [
+                  [
+                    "number"
+                  ]
+                ]
+              ]
+            ]
+          },
+          "properties": {
+            "id": "number",
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "parcels-bbox-at-cap": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "features": [
+        {
+          "type": "string",
+          "id": "number",
+          "geometry": {
+            "type": "string",
+            "coordinates": [
+              [
+                [
+                  [
+                    "number"
+                  ]
+                ]
+              ]
+            ]
+          },
+          "properties": {
+            "id": "number",
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "null|string",
+            "PCOMBINED": "null|string",
+            "prop_class": "null|string",
+            "school_dist": "null|string",
+            "assessed_value": "null|number",
+            "taxable_value": "null|number"
+          }
+        }
+      ]
+    }
+  },
+  "parcels-bbox-empty-area": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "features": [
+        "empty"
+      ]
+    }
+  },
+  "parcels-bbox-not-numbers": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "parcels-bbox-three-values": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "parcels-bbox-nan": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "parcels-no-bbox": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "null"
+        }
+      ]
+    }
+  },
+  "parcels-limit-zero": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string",
+          "ctx": {
+            "ge": "number"
+          }
+        }
+      ]
+    }
+  },
+  "search-pin": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "results": [
+        {
+          "id": "number",
+          "pin": "string",
+          "owner_name": "string",
+          "address": "string",
+          "municipality": "string",
+          "acres": "number",
+          "bbox": [
+            "number"
+          ]
+        }
+      ]
+    }
+  },
+  "search-address": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "results": [
+        {
+          "id": "number",
+          "pin": "string",
+          "owner_name": "string",
+          "address": "string",
+          "municipality": "string",
+          "acres": "number",
+          "bbox": [
+            "number"
+          ]
+        }
+      ]
+    }
+  },
+  "search-owner-word": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "results": [
+        {
+          "id": "number",
+          "pin": "string",
+          "owner_name": "string",
+          "address": "string",
+          "municipality": "string",
+          "acres": "number",
+          "bbox": [
+            "number"
+          ]
+        }
+      ]
+    }
+  },
+  "search-no-match": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "results": [
+        "empty"
+      ]
+    }
+  },
+  "search-too-short": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string",
+          "ctx": {
+            "min_length": "number"
+          }
+        }
+      ]
+    }
+  },
+  "search-too-long": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string",
+          "ctx": {
+            "max_length": "number"
+          }
+        }
+      ]
+    }
+  },
+  "search-limit-too-big": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string",
+          "ctx": {
+            "le": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-explicit-ids": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "selector": {
+        "type": "string",
+        "label": "string",
+        "count": "number",
+        "center": [
+          "number"
+        ]
+      },
+      "features": [
+        {
+          "id": "number",
+          "properties": {
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number",
+            "prev_assessed_value": "number",
+            "prev_taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-explicit-pins": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "selector": {
+        "type": "string",
+        "label": "string",
+        "count": "number",
+        "center": [
+          "number"
+        ]
+      },
+      "features": [
+        {
+          "id": "number",
+          "properties": {
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number",
+            "prev_assessed_value": "number",
+            "prev_taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-buffer-parcel": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "selector": {
+        "type": "string",
+        "label": "string",
+        "count": "number",
+        "center": [
+          "number"
+        ]
+      },
+      "features": [
+        {
+          "id": "number",
+          "properties": {
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number",
+            "prev_assessed_value": "number",
+            "prev_taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-buffer-point": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "selector": {
+        "type": "string",
+        "label": "string",
+        "count": "number",
+        "center": [
+          "number"
+        ]
+      },
+      "features": [
+        {
+          "id": "number",
+          "properties": {
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number",
+            "prev_assessed_value": "number",
+            "prev_taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-subdivision-id": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "selector": {
+        "type": "string",
+        "geography": "string",
+        "label": "string",
+        "count": "number",
+        "center": [
+          "number"
+        ]
+      },
+      "features": [
+        {
+          "id": "number",
+          "properties": {
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number",
+            "prev_assessed_value": "number",
+            "prev_taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-township-name": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "selector": {
+        "type": "string",
+        "geography": "string",
+        "label": "string",
+        "count": "number",
+        "center": [
+          "number"
+        ]
+      },
+      "features": [
+        {
+          "id": "number",
+          "properties": {
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number",
+            "prev_assessed_value": "number",
+            "prev_taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-school-name": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "selector": {
+        "type": "string",
+        "geography": "string",
+        "label": "string",
+        "count": "number",
+        "center": [
+          "number"
+        ]
+      },
+      "features": [
+        {
+          "id": "number",
+          "properties": {
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number",
+            "prev_assessed_value": "number",
+            "prev_taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-drawn-polygon": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "selector": {
+        "type": "string",
+        "label": "string",
+        "count": "number",
+        "center": [
+          "number"
+        ]
+      },
+      "features": [
+        {
+          "id": "number",
+          "properties": {
+            "pin": "string",
+            "parcel_no": "string",
+            "municipality": "string",
+            "gis_acres": "number",
+            "source": "string",
+            "owner_name": "string",
+            "PCOMBINED": "string",
+            "prop_class": "string",
+            "school_dist": "string",
+            "assessed_value": "number",
+            "taxable_value": "number",
+            "prev_assessed_value": "number",
+            "prev_taxable_value": "number"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-unknown-selector": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "cohort-buffer-off-the-globe": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "cohort-limit-not-int": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string"
+        }
+      ]
+    }
+  },
+  "geographies-township": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "geographies": [
+        {
+          "id": "null",
+          "name": "string"
+        }
+      ]
+    }
+  },
+  "geographies-school": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "geographies": [
+        {
+          "id": "null",
+          "name": "string"
+        }
+      ]
+    }
+  },
+  "geographies-subdivision": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "geographies": [
+        {
+          "id": "number",
+          "name": "string"
+        }
+      ]
+    }
+  },
+  "geographies-section": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "type": "string",
+      "geographies": [
+        {
+          "id": "number",
+          "name": "string"
+        }
+      ]
+    }
+  },
+  "geographies-unknown": {
+    "status": 400,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "geographies-no-type": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "null"
+        }
+      ]
+    }
+  },
+  "nearest-road-lawrence": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "lng": "number",
+      "lat": "number",
+      "snapped": "bool"
+    }
+  },
+  "nearest-road-no-coords": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "null"
+        }
+      ]
+    }
+  },
+  "nearest-road-not-numbers": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string"
+        }
+      ]
+    }
+  },
+  "streetview-id-not-int": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string"
+        }
+      ]
+    }
+  },
+  "wms-proxy-host-not-allowed": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "error": "string"
+    }
+  },
+  "wms-proxy-no-url": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "null"
+        }
+      ]
+    }
+  },
+  "wms-proxy-nwi-legend": {
+    "status": 200,
+    "content-type": "image/png"
+  },
+  "report-error-invalid-empty": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string",
+          "ctx": {
+            "min_length": "number"
+          }
+        }
+      ]
+    }
+  },
+  "report-error-invalid-no-details": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": {
+            "pin": "string"
+          }
+        }
+      ]
+    }
+  },
+  "client-errors-invalid-kind": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string",
+          "ctx": {
+            "expected": "string"
+          }
+        }
+      ]
+    }
+  },
+  "client-errors-invalid-message-too-long": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string",
+          "ctx": {
+            "max_length": "number"
+          }
+        }
+      ]
+    }
+  },
+  "admin-draft-no-token": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "admin-draft-put-no-token": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "admin-publish-no-token": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "admin-versions-no-token": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "admin-rollback-no-token": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "admin-discover-no-token": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "admin-draft-wrong-token": {
+    "status": 401,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "cors-preflight-allowed": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "x-content-type-options": "nosniff",
+      "access-control-allow-origin": "https://gis.dicemi.org",
+      "access-control-allow-methods": "GET, POST, PUT",
+      "access-control-allow-headers": "Accept, Accept-Language, Content-Language, Content-Type, X-Admin-Token",
+      "access-control-max-age": "600"
+    },
+    "text": "string"
+  },
+  "cors-preflight-foreign": {
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "x-content-type-options": "nosniff",
+      "access-control-allow-methods": "GET, POST, PUT",
+      "access-control-allow-headers": "Accept, Accept-Language, Content-Language, Content-Type, X-Admin-Token",
+      "access-control-max-age": "600"
+    },
+    "text": "string"
+  }
+}

@@ -15,3 +15,6 @@ credentials.json
 
 # Local code-graph cache (graphify tool output); not part of the app (DIC-1871).
 graphify-out/
+
+# Full API responses recorded by tools/api-contract (live parcel data; DIC-2147).
+tools/api-contract/.out/

@@ -1,0 +1,88 @@
+{
+  "about": "Requests that pin the parcel API's contract for the GeoDjango port (DIC-2147). Each entry is replayed as-is. Fields: name (unique), method, path (with query string), body (JSON, optional), auth ('admin' sends X-Admin-Token from PV_ADMIN_TOKEN; skipped when it isn't set), headers (optional; <<repeat:CHAR:N>> expands to N copies of CHAR, in paths and body strings), known_issue (a ticket id: the route is broken today, so its response is reported but not recorded or failed on), compare ('full' = status, contract headers and body; 'shape' = status, contract headers, list lengths and structure but not values, for results cut off at their limit: /parcels and /cohort have no ORDER BY, so which rows come back is arbitrary; 'status' = status and content type only, for routes whose body comes from a third party). Unordered lists of objects with an id are compared by id, so a different order is only a warning. Never add a request that sends email, writes config or reports a fake client error: those routes are only exercised with requests they reject.",
+  "requests": [
+    {"name": "health", "method": "GET", "path": "/health"},
+
+    {"name": "config-default", "method": "GET", "path": "/config"},
+    {"name": "config-vanburen", "method": "GET", "path": "/config?county=vanburen"},
+    {"name": "config-unknown-county", "method": "GET", "path": "/config?county=nowhere"},
+    {"name": "config-js-default", "method": "GET", "path": "/config.js"},
+    {"name": "config-js-unknown-county", "method": "GET", "path": "/config.js?county=nowhere"},
+    {"name": "style-json", "method": "GET", "path": "/style.json"},
+
+    {"name": "parcel-36534", "method": "GET", "path": "/parcel/36534"},
+    {"name": "parcel-not-found", "method": "GET", "path": "/parcel/999999999"},
+    {"name": "parcel-id-not-int", "method": "GET", "path": "/parcel/abc"},
+    {"name": "history-36534", "method": "GET", "path": "/parcel/36534/history"},
+    {"name": "history-36534-limit-2", "method": "GET", "path": "/parcel/36534/history?limit=2"},
+    {"name": "history-limit-too-big", "method": "GET", "path": "/parcel/36534/history?limit=201"},
+    {"name": "history-not-found", "method": "GET", "path": "/parcel/999999999/history"},
+
+    {"name": "parcels-bbox-small", "method": "GET", "path": "/parcels?bbox=-86.0530,42.2185,-86.0500,42.2205"},
+    {"name": "parcels-bbox-limit-5", "compare": "shape", "method": "GET", "path": "/parcels?bbox=-86.06,42.21,-86.04,42.23&limit=5"},
+    {"name": "parcels-bbox-at-cap", "compare": "shape", "method": "GET", "path": "/parcels?bbox=-86.40,42.05,-85.75,42.45&limit=4000"},
+    {"name": "parcels-bbox-empty-area", "method": "GET", "path": "/parcels?bbox=-90.0,30.0,-89.99,30.01"},
+    {"name": "parcels-bbox-not-numbers", "method": "GET", "path": "/parcels?bbox=a,b,c,d"},
+    {"name": "parcels-bbox-three-values", "method": "GET", "path": "/parcels?bbox=1,2,3"},
+    {"name": "parcels-bbox-nan", "method": "GET", "path": "/parcels?bbox=nan,0,1,1"},
+    {"name": "parcels-no-bbox", "method": "GET", "path": "/parcels"},
+    {"name": "parcels-limit-zero", "method": "GET", "path": "/parcels?bbox=0,0,1,1&limit=0"},
+
+    {"name": "search-pin", "method": "GET", "path": "/search?q=80-03-015-030-02"},
+    {"name": "search-address", "method": "GET", "path": "/search?q=52ND%20ST&limit=5"},
+    {"name": "search-owner-word", "method": "GET", "path": "/search?q=kissel"},
+    {"name": "search-no-match", "method": "GET", "path": "/search?q=zzqqxxnomatch"},
+    {"name": "search-too-short", "method": "GET", "path": "/search?q=a"},
+    {"name": "search-too-long", "method": "GET", "path": "/search?q=<<repeat:a:101>>"},
+    {"name": "search-limit-too-big", "method": "GET", "path": "/search?q=ab&limit=51"},
+
+    {"name": "cohort-explicit-ids", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "explicit", "ids": [36534]}}},
+    {"name": "cohort-explicit-pins", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "explicit", "pins": ["80-03-015-030-02"]}}},
+    {"name": "cohort-buffer-parcel", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "buffer", "parcel_id": 36534, "distance_ft": 300}}},
+    {"name": "cohort-buffer-point", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "buffer", "lng": -86.0517, "lat": 42.2195, "distance_ft": 200}}},
+    {"name": "cohort-subdivision-id", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "named-geography", "geography": "subdivision", "id": 66}, "limit": 50}},
+    {"name": "cohort-township-name", "compare": "shape", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "named-geography", "geography": "township", "name": "Bangor City"}, "limit": 100}},
+    {"name": "cohort-school-name", "compare": "shape", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "named-geography", "geography": "school", "name": "03020"}, "limit": 25}},
+    {"name": "cohort-drawn-polygon", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "drawn-polygon", "geometry": {"type": "Polygon", "coordinates": [[[-86.0530, 42.2185], [-86.0500, 42.2185], [-86.0500, 42.2205], [-86.0530, 42.2205], [-86.0530, 42.2185]]]}}}},
+    {"name": "cohort-unknown-selector", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "nope"}}},
+    {"name": "cohort-buffer-off-the-globe", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "buffer", "lng": 500, "lat": 42, "distance_ft": 300}}},
+    {"name": "cohort-limit-not-int", "method": "POST", "path": "/cohort", "body": {"selector": {}, "limit": "x"}},
+
+    {"name": "geographies-township", "method": "GET", "path": "/cohort/geographies?type=township"},
+    {"name": "geographies-school", "method": "GET", "path": "/cohort/geographies?type=school"},
+    {"name": "geographies-subdivision", "method": "GET", "path": "/cohort/geographies?type=subdivision"},
+    {"name": "geographies-section", "method": "GET", "path": "/cohort/geographies?type=section"},
+    {"name": "geographies-unknown", "method": "GET", "path": "/cohort/geographies?type=nope"},
+    {"name": "geographies-no-type", "method": "GET", "path": "/cohort/geographies"},
+
+    {"name": "nearest-road-lawrence", "method": "GET", "path": "/nearest-road?lng=-86.0517&lat=42.2195"},
+    {"name": "nearest-road-no-coords", "method": "GET", "path": "/nearest-road"},
+    {"name": "nearest-road-not-numbers", "method": "GET", "path": "/nearest-road?lng=x&lat=y"},
+    {"name": "streetview-36534", "known_issue": "DIC-2152", "method": "GET", "path": "/streetview-target?id=36534"},
+    {"name": "streetview-not-found", "known_issue": "DIC-2152", "method": "GET", "path": "/streetview-target?id=999999999"},
+    {"name": "streetview-id-not-int", "method": "GET", "path": "/streetview-target?id=x"},
+
+    {"name": "wms-proxy-host-not-allowed", "method": "GET", "path": "/wms-proxy?url=https%3A%2F%2Fevil.example%2Fwms"},
+    {"name": "wms-proxy-no-url", "method": "GET", "path": "/wms-proxy"},
+    {"name": "wms-proxy-nwi-legend", "method": "GET", "compare": "status", "path": "/wms-proxy?url=https%3A%2F%2Ffwspublicservices.wim.usgs.gov%2Fwetlandsmapservice%2Fservices%2FWetlands%2FMapServer%2FWMSServer%3Frequest%3DGetLegendGraphic%26service%3DWMS%26version%3D1.3.0%26layer%3D0%26format%3Dimage%2Fpng"},
+
+    {"name": "report-error-invalid-empty", "method": "POST", "path": "/report-error", "body": {"details": ""}},
+    {"name": "report-error-invalid-no-details", "method": "POST", "path": "/report-error", "body": {"pin": "1"}},
+    {"name": "client-errors-invalid-kind", "method": "POST", "path": "/client-errors", "body": {"kind": "nope", "message": "x"}},
+    {"name": "client-errors-invalid-message-too-long", "method": "POST", "path": "/client-errors", "body": {"kind": "error", "message": "<<repeat:x:501>>"}},
+
+    {"name": "admin-draft-no-token", "method": "GET", "path": "/config/vanburen/draft"},
+    {"name": "admin-draft-put-no-token", "method": "PUT", "path": "/config/vanburen/draft", "body": {"payload": {}}},
+    {"name": "admin-publish-no-token", "method": "POST", "path": "/config/vanburen/publish", "body": {}},
+    {"name": "admin-versions-no-token", "method": "GET", "path": "/config/vanburen/versions"},
+    {"name": "admin-rollback-no-token", "method": "POST", "path": "/config/vanburen/rollback", "body": {"version": 1}},
+    {"name": "admin-discover-no-token", "method": "GET", "path": "/admin/discover/layers"},
+    {"name": "admin-draft-wrong-token", "method": "GET", "path": "/config/vanburen/draft", "headers": {"X-Admin-Token": "wrong"}},
+    {"name": "admin-draft", "method": "GET", "path": "/config/vanburen/draft", "auth": "admin"},
+    {"name": "admin-versions", "method": "GET", "path": "/config/vanburen/versions", "auth": "admin"},
+    {"name": "admin-discover", "method": "GET", "path": "/admin/discover/layers", "auth": "admin"},
+
+    {"name": "cors-preflight-allowed", "method": "OPTIONS", "path": "/health", "headers": {"Origin": "https://gis.dicemi.org", "Access-Control-Request-Method": "GET"}},
+    {"name": "cors-preflight-foreign", "method": "OPTIONS", "path": "/health", "headers": {"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"}}
+  ]
+}
