@@ -6,6 +6,7 @@ so parameters are validated with Pydantic models here too, and the errors are re
 same way. Only the parameter source ("query" or "path") is added to each error's location.
 """
 
+import json
 from collections.abc import Mapping
 from enum import StrEnum
 from typing import Any, cast
@@ -13,6 +14,7 @@ from typing import Any, cast
 from pydantic import BaseModel, ValidationError
 from rest_framework import status
 from rest_framework.exceptions import APIException
+from rest_framework.request import Request
 
 
 class ParamSource(StrEnum):
@@ -59,16 +61,18 @@ def _plain(value: Any) -> Any:
     return str(value)
 
 
-def validate[Params: BaseModel](
-    model: type[Params], data: Mapping[str, Any], source: ParamSource
-) -> Params:
+def validate[Params: BaseModel](model: type[Params], data: Any, source: ParamSource) -> Params:
     """
-    Takes a Pydantic model, the raw parameters, and where they came from.
-    Returns the validated model, or raises RequestValidationFailed (422) shaped like FastAPI's.
-    A parameter FastAPI saw as missing arrives here as absent, so its input is null.
+    Takes a Pydantic model, the raw parameters (a mapping, or for a body whatever JSON it
+    held), and where they came from. Returns the validated model, or raises
+    RequestValidationFailed (422) shaped like FastAPI's. A parameter FastAPI saw as missing
+    arrives here as absent, so its input is null.
     """
+    # FastAPI validates a body with from_attributes, which is why a non-object body is a
+    # "model_attributes_type" error there; doing the same gives the same error.
+    payload = dict(data) if isinstance(data, Mapping) else data
     try:
-        return model.model_validate(dict(data))
+        return model.model_validate(payload, from_attributes=source == ParamSource.BODY)
     except ValidationError as exc:
         errors = exc.errors(include_url=False)
         for error in errors:
@@ -90,3 +94,41 @@ def query_params(request_query: Mapping[str, Any], names: tuple[str, ...]) -> di
             continue
         out[name] = getlist(name)[-1] if getlist else request_query[name]
     return out
+
+
+JSON_CONTENT_TYPES = ("application/json",)
+
+
+def json_body(request: Request) -> Any:
+    """
+    Takes a request. Returns its body as FastAPI's single-model routes see it: the parsed
+    JSON for a JSON content type, else the text. Raises FastAPI's 422s for a missing body
+    and for malformed JSON (with the error's character position in `loc`).
+    """
+    raw = request.body
+    if not raw:
+        raise RequestValidationFailed(
+            [{"type": "missing", "loc": ["body"], "msg": "Field required", "input": None}]
+        )
+    text = raw.decode("utf-8", errors="replace")
+    content_type = (request.content_type or "").split(";", 1)[0].strip().lower()
+    # FastAPI parses JSON when the type says so, and also when there is no type at all.
+    is_json = (
+        not content_type or content_type in JSON_CONTENT_TYPES or content_type.endswith("+json")
+    )
+    if not is_json:
+        return text
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise RequestValidationFailed(
+            [
+                {
+                    "type": "json_invalid",
+                    "loc": ["body", exc.pos],
+                    "msg": "JSON decode error",
+                    "input": {},
+                    "ctx": {"error": exc.msg},
+                }
+            ]
+        ) from None

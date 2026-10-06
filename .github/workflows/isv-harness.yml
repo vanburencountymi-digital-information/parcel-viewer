@@ -134,6 +134,11 @@ jobs:
       - name: Migrations are up to date
         run: python manage.py makemigrations --check --dry-run
 
+      # The cohort selector builder is copied verbatim from the FastAPI backend until
+      # cutover (DIC-2149); the two copies must not drift.
+      - name: cohort_query matches the FastAPI copy
+        run: cmp ../backend/parcel_viewer/cohort_query.py parcels/cohort_query.py
+
       - name: Tests
         run: python manage.py test --noinput
 

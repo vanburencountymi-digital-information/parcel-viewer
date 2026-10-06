@@ -1,5 +1,5 @@
 {
-  "about": "Requests that pin the parcel API's contract for the GeoDjango port (DIC-2147). Each entry is replayed as-is. Fields: name (unique), method, path (with query string), body (JSON, optional), auth ('admin' sends X-Admin-Token from PV_ADMIN_TOKEN; skipped when it isn't set), headers (optional; <<repeat:CHAR:N>> expands to N copies of CHAR, in paths and body strings), known_issue (a ticket id: the route is broken today, so its response is reported but not recorded or failed on), compare ('full' = status, contract headers and body; 'shape' = status, contract headers, list lengths and structure but not values, for results cut off at their limit: /parcels and /cohort have no ORDER BY, so which rows come back is arbitrary; 'status' = status and content type only, for routes whose body comes from a third party). Unordered lists of objects with an id are compared by id, so a different order is only a warning. Never add a request that sends email, writes config or reports a fake client error: those routes are only exercised with requests they reject.",
+  "about": "Requests that pin the parcel API's contract for the GeoDjango port (DIC-2147). Each entry is replayed as-is. Fields: name (unique), method, path (with query string), body (JSON, optional), raw_body (text sent as-is, for malformed bodies) and content_type (optional), auth ('admin' sends X-Admin-Token from PV_ADMIN_TOKEN; skipped when it isn't set), headers (optional; <<repeat:CHAR:N>> expands to N copies of CHAR, in paths and body strings), known_issue (a ticket id: the route is broken today, so its response is reported but not recorded or failed on), compare ('full' = status, contract headers and body; 'shape' = status, contract headers, list lengths and structure but not values, for results cut off at their limit: /parcels and /cohort have no ORDER BY, so which rows come back is arbitrary; 'status' = status and content type only, for routes whose body comes from a third party). Unordered lists of objects with an id are compared by id, so a different order is only a warning. Never add a request that sends email, writes config or reports a fake client error: those routes are only exercised with requests they reject.",
   "requests": [
     {"name": "health", "method": "GET", "path": "/health"},
 
@@ -46,6 +46,11 @@
     {"name": "cohort-drawn-polygon", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "drawn-polygon", "geometry": {"type": "Polygon", "coordinates": [[[-86.0530, 42.2185], [-86.0500, 42.2185], [-86.0500, 42.2205], [-86.0530, 42.2205], [-86.0530, 42.2185]]]}}}},
     {"name": "cohort-unknown-selector", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "nope"}}},
     {"name": "cohort-buffer-off-the-globe", "method": "POST", "path": "/cohort", "body": {"selector": {"type": "buffer", "lng": 500, "lat": 42, "distance_ft": 300}}},
+    {"name": "cohort-no-body", "method": "POST", "path": "/cohort"},
+    {"name": "cohort-invalid-json", "method": "POST", "path": "/cohort", "raw_body": "{\"selector\": ", "content_type": "application/json"},
+    {"name": "cohort-body-is-a-list", "method": "POST", "path": "/cohort", "body": [1]},
+    {"name": "cohort-selector-null", "method": "POST", "path": "/cohort", "body": {"selector": null}},
+    {"name": "cohort-text-plain-body", "method": "POST", "path": "/cohort", "raw_body": "{\"selector\": {\"type\": \"explicit\", \"ids\": [36534]}}", "content_type": "text/plain"},
     {"name": "cohort-limit-not-int", "method": "POST", "path": "/cohort", "body": {"selector": {}, "limit": "x"}},
 
     {"name": "geographies-township", "method": "GET", "path": "/cohort/geographies?type=township"},

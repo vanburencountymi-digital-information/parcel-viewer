@@ -4,7 +4,7 @@ The GeoDjango replacement for the FastAPI backend in `backend/` (DIC-2146). It k
 URLs and JSON, so the viewer and its tests check it unchanged. Until the swap (DIC-2150) it runs
 beside FastAPI on port 8001, and the viewer keeps using FastAPI.
 
-**Status:** skeleton (DIC-2148). Only `/health` is ported; the routes follow in DIC-2149.
+**Status:** porting the routes (DIC-2149). At parity so far: `/health`, the parcel reads (`/parcel/{id}`, `/history`, `/parcels`, `/search`, `/nearest-road`, `/streetview-target`) and the cohorts (`/cohort`, `/cohort/geographies`). Still to come: config and style, the config store, the WMS proxy and error reports.
 
 ## Run it
 

@@ -33,6 +33,17 @@ FEATURE_PROPS_SQL = """
     a.taxable_value      AS taxable_value
 """
 
+# Cohort feature props (DIC-587): the parcel attributes the cohort-analyze core aggregates
+# over. The bbox feature props plus the prior-period values behind the value-change
+# aggregator. No geometry: aggregation is non-spatial, so the payload stays light.
+COHORT_PROPS_SQL = (
+    FEATURE_PROPS_SQL
+    + """,
+    a.prev_assessed_value AS prev_assessed_value,
+    a.prev_taxable_value  AS prev_taxable_value
+"""
+)
+
 PARCEL_SQL = """
     SELECT pg.id, pg.parcel_no, pg.county, pg.municipality, pg.acres, pg.area,
            ST_Area(ST_Transform(pg.geom, 4326)::geography) / 4046.8564224 AS computed_acres,
@@ -199,3 +210,69 @@ class ParcelRepository:
     def streetview_target(self, parcel_id: int) -> dict[str, Any] | None:
         """Takes a parcel id. Returns its Street View anchor, road point and address point."""
         return fetch_one(PARCELS, STREETVIEW_SQL, [parcel_id])
+
+    def cohort(self, predicate: str, params: list[Any], limit: int) -> list[dict[str, Any]]:
+        """
+        Takes a cohort predicate from cohort_query.build_predicate, its parameters and a cap.
+        Returns the cohort's feature rows (no geometry), unordered.
+        """
+        sql = f"""
+            SELECT {COHORT_PROPS_SQL}
+            FROM geo.parcel_geometry pg
+            LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
+            WHERE pg.archived_at IS NULL AND {predicate}
+            LIMIT %s
+        """
+        return fetch_all(PARCELS, sql, [*params, limit])
+
+    def cohort_center(self, predicate: str, params: list[Any]) -> dict[str, Any] | None:
+        """
+        Takes a cohort predicate and its parameters. Returns the lng/lat centroid of the
+        matched set's bounding box: a cheap anchor the viewer samples for a center-point
+        environmental read while flood, wetland and soil layers are WMS-only.
+        """
+        sql = f"""
+            SELECT ST_X(c) AS lng, ST_Y(c) AS lat FROM (
+                SELECT ST_Transform(ST_SetSRID(ST_Centroid(ST_Extent(pg.geom)::geometry), 2253), 4326) AS c
+                FROM geo.parcel_geometry pg
+                LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no
+                WHERE pg.archived_at IS NULL AND {predicate}
+            ) q
+        """
+        return fetch_one(PARCELS, sql, params)
+
+    def parcel_number(self, parcel_id: int) -> str | None:
+        """Takes a parcel id. Returns its parcel number (PIN), or None."""
+        row = fetch_one(
+            PARCELS, "SELECT parcel_no FROM geo.parcel_geometry WHERE id = %s", [parcel_id]
+        )
+        return row.get("parcel_no") if row else None
+
+    def geographies(self, source: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        Takes a whitelisted source from cohort_query.GEOGRAPHY_SOURCES (never request text).
+        Returns [{id, name}] by name: polygon layers by their own ids, attribute geographies
+        (township, school district) as the distinct values of a parcel column, with id None.
+        """
+        if source["kind"] == "spatial":
+            sql = (
+                "SELECT {} AS id, {} AS name FROM {} WHERE {} IS NOT NULL AND {} <> '' ORDER BY name"
+            ).format(
+                source["id_col"],
+                source["name_col"],
+                source["table"],
+                source["name_col"],
+                source["name_col"],
+            )
+            return [{"id": r["id"], "name": r["name"]} for r in fetch_all(PARCELS, sql)]
+        column = source["column"]
+        join = (
+            "LEFT JOIN assessing.vbc_parcels a ON a.pnum = pg.parcel_no"
+            if column.startswith("a.")
+            else ""
+        )
+        sql = (
+            f"SELECT DISTINCT {column} AS name FROM geo.parcel_geometry pg {join} "
+            f"WHERE pg.archived_at IS NULL AND {column} IS NOT NULL AND {column} <> '' ORDER BY name"
+        )
+        return [{"id": None, "name": r["name"]} for r in fetch_all(PARCELS, sql)]

@@ -101,3 +101,20 @@ def streetview_target(row: dict[str, Any] | None) -> dict[str, Any]:
         "address": row.get("address"),
         "hasAddress": bool(row.get("has_address")),
     }
+
+
+def cohort(
+    rows: list[dict[str, Any]], center: dict[str, Any] | None, selector: dict[str, Any]
+) -> dict[str, Any]:
+    """
+    Takes the cohort rows, the matched set's center (or None) and the resolved selector.
+    Returns {selector, features}: each feature is {id, properties} without geometry, and the
+    selector gains the count and, when known, the center as [lng, lat].
+    """
+    features = [
+        {"id": r["id"], "properties": {k: v for k, v in r.items() if k != "id"}} for r in rows
+    ]
+    selector["count"] = len(features)
+    if center and center.get("lng") is not None:
+        selector["center"] = [center["lng"], center["lat"]]
+    return {"selector": selector, "features": features}
