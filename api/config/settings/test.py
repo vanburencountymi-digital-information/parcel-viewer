@@ -28,5 +28,5 @@ for alias in (DatabaseAlias.PARCELS, DatabaseAlias.CONFIG_STORE):
 # Rate limits must not interfere with unrelated tests; throttling has its own tests.
 REST_FRAMEWORK = {
     **base.REST_FRAMEWORK,
-    "DEFAULT_THROTTLE_RATES": {"anon": "1000/min", "user": "1000/min"},
+    "DEFAULT_THROTTLE_RATES": {"anon": "1000/min", "user": "1000/min", "parcel_read": "1000/min"},
 }

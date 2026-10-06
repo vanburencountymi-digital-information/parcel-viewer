@@ -1,4 +1,5 @@
 # Pinned from requirements.in (make lock). Do not edit by hand.
+annotated-types==0.8.0
 asgiref==3.12.1
 ast_serialize==0.12.1
 attrs==26.1.0
@@ -24,6 +25,8 @@ pathspec==1.1.1
 psycopg==3.3.6
 psycopg-binary==3.3.6
 psycopg-pool==3.3.3
+pydantic==2.13.5
+pydantic_core==2.46.5
 PyYAML==6.0.3
 referencing==0.37.0
 rpds-py==2026.9.1
@@ -31,6 +34,7 @@ ruff==0.16.10
 sentry-sdk==2.71.0
 sqlparse==0.6.0
 types-PyYAML==6.0.12.20260906
+typing-inspection==0.4.4
 typing_extensions==4.16.0
 uritemplate==4.2.0
 urllib3==2.8.0
