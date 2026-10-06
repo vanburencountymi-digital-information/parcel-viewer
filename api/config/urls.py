@@ -8,8 +8,14 @@ urlpatterns = [
     path("", include("common.urls")),
     path("", include("parcels.urls")),
     path("", include("county_config.urls")),
+    path("", include("wms.urls")),
+    path("", include("feedback.urls")),
     path("django-admin/", admin.site.urls),
     # Staff only (ADR 0009); SPECTACULAR_SETTINGS["SERVE_PERMISSIONS"] enforces it.
     path("schema", SpectacularAPIView.as_view(), name="schema"),
     path("docs", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),
 ]
+
+# An unknown path and an unhandled error answer as FastAPI did (common.exceptions).
+handler404 = "common.exceptions.not_found"
+handler500 = "common.exceptions.server_error"

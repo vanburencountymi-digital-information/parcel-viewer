@@ -75,9 +75,12 @@ def validate[Params: BaseModel](model: type[Params], data: Any, source: ParamSou
         return model.model_validate(payload, from_attributes=source == ParamSource.BODY)
     except ValidationError as exc:
         errors = exc.errors(include_url=False)
-        for error in errors:
-            if error["type"] == "missing":
-                error["input"] = None
+        # FastAPI validates query and path parameters one by one, so a missing one shows
+        # input null; a body is validated whole, so its missing fields show the body.
+        if source != ParamSource.BODY:
+            for error in errors:
+                if error["type"] == "missing":
+                    error["input"] = None
         raise RequestValidationFailed([_fastapi_error(e, source) for e in errors]) from None
 
 

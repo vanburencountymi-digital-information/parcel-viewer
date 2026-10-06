@@ -101,7 +101,8 @@ class CatalogueTests(TestCase):
 
         for req in requests:
             with self.subTest(req["name"]):
-                self.assertIn(req["method"], {"GET", "POST", "PUT", "OPTIONS"})
+                # DELETE only to check that unsupported methods get FastAPI's 405.
+                self.assertIn(req["method"], {"GET", "POST", "PUT", "OPTIONS", "DELETE"})
                 self.assertTrue(req["path"].startswith("/"))
                 self.assertIn(req.get("compare", "full"), {"full", "shape", "status"})
 
