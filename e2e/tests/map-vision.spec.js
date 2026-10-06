@@ -170,6 +170,23 @@ test('a tilted, rotated map is turned straight down and north up before the look
   expect(calls.vision[0].view_width_ft, 'the model gets a scale').toBeGreaterThan(0);
 });
 
+test('a bolded best guess in the read shows as bold, not as asterisks', async ({ page }) => {
+  // Seen in the DIC-2138 evaluation: "planted in a **perennial row crop**, most likely **blueberries**".
+  const calls = await mockMapBuddy(page, {
+    chatReplies: [['OK.']],
+    vision: { status: 200, body: { ok: true, description: 'Most likely **blueberries** <img src=x onerror=alert(1)>.', model: 'm', layers: [], at: '2026-10-05T15:30:00+00:00' } },
+  });
+  await gotoViewer(page);
+  await openChat(page);
+  await page.locator('#mb-look-btn').click();
+  await idle(page);
+  const body = page.locator('.mb-msg-vision .mb-msg-ai-body');
+  await expect(body.locator('strong')).toHaveText('blueberries');
+  await expect(body).not.toContainText('**');
+  await expect(body.locator('img'), 'model text is escaped, never HTML').toHaveCount(0);
+  expect(calls.vision).toHaveLength(1);
+});
+
 test('a failed look says so plainly and makes no chat call', async ({ page }) => {
   const calls = await mockMapBuddy(page, { vision: { status: 200, body: { ok: false, error: 'Couldn’t analyse the map view.' } } });
   await gotoViewer(page);

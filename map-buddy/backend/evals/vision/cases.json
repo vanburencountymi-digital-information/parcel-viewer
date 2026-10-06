@@ -1,29 +1,611 @@
 {
-  "_about": "Map vision evaluation set (DIC-2135). Each image is exactly what a look sends: captured by PV_VISION.capture from the dev viewer (straight down, north up). 'expect_any' groups: the description must contain at least one word from EACH group (case-insensitive). 'forbid': words that must not appear. Grow this to about 20 views (aerial, wetlands, flood, structures, zoomed out) before choosing the model and effort.",
+  "_about": "Map vision evaluation set (DIC-2135). Each image is exactly what a look sends: captured by PV_VISION.capture from the dev viewer (straight down, north up). 'expect_any' groups: the description must contain at least one word from EACH group (case-insensitive). 'forbid': words that must not appear. 21 cases over 17 views (DIC-2138): town and rural parcels, structures, ponds, woods, crops, a flood overlay, the Lake Michigan shore, coarse imagery, no parcel selected, zoomed far out, and past the aerial's maximum zoom.",
   "cases": [
     {
       "id": "ballfields-east-of-wooded-parcel",
       "image": "ballfields-east-of-wooded-parcel.jpg",
       "note": "First live look (2026-10-05), taken tilted mid-orbit, called these ballfields 'tan basins ... ponds or lagoons'. Here they show only partly, at the top-right edge.",
       "question": null,
-      "parcel": { "pin": "80-14-014-015-00", "site_address": "PAW PAW RD", "acres": 9.48, "municipality": "Paw Paw Township" },
-      "layers": ["Aerial imagery"],
+      "parcel": {
+        "pin": "80-14-014-015-00",
+        "site_address": "PAW PAW RD",
+        "acres": 9.48,
+        "municipality": "Paw Paw Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
       "view_width_ft": 2215,
       "expect_any": [
-        ["wooded", "woods", "trees", "tree cover", "forest"],
-        ["ballfield", "ball field", "baseball", "softball", "ball diamond", "athletic field", "infield"]
+        [
+          "wooded",
+          "woods",
+          "trees",
+          "tree cover",
+          "forest"
+        ],
+        [
+          "ballfield",
+          "ball field",
+          "baseball",
+          "softball",
+          "ball diamond",
+          "athletic field",
+          "infield"
+        ]
       ],
-      "forbid": ["lagoon"]
+      "forbid": [
+        "lagoon"
+      ]
     },
     {
       "id": "county-zoomed-out",
       "image": "county-zoomed-out.jpg",
       "note": "Zoomed out to about 31 miles across: parcel detail can't be seen, so the answer should say to zoom in rather than describe the parcel.",
       "question": "Is there a barn on this parcel?",
-      "parcel": { "pin": "80-14-014-015-00", "site_address": "PAW PAW RD", "acres": 9.48, "municipality": "Paw Paw Township" },
-      "layers": ["Aerial imagery"],
+      "parcel": {
+        "pin": "80-14-014-015-00",
+        "site_address": "PAW PAW RD",
+        "acres": 9.48,
+        "municipality": "Paw Paw Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
       "view_width_ft": 163897,
-      "expect_any": [["zoom"]],
+      "expect_any": [
+        [
+          "zoom"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "downtown-commercial-blocks",
+      "image": "downtown-commercial-blocks.jpg",
+      "question": null,
+      "parcel": null,
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1280,
+      "expect_any": [
+        [
+          "downtown",
+          "commercial",
+          "business"
+        ],
+        [
+          "parking"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "lake-michigan-pier-and-beach",
+      "image": "lake-michigan-pier-and-beach.jpg",
+      "question": null,
+      "parcel": null,
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 2553,
+      "expect_any": [
+        [
+          "pier",
+          "breakwater",
+          "jetty",
+          "channel"
+        ],
+        [
+          "beach",
+          "sand"
+        ],
+        [
+          "lake",
+          "water"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "village-lot-use",
+      "image": "village-parking-lot.jpg",
+      "question": "What is this parcel used for?",
+      "parcel": {
+        "pin": "80-45-100-070-00",
+        "site_address": "117 S FRANKLIN ST",
+        "acres": 0.3,
+        "municipality": "Village of Lawton"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1812,
+      "expect_any": [
+        [
+          "parking"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "village-lot-general",
+      "image": "village-parking-lot.jpg",
+      "question": null,
+      "parcel": {
+        "pin": "80-45-100-070-00",
+        "site_address": "117 S FRANKLIN ST",
+        "acres": 0.3,
+        "municipality": "Village of Lawton"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1812,
+      "expect_any": [
+        [
+          "parking",
+          "paved",
+          "pavement",
+          "asphalt"
+        ],
+        [
+          "residential",
+          "houses",
+          "homes"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "farmstead-outbuildings",
+      "image": "farmstead-with-outbuildings.jpg",
+      "question": "Are there any outbuildings on this parcel?",
+      "parcel": {
+        "pin": "80-14-051-013-00",
+        "site_address": "44262 46TH AVE",
+        "acres": 52.75,
+        "municipality": "Paw Paw Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1810,
+      "expect_any": [
+        [
+          "outbuilding",
+          "barn",
+          "shed",
+          "building",
+          "structure"
+        ]
+      ],
+      "forbid": [
+        "no outbuildings"
+      ],
+      "note": "Forbid only the outright 'no outbuildings': 'no structures' also appears when the read correctly says the field across the road is empty."
+    },
+    {
+      "id": "farmstead-general",
+      "image": "farmstead-with-outbuildings.jpg",
+      "question": null,
+      "parcel": {
+        "pin": "80-14-051-013-00",
+        "site_address": "44262 46TH AVE",
+        "acres": 52.75,
+        "municipality": "Paw Paw Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1810,
+      "expect_any": [
+        [
+          "building",
+          "barn",
+          "outbuilding",
+          "structure",
+          "shed"
+        ],
+        [
+          "field",
+          "farm",
+          "crop",
+          "pasture"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "woods-and-hayfield",
+      "image": "woods-and-hayfield.jpg",
+      "question": null,
+      "parcel": {
+        "pin": "80-10-006-004-05",
+        "site_address": "CR 681",
+        "acres": 143.21,
+        "municipality": "Hamilton Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1812,
+      "expect_any": [
+        [
+          "wooded",
+          "woods",
+          "trees",
+          "forest"
+        ],
+        [
+          "field",
+          "grass",
+          "hay",
+          "meadow",
+          "clearing",
+          "open"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "farm-pond-question",
+      "image": "farm-with-two-ponds.jpg",
+      "question": "Is there a pond on this parcel?",
+      "parcel": {
+        "pin": "80-05-028-004-02",
+        "site_address": "19030 41ST ST",
+        "acres": 19.79,
+        "municipality": "Bloomingdale Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1807,
+      "expect_any": [
+        [
+          "pond",
+          "water"
+        ]
+      ],
+      "forbid": [
+        "no pond"
+      ]
+    },
+    {
+      "id": "farm-with-ponds-general",
+      "image": "farm-with-two-ponds.jpg",
+      "question": null,
+      "parcel": {
+        "pin": "80-05-028-004-02",
+        "site_address": "19030 41ST ST",
+        "acres": 19.79,
+        "municipality": "Bloomingdale Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1807,
+      "expect_any": [
+        [
+          "pond",
+          "water"
+        ],
+        [
+          "building",
+          "barn",
+          "house",
+          "outbuilding",
+          "structure"
+        ],
+        [
+          "field",
+          "farm",
+          "crop"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "wooded-no-buildings",
+      "image": "wooded-parcel-no-buildings.jpg",
+      "question": "Are there any buildings on this parcel?",
+      "parcel": {
+        "pin": "80-04-020-018-00",
+        "site_address": "66TH ST",
+        "acres": 79.08,
+        "municipality": "Bangor Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 1809,
+      "expect_any": [
+        [
+          "no buildings",
+          "no structures",
+          "no visible",
+          "none",
+          "not see",
+          "don't see",
+          "do not see",
+          "no sign",
+          "no house",
+          "no homes",
+          "no barn"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "wooded-parcel-with-pond",
+      "image": "wooded-parcel-with-pond.jpg",
+      "note": "Captured with the wetlands overlay on, but it drew nothing at this zoom, so the case sends only the aerial.",
+      "question": null,
+      "parcel": {
+        "pin": "80-03-015-030-02",
+        "site_address": "32791 52ND ST",
+        "acres": 29.09,
+        "municipality": "Arlington Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 3616,
+      "expect_any": [
+        [
+          "wooded",
+          "woods",
+          "trees",
+          "forest"
+        ],
+        [
+          "pond",
+          "water",
+          "wet"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "lakeside-village-lot",
+      "image": "lakeside-village-lot.jpg",
+      "question": null,
+      "parcel": {
+        "pin": "80-47-582-068-00",
+        "site_address": "310 MAPLE ST",
+        "acres": 0.37,
+        "municipality": "Village of Paw Paw"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 3621,
+      "expect_any": [
+        [
+          "lake",
+          "water"
+        ],
+        [
+          "residential",
+          "homes",
+          "houses",
+          "subdivision",
+          "neighborhood"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "flood-zone-overlay",
+      "image": "flood-zone-overlay.jpg",
+      "question": "Where does the flood zone fall in this view?",
+      "parcel": null,
+      "layers": [
+        "Aerial imagery",
+        "Flood Hazard (FEMA NFHL)"
+      ],
+      "view_width_ft": 3621,
+      "expect_any": [
+        [
+          "flood"
+        ],
+        [
+          "zone a",
+          "river",
+          "lake",
+          "water",
+          "stream",
+          "creek"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "blueberry-farm-general",
+      "image": "blueberry-farm.jpg",
+      "question": null,
+      "parcel": {
+        "pin": "80-06-008-025-00",
+        "site_address": "06336 CR 215",
+        "acres": 28.54,
+        "municipality": "Columbia Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 2553,
+      "expect_any": [
+        [
+          "row",
+          "orchard",
+          "blueberr",
+          "berry",
+          "vineyard",
+          "nursery",
+          "shrub",
+          "bush"
+        ],
+        [
+          "pond",
+          "water"
+        ],
+        [
+          "building",
+          "house",
+          "barn",
+          "structure"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "blueberry-farm-crop",
+      "image": "blueberry-farm.jpg",
+      "question": "What is growing on this parcel?",
+      "parcel": {
+        "pin": "80-06-008-025-00",
+        "site_address": "06336 CR 215",
+        "acres": 28.54,
+        "municipality": "Columbia Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 2553,
+      "expect_any": [
+        [
+          "row",
+          "orchard",
+          "blueberr",
+          "berry",
+          "vineyard",
+          "shrub",
+          "bush"
+        ]
+      ],
+      "forbid": [],
+      "note": "No forbidden crops: a good read may rule corn out by name."
+    },
+    {
+      "id": "coarse-imagery-lakeshore",
+      "image": "coarse-imagery-lakeshore.jpg",
+      "note": "The imagery here is noticeably blurry; the read should say detail is limited.",
+      "question": null,
+      "parcel": {
+        "pin": "80-02-020-010-31",
+        "site_address": "CR 653",
+        "acres": 11,
+        "municipality": "Antwerp Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 2561,
+      "expect_any": [
+        [
+          "water",
+          "lake",
+          "pond"
+        ],
+        [
+          "blurr",
+          "coarse",
+          "low resolution",
+          "low-resolution",
+          "fuzzy",
+          "hazy",
+          "resolution",
+          "indistinct",
+          "unclear",
+          "soft",
+          "detail"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "dirt-track-next-door",
+      "image": "dirt-track-next-door.jpg",
+      "question": "What is on the land just north of this parcel?",
+      "parcel": {
+        "pin": "80-02-018-057-05",
+        "site_address": "59016 CR 653",
+        "acres": 11.31,
+        "municipality": "Antwerp Township"
+      },
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 3622,
+      "expect_any": [
+        [
+          "track",
+          "trail",
+          "motocross",
+          "dirt",
+          "course",
+          "loop"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "downtown-by-the-lake-no-parcel",
+      "image": "downtown-by-the-lake-no-parcel.jpg",
+      "question": null,
+      "parcel": null,
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 2561,
+      "expect_any": [
+        [
+          "downtown",
+          "commercial",
+          "business"
+        ],
+        [
+          "lake",
+          "water"
+        ]
+      ],
+      "forbid": []
+    },
+    {
+      "id": "no-imagery-at-max-zoom",
+      "image": "no-imagery-at-max-zoom.jpg",
+      "note": "Zoomed past the aerial's maximum: only parcel lines draw, so the read should say there's no imagery to judge from.",
+      "question": "Is there a house here?",
+      "parcel": null,
+      "layers": [
+        "Aerial imagery"
+      ],
+      "view_width_ft": 320,
+      "expect_any": [
+        [
+          "no aerial",
+          "no imagery",
+          "not loaded",
+          "blank",
+          "plain",
+          "isn't showing",
+          "not showing",
+          "doesn't show",
+          "does not show",
+          "only parcel",
+          "only the parcel",
+          "without imagery",
+          "missing",
+          "no photo",
+          "not visible",
+          "can't see",
+          "cannot see",
+          "can't tell",
+          "cannot tell"
+        ]
+      ],
       "forbid": []
     }
   ]

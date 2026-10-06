@@ -34,7 +34,7 @@ PARCEL_API_BASE="${PARCEL_API_BASE:-https://gis.dicemi.org/api}"
 MAP_BUDDY_TENANT="${MAP_BUDDY_TENANT:-vanburen}"
 # AI quota (DIC-1854): the quota is OFF unless AI_QUOTA_DEFAULT is set. Counted per
 # tenant over a rolling AI_QUOTA_WINDOW (24h here); one /chat or explainer call = 1, and
-# one map look (/vision/describe, DIC-2135) = VISION_QUOTA_UNITS (default 5).
+# one map look (/vision/describe, DIC-2135) = VISION_QUOTA_UNITS (default 1).
 # Counters are in-memory per instance until the shared store lands (DIC-1862), so the
 # effective ceiling is up to MAX_INSTANCES times this.
 AI_QUOTA_DEFAULT="${AI_QUOTA_DEFAULT:-200}"

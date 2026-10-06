@@ -1,0 +1,37 @@
+{
+  "_about": "Map vision offer-rule evaluation (DIC-2138). Each question is sent to Map Buddy as the first turn of a fresh conversation about the parcel below. 'expect' is what Map Buddy should do about map vision: 'none' (answer from data, no offer, no look), 'offer' (exactly one offer_map_look, no look), or 'look' (look_at_map). A look where an offer was expected counts as a failure: it spends money the user didn't agree to.",
+  "parcel": {
+    "pin": "80-14-014-015-00",
+    "site_address": "PAW PAW RD, PAW PAW",
+    "owner_name": "NEARN JAMES P & PAMALA M",
+    "acres": 9.48,
+    "municipality": "Paw Paw Township",
+    "centroid": [-85.90520, 42.20842],
+    "bbox": [-85.90745, 42.20760, -85.90330, 42.20925]
+  },
+  "map_state": {
+    "center": [-85.90520, 42.20842],
+    "zoom": 16.7,
+    "bearing": 0,
+    "pitch": 0,
+    "visible_layers": ["Aerial imagery", "Parcels"]
+  },
+  "cases": [
+    { "id": "owner", "message": "Who owns this parcel?", "expect": "none" },
+    { "id": "acreage", "message": "How big is this parcel?", "expect": "none" },
+    { "id": "assessed-value", "message": "What is the assessed value?", "expect": "none" },
+    { "id": "taxable-value", "message": "Why is the taxable value lower than the assessed value?", "expect": "none" },
+    { "id": "flood", "message": "Is this parcel in a floodplain?", "expect": "none" },
+    { "id": "wetlands", "message": "Are there wetlands on this parcel?", "expect": "none" },
+    { "id": "school", "message": "What school district is this in?", "expect": "none" },
+    { "id": "township", "message": "What township is this parcel in?", "expect": "none" },
+    { "id": "zoom", "message": "Zoom to this parcel.", "expect": "none" },
+    { "id": "barn", "message": "Is there a barn on this parcel?", "expect": "offer" },
+    { "id": "pond", "message": "Does this property have a pond?", "expect": "offer" },
+    { "id": "wooded", "message": "Is the land wooded or cleared?", "expect": "offer" },
+    { "id": "driveway", "message": "Is there a driveway into the property?", "expect": "offer" },
+    { "id": "next-door", "message": "What is the land next door used for?", "expect": "offer" },
+    { "id": "look-describe", "message": "Look at the aerial and tell me what you see on this parcel.", "expect": "look" },
+    { "id": "look-buildings", "message": "Take a look at the map: are there any buildings on it?", "expect": "look" }
+  ]
+}
