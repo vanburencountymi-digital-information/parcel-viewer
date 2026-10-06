@@ -217,8 +217,25 @@ services:
       - PV_ADMIN_TOKEN
       - PV_CONFIG_STORE_RETRY_S
       - PV_DISCOVERY_CACHE_S
+      - PV_CORS_ORIGINS
+      - PV_SMTP_HOST
+      - PV_SMTP_PORT
+      - PV_SMTP_USER
+      - PV_SMTP_PASSWORD
+      - PV_SMTP_STARTTLS
+      - PV_REPORT_TO
+      - PV_REPORT_FROM
+      - REPORT_ERROR_RATE_LIMIT
+      - REPORT_ERROR_GLOBAL_LIMIT
+      - CLIENT_ERROR_RATE_LIMIT
+      - CLIENT_ERROR_GLOBAL_LIMIT
+      - WMS_PROXY_RATE_LIMIT
+      - WMS_PROXY_MAX_BYTES
+      - SENTRY_DSN
+      - SENTRY_ENVIRONMENT
+      - LOG_FORMAT=text
       - SECRET_KEY=${DJANGO_SECRET_KEY:-insecure-local-dev-key-change-me}
-      - DEBUG=${DJANGO_DEBUG:-1}
+      - DEBUG=${DJANGO_DEBUG:-0}   # 1 shows Django's debug pages (not FastAPI's 404/500)
       - ALLOWED_HOSTS=localhost,127.0.0.1,django-api
       - LOG_LEVEL
     volumes:

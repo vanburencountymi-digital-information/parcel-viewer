@@ -14,9 +14,11 @@ The API needs three kinds of data: Django's own tables (auth, sessions, admin), 
 
 - **An `api/` folder in this repo**, built from the team's Suggested Architecture Boilerplate and laid out like automation-ops-core. The PostGIS Manager API has been in Backlog since July and does data sync. Team precedent keeps an API beside its front end (cdbg-platform `api/`, county-directory-admin).
 - **Apps:**
-  - `common` (health, database router, Sentry setup, enums);
-  - `parcels` (read-only models);
-  - `county_config` (the config store; not `config`, which is the project package).
+  - `common`: health, database router, request ids, CORS, error answers, rate limits, validation, and the logging and Sentry modules kept identical to the FastAPI and Map Buddy copies (ADR 0001);
+  - `parcels`: read-only models and the parcel and cohort routes;
+  - `county_config`: config, style, the config store and layer discovery (not `config`, which is the project package);
+  - `wms`: the federal WMS proxy;
+  - `feedback`: data-error reports and the browser error beacon.
 - **Three database aliases**, routed by app (`common/db_routers.py`):
   - `default`: Django's own tables. The only database `migrate` touches.
   - `parcels`: the shared parcel database, read-only (ADR 0007).

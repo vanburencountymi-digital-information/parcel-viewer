@@ -87,6 +87,18 @@
     {"name": "admin-versions", "method": "GET", "path": "/config/vanburen/versions", "auth": "admin"},
     {"name": "admin-discover", "method": "GET", "path": "/admin/discover/layers", "auth": "admin"},
 
+    {"name": "unknown-path", "method": "GET", "path": "/no-such-route"},
+    {"name": "wrong-method", "method": "DELETE", "path": "/parcels?bbox=0,0,1,1"},
+    {"name": "cors-simple-allowed-origin", "method": "GET", "path": "/health", "headers": {"Origin": "https://gis.dicemi.org"}},
+    {"name": "cors-simple-foreign-origin", "method": "GET", "path": "/health", "headers": {"Origin": "https://evil.example"}},
+    {"name": "cors-preflight-admin-header", "method": "OPTIONS", "path": "/config/vanburen/draft", "headers": {"Origin": "https://gis.dicemi.org", "Access-Control-Request-Method": "PUT", "Access-Control-Request-Headers": "content-type, x-admin-token"}},
+    {"name": "cors-preflight-bad-header", "method": "OPTIONS", "path": "/health", "headers": {"Origin": "https://gis.dicemi.org", "Access-Control-Request-Method": "GET", "Access-Control-Request-Headers": "x-secret"}},
+    {"name": "cors-preflight-bad-method", "method": "OPTIONS", "path": "/health", "headers": {"Origin": "https://gis.dicemi.org", "Access-Control-Request-Method": "DELETE"}},
+    {"name": "options-without-preflight", "method": "OPTIONS", "path": "/health"},
+    {"name": "wms-proxy-http-scheme", "method": "GET", "path": "/wms-proxy?url=http%3A%2F%2Fhazards.fema.gov%2Fwms"},
+    {"name": "wms-proxy-credentials", "method": "GET", "path": "/wms-proxy?url=https%3A%2F%2Fuser%3Apass%40hazards.fema.gov%2Fwms"},
+    {"name": "wms-proxy-other-port", "method": "GET", "path": "/wms-proxy?url=https%3A%2F%2Fhazards.fema.gov%3A8443%2Fwms"},
+    {"name": "wms-proxy-lookalike-host", "method": "GET", "path": "/wms-proxy?url=https%3A%2F%2Fhazards.fema.gov.evil.example%2Fwms"},
     {"name": "cors-preflight-allowed", "method": "OPTIONS", "path": "/health", "headers": {"Origin": "https://gis.dicemi.org", "Access-Control-Request-Method": "GET"}},
     {"name": "cors-preflight-foreign", "method": "OPTIONS", "path": "/health", "headers": {"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"}}
   ]

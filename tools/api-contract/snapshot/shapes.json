@@ -2075,6 +2075,135 @@
       "detail": "string"
     }
   },
+  "unknown-path": {
+    "status": 404,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "wrong-method": {
+    "status": 405,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "cors-simple-allowed-origin": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff",
+      "access-control-allow-origin": "https://gis.dicemi.org"
+    },
+    "json": {
+      "status": "string",
+      "db": "bool"
+    }
+  },
+  "cors-simple-foreign-origin": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "status": "string",
+      "db": "bool"
+    }
+  },
+  "cors-preflight-admin-header": {
+    "status": 200,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "x-content-type-options": "nosniff",
+      "access-control-allow-origin": "https://gis.dicemi.org",
+      "access-control-allow-methods": "GET, POST, PUT",
+      "access-control-allow-headers": "Accept, Accept-Language, Content-Language, Content-Type, X-Admin-Token",
+      "access-control-max-age": "600"
+    },
+    "text": "string"
+  },
+  "cors-preflight-bad-header": {
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "x-content-type-options": "nosniff",
+      "access-control-allow-origin": "https://gis.dicemi.org",
+      "access-control-allow-methods": "GET, POST, PUT",
+      "access-control-allow-headers": "Accept, Accept-Language, Content-Language, Content-Type, X-Admin-Token",
+      "access-control-max-age": "600"
+    },
+    "text": "string"
+  },
+  "cors-preflight-bad-method": {
+    "status": 400,
+    "headers": {
+      "content-type": "text/plain; charset=utf-8",
+      "x-content-type-options": "nosniff",
+      "access-control-allow-origin": "https://gis.dicemi.org",
+      "access-control-allow-methods": "GET, POST, PUT",
+      "access-control-allow-headers": "Accept, Accept-Language, Content-Language, Content-Type, X-Admin-Token",
+      "access-control-max-age": "600"
+    },
+    "text": "string"
+  },
+  "options-without-preflight": {
+    "status": 405,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": "string"
+    }
+  },
+  "wms-proxy-http-scheme": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "error": "string"
+    }
+  },
+  "wms-proxy-credentials": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "error": "string"
+    }
+  },
+  "wms-proxy-other-port": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "error": "string"
+    }
+  },
+  "wms-proxy-lookalike-host": {
+    "status": 403,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "error": "string"
+    }
+  },
   "cors-preflight-allowed": {
     "status": 200,
     "headers": {

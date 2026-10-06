@@ -13,7 +13,8 @@ import environ
 from django.core.exceptions import ImproperlyConfigured
 
 from common.enums import DatabaseAlias, Environment
-from common.observability import configure_sentry
+from common.error_logging_client import init_error_monitoring
+from common.logging_setup import configure_logging
 
 # Lets type-annotated generics such as QuerySet[Parcel] work at runtime.
 django_stubs_ext.monkeypatch()
@@ -72,10 +73,16 @@ INSTALLED_APPS = [
     "common",
     "parcels",
     "county_config",
+    "wms",
+    "feedback",
 ]
 
+# Request ids outermost (every response, CORS rejections included, gets one), then
+# security headers, so a CORS preflight answered by CorsMiddleware still gets them.
 MIDDLEWARE = [
+    "common.middleware.RequestIdMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "common.middleware.CorsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -203,6 +210,11 @@ REST_FRAMEWORK = {
         # The config admin routes (shared admin key until phase 5, ADR 0008).
         "admin": env.str("THROTTLE_ADMIN", default="120/min"),
     },
+    # Outages, load, rate limits and wrong methods answer as the FastAPI backend did.
+    "EXCEPTION_HANDLER": "common.exceptions.api_exception_handler",
+    # No OPTIONS metadata: FastAPI answered a plain OPTIONS with 405 (preflights are
+    # answered by common.middleware.CorsMiddleware before DRF sees them).
+    "DEFAULT_METADATA_CLASS": None,
     # JSON only, encoded like the FastAPI backend (ADR 0012); no browsable API.
     "DEFAULT_RENDERER_CLASSES": ["common.renderers.FastApiCompatibleJSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
@@ -218,6 +230,37 @@ CONFIG_STORE_CONFIGURED = bool(env.str("PV_WRITER_DATABASE_URL", default=""))
 CONFIG_STORE_RETRY_S = env.float("PV_CONFIG_STORE_RETRY_S", default=30.0)
 DISCOVERY_CACHE_S = env.float("PV_DISCOVERY_CACHE_S", default=60.0)
 
+# CORS (DIC-1852). The viewer and admin console call the API same-origin through nginx
+# (/api/), so CORS only governs third-party browser callers: just the production viewer
+# origin by default (PV_CORS_ORIGINS, comma-separated). No credentials.
+CORS_ORIGINS = [
+    o.strip()
+    for o in env.str("PV_CORS_ORIGINS", default="https://gis.dicemi.org").split(",")
+    if o.strip()
+]
+CORS_ALLOW_METHODS = ["GET", "POST", "PUT"]
+CORS_ALLOW_HEADERS = ["Content-Type", "X-Admin-Token"]
+CORS_EXPOSE_HEADERS = ["X-Request-ID"]
+
+# The public write and proxy routes' limits, named as in the FastAPI backend (DIC-496,
+# DIC-1852): per client, plus a global ceiling where every request emails or logs.
+WMS_PROXY_RATE_LIMIT = env.str("WMS_PROXY_RATE_LIMIT", default="45/minute")
+WMS_PROXY_MAX_BYTES = env.int("WMS_PROXY_MAX_BYTES", default=5 * 1024 * 1024)
+REPORT_ERROR_RATE_LIMIT = env.str("REPORT_ERROR_RATE_LIMIT", default="5/hour")
+REPORT_ERROR_GLOBAL_LIMIT = env.str("REPORT_ERROR_GLOBAL_LIMIT", default="100/day")
+CLIENT_ERROR_RATE_LIMIT = env.str("CLIENT_ERROR_RATE_LIMIT", default="20/minute")
+CLIENT_ERROR_GLOBAL_LIMIT = env.str("CLIENT_ERROR_GLOBAL_LIMIT", default="5000/day")
+
+# Data-error report email. Without PV_SMTP_HOST, /report-error answers 503
+# "email_not_configured" and the viewer shows a try-again state.
+SMTP_HOST = env.str("PV_SMTP_HOST", default="")
+SMTP_PORT = env.int("PV_SMTP_PORT", default=587)
+SMTP_USER = env.str("PV_SMTP_USER", default="")
+SMTP_PASSWORD = env.str("PV_SMTP_PASSWORD", default="")
+SMTP_STARTTLS = env.str("PV_SMTP_STARTTLS", default="true").lower() != "false"
+REPORT_TO = env.str("PV_REPORT_TO", default="gis@vanburencountymi.gov")
+REPORT_FROM = env.str("PV_REPORT_FROM", default="")  # defaults to SMTP_USER when sending
+
 # API docs exist for staff only (ADR 0009): the public FastAPI docs were turned off for
 # security (DIC-1855), and the schema stays off the public internet.
 SPECTACULAR_SETTINGS = {
@@ -229,19 +272,11 @@ SPECTACULAR_SETTINGS = {
 }
 
 
-LOG_LEVEL = env.str("LOG_LEVEL", default="INFO")
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "console": {"format": "%(asctime)s %(levelname)s %(name)s: %(message)s"},
-    },
-    "handlers": {
-        "console": {"class": "logging.StreamHandler", "formatter": "console"},
-    },
-    "root": {"handlers": ["console"], "level": LOG_LEVEL},
-}
-
-# Error reporting only runs in staging/production; a no-op everywhere else (ADR 0001).
-SENTRY_DSN = env.str("SENTRY_DSN", default="")
-configure_sentry(dsn=SENTRY_DSN, environment=ENVIRONMENT, release=APP_VERSION)
+# Logs and errors as the FastAPI backend writes them (ADR 0001), through the modules kept
+# identical across the three services: stdout, one line per record (JSON with
+# LOG_FORMAT=json, as the images set), each stamped with the request id. Sentry starts
+# only when SENTRY_DSN is set (staging and production), and its events drop query strings,
+# cookies and bodies, which can carry owner names.
+LOGGING_CONFIG = None
+configure_logging("parcel-api")
+init_error_monitoring("parcel-api", APP_VERSION)

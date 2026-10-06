@@ -18,6 +18,12 @@ module = ["environ.*", "parameterized.*", "drf_spectacular.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# common/request_context.py is kept identical to the FastAPI copies, which import
+# Starlette's types for type-checking only; Starlette isn't installed here.
+module = ["starlette.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # Tests get their correctness from running, not from mypy (as in automation-ops-core).
 module = "*.tests.*"
 ignore_errors = true
