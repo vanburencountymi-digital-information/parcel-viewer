@@ -58,8 +58,8 @@
     {"name": "nearest-road-lawrence", "method": "GET", "path": "/nearest-road?lng=-86.0517&lat=42.2195"},
     {"name": "nearest-road-no-coords", "method": "GET", "path": "/nearest-road"},
     {"name": "nearest-road-not-numbers", "method": "GET", "path": "/nearest-road?lng=x&lat=y"},
-    {"name": "streetview-36534", "known_issue": "DIC-2152", "method": "GET", "path": "/streetview-target?id=36534"},
-    {"name": "streetview-not-found", "known_issue": "DIC-2152", "method": "GET", "path": "/streetview-target?id=999999999"},
+    {"name": "streetview-36534", "method": "GET", "path": "/streetview-target?id=36534"},
+    {"name": "streetview-not-found", "method": "GET", "path": "/streetview-target?id=999999999"},
     {"name": "streetview-id-not-int", "method": "GET", "path": "/streetview-target?id=x"},
 
     {"name": "wms-proxy-host-not-allowed", "method": "GET", "path": "/wms-proxy?url=https%3A%2F%2Fevil.example%2Fwms"},

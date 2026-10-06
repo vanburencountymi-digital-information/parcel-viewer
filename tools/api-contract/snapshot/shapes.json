@@ -1738,6 +1738,34 @@
       ]
     }
   },
+  "streetview-36534": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "ok": "bool",
+      "viewpoint": [
+        "number"
+      ],
+      "lookAt": [
+        "number"
+      ],
+      "address": "string",
+      "hasAddress": "bool"
+    }
+  },
+  "streetview-not-found": {
+    "status": 200,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "ok": "bool"
+    }
+  },
   "streetview-id-not-int": {
     "status": 422,
     "headers": {

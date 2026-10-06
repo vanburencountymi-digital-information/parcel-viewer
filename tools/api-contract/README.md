@@ -53,9 +53,8 @@ easy on the shared database: about 70 requests in 20–25 s.
 ## Known issues
 
 - `known_issue` marks a route that's broken today. Its response is reported but never
-  recorded or failed on, so a bug isn't frozen into the contract.
-  `/streetview-target` returns 500 (DIC-2152: `geo.address_points.full_address` was
-  renamed to `fulladdr`).
+  recorded or failed on, so a bug isn't frozen into the contract. None are flagged now;
+  `/streetview-target` was, until DIC-2152 fixed it.
 - `/docs` and `/openapi.json` aren't in the catalogue. They're environment config
   (`PV_API_DOCS`), not contract; the unit tests cover the default.
 

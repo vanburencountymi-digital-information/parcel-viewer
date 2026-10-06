@@ -143,6 +143,58 @@ class PublicRouteHardeningTests(TestCase):
         self.assertIn("archived_at IS NULL", _PARCEL_SQL)
 
 
+def _one_row_pool(row: dict | None) -> MagicMock:
+    pool = MagicMock()
+    pool.connection.return_value.__enter__.return_value.execute.return_value.fetchone.return_value = row
+    return pool
+
+
+class StreetViewTargetTests(TestCase):
+    """/streetview-target stands on the nearest road and looks at the address point (DIC-2152)."""
+
+    def setUp(self) -> None:
+        self.client = TestClient(main.app)
+
+    def test_reads_the_address_points_fulladdr_column(self) -> None:
+        pool = _one_row_pool(None)
+        with patch("parcel_viewer.routers.parcels.pool", pool):
+            self.client.get("/streetview-target", params={"id": 7})
+
+        sql = pool.connection.return_value.__enter__.return_value.execute.call_args.args[0]
+        self.assertIn("a.fulladdr AS full_address", sql)
+
+    def test_parcel_with_an_address_point_looks_from_the_road(self) -> None:
+        row = {
+            "anchor_lng": -86.05,
+            "anchor_lat": 42.30,
+            "road_lng": -86.051,
+            "road_lat": 42.301,
+            "address": "32791 52ND ST",
+            "has_address": True,
+        }
+        with patch("parcel_viewer.routers.parcels.pool", _one_row_pool(row)):
+            response = self.client.get("/streetview-target", params={"id": 7})
+
+        self.assertEqual(
+            response.json(),
+            {
+                "ok": True,
+                "viewpoint": [-86.051, 42.301],
+                "lookAt": [-86.05, 42.30],
+                "address": "32791 52ND ST",
+                "hasAddress": True,
+            },
+        )
+
+    def test_unknown_parcel_is_not_ok(self) -> None:
+        row = {"anchor_lng": None}
+        with patch("parcel_viewer.routers.parcels.pool", _one_row_pool(row)):
+            response = self.client.get("/streetview-target", params={"id": 999})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"ok": False})
+
+
 class ParcelRollYearTests(TestCase):
     """/parcel/{id} says which tax roll its value history ends at (DIC-1878)."""
 
