@@ -197,7 +197,13 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         "anon": env.str("THROTTLE_ANON", default="120/min"),
         "user": env.str("THROTTLE_USER", default="600/min"),
+        # The viewer's own reads (/parcels on every map move, search as you type). Many
+        # county staff can share one public IP, so this is per client but generous.
+        "parcel_read": env.str("THROTTLE_PARCEL_READ", default="600/min"),
     },
+    # JSON only, encoded like the FastAPI backend (ADR 0012); no browsable API.
+    "DEFAULT_RENDERER_CLASSES": ["common.renderers.FastApiCompatibleJSONRenderer"],
+    "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
 }
 
 # API docs exist for staff only (ADR 0009): the public FastAPI docs were turned off for

@@ -7,6 +7,8 @@ psycopg[binary,pool]
 whitenoise
 gunicorn
 sentry-sdk
+# Request validation with FastAPI's exact 422 errors during the port (ADR 0012)
+pydantic
 
 # Development and tests
 django-stubs[compatible-mypy]

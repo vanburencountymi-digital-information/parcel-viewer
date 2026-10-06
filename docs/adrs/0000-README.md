@@ -15,3 +15,4 @@ Short records of significant decisions: what we chose and why. Add one when a de
 | [0009](0009-api-docs-staff-only.md) | API docs | drf-spectacular schema and Swagger UI, staff only in every environment. |
 | [0010](0010-config-store-on-existing-table.md) | Config store | `ConfigVersion` maps the existing `config.config_versions` table until cutover, so both backends share one history; Django adopts it afterwards. |
 | [0011](0011-contract-parity-front-end-unchanged.md) | Contract parity | Same paths and JSON (no trailing slashes; admin at `/django-admin/`); a route is ported when its contract diff is empty; the front end waits for cutover. |
+| [0012](0012-request-validation-and-json-parity.md) | Validation and JSON parity | During the port, parameters are validated with Pydantic and errors rendered as FastAPI's 422s; one renderer encodes Decimals and datetimes as FastAPI does; presenters shape responses until routes move to DRF serializers after cutover. |
