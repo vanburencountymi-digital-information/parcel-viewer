@@ -1,0 +1,5 @@
+.env
+**/__pycache__
+staticfiles
+.mypy_cache
+.ruff_cache

@@ -32,7 +32,7 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query", 
 "engine/test/*.py" = ["E402", "E702"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app", "parcel_viewer", "common", "agent", "main", "cache", "usage", "citations", "kb_resolver", "kb_store"]
+known-first-party = ["app", "parcel_viewer", "common", "agent", "main", "cache", "usage", "citations", "kb_resolver", "kb_store", "config", "parcels", "county_config"]
 
 [tool.ruff.format]
 quote-style = "double"

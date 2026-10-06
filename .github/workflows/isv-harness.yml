@@ -85,6 +85,58 @@ jobs:
         working-directory: ${{ matrix.service }}
         run: pytest -q
 
+  # The Django port of the parcel API (DIC-2146): lint, types, missing migrations and tests,
+  # against a throwaway PostGIS (tests never reach the shared database).
+  django-api:
+    runs-on: ubuntu-latest
+    services:
+      postgis:
+        image: postgis/postgis:17-3.5-alpine
+        env:
+          POSTGRES_DB: parcel_viewer_api
+          POSTGRES_USER: api
+          POSTGRES_PASSWORD: api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U api -d parcel_viewer_api"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.test
+      DATABASE_URL: postgis://api:api@localhost:5432/parcel_viewer_api
+      PV_DATABASE_URL: postgis://api:api@localhost:5432/parcel_viewer_api
+    defaults:
+      run:
+        working-directory: api
+    steps:
+      - uses: actions/checkout@v7
+
+      # GeoDjango loads GEOS, GDAL and PROJ through ctypes.
+      - name: Install GeoDjango libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gdal-bin
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: api/requirements.txt
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: ruff
+        run: ruff check . && ruff format --check .
+
+      - name: mypy
+        run: mypy .
+
+      - name: Migrations are up to date
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Tests
+        run: python manage.py test --noinput
+
   # The images must build on every PR, so a broken Dockerfile or dependency can't
   # merge (Production App Checklist: "build must succeed"). Nothing is pushed.
   docker-build:
@@ -97,10 +149,15 @@ jobs:
             context: backend
           - name: map-buddy
             context: map-buddy/backend
+          - name: django-api
+            context: api
+            target: production
     steps:
       - uses: actions/checkout@v7
       - name: Build ${{ matrix.name }} image
-        run: docker build --tag "parcel-viewer-${{ matrix.name }}:ci" "${{ matrix.context }}"
+        env:
+          TARGET: ${{ matrix.target }}
+        run: docker build ${TARGET:+--target "$TARGET"} --tag "parcel-viewer-${{ matrix.name }}:ci" "${{ matrix.context }}"
 
   # The nginx config and the compose files must be valid, and production must never
   # get the dev Map Buddy proxy (DIC-1871, DIC-1874). No containers are started.

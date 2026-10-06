@@ -1,0 +1,17 @@
+# Top-level dependencies; requirements.txt pins the full set (`make lock`).
+Django~=6.0
+django-environ
+djangorestframework
+drf-spectacular
+psycopg[binary,pool]
+whitenoise
+gunicorn
+sentry-sdk
+
+# Development and tests
+django-stubs[compatible-mypy]
+djangorestframework-stubs
+mypy
+ruff
+factory_boy
+parameterized

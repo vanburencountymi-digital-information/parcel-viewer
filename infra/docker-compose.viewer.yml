@@ -175,3 +175,55 @@ services:
       - martin
       - map-buddy
     restart: unless-stopped
+
+  # ── GeoDjango port (DIC-2146) ────────────────────────────────────────────────
+  # The new API beside the FastAPI one. Not started by default: add `--profile django`.
+  # It answers on port 8001 and isn't behind nginx until phase 4 (DIC-2150), so the
+  # viewer keeps using FastAPI. Compare the two with tools/api-contract (diff).
+  api-db:
+    profiles: ["django"]
+    # Django's own tables, and locally the config store table (created from the same SQL
+    # migrations production used). Tests run here too.
+    image: postgis/postgis:17-3.5-alpine
+    environment:
+      POSTGRES_DB: parcel_viewer_api
+      POSTGRES_USER: api
+      POSTGRES_PASSWORD: api
+    volumes:
+      - api_db_data:/var/lib/postgresql/data
+      - ../backend/migrations/0001_config_store.sql:/docker-entrypoint-initdb.d/10_config_store.sql:ro
+      - ../backend/migrations/0002_config_versions_unique_version.sql:/docker-entrypoint-initdb.d/20_config_versions_unique_version.sql:ro
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U api -d parcel_viewer_api"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  django-api:
+    profiles: ["django"]
+    build:
+      context: ../api
+      target: dev
+      args:
+        APP_VERSION: ${APP_VERSION:-0.0.0}
+    environment:
+      - DATABASE_URL=postgis://api:api@api-db:5432/parcel_viewer_api
+      - PV_DATABASE_URL
+      - PV_WRITER_DATABASE_URL
+      - SECRET_KEY=${DJANGO_SECRET_KEY:-insecure-local-dev-key-change-me}
+      - DEBUG=${DJANGO_DEBUG:-1}
+      - ALLOWED_HOSTS=localhost,127.0.0.1,django-api
+      - LOG_LEVEL
+    volumes:
+      # Code edits show up without a rebuild; makemigrations writes back to the host.
+      - ../api:/app
+    ports:
+      - "8001:8000"
+    depends_on:
+      api-db:
+        condition: service_healthy
+
+volumes:
+  api_db_data:
