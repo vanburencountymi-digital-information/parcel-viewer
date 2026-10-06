@@ -683,6 +683,9 @@
           question:   look.question || null,
           parcel:     p ? { pin: p.pin, site_address: p.site_address, acres: p.acres, municipality: p.municipality } : null,
           layers:     layers,
+          // Overlays still loading or failing at capture (DIC-2144), so the model doesn't
+          // read "no wetlands" from a layer that hadn't drawn.
+          layers_incomplete: img.incomplete && img.incomplete.length ? img.incomplete.slice(0, 40) : null,
         }),
       });
     }).then(function (res) {
@@ -725,7 +728,9 @@
     var when = data.at ? new Date(data.at) : new Date();
     var time = isNaN(when) ? '' : when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     var layers = (data.layers || []).join(', ');
-    meta.textContent = (layers ? 'Layers: ' + layers : 'Base map only') + (time ? ' · ' + time : '') +
+    var incomplete = (data.layers_incomplete || []).join(', ');
+    meta.textContent = (layers ? 'Layers: ' + layers : 'Base map only') +
+      (incomplete ? ' (not fully loaded: ' + incomplete + ')' : '') + (time ? ' · ' + time : '') +
       ' · An interpretation of the imagery, not a survey or tax record';
     el.appendChild(lbl);
     el.appendChild(body);

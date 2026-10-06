@@ -117,6 +117,18 @@ class DescribeViewTests(TestCase):
             self.assertIn(expected, text_block["text"])
         self.assertIn("Van Buren County, Michigan", kwargs["system"])
 
+    def test_incomplete_overlays_are_named_so_the_model_does_not_call_them_absent(
+        self,
+    ) -> None:
+        text = vision._user_text(
+            None, None, ["Aerial imagery", "Wetlands"], 3600, layers_incomplete=["Wetlands"]
+        )
+
+        self.assertIn("Not fully loaded when the screenshot was taken", text)
+        self.assertIn(": Wetlands.", text)
+        self.assertIn("Don't conclude those features are absent", text)
+        self.assertNotIn("Not fully loaded", vision._user_text(None, None, ["Wetlands"], 3600))
+
     @patch("vision.VISION_EFFORT", "low")
     @patch("vision._create_message", autospec=True, return_value=_response(_text("ok")))
     def test_effort_is_sent_only_when_configured(self, mock_create) -> None:
@@ -269,6 +281,19 @@ class VisionRouteTests(_ApiTestCase):
         self.assertEqual(mock_run.call_args.kwargs["question"], "Is there a barn?")
         self.assertEqual(mock_run.call_args.kwargs["parcel"]["acres"], 12.5)
         self.assertEqual(mock_run.call_args.kwargs["view_width_ft"], 1800)
+        self.assertIsNone(mock_run.call_args.kwargs["layers_incomplete"])
+        self.assertEqual(body["layers_incomplete"], [])
+
+    @patch("main.vision.run_describe_view", autospec=True)
+    @patch("main.ai_usage.reserve", autospec=True, return_value=(True, 10))
+    def test_incomplete_overlays_are_passed_on_and_echoed(self, _reserve, mock_run) -> None:
+        mock_run.return_value = {"description": "Woods.", "model": "claude-sonnet-5-5"}
+        body = {**VALID_BODY, "layers_incomplete": ["Wetlands (USFWS NWI)"]}
+
+        response = self.client.post("/vision/describe", json=body)
+
+        self.assertEqual(mock_run.call_args.kwargs["layers_incomplete"], ["Wetlands (USFWS NWI)"])
+        self.assertEqual(response.json()["layers_incomplete"], ["Wetlands (USFWS NWI)"])
 
     @patch("main.vision.run_describe_view", autospec=True)
     @patch("main.ai_usage.reserve", autospec=True)
@@ -291,6 +316,7 @@ class VisionRouteTests(_ApiTestCase):
             ("gif_type", {"media_type": "image/gif"}),
             ("question_too_long", {"question": "x" * 501}),
             ("too_many_layers", {"layers": ["a"] * 41}),
+            ("too_many_incomplete", {"layers_incomplete": ["a"] * 41}),
             ("no_image", {"image": ""}),
             ("negative_width", {"view_width_ft": -5}),
         ]

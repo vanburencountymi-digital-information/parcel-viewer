@@ -281,6 +281,8 @@ class VisionRequest(BaseModel):
     question: str | None = Field(default=None, max_length=500)
     parcel: VisionParcel | None = None
     layers: list[_LayerName] | None = Field(default=None, max_length=40)
+    # Overlays still loading or failing when the screenshot was taken (DIC-2144).
+    layers_incomplete: list[_LayerName] | None = Field(default=None, max_length=40)
 
 
 class WorkflowRequest(BaseModel):
@@ -433,6 +435,7 @@ def vision_describe(
             parcel=body.parcel.model_dump() if body.parcel else None,
             layers=body.layers,
             view_width_ft=body.view_width_ft,
+            layers_incomplete=body.layers_incomplete,
         )
     except vision.VisionRefused:
         log.warning("vision call refused or empty")
@@ -446,6 +449,7 @@ def vision_describe(
         "description": result["description"],
         "model": result["model"],
         "layers": body.layers or [],
+        "layers_incomplete": body.layers_incomplete or [],
         "at": datetime.now(UTC).isoformat(timespec="seconds"),
     }
 

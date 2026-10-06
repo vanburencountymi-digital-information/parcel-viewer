@@ -1,5 +1,5 @@
 {
-  "_about": "Map vision evaluation set (DIC-2135). Each image is exactly what a look sends: captured by PV_VISION.capture from the dev viewer (straight down, north up). 'expect_any' groups: the description must contain at least one word from EACH group (case-insensitive). 'forbid': words that must not appear. 21 cases over 17 views (DIC-2138): town and rural parcels, structures, ponds, woods, crops, a flood overlay, the Lake Michigan shore, coarse imagery, no parcel selected, zoomed far out, and past the aerial's maximum zoom.",
+  "_about": "Map vision evaluation set (DIC-2135). Each image is exactly what a look sends: captured by PV_VISION.capture from the dev viewer (straight down, north up). 'expect_any' groups: the description must contain at least one word from EACH group (case-insensitive). 'forbid': words that must not appear. 22 cases over 18 views (DIC-2138, DIC-2144): town and rural parcels, structures, ponds, woods, crops, a flood overlay, a wetlands overlay, the Lake Michigan shore, coarse imagery, no parcel selected, zoomed far out, and past the aerial's maximum zoom.",
   "cases": [
     {
       "id": "ballfields-east-of-wooded-parcel",
@@ -341,7 +341,7 @@
     {
       "id": "wooded-parcel-with-pond",
       "image": "wooded-parcel-with-pond.jpg",
-      "note": "Captured with the wetlands overlay on, but it drew nothing at this zoom, so the case sends only the aerial.",
+      "note": "Aerial only. The original capture had the wetlands overlay on, but headless Edge was refused by USFWS (it answers HeadlessChrome user agents with a 500), so none drew; see wetlands-overlay-wooded-parcel for the same view with wetlands (DIC-2144).",
       "question": null,
       "parcel": {
         "pin": "80-03-015-030-02",
@@ -367,6 +367,32 @@
         ]
       ],
       "forbid": []
+    },
+    {
+      "id": "wetlands-overlay-wooded-parcel",
+      "image": "wetlands-overlay-wooded-parcel.jpg",
+      "note": "Same view as wooded-parcel-with-pond with the USFWS wetlands overlay drawn (DIC-2144). Captured by PV_VISION.capture in headless Edge with a normal Edge user agent.",
+      "question": "Are there wetlands on this parcel?",
+      "parcel": {
+        "pin": "80-03-015-030-02",
+        "site_address": "32791 52ND ST",
+        "acres": 29.09,
+        "municipality": "Arlington Township"
+      },
+      "layers": [
+        "Aerial imagery",
+        "Wetlands (USFWS NWI)"
+      ],
+      "view_width_ft": 3616,
+      "expect_any": [
+        [
+          "wetland"
+        ]
+      ],
+      "forbid": [
+        "no wetlands",
+        "no mapped wetlands"
+      ]
     },
     {
       "id": "lakeside-village-lot",

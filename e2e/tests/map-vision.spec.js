@@ -209,3 +209,54 @@ test('the per-person look limit gets its own message', async ({ page, consoleGua
   await expect(page.locator('.mb-msg-ai-body').last()).toContainText('limit for map looks');
   expect(calls.chat).toHaveLength(0);
 });
+
+// DIC-2144: the federal overlay servers are slow (a new zoom-16 view took 3–9 s) and can
+// fail; USFWS also answers headless browsers with a 500. The wetlands tiles are stubbed
+// here so the outcome doesn't depend on that server.
+const NWI = /fwspublicservices\.wim\.usgs\.gov\/wetlandsmapservice/;
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
+
+async function turnOnWetlandsAndLook(page) {
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ zoom: 15 }); });
+  await waitForMapIdle(page);
+  await openChat(page);
+  await page.evaluate(() => window.PS_OVERLAY_LAYERS.setOverlay('overlay-wetlands', true));
+  await page.locator('#mb-look-btn').click();   // straight away, before any tile is back
+  await idle(page);
+}
+
+test('a look right after wetlands turn on waits for their slow tiles', async ({ page }) => {
+  const tilesDone = [];
+  await page.route(NWI, async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    await route.fulfill({ status: 200, contentType: 'image/png', headers: { 'Access-Control-Allow-Origin': '*' }, body: PNG_1PX });
+    tilesDone.push(Date.now());
+  });
+  const calls = await mockMapBuddy(page, { chatReplies: [['Wetlands cover the south half.']] });
+  let visionAt = 0;
+  page.on('request', (r) => { if (/\/vision\/describe$/.test(r.url())) visionAt = Date.now(); });
+  await gotoViewer(page);
+  await selectParcelViaSearch(page);
+
+  await turnOnWetlandsAndLook(page);
+
+  expect(tilesDone.length, 'wetlands tiles were requested').toBeGreaterThan(0);
+  expect(visionAt, 'the screenshot waited for the wetlands tiles').toBeGreaterThanOrEqual(Math.max(...tilesDone));
+  expect(calls.vision[0].layers_incomplete).toBeNull();
+});
+
+test('a look with a failing wetlands service says the layer did not fully load', async ({ page, consoleGuard }) => {
+  consoleGuard.allow(/status of 500.*wetlandsmapservice/);
+  await page.route(NWI, (route) => route.fulfill({ status: 500, contentType: 'text/html', body: 'error' }));
+  const calls = await mockMapBuddy(page, {
+    chatReplies: [['The wetlands layer did not load.']],
+    vision: { status: 200, body: { ok: true, description: READ, model: 'claude-sonnet-5-5', layers: ['Aerial imagery', 'Wetlands (USFWS NWI)'], layers_incomplete: ['Wetlands (USFWS NWI)'], at: '2026-10-06T12:00:00+00:00' } },
+  });
+  await gotoViewer(page);
+  await selectParcelViaSearch(page);
+
+  await turnOnWetlandsAndLook(page);
+
+  expect(calls.vision[0].layers_incomplete).toEqual(['Wetlands (USFWS NWI)']);
+  await expect(page.locator('.mb-msg-vision .mb-vision-meta')).toContainText('not fully loaded: Wetlands (USFWS NWI)');
+});

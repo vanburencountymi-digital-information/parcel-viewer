@@ -11,7 +11,7 @@ const vm = require('node:vm');
 const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'public', 'js', 'pv-vision.js'), 'utf8');
 
 function load(extra) {
-  const sandbox = Object.assign({ setTimeout, Promise, Math, Error }, extra);
+  const sandbox = Object.assign({ setTimeout, clearTimeout, Promise, Math, Error }, extra);
   vm.createContext(sandbox);
   vm.runInContext(SRC.replace('typeof window !== \'undefined\' ? window : globalThis', 'globalThis'), sandbox);
   return sandbox.PV_VISION;
@@ -62,7 +62,7 @@ test('capture scales the canvas, sends JPEG, and drops the data-URI prefix', asy
   const drawn = [];
   const V = load(fakeDom(drawn, ['data:image/jpeg;base64,QUJD']));
   const img = await V.capture(fakeMap({ settled: true, canvas: { width: 3840, height: 2160 } }));
-  assert.deepStrictEqual(plain(img), { data: 'QUJD', media_type: 'image/jpeg', width: 2576, height: 1449, view_width_ft: 2697 });
+  assert.deepStrictEqual(plain(img), { data: 'QUJD', media_type: 'image/jpeg', width: 2576, height: 1449, view_width_ft: 2697, incomplete: [] });
   assert.deepStrictEqual(plain(drawn), [[2576, 1449], ['image/jpeg', 0.85]]);
 });
 
@@ -112,6 +112,103 @@ test('a flat, north-up, settled view is captured as it is', async () => {
   const map = fakeMap({ settled: true, canvas: { width: 100, height: 100 } });
   await V.capture(map);
   assert.deepStrictEqual(plain(map.jumps), []);
+});
+
+// DIC-2144: the slow federal overlays. A fake map with a style, a zoom, per-source load
+// state, and a render frame that's fired by triggerRepaint.
+function overlayMap({ layers, zoom = 16, loadedSources = {}, tilesLoadedBeforeFrame = true }) {
+  const m = fakeMap({ settled: true, canvas: { width: 100, height: 100 } });
+  let rendered = false;
+  m.getZoom = () => zoom;
+  m.getStyle = () => ({ layers });
+  m.isSourceLoaded = (id) => loadedSources[id] !== false;
+  // Before the first frame MapLibre hasn't requested the new tiles, so it looks loaded.
+  m.areTilesLoaded = () => (rendered ? Object.values(loadedSources).every(Boolean) : tilesLoadedBeforeFrame);
+  m.loaded = m.areTilesLoaded;
+  const handlers = {};
+  m.once = (ev, fn) => { handlers[ev] = fn; };
+  m.fire = (ev) => handlers[ev] && handlers[ev]();
+  m.triggerRepaint = () => { rendered = true; m.fire('render'); };
+  return m;
+}
+
+// setTimeout that records delays and never fires on its own, except the short frame wait.
+function recordingTimers() {
+  const delays = [];
+  const timers = [];
+  return {
+    delays,
+    fireAll: () => timers.splice(0).forEach((fn) => fn()),
+    clearTimeout: () => {},
+    setTimeout: (fn, ms) => { delays.push(ms); if (ms <= 100) setImmediate(fn); else timers.push(fn); },
+  };
+}
+
+const WETLANDS = { id: 'overlay-wetlands', type: 'raster', source: 'overlay-wetlands', minzoom: 12, layout: { visibility: 'visible' } };
+
+test('a layer just turned on is waited for even though the map looked loaded before the next frame', async () => {
+  const drawn = [];
+  const V = load(fakeDom(drawn, ['data:image/jpeg;base64,QUJD']));
+  const loadedSources = { 'overlay-wetlands': false };
+  const map = overlayMap({ layers: [WETLANDS], loadedSources });
+  const pending = V.capture(map);
+  await new Promise((r) => setImmediate(r));
+  assert.strictEqual(drawn.length, 0, 'not captured on the stale "all loaded" state');
+  loadedSources['overlay-wetlands'] = true;   // the tiles arrive, then the map goes idle
+  map.fire('idle');
+  const img = await pending;
+  assert.strictEqual(drawn.length, 2);
+  assert.deepStrictEqual(plain(img.incomplete), []);
+});
+
+test('a visible federal overlay gets the 12 s wait, and one still loading is reported by label', async () => {
+  const timers = recordingTimers();
+  const V = load(Object.assign(fakeDom([], ['data:image/jpeg;base64,QUJD']), {
+    setTimeout: timers.setTimeout,
+    PS_OVERLAY_LAYERS: { overlays: [{ id: 'overlay-wetlands', label: 'Wetlands (USFWS NWI)' }] },
+  }));
+  const map = overlayMap({ layers: [WETLANDS], loadedSources: { 'overlay-wetlands': false } });
+  const pending = V.capture(map);
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.ok(timers.delays.includes(12000), `delays: ${timers.delays}`);
+  assert.ok(!timers.delays.includes(5000));
+  timers.fireAll();   // the wait runs out with the wetlands tiles still out
+  const img = await pending;
+  assert.deepStrictEqual(plain(img.incomplete), ['Wetlands (USFWS NWI)']);
+});
+
+test('an overlay whose tiles failed counts as loaded to MapLibre but is reported as incomplete', async () => {
+  // USFWS answers headless browsers with a 500; a down server looks the same.
+  const V = load(Object.assign(fakeDom([], ['data:image/jpeg;base64,QUJD']), {
+    PS_OVERLAY_LAYERS: {
+      overlays: [{ id: 'overlay-wetlands', label: 'Wetlands (USFWS NWI)' }],
+      isUnavailable: (id) => id === 'overlay-wetlands',
+    },
+  }));
+  const map = overlayMap({ layers: [WETLANDS], loadedSources: { 'overlay-wetlands': true } });
+  const img = await V.capture(map);
+  assert.deepStrictEqual(plain(img.incomplete), ['Wetlands (USFWS NWI)']);
+});
+
+test('hidden, out-of-zoom, aerial and hillshade layers do not count as slow overlays', async () => {
+  const timers = recordingTimers();
+  const V = load(Object.assign(fakeDom([], ['data:image/jpeg;base64,QUJD']), { setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout }));
+  const layers = [
+    { ...WETLANDS, layout: { visibility: 'none' } },
+    { id: 'overlay-contours-2ft', type: 'raster', source: 'overlay-contours-2ft', minzoom: 15 },
+    { id: 'mi-aerial', type: 'raster', source: 'mi-aerial' },
+    { id: 'overlay-hillshade', type: 'hillshade', source: 'overlay-hillshade' },
+  ];
+  const map = overlayMap({ layers, zoom: 14, loadedSources: { 'mi-aerial': false } });
+  const pending = V.capture(map);
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.ok(timers.delays.includes(5000), `delays: ${timers.delays}`);
+  assert.ok(!timers.delays.includes(12000));
+  timers.fireAll();
+  const img = await pending;
+  assert.deepStrictEqual(plain(img.incomplete), []);
 });
 
 test('viewWidthFt is the east-west span at the view center, or null when unknown', () => {
