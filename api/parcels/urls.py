@@ -10,6 +10,8 @@ urlpatterns = [
         "parcel/<str:parcel_id>/history", views.ParcelHistoryView.as_view(), name="parcel-history"
     ),
     path("parcels", views.ParcelsInBboxView.as_view(), name="parcels-bbox"),
+    path("cohort", views.CohortView.as_view(), name="cohort"),
+    path("cohort/geographies", views.CohortGeographiesView.as_view(), name="cohort-geographies"),
     path("search", views.SearchView.as_view(), name="parcel-search"),
     path("nearest-road", views.NearestRoadView.as_view(), name="nearest-road"),
     path("streetview-target", views.StreetViewTargetView.as_view(), name="streetview-target"),

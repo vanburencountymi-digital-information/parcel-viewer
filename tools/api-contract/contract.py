@@ -102,6 +102,11 @@ def send(base: str, req: dict[str, Any]) -> dict[str, Any] | None:
     if "body" in req:
         data = json.dumps(_expand(req["body"])).encode("utf-8")
         headers["Content-Type"] = "application/json"
+    elif "raw_body" in req:
+        # Bytes exactly as written (malformed JSON, plain text), for the body-parsing cases.
+        data = _expand(req["raw_body"]).encode("utf-8")
+    if "content_type" in req:
+        headers["Content-Type"] = req["content_type"]
     url = base.rstrip("/") + _expand(req["path"])
     request = urllib.request.Request(url, data=data, headers=headers, method=req["method"])
     started = time.perf_counter()

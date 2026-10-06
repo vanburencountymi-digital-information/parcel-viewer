@@ -1576,6 +1576,106 @@
       "detail": "string"
     }
   },
+  "cohort-no-body": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "null"
+        }
+      ]
+    }
+  },
+  "cohort-invalid-json": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "number|string"
+          ],
+          "msg": "string",
+          "input": {},
+          "ctx": {
+            "error": "string"
+          }
+        }
+      ]
+    }
+  },
+  "cohort-body-is-a-list": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": [
+            "number"
+          ]
+        }
+      ]
+    }
+  },
+  "cohort-selector-null": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "null"
+        }
+      ]
+    }
+  },
+  "cohort-text-plain-body": {
+    "status": 422,
+    "headers": {
+      "content-type": "application/json",
+      "x-content-type-options": "nosniff"
+    },
+    "json": {
+      "detail": [
+        {
+          "type": "string",
+          "loc": [
+            "string"
+          ],
+          "msg": "string",
+          "input": "string"
+        }
+      ]
+    }
+  },
   "cohort-limit-not-int": {
     "status": 422,
     "headers": {
