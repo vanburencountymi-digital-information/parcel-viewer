@@ -35,14 +35,15 @@ if IS_DEPLOYED and SECRET_KEY == INSECURE_DEV_SECRET_KEY:
 DEBUG = env.bool("DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost", "127.0.0.1"])
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
-if IS_DEPLOYED:
-    # TLS ends at the proxy in front of the container, which says so in this header.
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-    SESSION_COOKIE_SECURE = True
-    CSRF_COOKIE_SECURE = True
-    SECURE_SSL_REDIRECT = True
-    # Platform health probes call the container over plain HTTP inside the network.
-    SECURE_REDIRECT_EXEMPT = [r"^health$"]
+# Deployed, TLS ends at the proxy in front of the container, which says so in this header;
+# locally everything is plain HTTP. Each setting is assigned unconditionally so Django's
+# defaults never apply by accident.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if IS_DEPLOYED else None
+SESSION_COOKIE_SECURE = IS_DEPLOYED
+CSRF_COOKIE_SECURE = IS_DEPLOYED
+SECURE_SSL_REDIRECT = IS_DEPLOYED
+# Platform health probes call the container over plain HTTP inside the network.
+SECURE_REDIRECT_EXEMPT = [r"^health$"]
 # HSTS belongs with TLS, wherever production ends it (DIC-1863, infra/nginx.viewer.conf);
 # off until that's decided.
 SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
@@ -176,7 +177,7 @@ USE_TZ = True
 # Static files (the admin's) are served by WhiteNoise, so no static bucket is needed.
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-STORAGES: dict[str, dict[str, Any]] = {
+STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
 }
 
