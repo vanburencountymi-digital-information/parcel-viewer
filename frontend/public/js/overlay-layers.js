@@ -25,7 +25,7 @@
  *
  * localStorage key: 'overlay_layers_state'  →  { id: bool, ... }
  * Exposes: window.PS_OVERLAY_LAYERS
- *          { setOverlay, getState, overlays }
+ *          { setOverlay, getState, isUnavailable, overlays }
  */
 (function () {
   'use strict';
@@ -234,12 +234,19 @@
   }
 
   var _UNAVAILABLE_MSG = 'Service not currently available — try again later.';
+  var _unavailable = {};   // { id: true } while an overlay's latest tile errored
 
   function _onTileError(id) {
     // Only flag layers the user actually has on (tiles only load when visible,
     // but guard anyway so a stale request can't surface a note on an off layer).
     if (!_isOurOverlay(id) || !_state[id]) return;
+    _unavailable[id] = true;
     _setStatus(id, _UNAVAILABLE_MSG);
+  }
+
+  function _onTileLoaded(id) {
+    delete _unavailable[id];
+    _setStatus(id, null);
   }
 
   // Wire MapLibre tile lifecycle → status note. `error` fires on a failed tile
@@ -252,7 +259,7 @@
     map.on('sourcedata', function (e) {
       if (!e || !e.sourceId || !_isOurOverlay(e.sourceId)) return;
       if (e.tile && e.tile.state === 'errored') _onTileError(e.sourceId);
-      else if (e.tile && e.tile.state === 'loaded') _setStatus(e.sourceId, null);
+      else if (e.tile && e.tile.state === 'loaded') _onTileLoaded(e.sourceId);
     });
   }
 
@@ -344,6 +351,7 @@
     // Clear any stale "unavailable" note on every toggle: turning off hides it,
     // turning on gives the service a fresh chance (the tile-error handler will
     // re-flag it if it still fails). DIC-525.
+    delete _unavailable[id];
     _setStatus(id, null);
 
     // Sync the checkbox in the Layers panel so the UI stays consistent
@@ -438,6 +446,9 @@
   window.PS_OVERLAY_LAYERS = {
     setOverlay: _setOverlay,
     getState:   function () { return Object.assign({}, _state); },
+    // True while the overlay's tiles are failing (server down, or refusing the request),
+    // so a map look can say the layer didn't load instead of reading it as empty (DIC-2144).
+    isUnavailable: function (id) { return !!_unavailable[id]; },
     overlays:   OVERLAYS.map(function (o) {
       return { id: o.id, label: o.label, minzoom: o.minzoom };
     })

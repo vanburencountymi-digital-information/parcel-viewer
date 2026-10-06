@@ -137,6 +137,7 @@ def _user_text(
     parcel: dict | None,
     layers: list[str] | None,
     view_width_ft: float | None = None,
+    layers_incomplete: list[str] | None = None,
 ) -> str:
     lines = []
     if view_width_ft:
@@ -155,6 +156,14 @@ def _user_text(
             lines.append("Selected parcel (from the tax roll): " + ", ".join(facts) + ".")
     if layers:
         lines.append("Layers turned on: " + ", ".join(layers) + ".")
+    if layers_incomplete:
+        # The federal overlay servers can take several seconds a view, or fail (DIC-2144).
+        lines.append(
+            "Not fully loaded when the screenshot was taken (still loading, or the map "
+            "service failed), so they may be missing or only partly drawn: "
+            + ", ".join(layers_incomplete)
+            + ". Don't conclude those features are absent; say that layer didn't fully load."
+        )
     if question:
         lines.append(f"Question to answer from the image: {question}")
     else:
@@ -173,6 +182,7 @@ def run_describe_view(
     parcel: dict | None = None,
     layers: list[str] | None = None,
     view_width_ft: float | None = None,
+    layers_incomplete: list[str] | None = None,
 ) -> dict:
     """Ask the vision model about one map screenshot. Returns {description, model};
     raises VisionRefused on a refusal, and lets API errors propagate."""
@@ -192,7 +202,12 @@ def run_describe_view(
                             "data": base64.standard_b64encode(image).decode("ascii"),
                         },
                     },
-                    {"type": "text", "text": _user_text(question, parcel, layers, view_width_ft)},
+                    {
+                        "type": "text",
+                        "text": _user_text(
+                            question, parcel, layers, view_width_ft, layers_incomplete
+                        ),
+                    },
                 ],
             }
         ],
