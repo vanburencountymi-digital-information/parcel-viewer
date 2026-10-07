@@ -76,13 +76,14 @@ class SignedInView(APIView):
 class MeView(SignedInView):
     def get(self, request: Request) -> Response:
         """Returns who the token belongs to and when it expires, so a client can check it."""
+        token: AuthToken = request.auth  # DRF's stubs only know its own Token class
         return Response(
             {
                 "user": {
                     "username": request.user.get_username(),
                     "is_staff": request.user.is_staff,
                 },
-                "expiry": request.auth.expiry.isoformat() if request.auth.expiry else None,
+                "expiry": token.expiry.isoformat() if token.expiry else None,
             }
         )
 
