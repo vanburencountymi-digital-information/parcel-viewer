@@ -1,14 +1,17 @@
 // Tool windows opened through the real UI: the Help & tools menu, and the parcel panel's
 // tool buttons. Each opens, closes via its button, reopens, closes via Esc, and returns
 // keyboard focus to a sensible place.
-const { test, expect, gotoViewer, selectParcelViaSearch } = require('./fixtures');
+const { test, expect, gotoViewer, selectParcelViaSearch, ui } = require('./fixtures');
 
 // print opens the browser's print dialog, which blocks the page; covered manually.
-const MENU_TOOLS = ['share', 'bookmark', 'data-request', 'report-error', 'help', 'whats-new', 'about', 'settings'];
+// [menu item, the dialog it opens]
+const MENU_TOOLS = [['Share', 'Share'], ['Bookmark', 'Bookmarks'], ['Data Request', 'Data Request'],
+  ['Report a data error', 'Report a data error'], ['Help', 'Help'], ['What’s New', "What's New"],
+  ['About', 'About'], ['Settings', 'Settings']];
 
 async function openMenuTool(page, tool) {
-  await page.locator('#pv-admin-btn').click();
-  const item = page.locator(`#pv-admin-menu [data-tool="${tool}"]`);
+  await ui.helpMenuButton(page).click();
+  const item = ui.helpMenu(page).getByRole('menuitem', { name: tool, exact: true });
   await expect(item).toBeVisible();
   await item.click();
 }
@@ -16,13 +19,13 @@ async function openMenuTool(page, tool) {
 test.describe('Help & tools menu', () => {
   test.beforeEach(async ({ page }) => { await gotoViewer(page); });
 
-  for (const tool of MENU_TOOLS) {
+  for (const [tool, title] of MENU_TOOLS) {
     test(`${tool}: opens, closes by button and by Esc`, async ({ page }) => {
-      const modal = page.locator('.pv-modal-backdrop');
+      const modal = page.getByRole('dialog', { name: title, exact: true });
       await openMenuTool(page, tool);
       await expect(modal).toBeVisible();
-      await expect(modal.locator('[role="dialog"], .pv-modal').first()).toBeVisible();
-      const close = modal.locator('[data-close], .pv-modal-close, [aria-label*="lose" i]').filter({ visible: true }).first();
+      // The header's Close (some dialogs also have a Close button in the footer).
+      const close = modal.getByRole('button', { name: 'Close', exact: true }).filter({ visible: true }).first();
       await close.click();
       await expect(modal).toBeHidden();
       await openMenuTool(page, tool);
@@ -35,12 +38,12 @@ test.describe('Help & tools menu', () => {
   }
 
   test('menu closes on Escape and outside click', async ({ page }) => {
-    const menu = page.locator('#pv-admin-menu');
-    await page.locator('#pv-admin-btn').click();
+    const menu = ui.helpMenu(page);
+    await ui.helpMenuButton(page).click();
     await expect(menu).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(menu).toBeHidden();
-    await page.locator('#pv-admin-btn').click();
+    await ui.helpMenuButton(page).click();
     await expect(menu).toBeVisible();
     await page.mouse.click(700, 500);
     await expect(menu).toBeHidden();
@@ -50,15 +53,16 @@ test.describe('Help & tools menu', () => {
 test.describe('Parcel panel tools', () => {
   test.beforeEach(async ({ page }) => { await gotoViewer(page); await selectParcelViaSearch(page); });
 
-  for (const [label, selector, surface] of [
-    ['Assessment explainer', '.pv-info-btn[data-info="assess"]', '.pv-modal-backdrop'],
-    ['Tax description explainer', '.pv-info-btn[data-info="tax"]', '.pv-modal-backdrop'],
-    ['Parcel packet', '.pv-ptool[data-ptool="packet"]', '.pv-modal-backdrop'],
-    ['Neighborhood profile', '.pv-ptool[data-ptool="profile"]', '.pv-profile-overlay'],
+  // [test label, the parcel panel button, the dialog it opens]
+  for (const [label, button, dialog] of [
+    ['Assessment explainer', 'About property assessment', /^Property Assessment/],
+    ['Tax description explainer', 'About this tax description', /^Tax Description/],
+    ['Parcel packet', 'Generate Parcel Packet', 'Parcel Packet'],
+    ['Neighborhood profile', 'Neighborhood Profile', 'Neighborhood profile'],
   ]) {
     test(`${label}: opens and closes`, async ({ page }) => {
-      await page.locator(selector).first().click();
-      const el = page.locator(surface);
+      await ui.parcelPanel(page).getByRole('button', { name: button, exact: true }).first().click();
+      const el = page.getByRole('dialog', { name: dialog, exact: typeof dialog === 'string' });
       await expect(el).toBeVisible();
       await page.waitForTimeout(1500);   // let async content (AI narration, cohort fetch) settle
       await page.keyboard.press('Escape');
@@ -67,8 +71,9 @@ test.describe('Parcel panel tools', () => {
   }
 
   test('Compare: adding the selected parcel shows it in the tray', async ({ page }) => {
-    await page.locator('.pv-ptool[data-ptool="compare"]').first().click();
-    await expect(page.locator('.pv-compare-tray, .pv-compare-chip, .pv-compare-overlay').first()).toBeVisible();
+    await ui.parcelPanel(page).getByRole('button', { name: 'Compare Parcels', exact: true }).first().click();
+    await expect(page.getByTestId('pv-compare-tray').or(page.getByTestId('pv-compare-chip'))
+      .or(page.getByRole('dialog', { name: 'Compare parcels', exact: true })).first()).toBeVisible();
   });
 });
 
@@ -89,6 +94,6 @@ test.describe('Map Buddy panel', () => {
     expect(await page.evaluate(() => window.PV_MAP_BUDDY.isOpen())).toBe(false);
     await page.evaluate(() => window.PV_MAP_BUDDY.toggle());
     await expect.poll(() => page.evaluate(() => window.PV_MAP_BUDDY.isOpen())).toBe(true);
-    await expect(page.locator('#mb-input')).toBeVisible();
+    await expect(ui.mapBuddyInput(page)).toBeVisible();
   });
 });

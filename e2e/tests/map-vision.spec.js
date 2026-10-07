@@ -1,7 +1,7 @@
 // Map vision (DIC-2135): Map Buddy looks at the map with an AI image model. Map Buddy's
 // /chat and /vision/describe are mocked here, so this suite spends nothing; the routes
 // themselves are covered by map-buddy/backend/tests/test_vision.py.
-const { test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle } = require('./fixtures');
+const { test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, ui } = require('./fixtures');
 
 const READ = 'A red barn stands east of the house, with a gravel drive from the road.';
 
@@ -27,11 +27,17 @@ async function mockMapBuddy(page, { chatReplies = [], vision = null } = {}) {
 }
 
 async function openChat(page) {
-  const input = page.locator('#mb-input');
-  if (!(await input.isVisible())) await page.locator('#mb-tab-btn').click();
+  const input = ui.mapBuddyInput(page);
+  if (!(await input.isVisible())) await ui.mapBuddyButton(page).click();
   await expect(input).toBeVisible();
   return input;
 }
+
+const chatLog = (page) => page.getByRole('log', { name: 'MapBuddy A.I. conversation' });
+const lookBtn = (page) => page.getByRole('button', { name: 'Describe this view' });
+const visionRead = (page) => chatLog(page).getByTestId('mb-msg-vision');
+// Any reply bubble's body (AI reply, map look read or info), as `.mb-msg-ai-body` was.
+const lastBody = (page) => chatLog(page).getByTestId('mb-msg-body').last();
 
 async function ask(page, text) {
   const input = await openChat(page);
@@ -39,14 +45,14 @@ async function ask(page, text) {
   await input.press('Enter');
 }
 
-const idle = (page) => expect(page.locator('.mb-thinking')).toHaveCount(0, { timeout: 20_000 });
+const idle = (page) => expect(chatLog(page).getByTestId('mb-thinking')).toHaveCount(0, { timeout: 20_000 });
 
 test('"Describe this view" sends a JPEG of the map, shows a labelled read, then answers from it', async ({ page }) => {
   const calls = await mockMapBuddy(page, { chatReplies: [['There is a red barn east of the house.']] });
   await gotoViewer(page);
   const pin = await selectParcelViaSearch(page);
   await openChat(page);
-  await page.locator('#mb-look-btn').click();
+  await lookBtn(page).click();
   await idle(page);
 
   expect(calls.vision).toHaveLength(1);
@@ -64,19 +70,19 @@ test('"Describe this view" sends a JPEG of the map, shows a labelled read, then 
   });
   expect(Math.max(size.width, size.height)).toBeLessThanOrEqual(2576);
 
-  const read = page.locator('.mb-msg-vision');
-  await expect(read.locator('.mb-msg-ai-label')).toHaveText('AI visual read of the current map view');
-  await expect(read.locator('.mb-msg-ai-body')).toHaveText(READ);
-  await expect(read.locator('.mb-vision-meta')).toContainText('Layers: Aerial imagery');
-  await expect(read.locator('.mb-vision-meta')).toContainText('not a survey or tax record');
+  const read = visionRead(page);
+  await expect(read.getByTestId('mb-msg-label')).toHaveText('AI visual read of the current map view');
+  await expect(read.getByTestId('mb-msg-body')).toHaveText(READ);
+  await expect(read.getByTestId('mb-vision-meta')).toContainText('Layers: Aerial imagery');
+  await expect(read.getByTestId('mb-vision-meta')).toContainText('not a survey or tax record');
 
   expect(calls.chat).toHaveLength(1);
   expect(calls.chat[0].message).toBe('What do you see in the current map view?');
   expect(calls.chat[0].vision_read).toEqual({ description: READ, layers: ['Aerial imagery'] });
-  await expect(page.locator('.mb-msg-user')).toHaveText(['Describe this view']);
-  await expect(page.locator('.mb-msg-ai:not(.mb-msg-vision):not(.mb-msg-info) .mb-msg-ai-body').last())
+  await expect(chatLog(page).getByTestId('mb-msg-user')).toHaveText(['Describe this view']);
+  await expect(chatLog(page).getByTestId('mb-msg-ai').getByTestId('mb-msg-body').last())
     .toHaveText('There is a red barn east of the house.');
-  await expect(page.locator('#mb-look-btn')).toBeEnabled();
+  await expect(lookBtn(page)).toBeEnabled();
 });
 
 test('when the AI asks to look, the look runs and the answer follows without asking again', async ({ page }) => {
@@ -89,7 +95,7 @@ test('when the AI asks to look, the look runs and the answer follows without ask
   await gotoViewer(page);
   await ask(page, 'Look at the aerial: is there a barn?');
   await idle(page);
-  await expect(page.locator('.mb-msg-ai-body').last()).toHaveText('Yes: the visual read shows a red barn east of the house.');
+  await expect(lastBody(page)).toHaveText('Yes: the visual read shows a red barn east of the house.');
 
   expect(calls.vision).toHaveLength(1);
   expect(calls.vision[0].question).toBe('Is there a barn?');
@@ -97,7 +103,7 @@ test('when the AI asks to look, the look runs and the answer follows without ask
   expect(calls.chat[0].vision_read).toBeUndefined();
   expect(calls.chat[1].message).toBe('Is there a barn?');
   expect(calls.chat[1].vision_read.description).toBe(READ);
-  await expect(page.locator('.mb-msg-user'), 'the user asked once').toHaveCount(1);
+  await expect(chatLog(page).getByTestId('mb-msg-user'), 'the user asked once').toHaveCount(1);
 });
 
 test('an offer is one button, costs nothing until tapped, and is never made twice', async ({ page }) => {
@@ -112,7 +118,7 @@ test('an offer is one button, costs nothing until tapped, and is never made twic
   await gotoViewer(page);
   await ask(page, 'Is there a barn on this parcel?');
   await idle(page);
-  const chip = page.locator('.mb-look-chip');
+  const chip = chatLog(page).getByRole('button', { name: 'Look at the map' });
   await expect(chip).toHaveCount(1);
   await expect(chip).toHaveText('Look at the map');
   expect(calls.vision, 'no look until the user taps').toHaveLength(0);
@@ -129,13 +135,13 @@ test('an offer is one button, costs nothing until tapped, and is never made twic
   expect(calls.vision).toHaveLength(1);
   expect(calls.vision[0].question).toBe('Is there a barn?');
   expect(calls.chat[2].vision_read.description).toBe(READ);
-  await expect(page.locator('.mb-msg-ai-body').last()).toHaveText('There is a red barn east of the house.');
+  await expect(lastBody(page)).toHaveText('There is a red barn east of the house.');
 });
 
 test('"Describe this spot" on the right-click menu centers there and looks', async ({ page }) => {
   const calls = await mockMapBuddy(page, { chatReplies: [['Woodland with a small pond.']] });
   await gotoViewer(page);
-  const box = await page.locator('#map canvas.maplibregl-canvas').boundingBox();
+  const box = await ui.mapCanvas(page).boundingBox();
   const pt = { x: Math.round(box.x + box.width * 0.35), y: Math.round(box.y + box.height * 0.45) };
   const target = await page.evaluate(({ x, y }) => {
     const r = window.PS_MAP.getCanvas().getBoundingClientRect();
@@ -143,7 +149,7 @@ test('"Describe this spot" on the right-click menu centers there and looks', asy
     return [ll.lng, ll.lat];
   }, pt);
   await page.mouse.click(pt.x, pt.y, { button: 'right' });
-  await page.locator('#pv-ctx-menu [data-ctx="describe"]').click();
+  await page.getByRole('menu').getByRole('menuitem', { name: /^Describe this spot/ }).click();
   await idle(page);
   await waitForMapIdle(page);
 
@@ -152,9 +158,9 @@ test('"Describe this spot" on the right-click menu centers there and looks', asy
   expect(Math.abs(center[1] - target[1])).toBeLessThan(1e-5);
   expect(calls.vision).toHaveLength(1);
   expect(calls.vision[0].question).toMatch(/center of the map view/);
-  await expect(page.locator('#mb-input')).toBeVisible();
-  await expect(page.locator('.mb-msg-user')).toHaveText(['Describe this spot']);
-  await expect(page.locator('.mb-msg-ai-body').last()).toHaveText('Woodland with a small pond.');
+  await expect(ui.mapBuddyInput(page)).toBeVisible();
+  await expect(chatLog(page).getByTestId('mb-msg-user')).toHaveText(['Describe this spot']);
+  await expect(lastBody(page)).toHaveText('Woodland with a small pond.');
 });
 
 test('a tilted, rotated map is turned straight down and north up before the look', async ({ page }) => {
@@ -162,7 +168,7 @@ test('a tilted, rotated map is turned straight down and north up before the look
   await gotoViewer(page);
   await page.evaluate(() => window.PS_MAP.jumpTo({ pitch: 55, bearing: 140 }));
   await openChat(page);
-  await page.locator('#mb-look-btn').click();
+  await lookBtn(page).click();
   await idle(page);
   const cam = await page.evaluate(() => ({ pitch: window.PS_MAP.getPitch(), bearing: window.PS_MAP.getBearing() }));
   expect(cam).toEqual({ pitch: 0, bearing: 0 });
@@ -178,9 +184,9 @@ test('a bolded best guess in the read shows as bold, not as asterisks', async ({
   });
   await gotoViewer(page);
   await openChat(page);
-  await page.locator('#mb-look-btn').click();
+  await lookBtn(page).click();
   await idle(page);
-  const body = page.locator('.mb-msg-vision .mb-msg-ai-body');
+  const body = visionRead(page).getByTestId('mb-msg-body');
   await expect(body.locator('strong')).toHaveText('blueberries');
   await expect(body).not.toContainText('**');
   await expect(body.locator('img'), 'model text is escaped, never HTML').toHaveCount(0);
@@ -191,12 +197,12 @@ test('a failed look says so plainly and makes no chat call', async ({ page }) =>
   const calls = await mockMapBuddy(page, { vision: { status: 200, body: { ok: false, error: 'Couldn’t analyse the map view.' } } });
   await gotoViewer(page);
   await openChat(page);
-  await page.locator('#mb-look-btn').click();
+  await lookBtn(page).click();
   await idle(page);
-  await expect(page.locator('.mb-msg-ai-body').last()).toHaveText('Couldn’t analyse the map view. Please try again in a moment.');
+  await expect(lastBody(page)).toHaveText('Couldn’t analyse the map view. Please try again in a moment.');
   expect(calls.chat).toHaveLength(0);
-  await expect(page.locator('.mb-msg-vision')).toHaveCount(0);
-  await expect(page.locator('#mb-look-btn')).toBeEnabled();
+  await expect(visionRead(page)).toHaveCount(0);
+  await expect(lookBtn(page)).toBeEnabled();
 });
 
 test('the per-person look limit gets its own message', async ({ page, consoleGuard }) => {
@@ -204,9 +210,9 @@ test('the per-person look limit gets its own message', async ({ page, consoleGua
   const calls = await mockMapBuddy(page, { vision: { status: 429, body: { error: 'Rate limit exceeded' } } });
   await gotoViewer(page);
   await openChat(page);
-  await page.locator('#mb-look-btn').click();
+  await lookBtn(page).click();
   await idle(page);
-  await expect(page.locator('.mb-msg-ai-body').last()).toContainText('limit for map looks');
+  await expect(lastBody(page)).toContainText('limit for map looks');
   expect(calls.chat).toHaveLength(0);
 });
 
@@ -221,7 +227,7 @@ async function turnOnWetlandsAndLook(page) {
   await waitForMapIdle(page);
   await openChat(page);
   await page.evaluate(() => window.PS_OVERLAY_LAYERS.setOverlay('overlay-wetlands', true));
-  await page.locator('#mb-look-btn').click();   // straight away, before any tile is back
+  await lookBtn(page).click();   // straight away, before any tile is back
   await idle(page);
 }
 
@@ -258,5 +264,5 @@ test('a look with a failing wetlands service says the layer did not fully load',
   await turnOnWetlandsAndLook(page);
 
   expect(calls.vision[0].layers_incomplete).toEqual(['Wetlands (USFWS NWI)']);
-  await expect(page.locator('.mb-msg-vision .mb-vision-meta')).toContainText('not fully loaded: Wetlands (USFWS NWI)');
+  await expect(visionRead(page).getByTestId('mb-vision-meta')).toContainText('not fully loaded: Wetlands (USFWS NWI)');
 });

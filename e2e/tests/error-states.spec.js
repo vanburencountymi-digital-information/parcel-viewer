@@ -1,19 +1,21 @@
 // What users see when a backend fails. Failures are simulated with request interception,
 // so these are deterministic and need no containers stopped.
-const { test, expect, gotoViewer, selectParcelViaSearch } = require('./fixtures');
+const { test, expect, gotoViewer, selectParcelViaSearch, ui } = require('./fixtures');
+
+const mapError = (page) => page.getByRole('alert').filter({ hasText: 'The map couldn’t load' });
 
 test('map style fails: an error card with a working Try again', async ({ page, consoleGuard }) => {
   consoleGuard.allow(/style\.json|Failed to load resource|\[map\] failed to load/);
   let fail = true;
   await page.route('**/api/style.json', (route) => (fail ? route.fulfill({ status: 502, body: 'bad gateway' }) : route.continue()));
   await page.goto('/demo/');
-  const card = page.locator('#pv-map-error');
+  // Found by role=alert, so this also checks the card is announced.
+  const card = mapError(page);
   await expect(card).toBeVisible();
-  await expect(card).toHaveAttribute('role', 'alert');
   fail = false;
   await card.getByRole('button', { name: 'Try again' }).click();
   await page.waitForFunction(() => window.PS_MAP && window.PS_MAP.isStyleLoaded());
-  await expect(page.locator('#pv-map-error')).toHaveCount(0);
+  await expect(mapError(page)).toHaveCount(0);
 });
 
 test('served config fails: falls back to the baked config', async ({ page, consoleGuard }) => {
@@ -29,9 +31,9 @@ for (const [status, text] of [[500, /Search is unavailable/], [429, /Too many se
     consoleGuard.allow(/Failed to load resource/);
     await gotoViewer(page);
     await page.route('**/api/search?**', (route) => route.fulfill({ status, body: '{}' }));
-    await page.locator('#parcel-search-input').fill('paw paw');
-    await expect(page.locator('.parcel-search-error')).toHaveText(text);
-    await expect(page.locator('#parcel-search-status')).toHaveText(text);
+    await ui.searchInput(page).fill('paw paw');
+    await expect(ui.searchResults(page).getByRole('alert')).toHaveText(text);
+    await expect(page.getByTestId('parcel-search-status')).toHaveText(text);
   });
 }
 
@@ -39,10 +41,10 @@ test('selecting a search result whose parcel fails to load tells the user', asyn
   consoleGuard.allow(/Failed to load resource/);
   await gotoViewer(page);
   await page.route(/\/api\/parcel\/\d+$/, (route) => route.fulfill({ status: 500, body: '{}' }));
-  await page.locator('#parcel-search-input').fill('paw paw');
-  await page.locator('.parcel-search-result').first().click();
-  // Something visible must say it failed (a toast or message), rather than nothing happening.
-  await expect(page.locator('.pv-toast, [role="alert"]').filter({ hasText: /couldn|fail|unavailable|try again/i }).first()).toBeVisible();
+  await ui.searchInput(page).fill('paw paw');
+  await ui.searchResults(page).getByRole('option').first().click();
+  // An announced toast must say it failed, rather than nothing happening (map.js notifyUser).
+  await expect(page.getByRole('alert').filter({ hasText: /Couldn.t load that parcel/ })).toBeVisible();
 });
 
 test('Map Buddy down: the AI notice appears and the viewer keeps working', async ({ page, consoleGuard, mapBuddyOverride }) => {
@@ -52,7 +54,7 @@ test('Map Buddy down: the AI notice appears and the viewer keeps working', async
     (mapBuddyOverride && url.href.startsWith(mapBuddyOverride));
   await page.route(isMapBuddy, (route) => route.fulfill({ status: 502, body: '' }));
   await gotoViewer(page);
-  await expect(page.locator('#pv-ai-notice')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('status').filter({ hasText: 'AI is unavailable' })).toBeVisible({ timeout: 20_000 });
   await selectParcelViaSearch(page);
 });
 

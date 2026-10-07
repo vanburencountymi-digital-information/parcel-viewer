@@ -472,6 +472,7 @@
   function _appendUserMsg(text) {
     var el = document.createElement('div');
     el.className   = 'mb-msg-user';
+    el.dataset.testid = 'mb-msg-user';   // e2e (DIC-2180): one test id per message kind
     el.textContent = text;
     _messagesEl.appendChild(el);
     _scrollBottom();
@@ -480,11 +481,14 @@
   function _appendAiMsg(text) {
     var el   = document.createElement('div');
     el.className = 'mb-msg-ai';
+    el.dataset.testid = 'mb-msg-ai';
     var lbl  = document.createElement('div');
     lbl.className   = 'mb-msg-ai-label';
+    lbl.dataset.testid = 'mb-msg-label';
     lbl.textContent = 'MapBuddy A.I.';
     var body = document.createElement('div');
     body.className   = 'mb-msg-ai-body';
+    body.dataset.testid = 'mb-msg-body';
     body.innerHTML   = _renderMarkdown(text);
     el.appendChild(lbl);
     el.appendChild(body);
@@ -496,6 +500,7 @@
   function _showThinking() {
     var el = document.createElement('div');
     el.className = 'mb-thinking';
+    el.dataset.testid = 'mb-thinking';
     el.innerHTML =
       'Thinking… ' +
       '<span class="mb-thinking-dots">' +
@@ -715,16 +720,20 @@
   function _appendVisionRead(data) {
     var el = document.createElement('div');
     el.className = 'mb-msg-ai mb-msg-vision';
+    el.dataset.testid = 'mb-msg-vision';
     var lbl = document.createElement('div');
     lbl.className = 'mb-msg-ai-label';
+    lbl.dataset.testid = 'mb-msg-label';
     lbl.textContent = 'AI visual read of the current map view';
     var body = document.createElement('div');
     body.className = 'mb-msg-ai-body';
+    body.dataset.testid = 'mb-msg-body';
     // Same safe Markdown subset as chat replies (escaped first): the model sometimes bolds
     // its best guess, and raw "**" would show (DIC-2138).
     body.innerHTML = _renderMarkdown(String(data.description || ''));
     var meta = document.createElement('div');
     meta.className = 'mb-vision-meta';
+    meta.dataset.testid = 'mb-vision-meta';
     var when = data.at ? new Date(data.at) : new Date();
     var time = isNaN(when) ? '' : when.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
     var layers = (data.layers || []).join(', ');
@@ -813,7 +822,7 @@
       '<button type="button" id="mb-auto-toggle" class="mb-auto-toggle"' +
         ' aria-expanded="false" aria-controls="mb-auto-body">' +
         '<span class="mb-auto-caret">▸</span><span>Automations</span></button>' +
-      '<div id="mb-auto-body" class="mb-auto-body" hidden>' + rows + '</div>';
+      '<div id="mb-auto-body" class="mb-auto-body" data-testid="mb-auto-body" hidden>' + rows + '</div>';
     host.hidden = false;
     var toggle = document.getElementById('mb-auto-toggle');
     var body   = document.getElementById('mb-auto-body');
@@ -1411,14 +1420,16 @@
   function _appendInfoBubble(html) {
     var el = document.createElement('div');
     el.className = 'mb-msg-ai mb-msg-info';
-    el.innerHTML = '<div class="mb-msg-ai-body">' + html + '</div>';
+    el.dataset.testid = 'mb-msg-info';
+    el.innerHTML = '<div class="mb-msg-ai-body" data-testid="mb-msg-body">' + html + '</div>';
     _messagesEl.appendChild(el);
     _scrollBottom();
   }
   function _appendResultBubble(html) {
     var el = document.createElement('div');
     el.className = 'mb-msg-ai mb-msg-info';
-    el.innerHTML = '<div class="mb-msg-ai-body">' + html + '</div>';
+    el.dataset.testid = 'mb-msg-info';
+    el.innerHTML = '<div class="mb-msg-ai-body" data-testid="mb-msg-body">' + html + '</div>';
     _messagesEl.appendChild(el);
     Array.prototype.forEach.call(el.querySelectorAll('.mb-result-btn'), function (b) {
       b.addEventListener('click', function () {
@@ -1481,7 +1492,7 @@
     var html = '<span class="mb-sources-label">Sources</span>';
     for (var i = 0; i < citations.length; i++) {
       var c = citations[i] || {};
-      html += '<button type="button" class="pv-cite-trigger mb-source"' +
+      html += '<button type="button" class="pv-cite-trigger mb-source" data-testid="cite-trigger"' +
         ' data-cite-source="' + _escHtml(c.source_id || '') + '"' +
         ' data-cite-anchor="' + _escHtml(c.anchor || '') + '"' +
         ' data-cite-span="' + _escHtml(c.span || '') + '">' +

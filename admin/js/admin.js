@@ -329,7 +329,7 @@
         '<h1 class="ac-page-title">County Configuration</h1>' +
         '<p class="ac-page-sub">Identity, map defaults, endpoints, and reference lookups for this county.</p></div>' +
         '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash"></div>' + banner +
+      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
 
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Identity</h2></div>' +
         '<dl class="ac-grid">' +
@@ -853,7 +853,7 @@
         '<h1 class="ac-page-title">Styling</h1>' +
         '<p class="ac-page-sub">Color scheme, theme, per-layer paint &amp; choropleth, and labels.</p></div>' +
         '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash"></div>' + banner +
+      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Color scheme</h2>' +
         '<span class="ac-card-note">' + (editing ? 'click to set default' : 'default: ' + esc(s.colorScheme || '—')) + '</span></div>' +
         '<div class="ac-schemes">' + (s.schemes || []).map(chip).join('') + '</div></div>' +
@@ -993,7 +993,7 @@
         '<span class="ac-card-note">PostGIS layers the tile server can serve (DIC-502)</span></div>' +
         '<p class="ac-readonly" style="margin:0 0 10px">Pick a spatial layer already in PostGIS to add it as a viewer overlay — no developer, no DB migration.</p>' +
         '<div class="ac-pick-row">' +
-          '<select class="ac-input ac-input-sm" id="ac-pg-pick" data-pg-pick></select>' +
+          '<select class="ac-input ac-input-sm" id="ac-pg-pick" data-pg-pick aria-label="PostGIS layer"></select>' +
           '<button class="ac-btn ac-btn-sm ac-btn-primary" data-add-pick>Add layer</button>' +
         '</div>' +
         '<div id="ac-pg-pick-meta" style="margin-top:10px"></div>' +
@@ -1004,7 +1004,7 @@
         '<h1 class="ac-page-title">Data &amp; Layers</h1>' +
         '<p class="ac-page-sub">PostGIS layers, the tile server, and the data sources behind them.</p></div>' +
         '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash"></div>' + banner +
+      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
       tileCard + pgCard + pickCard + extCard + dsCard +
       '<div id="ac-history"></div>';
 
@@ -1172,7 +1172,7 @@
         '<h1 class="ac-page-title">Access &amp; Ops</h1>' +
         '<p class="ac-page-sub">Who can see what, how it’s shared, and how staff watch it.</p></div>' +
         '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash"></div>' + banner +
+      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Access</h2></div><dl class="ac-grid">' +
         '<dt>Access model</dt><dd>' + (editing ? txt('access.model', A.model, 'e.g. Public — no sign-in') : esc(A.model || '—')) + '</dd>' +
         '<dt>Assessment data</dt><dd>' + (editing
@@ -1327,7 +1327,7 @@
           '<button class="ac-btn" data-mf="reassemble">Re-assemble from modules</button>' +
           '<button class="ac-btn" data-mf="history">Version history</button>' +
         '</div></div>' +
-      '<div id="ac-flash"></div>' + sourceNote + status +
+      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + sourceNote + status +
       '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Capabilities &amp; AI mode</h2>' +
         '<span class="ac-card-note">capability selection + per-capability AI tri-state — owned by the manifest, not any single module</span></div>' +
         '<table class="ac-table"><thead><tr><th>Capability</th><th>AI mode</th><th>Disclosure</th></tr></thead><tbody>' + capRows + '</tbody></table></div>' +
@@ -1469,7 +1469,9 @@
       if (mod.id !== _active) { STATE.editing = false; STATE.draft = null; }  // drop any in-progress edit on switch
       _active = mod.id;
       nav.querySelectorAll('.ac-nav-item').forEach(function (b) {
-        b.classList.toggle('is-active', b.getAttribute('data-mod') === mod.id);
+        var current = b.getAttribute('data-mod') === mod.id;
+        b.classList.toggle('is-active', current);
+        if (current) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
       });
       mod.render(content);
       content.focus();

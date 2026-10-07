@@ -96,7 +96,11 @@
     b.tabIndex = -1;
     if (id) b.setAttribute('data-ctx', id);
     b.appendChild(el('span', 'pv-ctx-label', label));
-    if (detail) b.appendChild(el('span', 'pv-ctx-detail', detail));
+    if (detail) {
+      var d = el('span', 'pv-ctx-detail', detail);
+      d.dataset.testid = 'pv-ctx-detail';
+      b.appendChild(d);
+    }
     b.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -120,6 +124,7 @@
     var fmt = root.PV_COORD_FMT;
     var wrap = el('div', 'pv-ctx');
     wrap.id = MENU_ID;
+    wrap.dataset.testid = 'pv-ctx-menu';   // the box placed at the pointer (e2e, DIC-2180)
 
     var head = el('div', 'pv-ctx-head');
     head.id = MENU_ID + '-head';

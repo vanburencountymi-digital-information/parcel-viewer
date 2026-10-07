@@ -1,11 +1,11 @@
 // Theme, accessibility and AI-mode toggles: they work, persist, and survive blocked storage.
-const { test, expect, gotoViewer } = require('./fixtures');
+const { test, expect, gotoViewer, ui } = require('./fixtures');
 
 test('dark mode toggles and persists across reload', async ({ page }) => {
   await gotoViewer(page);
   const theme = () => page.evaluate(() => document.documentElement.getAttribute('data-theme'));
   const start = await theme();
-  await page.locator('#theme-toggle').click();
+  await page.getByRole('button', { name: 'Toggle dark mode' }).click();
   const flipped = await theme();
   expect(flipped).not.toBe(start);
   await page.reload();
@@ -15,7 +15,7 @@ test('dark mode toggles and persists across reload', async ({ page }) => {
 
 test('maximum-accessibility button toggles aria-pressed', async ({ page }) => {
   await gotoViewer(page);
-  const btn = page.locator('#pv-a11y-btn');
+  const btn = page.getByRole('button', { name: 'Toggle maximum accessibility' });
   const before = await btn.getAttribute('aria-pressed');
   await btn.click();
   await expect(btn).not.toHaveAttribute('aria-pressed', before);
@@ -25,7 +25,7 @@ test('maximum-accessibility button toggles aria-pressed', async ({ page }) => {
 
 test('AI mode toggle flips aria-pressed', async ({ page }) => {
   await gotoViewer(page);
-  const btn = page.locator('#pv-ai-toggle');
+  const btn = page.getByRole('button', { name: 'Toggle AI mode' });
   const before = await btn.getAttribute('aria-pressed');
   await btn.click();
   await expect(btn).not.toHaveAttribute('aria-pressed', before);
@@ -45,5 +45,5 @@ test('the map still loads when browser storage is blocked', async ({ page }) => 
     Object.defineProperty(window, 'localStorage', { configurable: true, get: deny });
   });
   await gotoViewer(page);
-  await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible();
+  await expect(ui.mapCanvas(page)).toBeVisible();
 });

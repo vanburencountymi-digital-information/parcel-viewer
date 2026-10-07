@@ -410,7 +410,7 @@
     openModal("Share", [
       '<p class="pv-modal-lead">Share a link to this view.</p>',
       '<div class="pv-copy-row">' +
-        '<input class="pv-input" id="pv-share-url" type="text" readonly value="' + escAttr(url) + '">' +
+        '<input class="pv-input" id="pv-share-url" type="text" readonly aria-label="Share link" value="' + escAttr(url) + '">' +
         '<button type="button" class="pv-btn-primary" id="pv-share-copy">Copy</button>' +
       '</div>',
       placeholderTag("Links that capture the selected parcel, zoom, and active layers are planned. For now this copies the current page URL.")

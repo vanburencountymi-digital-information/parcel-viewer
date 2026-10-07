@@ -952,6 +952,7 @@
       sec.rows.forEach((r) => {
         const row = document.createElement("div");
         row.className = "choropleth-legend-row";
+        row.dataset.testid = "choropleth-legend-row";
         const sw = document.createElement("span");
         sw.className = "choropleth-legend-swatch";
         sw.style.background = r.color;
@@ -1796,7 +1797,7 @@
       return '<div class="parcel-info-row"><span class="parcel-info-label"' + tip + ">" + _escHtml(r.label) +
         '</span><span class="parcel-info-value"' + style + ">" + val + "</span></div>";
     }).join("");
-    return '<div class="parcel-info-section-title">' + _escHtml(title) + "</div>" + rows;
+    return '<div class="parcel-info-section-title" role="heading" aria-level="3">' + _escHtml(title) + "</div>" + rows;
   }
   function _assessedValuesHtml(props, pin, geometry) {
     const rows = _engineSectionRows(_parcelPopupCfg(), _PARCEL_FORMATTERS, props, "Assessed Values", geometry);
@@ -1844,7 +1845,7 @@
              '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block;margin-top:3px" aria-label="AV history chart">' + defs + bars + '</svg></div>';
     })();
 
-    return '<div class="parcel-info-section-title">Assessed Values' +
+    return '<div class="parcel-info-section-title" role="heading" aria-level="3">Assessed Values' +
         '<button class="pv-info-btn" data-info="assess" data-pin="' + _escHtml(pin) + '" data-tip="About property assessment" aria-label="About property assessment">' +
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' +
         '</button></div>' +
@@ -1863,7 +1864,7 @@
     if (!rows) return null;
     const row = rows[0] || {};
     const desc = row.value != null && row.value !== "" ? row.value : null;
-    return '<div class="parcel-info-section-title">Tax Description' +
+    return '<div class="parcel-info-section-title" role="heading" aria-level="3">Tax Description' +
         '<button class="pv-info-btn" data-info="tax" data-pin="' + _escHtml(pin) + '" data-tip="About this tax description" aria-label="About this tax description">' +
           '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>' +
         '</button></div>' +
@@ -1964,12 +1965,12 @@
       : "";
 
     infoBody.innerHTML =
-      `<div class="parcel-info-pin">${_escHtml(displayPin)}</div>` +
+      `<div class="parcel-info-pin" data-testid="parcel-info-pin">${_escHtml(displayPin)}</div>` +
       `<div class="parcel-info-zoning">${dash(p.municipality)}</div>` +
       `<hr class="parcel-info-divider">` +
 
       (_engineSectionHtml(_parcelPopupCfg(), _PARCEL_FORMATTERS, p, "Parcel", geometry) ||
-        (`<div class="parcel-info-section-title">Parcel</div>` +
+        (`<div class="parcel-info-section-title" role="heading" aria-level="3">Parcel</div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label">Address</span><span class="parcel-info-value">${dash(siteAddr)}</span></div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Parcel area calculated from the mapped boundary">Area</span><span class="parcel-info-value">${fmtAc(p.gis_acres ?? p.acres)}</span></div>` +
          coordRow +
@@ -1979,12 +1980,12 @@
       `<hr class="parcel-info-divider">` +
 
       (_engineSectionHtml(_parcelPopupCfg(), _PARCEL_FORMATTERS, p, "Owner") ||
-        (`<div class="parcel-info-section-title">Owner</div>` +
+        (`<div class="parcel-info-section-title" role="heading" aria-level="3">Owner</div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label">Name</span><span class="parcel-info-value">${dash(p.owner_name)}</span></div>` +
          `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="Owner's mailing address as recorded in the tax roll">Mailing</span><span class="parcel-info-value" style="white-space:normal;word-break:break-word">${dash(ownerMail)}</span></div>`)) +
       `<hr class="parcel-info-divider">` +
 
-      (assessedValuesHtml || (`<div class="parcel-info-section-title">Assessed Values` +
+      (assessedValuesHtml || (`<div class="parcel-info-section-title" role="heading" aria-level="3">Assessed Values` +
         `<button class="pv-info-btn" data-info="assess" data-pin="${_escHtml(displayPin)}" data-tip="About property assessment" aria-label="About property assessment">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>` +
         `</button></div>` +
@@ -1999,7 +2000,7 @@
       `<div class="parcel-info-row" style="margin-top:6px"><span class="parcel-info-label" data-tip="Principal Residence Exemption — reduces taxable value for the owner's primary home. 100% = full exemption; 0% = no exemption (rental, vacant, or non-homestead)">PRE</span><span class="parcel-info-value">${homestead != null ? homestead + "%" : "—"}</span></div>`)) +
       `<hr class="parcel-info-divider">` +
 
-      (taxDescriptionHtml || (`<div class="parcel-info-section-title">Tax Description` +
+      (taxDescriptionHtml || (`<div class="parcel-info-section-title" role="heading" aria-level="3">Tax Description` +
         `<button class="pv-info-btn" data-info="tax" data-pin="${_escHtml(displayPin)}" data-tip="About this tax description" aria-label="About this tax description">` +
           `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>` +
         `</button></div>` +
@@ -2510,7 +2511,7 @@
     setActive(-1);
 
     if (!results.length) {
-      searchResults.innerHTML = '<div class="parcel-search-no-results">No matches found</div>';
+      searchResults.innerHTML = '<div class="parcel-search-no-results" data-testid="parcel-search-no-results">No matches found</div>';
       setExpanded(true);
       if (searchStatus) searchStatus.textContent = "No matches found";
       return;
@@ -2526,7 +2527,7 @@
       row.setAttribute("role", "option");
       row.setAttribute("aria-selected", "false");
       row.innerHTML =
-        `<div class="parcel-search-result-pin">${_escHtml(r.pin)}${r.municipality ? " &middot; " + _escHtml(r.municipality) : ""}</div>` +
+        `<div class="parcel-search-result-pin" data-testid="parcel-search-result-pin">${_escHtml(r.pin)}${r.municipality ? " &middot; " + _escHtml(r.municipality) : ""}</div>` +
         `<div class="parcel-search-result-owner">${r.owner_name ? _escHtml(r.owner_name) : "—"}</div>` +
         (r.address ? `<div class="parcel-search-result-address">${_escHtml(r.address)}</div>` : "");
       const idx = i;

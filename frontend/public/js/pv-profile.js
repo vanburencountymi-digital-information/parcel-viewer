@@ -425,7 +425,7 @@
       '<div class="pv-profile-modal" role="dialog" aria-modal="true" aria-label="Neighborhood profile">' +
         '<div class="pv-profile-head">' +
           '<div class="pv-profile-head-l"><h2 class="pv-profile-title">Neighborhood Profile</h2>' +
-            '<div id="pv-profile-sub" class="pv-profile-sub">' + esc(loading) + '</div>' +
+            '<div id="pv-profile-sub" class="pv-profile-sub" data-testid="pv-profile-sub">' + esc(loading) + '</div>' +
             controlsHtml() + '</div>' +
           '<button type="button" class="pv-profile-x" aria-label="Close">×</button>' +
         '</div>' +
@@ -457,7 +457,7 @@
           '" data-ft="' + ft + '">' + ftLabel(ft) + '</button>';
       }).join('');
       var customVal = RADII.indexOf(_ctx.distanceFt) < 0 ? _ctx.distanceFt : '';
-      return '<span class="pv-prof-radii">' + radii + '</span>' +
+      return '<span class="pv-prof-radii" role="group" aria-label="Distance">' + radii + '</span>' +
         '<span class="pv-prof-custom"><input id="pv-prof-custom-ft" class="pv-prof-custom-in" type="number" ' +
           'min="' + MIN_FT + '" max="' + MAX_FT + '" step="10" placeholder="ft" aria-label="Custom distance in feet"' +
           (customVal ? ' value="' + customVal + '"' : '') + '><span class="pv-prof-custom-u">ft</span></span>';

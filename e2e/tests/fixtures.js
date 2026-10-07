@@ -55,17 +55,40 @@ async function gotoViewer(page, path = '/demo/') {
   }, null, { timeout: 30_000 });
 }
 
+// Locators for the parts of the page most specs use, by role, label or test id (DIC-2180):
+// never by page structure, so the markup can change (ES modules, Vue) without the tests.
+const ui = {
+  searchInput: (page) => page.getByRole('combobox', { name: 'Search parcels by parcel number, owner, or address' }),
+  searchResults: (page) => page.getByRole('listbox', { name: 'Parcel search results' }),
+  parcelPanel: (page) => page.getByRole('region', { name: 'Parcel' }),
+  mapControls: (page) => page.getByRole('complementary', { name: 'Map controls' }),
+  mapCanvas: (page) => page.locator('canvas.maplibregl-canvas'),   // MapLibre's own markup
+  helpMenuButton: (page) => page.getByRole('button', { name: 'Help and tools' }),
+  helpMenu: (page) => page.getByRole('menu', { name: 'Help and tools' }),
+  mapBuddyButton: (page) => page.getByRole('button', { name: 'Open MapBuddy A.I. panel' }),
+  mapBuddyInput: (page) => page.getByRole('textbox', { name: 'Message MapBuddy A.I.' }),
+};
+
+/** Open the map controls panel (if collapsed) and the given tab: Layers, Selection/Drawing/Measurement Tools. */
+async function openMapControlsTab(page, tabName) {
+  if (!(await ui.mapControls(page).isVisible())) await page.getByRole('button', { name: 'Open map controls' }).click();
+  const tab = page.getByRole('tab', { name: tabName });
+  if (!(await tab.isVisible())) await page.getByRole('button', { name: 'Show advanced tools' }).click();
+  await tab.click();
+  return page.getByRole('tabpanel', { name: tabName });
+}
+
 /** Search for `query` through the real search box and pick result `index`. Returns the result's pin. */
 async function selectParcelViaSearch(page, query = 'paw paw', index = 0) {
-  const input = page.locator('#parcel-search-input');
-  if (!(await input.isVisible())) await page.locator('#pv-search-btn').click();
+  const input = ui.searchInput(page);
+  if (!(await input.isVisible())) await page.getByRole('button', { name: 'Search parcels', exact: true }).click();
   await input.fill(query);
-  const rows = page.locator('#parcel-search-results .parcel-search-result');
+  const rows = ui.searchResults(page).getByRole('option');
   await expect(rows.first()).toBeVisible();
-  const pin = (await rows.nth(index).locator('.parcel-search-result-pin').innerText()).split('·')[0].trim();
+  const pin = (await rows.nth(index).getByTestId('parcel-search-result-pin').innerText()).split('·')[0].trim();
   await rows.nth(index).click();
-  await expect(page.locator('#parcel-info-panel')).toBeVisible();
-  await expect(page.locator('.parcel-info-pin')).toHaveText(pin);
+  await expect(ui.parcelPanel(page)).toBeVisible();
+  await expect(page.getByTestId('parcel-info-pin')).toHaveText(pin);
   await waitForMapIdle(page);
   return pin;
 }
@@ -116,4 +139,34 @@ function clickGate(page) {
   return page.evaluate(() => (window.PS_STATE || {}).activeDrawTool || null);
 }
 
-module.exports = { test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };
+// The window hooks the tests may read (DIC-2180): the seam between the suite and the app's
+// internals. A refactor (ES modules, Vue) must keep every one, which test-hooks.spec.js
+// checks; anything else the tests need goes through the page, by role, label or test id.
+// Map state can't be read from the DOM, which is why most of these exist.
+const VIEWER_HOOKS = {
+  PS_MAP: 'the MapLibre map: camera, project/unproject, layers, idle events',
+  PS_STATE: 'app state: the selected parcel, the active draw tool',
+  PS_PARCEL_INDEX: 'the parcels in view (GeoJSON features), what selections are checked against',
+  PS_selectParcelById: 'select a parcel by id without a click',
+  PV_MAP_BUDDY: "Map Buddy's command runner (no model call)",
+  PV_VISION: "map look capture (Map Buddy's eyes)",
+  COUNTY: 'the county manifest in use',
+  PV_ENDPOINTS: 'resolved service URLs',
+  PS_ANNOTATION_STORE: 'drawn annotations',
+  PS_MEASURE_TOOL: 'the measure tool',
+  PS_OVERLAY_LAYERS: 'overlay availability (a tile error still counts as "loaded" in MapLibre)',
+  PV_BOOKMARKS: 'saved views',
+  PV_PREFS: 'stored preferences',
+  PV_COORDS: 'coordinate formatting and parsing',
+  PV_COMPARE: 'the compare tray',
+  turf: 'Turf, for geometry in assertions',
+  proj4: 'proj4, for State Plane reference values',
+  maplibregl: 'MapLibre itself (its version, in the smoke test)',
+};
+// Set only in a particular state, so not checked on a normal load.
+const CONDITIONAL_HOOKS = {
+  PV_CONFIG_SOURCE: "'fallback' when the viewer runs on the baked county manifest",
+};
+const ADMIN_HOOKS = { PV_ADMIN: 'the admin console state (getState)' };
+
+module.exports = { VIEWER_HOOKS, CONDITIONAL_HOOKS, ADMIN_HOOKS, ui, openMapControlsTab, test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };

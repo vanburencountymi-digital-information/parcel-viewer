@@ -3,7 +3,7 @@
 //   AI off (user choice)   → recorded figures + statute links, "walkthrough is off", no AI call
 //   AI on, service fails    → the same facts, but says it "couldn't be reached" (not "off")
 //   AI on, service answers  → narration over the same figures
-const { test, expect, gotoViewer, selectParcelViaSearch } = require('./fixtures');
+const { test, expect, gotoViewer, selectParcelViaSearch, ui } = require('./fixtures');
 
 const EXPLAIN = /\/explain(\?|$)/;
 const HEALTH = /\/health(\?|$)/;
@@ -17,13 +17,16 @@ async function setup(page, aiMode, explainHandler) {
   await selectParcelViaSearch(page);
   return () => calls;
 }
-const openAssessment = (page) => page.locator('#parcel-info-panel .pv-info-btn[data-info="assess"]').click();
-const modal = (page) => page.locator('.pv-modal-backdrop');
+const openAssessment = (page) => ui.parcelPanel(page).getByRole('button', { name: 'About property assessment' }).click();
+// The explainer dialog, named by its title ("Property Assessment — <pin>", "Tax Description — <pin>").
+const modal = (page) => page.getByRole('dialog', { name: /^(Property Assessment|Tax Description)\b/ });
+// The recorded-figures table of the assessment explainer.
+const figures = (m) => m.getByRole('group', { name: 'Recorded figures' }).getByRole('table');
 
 test('AI off: figures + statute links, says it is off, never calls the AI', async ({ page }) => {
   const calls = await setup(page, 'off');
   await openAssessment(page);
-  await expect(modal(page).locator('.pv-xp-table')).toContainText('Assessed Value (AV)');
+  await expect(figures(modal(page))).toContainText('Assessed Value (AV)');
   await expect(modal(page)).toContainText('Michigan law');
   await expect(modal(page)).toContainText('walkthrough is off');
   expect(calls()).toBe(0);
@@ -33,7 +36,7 @@ test('AI on but the service fails: same facts, says it could not be reached', as
   consoleGuard.allow(/Failed to load resource.*explain/);
   const calls = await setup(page, 'on', (r) => r.fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"down"}' }));
   await openAssessment(page);
-  await expect(modal(page).locator('.pv-xp-table')).toContainText('Assessed Value (AV)');
+  await expect(figures(modal(page))).toContainText('Assessed Value (AV)');
   await expect(modal(page)).toContainText('couldn’t be reached');
   await expect(modal(page)).not.toContainText('walkthrough is off');
   expect(calls()).toBe(1);
@@ -49,30 +52,33 @@ test('AI on: narration shows over the same recorded figures', async ({ page }) =
   await openAssessment(page);
   const m = modal(page);
   await expect(m).toContainText('MOCK SUMMARY <b>not bold</b>');     // model text is escaped
-  await expect(m.locator('.pv-xp-summary b')).toHaveCount(0);
-  await expect(m.locator('.pv-xp-table')).toContainText('Assessed Value (AV)');
-  const figsOn = await m.locator('.pv-xp-table').innerText();
+  await expect(m.getByTestId('pv-xp-summary').locator('b')).toHaveCount(0);
+  await expect(figures(m)).toContainText('Assessed Value (AV)');
+  const figsOn = await figures(m).innerText();
   await page.keyboard.press('Escape');
   await page.evaluate(() => window.PV_PREFS.setAiMode('off'));
   await openAssessment(page);
   await expect(m).toContainText('walkthrough is off');
-  expect(await m.locator('.pv-xp-table').innerText(), 'identical figures with AI on and off').toBe(figsOn);
+  expect(await figures(m).innerText(), 'identical figures with AI on and off').toBe(figsOn);
 });
 
 test('a statute citation opens the Sources panel on that statute', async ({ page }) => {
   await setup(page, 'off');
   await openAssessment(page);
-  const cite = modal(page).locator('.pv-cite-trigger').first();
+  const cite = modal(page).getByTestId('cite-trigger').first();
   const name = (await cite.innerText()).trim();
   await cite.click();
-  const panel = page.locator('#pv-doc-panel');
+  // includeHidden: the explainer dialog stays open and marks the rest of the page (where the
+  // Sources panel lives) inert + aria-hidden, so the panel is outside the accessibility tree.
+  // That's an a11y bug (DIC-2182); drop includeHidden when it's fixed.
+  const panel = page.getByRole('region', { name: 'Sources', includeHidden: true });
   await expect(panel).toBeVisible();
   await expect(panel).toContainText(name.slice(0, 20));
 });
 
 test('tax description explainer renders in AI-off mode', async ({ page }) => {
   await setup(page, 'off');
-  await page.locator('#parcel-info-panel .pv-info-btn[data-info="tax"]').click();
-  await expect(modal(page).locator('.pv-xp-figs')).toContainText('Tax description');
-  await expect(modal(page).locator('.pv-xp-desc')).toBeVisible();
+  await ui.parcelPanel(page).getByRole('button', { name: 'About this tax description' }).click();
+  await expect(modal(page).getByRole('group', { name: 'Recorded tax description' })).toContainText('Tax description');
+  await expect(modal(page).getByTestId('pv-xp-desc')).toBeVisible();
 });

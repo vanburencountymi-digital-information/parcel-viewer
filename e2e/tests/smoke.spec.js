@@ -1,10 +1,10 @@
 // Page load: the viewer boots cleanly with the expected services and nothing noisy.
-const { test, expect, gotoViewer, waitForMapIdle } = require('./fixtures');
+const { test, expect, gotoViewer, waitForMapIdle, ui } = require('./fixtures');
 
 test('viewer loads, map renders, and the console stays clean for 10s', async ({ page }) => {
   await gotoViewer(page);
   await expect(page).toHaveTitle(/Parcel Viewer/);
-  await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible();
+  await expect(ui.mapCanvas(page)).toBeVisible();
   // Idle page time is when background loops (reconnects, pollers) show up as console noise.
   await page.waitForTimeout(10_000);
 });

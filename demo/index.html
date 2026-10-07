@@ -36,7 +36,7 @@
         <div id="parcel-search" class="parcel-search">
           <input id="parcel-search-input" class="parcel-search-input" type="text" placeholder="Search parcel number, owner, or address…" aria-label="Search parcels by parcel number, owner, or address" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="parcel-search-results" aria-autocomplete="list" aria-haspopup="listbox">
           <div id="parcel-search-results" class="parcel-search-results" role="listbox" aria-label="Parcel search results" hidden></div>
-          <div id="parcel-search-status" class="pv-sr-only" role="status" aria-live="polite"></div>
+          <div id="parcel-search-status" class="pv-sr-only" role="status" aria-live="polite" data-testid="parcel-search-status"></div>
           <!-- Close button: visible only in mobile overlay mode via CSS -->
           <button id="pv-search-close" class="pv-search-close" aria-label="Close search">✕</button>
         </div>
@@ -125,10 +125,10 @@
           <button class="parcel-info-close" title="Clear selection" aria-label="Clear selection">✕</button>
         </div>
         <div id="parcel-info-nav" class="parcel-info-nav" hidden>
-          <button id="parcel-nav-prev" class="parcel-nav-btn" title="Previous parcel">&#8249;</button>
-          <span id="parcel-nav-label" class="parcel-nav-label">1 of 1</span>
+          <button id="parcel-nav-prev" class="parcel-nav-btn" title="Previous parcel" aria-label="Previous parcel">&#8249;</button>
+          <span id="parcel-nav-label" class="parcel-nav-label" data-testid="parcel-nav-label">1 of 1</span>
           <button id="parcel-fly-btn" class="parcel-nav-fly" title="Fly to parcel">&#8982;</button>
-          <button id="parcel-nav-next" class="parcel-nav-btn" title="Next parcel">&#8250;</button>
+          <button id="parcel-nav-next" class="parcel-nav-btn" title="Next parcel" aria-label="Next parcel">&#8250;</button>
         </div>
         <div class="parcel-info-body"></div>
       </div>
@@ -158,14 +158,14 @@
       <div id="box-select-overlay" class="box-select-overlay"></div>
       <!-- Drawing tools overlays -->
       <canvas id="drw-freehand-canvas" class="drw-freehand-canvas"></canvas>
-      <div id="drw-hud" class="drw-hud" hidden></div>
+      <div id="drw-hud" class="drw-hud" data-testid="drw-hud" hidden></div>
 
       <!-- Measurement HUD (floating result panel, top-right of map) -->
-      <div id="msr-hud" class="msr-hud" hidden>
+      <div id="msr-hud" class="msr-hud" data-testid="msr-hud" hidden>
         <div class="msr-hud-header">
           <span class="msr-hud-title">Measurement</span>
           <span class="msr-hud-temp" hidden>TEMP</span>
-          <button class="msr-hud-close" title="Close">&times;</button>
+          <button class="msr-hud-close" title="Close" aria-label="Close measurement">&times;</button>
         </div>
         <div class="msr-hud-body" id="msr-hud-body"></div>
         <div class="msr-hud-footer">
@@ -185,27 +185,27 @@
           <!-- Only the tabs are in the tablist; the Advanced toggle is a sibling (ARIA:
                a tablist may contain only tabs). display:contents keeps the layout. -->
           <div class="mcp-tablist" role="tablist" aria-label="Map tool tabs">
-          <button class="mcp-tab active" data-tab="layers" title="Layers" role="tab" aria-selected="true" aria-controls="mcp-pane-layers">
+          <button class="mcp-tab active" data-tab="layers" title="Layers" aria-label="Layers" role="tab" aria-selected="true" aria-controls="mcp-pane-layers">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
               <rect x="1" y="2" width="14" height="2.5" rx="1"/>
               <rect x="1" y="6.75" width="14" height="2.5" rx="1"/>
               <rect x="1" y="11.5" width="14" height="2.5" rx="1"/>
             </svg>
           </button>
-          <button class="mcp-tab" data-tab="select" data-advanced="true" title="Selection Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-select">
+          <button class="mcp-tab" data-tab="select" data-advanced="true" title="Selection Tools" aria-label="Selection Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-select">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
               <rect x="2" y="2" width="9" height="9" rx="1" stroke-dasharray="2.5 1.5"/>
               <line x1="11" y1="11" x2="14.5" y2="14.5" stroke-linecap="round" stroke-width="2"/>
             </svg>
           </button>
-          <button class="mcp-tab" data-tab="draw" data-advanced="true" title="Drawing Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-draw">
+          <button class="mcp-tab" data-tab="draw" data-advanced="true" title="Drawing Tools" aria-label="Drawing Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-draw">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M2.5 13L5 14.5l7.5-9.5-2-1.5L2.5 13z"/>
               <path d="M2.5 13l-1.5 2.5 2.5-1"/>
               <line x1="10.5" y1="3" x2="12.5" y2="4.5"/>
             </svg>
           </button>
-          <button class="mcp-tab" data-tab="measure" data-advanced="true" title="Measurement Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-measure">
+          <button class="mcp-tab" data-tab="measure" data-advanced="true" title="Measurement Tools" aria-label="Measurement Tools" role="tab" aria-selected="false" aria-controls="mcp-pane-measure">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
               <line x1="1" y1="8" x2="15" y2="8"/>
               <line x1="1" y1="5" x2="1" y2="11"/>
@@ -225,7 +225,7 @@
         </nav>
         <div class="mcp-body">
           <!-- Layers pane -->
-          <div class="mcp-pane" id="mcp-pane-layers" role="tabpanel">
+          <div class="mcp-pane" id="mcp-pane-layers" role="tabpanel" aria-label="Layers">
             <div class="mcp-pane-title" role="heading" aria-level="3">Layers</div>
 
             <label class="mcp-toggle-row">
@@ -243,7 +243,7 @@
               </div>
               <div class="lyr-legend-body" id="parcels-choro-body" hidden>
                 <div class="choro-view-label">Color parcels by</div>
-                <div class="choro-view-list" id="parcels-choro-views"></div>
+                <div class="choro-view-list" id="parcels-choro-views" role="radiogroup" aria-label="Color parcels by"></div>
                 <div id="parcels-choro-legend" class="choro-legend-inpanel" hidden></div>
               </div>
             </div>
@@ -356,7 +356,7 @@
             <label class="mcp-toggle-row plbl-header-row">
               <input type="checkbox" id="plbl-toggle"> Parcel Labels
             </label>
-            <div id="plbl-controls" class="plbl-controls" style="display:none">
+            <div id="plbl-controls" class="plbl-controls" data-testid="plbl-controls" style="display:none">
               <select id="plbl-field" class="plbl-field-select" aria-label="Parcel label field">
                 <option value="owner">Owner Name</option>
                 <option value="pin">Parcel Number</option>
@@ -369,16 +369,16 @@
               </select>
               <div class="plbl-size-row">
                 <span class="plbl-size-label">Size</span>
-                <button class="plbl-size-btn" data-size="small">S</button>
-                <button class="plbl-size-btn active" data-size="medium">M</button>
-                <button class="plbl-size-btn" data-size="large">L</button>
+                <button class="plbl-size-btn" data-size="small" aria-label="Small label size">S</button>
+                <button class="plbl-size-btn active" data-size="medium" aria-label="Medium label size">M</button>
+                <button class="plbl-size-btn" data-size="large" aria-label="Large label size">L</button>
               </div>
               <div class="plbl-hint">Large parcels labeled at zoom 13+. Small parcels appear at zoom 14+. Labels auto-hide when they won't fit.</div>
             </div>
           </div>
 
           <!-- Select pane -->
-          <div class="mcp-pane" id="mcp-pane-select" role="tabpanel" hidden>
+          <div class="mcp-pane" id="mcp-pane-select" role="tabpanel" aria-label="Selection Tools" hidden>
             <div class="mcp-pane-title" role="heading" aria-level="3">Selection Tools</div>
             <p class="sel-hint">Shift-click parcels to add/remove from selection.</p>
             <div class="sel-tools">
@@ -413,7 +413,7 @@
                 <option value="lt">less than</option>
               </select>
               <input id="filter-value" class="filter-input" type="text" placeholder="value…" aria-label="Filter value">
-              <div id="filter-match-count" class="filter-match-count"></div>
+              <div id="filter-match-count" class="filter-match-count" data-testid="filter-match-count"></div>
               <div class="filter-btn-row">
                 <button id="filter-add-btn" class="filter-btn">Add to Selection</button>
                 <button id="filter-replace-btn" class="filter-btn filter-btn-replace">Remove from Selection</button>
@@ -432,7 +432,7 @@
                 </div>
                 <label class="buffer-check-row"><input type="checkbox" id="buffer-live-preview" checked> Live preview</label>
                 <label class="buffer-check-row"><input type="checkbox" id="buffer-include-seed" checked> Include seed parcel</label>
-                <div id="buffer-match-count" class="buffer-match-count"></div>
+                <div id="buffer-match-count" class="buffer-match-count" data-testid="buffer-match-count"></div>
                 <div class="buffer-btn-row">
                   <button id="buffer-apply-btn" class="buffer-btn buffer-btn-add">Add to Selection</button>
                   <button id="buffer-remove-btn" class="buffer-btn buffer-btn-remove">Remove from Selection</button>
@@ -441,7 +441,7 @@
               <button id="buffer-cancel-btn" class="buffer-cancel-btn">Cancel</button>
             </div>
             <!-- Active tool bar -->
-            <div id="tool-active-bar" class="tool-active-bar" hidden>
+            <div id="tool-active-bar" class="tool-active-bar" data-testid="tool-active-bar" hidden>
               <span class="tool-active-label"></span>
               <button id="exit-tool-btn" class="exit-tool-btn">Exit</button>
             </div>
@@ -453,7 +453,7 @@
           </div>
 
           <!-- Drawing Tools pane -->
-          <div class="mcp-pane" id="mcp-pane-draw" role="tabpanel" hidden>
+          <div class="mcp-pane" id="mcp-pane-draw" role="tabpanel" aria-label="Drawing Tools" hidden>
             <div class="mcp-pane-title" role="heading" aria-level="3">Drawing Tools</div>
 
             <div class="drw-section-label">Edit</div>
@@ -566,7 +566,7 @@
           </div>
 
           <!-- Measurement Tools pane -->
-          <div class="mcp-pane" id="mcp-pane-measure" role="tabpanel" hidden>
+          <div class="mcp-pane" id="mcp-pane-measure" role="tabpanel" aria-label="Measurement Tools" hidden>
             <div class="mcp-pane-title" role="heading" aria-level="3">Measurement Tools</div>
 
             <div class="msr-settings">

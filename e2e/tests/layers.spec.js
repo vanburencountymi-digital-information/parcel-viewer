@@ -1,15 +1,13 @@
 // Every layer toggle in the Layers pane turns on and off without errors.
-const { test, expect, gotoViewer, waitForMapIdle } = require('./fixtures');
+const { test, expect, gotoViewer, waitForMapIdle, openMapControlsTab } = require('./fixtures');
 
 test('every layer toggle turns on and off cleanly', async ({ page, consoleGuard }) => {
   // Federal WMS overlays (FEMA, USFWS, NRCS, USGS) are third-party and occasionally slow or
   // down; a failed *tile* there is their outage, not our bug. Script errors still fail.
   consoleGuard.allow(/Failed to load resource/);
   await gotoViewer(page);
-  const panel = page.locator('#map-control-panel');
-  if (!(await panel.isVisible())) await page.locator('#mcp-reopen-tab').click();
-  await page.locator('.mcp-tab[data-tab="layers"]').click();
-  const toggles = page.locator('#mcp-pane-layers input[type="checkbox"]').filter({ visible: true });
+  const pane = await openMapControlsTab(page, 'Layers');
+  const toggles = pane.getByRole('checkbox').filter({ visible: true });
   const n = await toggles.count();
   expect(n).toBeGreaterThan(10);
   for (let i = 0; i < n; i++) {
@@ -25,11 +23,11 @@ test('every layer toggle turns on and off cleanly', async ({ page, consoleGuard 
 
 test('aerial imagery replaces the street basemap and back', async ({ page }) => {
   await gotoViewer(page);
-  if (!(await page.locator('#map-control-panel').isVisible())) await page.locator('#mcp-reopen-tab').click();
-  await page.locator('.mcp-tab[data-tab="layers"]').click();
+  const pane = await openMapControlsTab(page, 'Layers');
+  const aerial = pane.getByRole('checkbox', { name: 'Aerial Imagery', exact: true });
   const vis = () => page.evaluate(() => ['basemap', 'basemap-labels', 'mi-aerial'].map((id) => window.PS_MAP.getLayoutProperty(id, 'visibility') || 'visible'));
-  await page.locator('#toggle-aerial').check();
+  await aerial.check();
   expect(await vis()).toEqual(['none', 'none', 'visible']);
-  await page.locator('#toggle-aerial').uncheck();
+  await aerial.uncheck();
   expect(await vis()).toEqual(['visible', 'visible', 'none']);
 });
