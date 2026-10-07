@@ -18,3 +18,7 @@ graphify-out/
 
 # Full API responses recorded by tools/api-contract (live parcel data; DIC-2147).
 tools/api-contract/.out/
+
+# Front-end build (DIC-2180)
+node_modules/
+dist/

@@ -1,0 +1,15 @@
+# Build context for infra/web.Dockerfile (repo root): only what the web image needs.
+*
+!package.json
+!package-lock.json
+!vite.config.mjs
+!demo/
+!admin/
+!frontend/public/
+!engine/
+!map-buddy/js/
+!map-buddy/css/
+!infra/nginx.viewer.conf
+!infra/nginx/
+**/node_modules
+**/.DS_Store

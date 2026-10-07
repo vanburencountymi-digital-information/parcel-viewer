@@ -1,0 +1,15 @@
+{
+  "name": "parcel-viewer-web",
+  "private": true,
+  "description": "Builds the Parcel Viewer and Admin Console pages with Vite (DIC-2180). The e2e suite has its own package in e2e/.",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "vite build --config vite.config.mjs"
+  },
+  "devDependencies": {
+    "vite": "8.3.3"
+  }
+}

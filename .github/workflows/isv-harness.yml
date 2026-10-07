@@ -169,6 +169,38 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: docker build ${TARGET:+--target "$TARGET"} --tag "parcel-viewer-${{ matrix.name }}:ci" "${{ matrix.context }}"
 
+  # The web image (DIC-2180): Vite builds the pages, the image serves them, and its nginx
+  # config (with the image's own production defaults) passes nginx -t. The e2e suite runs
+  # against this image locally before merge (it needs the parcel database).
+  web-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Vite build (pages + hashed CSS)
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          test -f dist/demo/index.html && test -f dist/admin/index.html
+          grep -q '/assets/demo-.*\.css' dist/demo/index.html
+          grep -q '/frontend/public/js/map.js' dist/demo/index.html   # scripts untouched (slice 2a)
+
+      - name: Build the web image
+        run: docker build -f infra/web.Dockerfile --tag parcel-viewer-web:ci .
+
+      - name: nginx -t inside the image
+        run: |
+          docker run --rm \
+            --add-host api:127.0.0.1 --add-host martin:127.0.0.1 --add-host map-buddy:127.0.0.1 \
+            --add-host django-api:127.0.0.1 \
+            parcel-viewer-web:ci nginx -t
+
   # The nginx config and the compose files must be valid, and production must never
   # get the dev Map Buddy proxy (DIC-1871, DIC-1874). No containers are started.
   infra-config:
