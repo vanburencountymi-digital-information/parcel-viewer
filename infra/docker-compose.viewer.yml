@@ -239,6 +239,11 @@ services:
       - SECRET_KEY=${DJANGO_SECRET_KEY:-insecure-local-dev-key-change-me}
       - DEBUG=${DJANGO_DEBUG:-0}   # 1 shows Django's debug pages (not FastAPI's 404/500)
       - ALLOWED_HOSTS=localhost,127.0.0.1,django-api
+      # Served by nginx at /api/ (prefix stripped): Django builds its admin links with it.
+      # Direct calls on :8001 still route; only Django-made links assume the nginx mount.
+      - PV_SCRIPT_NAME=/api
+      # nginx forwards Host without the port, so the admin's sign-in form needs this origin.
+      - CSRF_TRUSTED_ORIGINS=http://localhost:8080
       - LOG_LEVEL
     volumes:
       # Code edits show up without a rebuild; makemigrations writes back to the host.

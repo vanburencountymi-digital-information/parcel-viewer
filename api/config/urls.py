@@ -5,6 +5,11 @@ from django.urls import include, path
 
 from common.docs import StaffSchemaView, StaffSwaggerView
 
+# The Django admin is the staff config editor (DIC-2151); "View site" opens the viewer.
+admin.site.site_header = "Parcel viewer admin"
+admin.site.site_title = "Parcel viewer admin"
+admin.site.site_url = "/demo/"
+
 urlpatterns = [
     path("", include("common.urls")),
     path("", include("parcels.urls")),

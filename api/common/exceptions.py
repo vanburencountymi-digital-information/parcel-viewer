@@ -37,7 +37,7 @@ def _is_busy(exc: BaseException) -> bool:
 def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response | None:
     """DRF's handler, with the FastAPI backend's answers for the cases above."""
     request = context.get("request")
-    path = request.path if request is not None else ""
+    path = request.path_info if request is not None else ""
     if isinstance(exc, OperationalError | QueryCanceled | PoolTimeout):
         if _is_busy(exc):
             log.warning("database busy: %s on %s", type(exc).__name__, path)

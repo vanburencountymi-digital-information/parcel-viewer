@@ -18,6 +18,10 @@ globals().update({name: value for name, value in vars(base).items() if name.isup
 DEBUG = False
 TEST_RUNNER = "common.test_runner.PooledTestRunner"
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+# The test client calls paths as the app routes them, with no nginx /api mount, even when
+# the container running the tests has PV_SCRIPT_NAME set.
+FORCE_SCRIPT_NAME = None
+STATIC_URL = "/static/"
 
 # Tests never reach the shared database: the parcels and config-store aliases point at the
 # default test database, and the parcels connection stays read-only there too.
