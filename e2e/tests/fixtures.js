@@ -160,6 +160,8 @@ const VIEWER_HOOKS = {
   PV_COORDS: 'coordinate formatting and parsing',
   PV_COMPARE: 'the compare tray',
   turf: 'Turf, for geometry in assertions',
+  proj4: 'proj4, for State Plane reference values',
+  maplibregl: 'MapLibre itself (its version, in the smoke test)',
 };
 // Set only in a particular state, so not checked on a normal load.
 const CONDITIONAL_HOOKS = {

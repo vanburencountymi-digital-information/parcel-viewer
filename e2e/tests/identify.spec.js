@@ -1,6 +1,6 @@
 // Clicking the map with a federal overlay on shows an identify popup. The proxy response
 // is mocked so these test OUR rendering deterministically, independent of FEMA uptime.
-const { test, expect, gotoViewer, waitForMapIdle } = require('./fixtures');
+const { test, expect, gotoViewer, waitForMapIdle, ui, openMapControlsTab } = require('./fixtures');
 
 // The overlay's map tiles come straight from the federal WMS; their outages aren't ours.
 const FEDERAL = /Failed to load resource.*\[https:\/\/(hazards\.fema\.gov|fwspublicservices|sdmdataaccess|elevation\.nationalmap)/;
@@ -15,13 +15,12 @@ async function setup(page, consoleGuard) {
   await gotoViewer(page);
   await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }));
   await waitForMapIdle(page);
-  if (!(await page.locator('#map-control-panel').isVisible())) await page.locator('#mcp-reopen-tab').click();
-  await page.locator('.mcp-tab[data-tab="layers"]').click();
-  await page.locator('#overlay-flood-toggle').check();
+  const layers = await openMapControlsTab(page, 'Layers');
+  await layers.getByLabel('Flood Hazard (FEMA)').check();
 }
 
 async function clickMap(page, dx = 150, dy = 0) {
-  const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
+  const box = await ui.mapCanvas(page).boundingBox();
   await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy);
 }
 
@@ -33,10 +32,10 @@ test('flood identify shows the zone, escapes upstream text, and closes', async (
   const popup = page.locator('.wfi-mgl-popup');
   await expect(popup).toBeVisible();
   await expect(popup).toContainText('Zone AE — Base flood elevation determined');
-  await expect(popup.locator('img')).toHaveCount(0);                 // rendered as text, not markup
+  await expect(popup.getByRole('img', { includeHidden: true })).toHaveCount(0);                 // rendered as text, not markup
   await expect(popup).toContainText('<img src=x');
   expect(await page.evaluate(() => window.__xss || 0)).toBe(0);
-  await popup.locator('.maplibregl-popup-close-button').click();
+  await popup.getByRole('button', { name: 'Close popup' }).click();   // MapLibre's own label
   await expect(popup).toHaveCount(0);
 });
 

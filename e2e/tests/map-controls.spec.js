@@ -1,27 +1,24 @@
 // Map Controls panel: every Select / Measure / Draw tool can be armed from its button and
 // exited again (Esc or its own control), always releasing the map-click gate.
-const { test, expect, gotoViewer, clickGate } = require('./fixtures');
+const { test, expect, gotoViewer, clickGate, ui, openMapControlsTab } = require('./fixtures');
 
 async function openTab(page, tab) {
-  const panel = page.locator('#map-control-panel');
-  if (!(await panel.isVisible())) await page.locator('#mcp-reopen-tab').click();
-  await expect(panel).toBeVisible();
-  const btn = page.locator(`.mcp-tab[data-tab="${tab}"]`);
-  if (!(await btn.isVisible())) await page.locator('#mcp-advanced-toggle').click();
-  await btn.click();
-  await expect(page.locator(`#mcp-pane-${tab}`)).toBeVisible();
+  const pane = await openMapControlsTab(page, tab);
+  await expect(ui.mapControls(page)).toBeVisible();
+  await expect(pane).toBeVisible();
+  return pane;
 }
 
 test.beforeEach(async ({ page }) => { await gotoViewer(page); });
 
 test.describe('Select tools', () => {
-  for (const id of ['tool-box-select', 'tool-lasso', 'tool-buffer', 'tool-filter']) {
-    test(`${id}: arms and exits`, async ({ page }) => {
-      await openTab(page, 'select');
-      await page.locator('#' + id).click();
-      const bar = page.locator('#tool-active-bar');
+  for (const name of ['Box', 'Lasso', 'Buffer', 'Filter']) {
+    test(`${name}: arms and exits`, async ({ page }) => {
+      const pane = await openTab(page, 'Selection Tools');
+      await pane.getByRole('button', { name, exact: true }).click();
+      const bar = page.getByTestId('tool-active-bar');
       if (await bar.isVisible()) {
-        await page.locator('#exit-tool-btn').click();
+        await bar.getByRole('button', { name: 'Exit', exact: true }).click();
         await expect(bar).toBeHidden();
       } else {
         await page.keyboard.press('Escape');
@@ -32,28 +29,30 @@ test.describe('Select tools', () => {
 });
 
 test.describe('Measure tools', () => {
-  const TOOLS = ['msr-tool-area', 'msr-tool-dist', 'msr-tool-coords', 'msr-tool-dimline', 'msr-tool-autodim'];
-  const ADVANCED = ['msr-tool-bearing', 'msr-tool-perp', 'msr-tool-arc', 'msr-tool-running', 'msr-tool-angle'];
-  for (const id of TOOLS.concat(ADVANCED)) {
-    test(`${id}: arms (holds the gate) and Esc / re-click exits`, async ({ page }) => {
-      await openTab(page, 'measure');
-      const btn = page.locator('#' + id);
-      if (!(await btn.isVisible())) await page.locator('#msr-adv-toggle').click();
+  const TOOLS = ['Measure Area', 'Measure Dist.', 'Coordinates', 'Dim. Line', 'Dimension Parcel'];
+  const ADVANCED = ['Bearing & Dist.', 'Perpendicular', 'Arc / Radius', 'Running Dim.', 'Angle'];
+  for (const name of TOOLS.concat(ADVANCED)) {
+    test(`${name}: arms (holds the gate) and Esc / re-click exits`, async ({ page }) => {
+      const pane = await openTab(page, 'Measurement Tools');
+      const btn = pane.getByRole('button', { name, exact: true });
+      if (!(await btn.isVisible())) await pane.getByRole('button', { name: /Advanced Tools$/ }).click();
       await btn.click();
       expect(await clickGate(page), 'tool armed').toBe('measure');
       await btn.click();                                  // toggle off
       if (await clickGate(page)) await page.keyboard.press('Escape');
       expect(await clickGate(page), 'tool released').toBeNull();
-      await expect(page.locator('#msr-hud')).toBeHidden();
+      await expect(page.getByTestId('msr-hud')).toBeHidden();
     });
   }
 });
 
 test.describe('Draw tools', () => {
-  for (const tool of ['point', 'polyline', 'polygon', 'circle', 'freehand', 'text', 'callout', 'select']) {
+  // button name → the tool id the click gate reports
+  for (const [name, tool] of [['Point', 'point'], ['Line', 'polyline'], ['Shape', 'polygon'], ['Circle', 'circle'],
+    ['Free', 'freehand'], ['Label', 'text'], ['Callout', 'callout'], ['Select', 'select']]) {
     test(`${tool}: arms and Esc exits`, async ({ page }) => {
-      await openTab(page, 'draw');
-      await page.locator('#drw-tool-' + tool).click();
+      const pane = await openTab(page, 'Drawing Tools');
+      await pane.getByRole('button', { name, exact: true }).click();
       expect(await clickGate(page)).toBe(tool);
       await page.keyboard.press('Escape');
       expect(await clickGate(page), 'Esc exits the draw tool').toBeNull();
@@ -62,9 +61,9 @@ test.describe('Draw tools', () => {
   }
 
   test('leaving the Draw tab exits drawing', async ({ page }) => {
-    await openTab(page, 'draw');
-    await page.locator('#drw-tool-polygon').click();
-    await openTab(page, 'layers');
+    const pane = await openTab(page, 'Drawing Tools');
+    await pane.getByRole('button', { name: 'Shape', exact: true }).click();
+    await openTab(page, 'Layers');
     expect(await clickGate(page)).toBeNull();
   });
 });

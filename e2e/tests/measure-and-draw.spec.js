@@ -1,13 +1,12 @@
 // Measurement results are right, and drawings behave (create, undo, redo, clear).
 // Shapes are drawn with real mouse clicks on the map canvas.
-const { test, expect, gotoViewer, waitForMapIdle, clickGate } = require('./fixtures');
+const { test, expect, gotoViewer, waitForMapIdle, clickGate, ui, openMapControlsTab } = require('./fixtures');
 
-async function openTab(page, tab) {
-  if (!(await page.locator('#map-control-panel').isVisible())) await page.locator('#mcp-reopen-tab').click();
-  const btn = page.locator(`.mcp-tab[data-tab="${tab}"]`);
-  if (!(await btn.isVisible())) await page.locator('#mcp-advanced-toggle').click();
-  await btn.click();
-}
+const measureTab = (page) => page.getByRole('tabpanel', { name: 'Measurement Tools' });
+const drawTab = (page) => page.getByRole('tabpanel', { name: 'Drawing Tools' });
+const hud = (page) => page.getByTestId('msr-hud');
+/** The value cell of the measurement HUD row labelled `label`. */
+const hudValue = (page, label) => hud(page).getByRole('row').filter({ hasText: label }).first().getByRole('cell').last();
 
 /** Screen points of a square `size` px wide centred in the map, plus their lng/lat. */
 async function squareOnMap(page, size = 200) {
@@ -36,17 +35,16 @@ test.describe('Measure', () => {
     await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-86.0, 42.22], zoom: 16 }));
     await waitForMapIdle(page);
     await captureAnnotations(page);
-    await openTab(page, 'measure');
+    await openMapControlsTab(page, 'Measurement Tools');
   });
 
   test('area: the reported area matches the drawn shape', async ({ page }) => {
-    await page.locator('#msr-tool-area').click();
+    await measureTab(page).getByRole('button', { name: 'Measure Area' }).click();
     const pts = await squareOnMap(page);
     for (const p of pts) await page.mouse.click(p.x, p.y);
     await page.keyboard.press('Enter');
-    const hud = page.locator('#msr-hud');
-    await expect(hud).toBeVisible();
-    const shown = num((await hud.locator('tr', { hasText: 'Area' }).locator('td').last().innerText()).match(/([\d,]+) sq ft/)[1]);
+    await expect(hud(page)).toBeVisible();
+    const shown = num((await hudValue(page, 'Area').innerText()).match(/([\d,]+) sq ft/)[1]);
     const r = await page.evaluate((clicked) => {
       const saved = window.__added.find((f) => f.properties.featureType === 'measure-area');
       const SQFT = 0.09290304;
@@ -62,10 +60,10 @@ test.describe('Measure', () => {
 
   test('coordinates: every Copy button copies the whole coordinate (DMS included)', async ({ page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-    await page.locator('#msr-tool-coords').click();
-    const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
+    await measureTab(page).getByRole('button', { name: 'Coordinates' }).click();
+    const box = await ui.mapCanvas(page).boundingBox();
     await page.mouse.click(box.x + box.width / 2 + 120, box.y + box.height / 2);
-    const copies = page.locator('#msr-hud .msr-copy-btn');
+    const copies = hud(page).getByRole('button', { name: 'Copy', exact: true });
     await expect(copies.first()).toBeVisible();
     // DMS used to lose everything after the seconds of latitude: its " ended the
     // data-copy attribute early (CodeQL js/identity-replacement led to it, DIC-1880).
@@ -77,11 +75,11 @@ test.describe('Measure', () => {
   });
 
   test('distance: the reported total matches the clicked path', async ({ page }) => {
-    await page.locator('#msr-tool-dist').click();
+    await measureTab(page).getByRole('button', { name: 'Measure Dist.' }).click();
     const pts = (await squareOnMap(page)).slice(0, 3);
     for (const p of pts) await page.mouse.click(p.x, p.y);
     await page.keyboard.press('Enter');
-    const cell = page.locator('#msr-hud tr', { hasText: 'Total Distance' }).locator('td').last();
+    const cell = hudValue(page, 'Total Distance');
     await expect(cell).toBeVisible();
     const text = await cell.innerText();
     const shownFt = /mi/.test(text) ? num(text) * 5280 : num(text);
@@ -90,10 +88,10 @@ test.describe('Measure', () => {
   });
 
   test('Clear This Measurement removes it and Esc releases the map', async ({ page }) => {
-    await page.locator('#msr-tool-area').click();
+    await measureTab(page).getByRole('button', { name: 'Measure Area' }).click();
     for (const p of await squareOnMap(page)) await page.mouse.click(p.x, p.y);
     await page.keyboard.press('Enter');
-    await page.locator('#msr-clear-last-btn').click();
+    await hud(page).getByRole('button', { name: 'Clear This Measurement' }).click();
     await page.keyboard.press('Escape');
     expect(await clickGate(page)).toBeNull();
   });
@@ -104,9 +102,9 @@ test.describe('Measure', () => {
       const full = await fetch('/api/parcel/' + f.properties.id).then((x) => x.json());
       window.PS_MEASURE_TOOL.dimensionParcel(full);
       await new Promise((res) => setTimeout(res, 600));
-      const cell = [...document.querySelectorAll('#msr-hud tr')].find((tr) => /Perimeter/.test(tr.textContent));
-      return { shown: cell && cell.lastElementChild.textContent, expectedFt: turf.length(turf.polygonToLine(full), { units: 'feet' }) };
+      return { expectedFt: turf.length(turf.polygonToLine(full), { units: 'feet' }) };
     });
+    r.shown = await hudValue(page, 'Perimeter').textContent();
     const shownFt = /mi/.test(r.shown) ? num(r.shown) * 5280 : num(r.shown);
     expect(Math.abs(shownFt - r.expectedFt) / r.expectedFt).toBeLessThan(0.01);
   });
@@ -118,11 +116,11 @@ test.describe('Draw', () => {
     await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-86.0, 42.22], zoom: 16 }));
     await waitForMapIdle(page);
     await captureAnnotations(page);
-    await openTab(page, 'draw');
+    await openMapControlsTab(page, 'Drawing Tools');
   });
 
   test('polygon: click vertices + Enter creates one polygon annotation', async ({ page }) => {
-    await page.locator('#drw-tool-polygon').click();
+    await drawTab(page).getByRole('button', { name: 'Shape', exact: true }).click();
     for (const p of await squareOnMap(page)) await page.mouse.click(p.x, p.y);
     await page.keyboard.press('Enter');
     const types = await page.evaluate(() => window.__added.map((f) => f.geometry.type));
@@ -130,7 +128,7 @@ test.describe('Draw', () => {
   });
 
   test('undo removes the last drawing and redo brings it back', async ({ page }) => {
-    await page.locator('#drw-tool-point').click();
+    await drawTab(page).getByRole('button', { name: 'Point', exact: true }).click();
     const [p] = await squareOnMap(page);
     await page.mouse.click(p.x, p.y);
     const count = () => page.evaluate(() => {
@@ -138,18 +136,18 @@ test.describe('Draw', () => {
       return src && src._data && src._data.features ? src._data.features.length : null;
     });
     const after = await count();
-    await page.locator('#drw-undo-btn').click();
+    await drawTab(page).getByRole('button', { name: 'Undo (Ctrl+Z)' }).click();
     expect(await count(), 'undo removes it').toBe(after - 1);
-    await page.locator('#drw-redo-btn').click();
+    await drawTab(page).getByRole('button', { name: 'Redo (Ctrl+Shift+Z)' }).click();
     expect(await count(), 'redo restores it').toBe(after);
   });
 
   test('Clear all (confirmed) removes every drawing', async ({ page }) => {
-    await page.locator('#drw-tool-point').click();
+    await drawTab(page).getByRole('button', { name: 'Point', exact: true }).click();
     for (const p of (await squareOnMap(page)).slice(0, 2)) await page.mouse.click(p.x, p.y);
     await page.keyboard.press('Escape');
     page.once('dialog', (d) => d.accept());
-    await page.locator('#drw-clear-all-btn').click();
+    await drawTab(page).getByRole('button', { name: 'Clear', exact: true }).click();
     const left = await page.evaluate(() => {
       const src = window.PS_MAP.getSource('annotation-source');
       return src && src._data && src._data.features ? src._data.features.length : 0;

@@ -1,36 +1,46 @@
 // "Color parcels by" views (Layers → Parcels ►): each view repaints, shows a legend,
 // shades parcels from the right values, and the choice survives a reload.
-const { test, expect, gotoViewer, waitForMapIdle } = require('./fixtures');
+const { test, expect, gotoViewer, waitForMapIdle, ui, openMapControlsTab } = require('./fixtures');
+
+// The views' radio labels (the county config's view labels), by view id.
+const VIEW_NAMES = {
+  class: 'Property class', acreage: 'Parcel size (acres)', tmv_acre: 'Taxable value / acre',
+  school: 'School district', none: 'Plain (no fill)',
+};
+const views = (page) => ui.mapControls(page).getByRole('radiogroup', { name: 'Color parcels by' });
+const viewRadio = (page, id) => views(page).getByRole('radio', { name: VIEW_NAMES[id], exact: true });
+const legendOf = (page) => ui.mapControls(page).getByRole('img', { name: /legend$/ });
 
 async function openViews(page) {
   await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }));
   await waitForMapIdle(page);
-  if (!(await page.locator('#map-control-panel').isVisible())) await page.locator('#mcp-reopen-tab').click();
-  await page.locator('.mcp-tab[data-tab="layers"]').click();
-  const chev = page.locator('.lyr-chevron[data-target="parcels-choro-body"]');
+  const layers = await openMapControlsTab(page, 'Layers');
+  const chev = layers.getByRole('button', { name: 'Toggle parcel styling options' });
   if ((await chev.getAttribute('aria-expanded')) !== 'true') await chev.click();
-  await expect(page.locator('#parcels-choro-views')).toBeVisible();
+  await expect(views(page)).toBeVisible();
 }
-const pick = (page, id) => page.locator(`#parcels-choro-views input[value="${id}"]`).check();
+const pick = (page, id) => viewRadio(page, id).check();
 const fill = (page) => page.evaluate(() => JSON.stringify(window.PS_MAP.getPaintProperty('parcels-fill', 'fill-color')));
 
 test.beforeEach(async ({ page }) => { await gotoViewer(page); });
 
 test('every view repaints and shows a legend; Plain hides both', async ({ page }) => {
   await openViews(page);
-  const ids = await page.locator('#parcels-choro-views input').evaluateAll((els) => els.map((e) => e.value));
+  const radios = views(page).getByRole('radio');
+  const ids = await radios.evaluateAll((els) => els.map((e) => e.value));   // the view ids
   expect(ids).toEqual(expect.arrayContaining(['class', 'acreage', 'tmv_acre', 'school', 'none']));
   const seen = new Set();
-  for (const id of ids) {
-    await pick(page, id);
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    await radios.nth(i).check();
     await waitForMapIdle(page);
-    const legend = page.locator('#parcels-choro-legend');
+    const legend = legendOf(page);
     if (id === 'none') {
       await expect(legend).toBeHidden();
       continue;
     }
     await expect(legend, `${id} legend`).toBeVisible();
-    await expect(legend.locator('.choropleth-legend-row').first()).toBeVisible();
+    await expect(legend.getByTestId('choropleth-legend-row').first()).toBeVisible();
     seen.add(await fill(page));
   }
   expect(seen.size, 'each view paints differently').toBe(ids.length - 1);
@@ -67,13 +77,13 @@ test('school district legend lists the districts present, and the choice persist
     .map((f) => f.properties.school_dist).filter((v) => v != null && v !== '').map(String))]);
   expect(expected.length).toBeGreaterThan(0);
   await expect.poll(async () => {
-    const legend = await page.locator('#parcels-choro-legend').innerText();
+    const legend = await legendOf(page).innerText();
     return expected.filter((d) => !legend.includes(d));
   }, { message: 'districts missing from the legend' }).toEqual([]);
   await gotoViewer(page);
   await openViews(page);
-  await expect(page.locator('#parcels-choro-views input[value="school"]')).toBeChecked();
-  await expect(page.locator('#parcels-choro-legend')).toContainText('School district');
+  await expect(viewRadio(page, 'school')).toBeChecked();
+  await expect(legendOf(page)).toContainText('School district');
 });
 
 test('Plain view: selecting a parcel keeps the other parcels visible', async ({ page }) => {
@@ -101,15 +111,15 @@ test('parcel outline adapts to the background: dark on light, softened white on 
   const light = await style();
   expect(light.line).not.toBe('#ffffff');
   expect(light.casing).toBe('#ffffff');
-  await page.locator('#theme-toggle').click();
+  await page.getByRole('button', { name: 'Toggle dark mode' }).click();
   await expect.poll(style).toMatchObject({ line: '#ffffff', casing: '#111827' });
   expect((await style()).op, 'white is toned down on dark').toBeLessThan(light.op);
-  await page.locator('#theme-toggle').click();                       // back to light…
+  await page.getByRole('button', { name: 'Toggle dark mode' }).click();                       // back to light…
   await expect.poll(async () => (await style()).line).toBe(light.line);
   await openViews(page);
-  await page.locator('#toggle-aerial').check();                        // …then aerial
+  await ui.mapControls(page).getByLabel('Aerial Imagery').check();                        // …then aerial
   await expect.poll(async () => (await style()).line).toBe('#ffffff');
-  await page.locator('#toggle-aerial').uncheck();
+  await ui.mapControls(page).getByLabel('Aerial Imagery').uncheck();
   await expect.poll(async () => (await style()).line).toBe(light.line);
 });
 
@@ -118,7 +128,7 @@ test('dark mode swaps the view to its dark palette', async ({ page }) => {
   await pick(page, 'class');
   await waitForMapIdle(page);
   const light = await fill(page);
-  await page.locator('#theme-toggle').click();
+  await page.getByRole('button', { name: 'Toggle dark mode' }).click();
   await expect.poll(() => fill(page)).not.toBe(light);
-  await expect(page.locator('#parcels-choro-views input[value="class"]')).toBeChecked();
+  await expect(viewRadio(page, 'class')).toBeChecked();
 });

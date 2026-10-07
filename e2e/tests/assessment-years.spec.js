@@ -2,7 +2,7 @@
 // (DIC-1878). The parcel response is rewritten to say its history ends at the 2023 roll
 // (today's data ends at the 2026 roll, loaded in 2026), so a calendar-based label would
 // show 2026 and fail. The Map Buddy service is mocked: no model calls.
-const { test, expect, gotoViewer, selectParcelViaSearch } = require('./fixtures');
+const { test, expect, gotoViewer, selectParcelViaSearch, ui } = require('./fixtures');
 
 const PARCEL = /\/api\/parcel\/\d+$/;
 const EXPLAIN = /\/explain(\?|$)/;
@@ -53,14 +53,14 @@ test('the panel chart, the explainer chart and the AI facts use the roll year in
   await gotoViewer(page);
   await selectParcelViaSearch(page);
 
-  const panelChart = page.locator('#parcel-info-panel svg[aria-label="AV history chart"]');
+  const panelChart = ui.parcelPanel(page).getByRole('img', { name: 'AV history chart' });
   await expect(panelChart).toBeVisible();
   const panelYears = await yearLabels(panelChart);
   expect(panelYears.at(-1)).toBe(2023);
   expect(panelYears).toEqual(panelYears.map((_, i) => 2023 - (panelYears.length - 1 - i)));
 
-  await page.locator('#parcel-info-panel .pv-info-btn[data-info="assess"]').click();
-  const xpChart = page.locator('.pv-modal-backdrop svg[aria-label^="Five-year assessed value history"]');
+  await ui.parcelPanel(page).getByRole('button', { name: 'About property assessment' }).click();
+  const xpChart = page.getByRole('dialog', { name: /^Property Assessment/ }).getByRole('img', { name: /^Five-year assessed value history/ });
   await expect(xpChart).toBeVisible();
   expect((await yearLabels(xpChart)).at(-1)).toBe(2023);
 
@@ -83,11 +83,11 @@ test('a county-config roll year overrides the data', async ({ page }) => {
   await gotoViewer(page);
   await selectParcelViaSearch(page);
 
-  const panelChart = page.locator('#parcel-info-panel svg[aria-label="AV history chart"]');
+  const panelChart = ui.parcelPanel(page).getByRole('img', { name: 'AV history chart' });
   await expect(panelChart).toBeVisible();
   expect((await yearLabels(panelChart)).at(-1)).toBe(2025);
 
-  await page.locator('#parcel-info-panel .pv-info-btn[data-info="assess"]').click();
+  await ui.parcelPanel(page).getByRole('button', { name: 'About property assessment' }).click();
   await expect.poll(() => sent.length).toBeGreaterThan(0);
   const facts = findFacts(sent[0]);
   expect(facts.roll_year).toBe(2025);

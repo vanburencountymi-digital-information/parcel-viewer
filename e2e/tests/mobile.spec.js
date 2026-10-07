@@ -1,17 +1,20 @@
 // Phone viewport (Pixel 7): the mobile tab bar, search overlay and parcel panel work.
-const { test, expect, gotoViewer } = require('./fixtures');
+const { test, expect, gotoViewer, ui } = require('./fixtures');
+
+const searchBtn = (page) => page.getByRole('button', { name: 'Search parcels', exact: true });
+const firstResult = (page) => ui.searchResults(page).getByRole('option').first();
 
 test('mobile: tab bar, search overlay, select a parcel', async ({ page }) => {
   await gotoViewer(page);
-  await expect(page.locator('#pv-mobile-tabbar')).toBeVisible();
-  await page.locator('#pv-search-btn').click();
-  const input = page.locator('#parcel-search-input');
+  await expect(page.getByRole('tablist', { name: 'Panels' })).toBeVisible();
+  await searchBtn(page).click();
+  const input = ui.searchInput(page);
   await expect(input).toBeVisible();
   await input.fill('paw paw');
-  const first = page.locator('.parcel-search-result').first();
+  const first = firstResult(page);
   await expect(first).toBeVisible();
   await first.click();
-  await expect(page.locator('#parcel-info-panel')).toBeVisible();
+  await expect(ui.parcelPanel(page)).toBeVisible();
   // No horizontal overflow on a phone.
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(1);
@@ -19,8 +22,9 @@ test('mobile: tab bar, search overlay, select a parcel', async ({ page }) => {
 
 test('mobile: each bottom tab opens its panel', async ({ page }) => {
   await gotoViewer(page);
-  for (const id of ['pv-mtab-controls', 'pv-mtab-buddy', 'pv-mtab-parcel']) {
-    const tab = page.locator('#' + id);
+  const tabs = page.getByRole('tablist', { name: 'Panels' });
+  for (const name of ['Map Controls', 'MapBuddy A.I.', 'Parcel Info']) {
+    const tab = tabs.getByRole('tab', { name, exact: true });
     if (!(await tab.isVisible()) || await tab.isDisabled()) continue;
     await tab.click();
     await expect(tab).toHaveAttribute('aria-selected', 'true');
@@ -42,11 +46,11 @@ test('mobile: no serious WCAG 2.1 AA violations (load, search, parcel)', async (
   };
   await gotoViewer(page);
   expect(await scan('load')).toEqual([]);
-  await page.locator('#pv-search-btn').click();
-  await page.locator('#parcel-search-input').fill('paw paw');
-  await expect(page.locator('.parcel-search-result').first()).toBeVisible();
+  await searchBtn(page).click();
+  await ui.searchInput(page).fill('paw paw');
+  await expect(firstResult(page)).toBeVisible();
   expect(await scan('search results')).toEqual([]);
-  await page.locator('.parcel-search-result').first().click();
-  await expect(page.locator('#parcel-info-panel')).toBeVisible();
+  await firstResult(page).click();
+  await expect(ui.parcelPanel(page)).toBeVisible();
   expect(await scan('parcel panel')).toEqual([]);
 });

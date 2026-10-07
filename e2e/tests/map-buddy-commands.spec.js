@@ -4,18 +4,20 @@
 // click on a parcel still selects it. Regression guard for DIC-1875 (a dimension popup
 // that couldn't close; a draw mode that froze the map).
 const { test, expect, gotoViewer, selectParcelViaSearch, selectedPin, selectedParcelPoint,
-  waitForSelectedInIndex, mapBuddy, clickGate } = require('./fixtures');
+  waitForSelectedInIndex, mapBuddy, clickGate, ui } = require('./fixtures');
 
-const SURFACES = '#msr-hud, #drw-hud, .pv-modal-backdrop, .pv-compare-overlay, .pv-profile-overlay';
+// What a command can open: the measure / draw HUDs and any dialog (modals, compare, profile).
+const surfaces = (page) => page.getByTestId('msr-hud').or(page.getByTestId('drw-hud')).or(page.getByRole('dialog'));
 
 /** Close every visible surface via its own close control (or Esc). Returns what closed how. */
 async function closeAll(page) {
   const log = [];
   for (let round = 0; round < 4; round++) {
-    const open = page.locator(SURFACES).filter({ visible: true });
+    const open = surfaces(page).filter({ visible: true });
     if (await open.count() === 0) break;
     const el = open.first();
-    const btn = el.locator('.msr-hud-close, [data-close], .pv-modal-close, [aria-label*="lose" i]').filter({ visible: true }).first();
+    // Its own close control: Close / Cancel, or a button named like 'Close measurement'.
+    const btn = el.getByRole('button', { name: /close|^cancel$/i }).filter({ visible: true }).first();
     if (await btn.count()) await btn.click(); else await page.keyboard.press('Escape');
     await page.waitForTimeout(300);
     log.push(await el.isVisible() ? 'still open' : 'closed');
@@ -26,7 +28,7 @@ async function closeAll(page) {
 async function assertMapStillSelectsParcels(page, pin) {
   expect(await clickGate(page), 'no tool left holding the click gate').toBeNull();
   // Deselect, then click the parcel on the canvas: it must select again.
-  if (await page.locator('#parcel-info-panel').isVisible()) await page.locator('#parcel-info-panel .parcel-info-close').click();
+  if (await ui.parcelPanel(page).isVisible()) await ui.parcelPanel(page).getByRole('button', { name: 'Clear selection' }).click();
   await page.evaluate((pin) => window.PS_MAP.jumpTo({ center: window.turf.pointOnFeature(
     window.PS_PARCEL_INDEX.find((f) => String(f.properties.pin) === pin)).geometry.coordinates }), pin);
   const pt = await page.evaluate((pin) => {
@@ -81,7 +83,7 @@ test.describe('Map Buddy commands leave the map usable', () => {
   test('compare_parcels opens with 2 parcels and closes', async ({ page }) => {
     const pins = await page.evaluate(() => window.PS_PARCEL_INDEX.slice(0, 2).map((f) => f.properties.pin));
     await mapBuddy(page, [{ type: 'compare_parcels', payload: { pins } }]);
-    const overlay = page.locator('.pv-compare-overlay');
+    const overlay = page.getByRole('dialog', { name: 'Compare parcels' });
     await expect(overlay).toBeVisible();
     expect(await closeAll(page)).not.toContain('still open');
     await expect(overlay).toBeHidden();

@@ -1,28 +1,28 @@
 // Select tools produce correct selections: attribute filter, buffer, box drag, and the
 // selection's CSV export / navigation / clearing.
 const fs = require('fs');
-const { test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle } = require('./fixtures');
+const { test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, ui, openMapControlsTab } = require('./fixtures');
 
-async function openSelectTab(page) {
-  if (!(await page.locator('#map-control-panel').isVisible())) await page.locator('#mcp-reopen-tab').click();
-  const tab = page.locator('.mcp-tab[data-tab="select"]');
-  if (!(await tab.isVisible())) await page.locator('#mcp-advanced-toggle').click();
-  await tab.click();
+const selectTab = (page) => page.getByRole('tabpanel', { name: 'Selection Tools' });
+const openSelectTab = (page) => openMapControlsTab(page, 'Selection Tools');
+// "Add to Selection" / "Remove from Selection" exist in both the filter and buffer
+// sub-panels; only the open one is in the accessibility tree, and visible is asserted too.
+const actionBtn = (page, name) => selectTab(page).getByRole('button', { name, exact: true }).filter({ visible: true });
+
+// How many parcels are selected: the "n of N" nav label when it shows, else 0/1.
+async function selectedCount(page) {
+  const lbl = page.getByTestId('parcel-nav-label');
+  if (!(await lbl.isVisible())) return (await page.evaluate(() => !!(window.PS_STATE && window.PS_STATE.parcel))) ? 1 : 0;
+  const m = (await lbl.innerText()).match(/of (\d+)/); return m ? Number(m[1]) : 0;
 }
 
-const selectedCount = (page) => page.evaluate(() => {
-  const lbl = document.getElementById('parcel-nav-label');
-  const nav = document.getElementById('parcel-info-nav');
-  if (!nav || nav.hidden) return (window.PS_STATE && window.PS_STATE.parcel) ? 1 : 0;
-  const m = lbl.textContent.match(/of (\d+)/); return m ? Number(m[1]) : 0;
-});
-
 async function selectOver5Acres(page, acres = '5') {
-  if (!(await page.locator('#filter-field').isVisible())) await page.locator('#tool-filter').click();
-  await page.locator('#filter-field').selectOption('gis_acres');
-  await page.locator('#filter-op').selectOption('gt');
-  await page.locator('#filter-value').fill(String(acres));
-  await page.locator('#filter-add-btn').click();
+  const tab = selectTab(page);
+  if (!(await tab.getByLabel('Filter field').isVisible())) await tab.getByRole('button', { name: 'Filter', exact: true }).click();
+  await tab.getByLabel('Filter field').selectOption('gis_acres');
+  await tab.getByLabel('Filter operator').selectOption('gt');
+  await tab.getByLabel('Filter value').fill(String(acres));
+  await actionBtn(page, 'Add to Selection').click();
 }
 
 test.beforeEach(async ({ page }) => {
@@ -33,15 +33,15 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('attribute filter: match count equals the parcels that satisfy it, and Add selects them', async ({ page }) => {
-  await openSelectTab(page);
-  await page.locator('#tool-filter').click();
-  await page.locator('#filter-field').selectOption('gis_acres');
-  await page.locator('#filter-op').selectOption('gt');
-  await page.locator('#filter-value').fill('5');
+  const tab = await openSelectTab(page);
+  await tab.getByRole('button', { name: 'Filter', exact: true }).click();
+  await tab.getByLabel('Filter field').selectOption('gis_acres');
+  await tab.getByLabel('Filter operator').selectOption('gt');
+  await tab.getByLabel('Filter value').fill('5');
   const expected = await page.evaluate(() => window.PS_PARCEL_INDEX.filter((f) => parseFloat(f.properties.gis_acres) > 5).length);
   expect(expected, 'fixture: some parcels over 5 acres in view').toBeGreaterThan(1);
-  await expect(page.locator('#filter-match-count')).toContainText(String(expected));
-  await page.locator('#filter-add-btn').click();
+  await expect(page.getByTestId('filter-match-count')).toContainText(String(expected));
+  await actionBtn(page, 'Add to Selection').click();
   await expect.poll(() => selectedCount(page)).toBe(expected);
 });
 
@@ -49,7 +49,7 @@ test('selection CSV has a header plus one row per selected parcel', async ({ pag
   await openSelectTab(page);
   await selectOver5Acres(page);
   const n = await selectedCount(page);
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#download-csv-btn').click()]);
+  const [dl] = await Promise.all([page.waitForEvent('download'), selectTab(page).getByRole('button', { name: /Download CSV/ }).click()]);
   const text = fs.readFileSync(await dl.path(), 'utf8').trim();
   const lines = text.split(/\r?\n/);
   expect(lines.length, 'header + one row per parcel').toBe(n + 1);
@@ -76,7 +76,7 @@ test('selection CSV neutralises spreadsheet formulas and quotes awkward text', a
   await refreshed;
   await openSelectTab(page);
   await selectOver5Acres(page);
-  const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#download-csv-btn').click()]);
+  const [dl] = await Promise.all([page.waitForEvent('download'), selectTab(page).getByRole('button', { name: /Download CSV/ }).click()]);
   const text = fs.readFileSync(await dl.path(), 'utf8');
   expect(text).toContain(`"'=HYPERLINK(""http://evil"",""x"")"`);
   expect(text).toContain('"a,b\r\nc"');
@@ -87,15 +87,15 @@ test('selection CSV neutralises spreadsheet formulas and quotes awkward text', a
 test('multi-selection navigation: next/prev and arrow keys move through parcels', async ({ page }) => {
   await openSelectTab(page);
   await selectOver5Acres(page);
-  const pin = () => page.locator('.parcel-info-pin').innerText();
+  const pin = () => page.getByTestId('parcel-info-pin').innerText();
   const first = await pin();
-  await page.locator('#parcel-nav-next').click();
+  await page.getByRole('button', { name: 'Next parcel' }).click();
   const second = await pin();
   expect(second).not.toBe(first);
-  await expect(page.locator('#parcel-nav-label')).toContainText('2 of');
-  await page.locator('#parcel-nav-prev').click();
+  await expect(page.getByTestId('parcel-nav-label')).toContainText('2 of');
+  await page.getByRole('button', { name: 'Previous parcel' }).click();
   expect(await pin()).toBe(first);
-  await page.locator('#parcel-info-panel').click({ position: { x: 5, y: 5 } });
+  await ui.parcelPanel(page).click({ position: { x: 5, y: 5 } });
   await page.keyboard.press('ArrowRight');
   expect(await pin()).toBe(second);
 });
@@ -112,7 +112,7 @@ test('Remove from Selection drops the filter matches, keeping the rest', async (
   await selectOver5Acres(page, keptAcres);     // strictly larger parcels: excludes the kept one
   const before = await selectedCount(page);
   expect(before).toBeGreaterThan(2);
-  await page.locator('#filter-replace-btn').click();
+  await actionBtn(page, 'Remove from Selection').click();
   await expect.poll(() => selectedCount(page)).toBe(1);
   expect(await page.evaluate(() => window.PS_STATE.parcel && window.PS_STATE.parcel.pin)).toBe(kept);
 });
@@ -120,28 +120,28 @@ test('Remove from Selection drops the filter matches, keeping the rest', async (
 test('clear selection empties it', async ({ page }) => {
   await openSelectTab(page);
   await selectOver5Acres(page);
-  await page.locator('#clear-selection-btn').click();
+  await selectTab(page).getByRole('button', { name: /Clear Selection/ }).click();
   expect(await page.evaluate(() => window.PS_STATE.parcel)).toBeNull();
-  await expect(page.locator('#parcel-info-panel')).toBeHidden();
+  await expect(ui.parcelPanel(page)).toBeHidden();
 });
 
 test('buffer: parcels within the distance of the selected parcel get selected', async ({ page }) => {
   await selectParcelViaSearch(page);
-  await openSelectTab(page);
-  await page.locator('#tool-buffer').click();
-  await page.locator('#buffer-distance').fill('300');
-  await page.locator('#buffer-units').selectOption('feet');
-  await expect(page.locator('#buffer-match-count')).toContainText(/\d/, { timeout: 15_000 });
-  const shown = parseInt((await page.locator('#buffer-match-count').innerText()).match(/\d+/)[0], 10);
+  const tab = await openSelectTab(page);
+  await tab.getByRole('button', { name: 'Buffer', exact: true }).click();
+  await tab.getByLabel('Buffer distance', { exact: true }).fill('300');
+  await tab.getByLabel('Buffer distance units').selectOption('feet');
+  await expect(page.getByTestId('buffer-match-count')).toContainText(/\d/, { timeout: 15_000 });
+  const shown = parseInt((await page.getByTestId('buffer-match-count').innerText()).match(/\d+/)[0], 10);
   expect(shown).toBeGreaterThan(0);
-  await page.locator('#buffer-apply-btn').click();
+  await actionBtn(page, 'Add to Selection').click();
   await expect.poll(() => selectedCount(page)).toBeGreaterThan(1);
 });
 
 test('box select: dragging a rectangle selects the parcels inside it', async ({ page }) => {
-  await openSelectTab(page);
-  await page.locator('#tool-box-select').click();
-  const box = await page.locator('canvas.maplibregl-canvas').boundingBox();
+  const tab = await openSelectTab(page);
+  await tab.getByRole('button', { name: 'Box', exact: true }).click();
+  const box = await ui.mapCanvas(page).boundingBox();
   const cx = box.x + box.width / 2 + 100, cy = box.y + box.height / 2;
   await page.mouse.move(cx - 80, cy - 80);
   await page.mouse.down();

@@ -1,7 +1,7 @@
 // Automated WCAG 2.1 A/AA scan (axe-core) of the viewer's main screens.
 // The map canvas itself is excluded: it's a WebGL image with its own keyboard
 // alternative (search), and axe can't evaluate pixels in it.
-const { test, expect, gotoViewer, selectParcelViaSearch } = require('./fixtures');
+const { test, expect, gotoViewer, selectParcelViaSearch, ui, openMapControlsTab } = require('./fixtures');
 const AxeBuilder = require('@axe-core/playwright').default;
 
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
@@ -23,31 +23,30 @@ const SCREENS = {
   'initial load': async () => {},
   'parcel selected': async (page) => { await selectParcelViaSearch(page); },
   'settings dialog': async (page) => {
-    await page.locator('#pv-admin-btn').click();
-    await page.locator('#pv-admin-menu [data-tool="settings"]').click();
-    await expect(page.locator('#pv-set-area')).toBeVisible();
+    await ui.helpMenuButton(page).click();
+    await ui.helpMenu(page).getByRole('menuitem', { name: 'Settings' }).click();
+    await expect(page.getByRole('dialog', { name: 'Settings' }).getByLabel('Area units')).toBeVisible();
   },
   'map buddy open': async (page) => {
-    await page.locator('#mb-tab-btn').click();
+    await ui.mapBuddyButton(page).click();
     await page.waitForTimeout(800);
   },
   'layers panel': async (page) => {
-    if (!(await page.locator('#map-control-panel').isVisible())) await page.locator('#mcp-reopen-tab').click();
-    await page.locator('.mcp-tab[data-tab="layers"]').click();
+    await openMapControlsTab(page, 'Layers');
   },
   'right-click menu': async (page) => {
-    const box = await page.locator('#map canvas.maplibregl-canvas').boundingBox();
+    const box = await ui.mapCanvas(page).boundingBox();
     await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.4, { button: 'right' });
-    await expect(page.locator('#pv-ctx-menu')).toBeVisible();
+    await expect(page.getByRole('menu')).toBeVisible();
   },
   'right-click menu, dark': async (page) => {
-    await page.locator('#theme-toggle').click();
-    const box = await page.locator('#map canvas.maplibregl-canvas').boundingBox();
+    await page.getByRole('button', { name: 'Toggle dark mode' }).click();
+    const box = await ui.mapCanvas(page).boundingBox();
     await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.4, { button: 'right' });
-    await expect(page.locator('#pv-ctx-menu')).toBeVisible();
+    await expect(page.getByRole('menu')).toBeVisible();
   },
   'dark mode + parcel': async (page) => {
-    await page.locator('#theme-toggle').click();
+    await page.getByRole('button', { name: 'Toggle dark mode' }).click();
     await selectParcelViaSearch(page);
   },
 };

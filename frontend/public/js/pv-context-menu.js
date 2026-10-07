@@ -124,6 +124,7 @@
     var fmt = root.PV_COORD_FMT;
     var wrap = el('div', 'pv-ctx');
     wrap.id = MENU_ID;
+    wrap.dataset.testid = 'pv-ctx-menu';   // the box placed at the pointer (e2e, DIC-2180)
 
     var head = el('div', 'pv-ctx-head');
     head.id = MENU_ID + '-head';

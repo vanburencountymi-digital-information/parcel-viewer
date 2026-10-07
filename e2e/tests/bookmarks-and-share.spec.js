@@ -1,17 +1,26 @@
 // Bookmarks persist on this device; a Share link reopens the same parcel and view.
-const { test, expect, gotoViewer, selectParcelViaSearch, selectedPin } = require('./fixtures');
+const { test, expect, gotoViewer, selectParcelViaSearch, selectedPin, ui } = require('./fixtures');
+
+const bookmarkToggle = (page) => ui.parcelPanel(page).getByRole('button', { name: /^Bookmark(ed)?$/ });
+async function openHelpMenuItem(page, name) {
+  await ui.helpMenuButton(page).click();
+  await ui.helpMenu(page).getByRole('menuitem', { name, exact: true }).click();
+}
+async function shareLink(page) {
+  await openHelpMenuItem(page, 'Share');
+  return page.getByRole('dialog', { name: 'Share' }).getByRole('textbox', { name: 'Share link' }).inputValue();
+}
 
 test('bookmark a parcel, reload, and reopen it from the bookmarks list', async ({ page }) => {
   await gotoViewer(page);
   const pin = await selectParcelViaSearch(page);
-  const toggle = page.locator('#parcel-info-panel [data-bm-toggle]');
+  const toggle = bookmarkToggle(page);
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   await page.reload();
   await page.waitForFunction(() => window.PS_MAP && window.PS_MAP.isStyleLoaded());
-  await page.locator('#pv-admin-btn').click();
-  await page.locator('#pv-admin-menu [data-tool="bookmark"]').click();
-  const entry = page.locator('.pv-modal-backdrop').getByText(pin).first();
+  await openHelpMenuItem(page, 'Bookmark');
+  const entry = page.getByRole('dialog', { name: 'Bookmarks' }).getByText(pin).first();
   await expect(entry).toBeVisible();
   await entry.click();
   await expect.poll(() => selectedPin(page)).toBe(pin);
@@ -20,7 +29,7 @@ test('bookmark a parcel, reload, and reopen it from the bookmarks list', async (
 test('un-bookmarking removes it', async ({ page }) => {
   await gotoViewer(page);
   await selectParcelViaSearch(page);
-  const toggle = page.locator('#parcel-info-panel [data-bm-toggle]');
+  const toggle = bookmarkToggle(page);
   await toggle.click();
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'false');
@@ -30,23 +39,19 @@ test('un-bookmarking removes it', async ({ page }) => {
 test('a Share link reopens the same parcel', async ({ page, context }) => {
   await gotoViewer(page);
   const pin = await selectParcelViaSearch(page);
-  await page.locator('#pv-admin-btn').click();
-  await page.locator('#pv-admin-menu [data-tool="share"]').click();
-  const url = await page.locator('#pv-share-url').inputValue();
+  const url = await shareLink(page);
   expect(url, 'the link identifies the parcel').toMatch(/[?&]parcel=\d+/);
   const other = await context.newPage();
   await other.goto(url);
   await other.waitForFunction(() => window.PS_MAP && window.PS_MAP.isStyleLoaded());
   await expect.poll(() => selectedPin(other), { timeout: 15_000 }).toBe(pin);
-  await expect(other.locator('#parcel-info-panel')).toBeVisible();
+  await expect(ui.parcelPanel(other)).toBeVisible();
 });
 
 test('a Share link with no parcel reopens the same map view', async ({ page, context }) => {
   await gotoViewer(page);
   await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-86.1234, 42.2345], zoom: 14.5 }));
-  await page.locator('#pv-admin-btn').click();
-  await page.locator('#pv-admin-menu [data-tool="share"]').click();
-  const url = await page.locator('#pv-share-url').inputValue();
+  const url = await shareLink(page);
   expect(url).toMatch(/[?&]view=/);
   const other = await context.newPage();
   await other.goto(url);
