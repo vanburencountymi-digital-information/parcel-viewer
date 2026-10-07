@@ -40,7 +40,7 @@
   function sectionHtml(sec) {
     var body = rowsHtml(sec.rows);
     if (!body) return '';
-    var head = sec.section ? '<div class="parcel-info-section-title">' + esc(sec.section) + '</div>' : '';
+    var head = sec.section ? '<div class="parcel-info-section-title" role="heading" aria-level="3">' + esc(sec.section) + '</div>' : '';
     return '<div class="parcel-info-section">' + head + body + '</div>';
   }
 

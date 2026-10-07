@@ -342,7 +342,7 @@
       // via the bus, instead of a detached new window. Only the §6.4 envelope keys go in
       // attributes; pv-citations re-resolves the full source from the corpus/KB. The
       // official external link stays as a secondary affordance (↗).
-      var name = '<button type="button" class="pv-xp-stat-name pv-cite-trigger"' +
+      var name = '<button type="button" class="pv-xp-stat-name pv-cite-trigger" data-testid="cite-trigger"' +
         ' data-cite-source="' + esc(s.citation || s.name || '') + '"' +
         ' data-cite-anchor="' + esc(s.mcl || '') + '"' +
         ' data-cite-span="' + esc(s.name || '') + '">' + nm + '</button>';
@@ -371,14 +371,14 @@
 
       '{{#is_taxdesc}}<div class="pv-xp-figs" role="group" aria-label="Recorded tax description">' +
         '<div class="pv-xp-figs-title">Tax description{{#pin}}<span class="pv-xp-pin">{{pin}}</span>{{/pin}}</div>' +
-        '{{#description_text}}<div class="pv-xp-desc">{{description_text}}</div>{{/description_text}}' +
-        '{{^description_text}}<div class="pv-xp-desc pv-xp-desc-empty">No tax description is on record for this parcel.</div>{{/description_text}}' +
+        '{{#description_text}}<div class="pv-xp-desc" data-testid="pv-xp-desc">{{description_text}}</div>{{/description_text}}' +
+        '{{^description_text}}<div class="pv-xp-desc pv-xp-desc-empty" data-testid="pv-xp-desc">No tax description is on record for this parcel.</div>{{/description_text}}' +
         '{{#type_label}}<div class="pv-xp-desc-type"><span class="pv-badge">{{type_label}}</span>{{#type_note}} {{type_note}}{{/type_note}}</div>{{/type_label}}' +
         '{{{pin_breakdown_html}}}' +
       '</div>{{/is_taxdesc}}' +
 
       '{{#has_ai}}' +
-        '{{#summary_html}}<div class="pv-xp-summary">{{{summary_html}}}</div>{{/summary_html}}' +
+        '{{#summary_html}}<div class="pv-xp-summary" data-testid="pv-xp-summary">{{{summary_html}}}</div>{{/summary_html}}' +
         '{{#sections}}<section class="pv-xp-section"><h3 class="pv-xp-h">{{heading}}</h3><div class="pv-xp-body">{{{body_html}}}</div></section>{{/sections}}' +
         '{{#has_glossary}}<section class="pv-xp-section"><h3 class="pv-xp-h">Key terms</h3><dl class="pv-xp-gloss">{{#glossary}}<dt>{{term}}</dt><dd>{{definition}}</dd>{{/glossary}}</dl></section>{{/has_glossary}}' +
         '{{#has_statutes}}<section class="pv-xp-section"><h3 class="pv-xp-h">Michigan law</h3><ul class="pv-xp-statutes">{{#statutes}}<li><span class="pv-xp-stat-name">{{name}}</span> <span class="pv-xp-stat-cite">{{citation}}</span><span class="pv-xp-stat-plain">{{plain}}</span></li>{{/statutes}}</ul></section>{{/has_statutes}}' +

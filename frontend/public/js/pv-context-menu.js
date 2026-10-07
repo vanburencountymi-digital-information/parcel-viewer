@@ -96,7 +96,11 @@
     b.tabIndex = -1;
     if (id) b.setAttribute('data-ctx', id);
     b.appendChild(el('span', 'pv-ctx-label', label));
-    if (detail) b.appendChild(el('span', 'pv-ctx-detail', detail));
+    if (detail) {
+      var d = el('span', 'pv-ctx-detail', detail);
+      d.dataset.testid = 'pv-ctx-detail';
+      b.appendChild(d);
+    }
     b.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();

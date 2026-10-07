@@ -62,6 +62,7 @@
       tray = doc.createElement('div');
       tray.id = 'pv-compare-tray';
       tray.className = 'pv-compare-tray';
+      tray.dataset.testid = 'pv-compare-tray';
       tray.hidden = true;
       tray.innerHTML =
         '<span class="pv-compare-tray-label">Compare</span>' +
@@ -82,7 +83,7 @@
     tray.hidden = false;
     var chips = el('pv-compare-chips');
     chips.innerHTML = _set.map(function (p) {
-      return '<span class="pv-compare-chip" data-id="' + esc(p.id) + '">' + esc(p.pin || p.id) +
+      return '<span class="pv-compare-chip" data-testid="pv-compare-chip" data-id="' + esc(p.id) + '">' + esc(p.pin || p.id) +
         '<button type="button" class="pv-compare-chip-x" data-id="' + esc(p.id) + '" aria-label="Remove">×</button></span>';
     }).join('');
     [].forEach.call(chips.querySelectorAll('.pv-compare-chip-x'), function (b) {
