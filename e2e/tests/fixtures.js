@@ -116,4 +116,32 @@ function clickGate(page) {
   return page.evaluate(() => (window.PS_STATE || {}).activeDrawTool || null);
 }
 
-module.exports = { test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };
+// The window hooks the tests may read (DIC-2180): the seam between the suite and the app's
+// internals. A refactor (ES modules, Vue) must keep every one, which test-hooks.spec.js
+// checks; anything else the tests need goes through the page, by role, label or test id.
+// Map state can't be read from the DOM, which is why most of these exist.
+const VIEWER_HOOKS = {
+  PS_MAP: 'the MapLibre map: camera, project/unproject, layers, idle events',
+  PS_STATE: 'app state: the selected parcel, the active draw tool',
+  PS_PARCEL_INDEX: 'the parcels in view (GeoJSON features), what selections are checked against',
+  PS_selectParcelById: 'select a parcel by id without a click',
+  PV_MAP_BUDDY: "Map Buddy's command runner (no model call)",
+  PV_VISION: "map look capture (Map Buddy's eyes)",
+  COUNTY: 'the county manifest in use',
+  PV_ENDPOINTS: 'resolved service URLs',
+  PS_ANNOTATION_STORE: 'drawn annotations',
+  PS_MEASURE_TOOL: 'the measure tool',
+  PS_OVERLAY_LAYERS: 'overlay availability (a tile error still counts as "loaded" in MapLibre)',
+  PV_BOOKMARKS: 'saved views',
+  PV_PREFS: 'stored preferences',
+  PV_COORDS: 'coordinate formatting and parsing',
+  PV_COMPARE: 'the compare tray',
+  turf: 'Turf, for geometry in assertions',
+};
+// Set only in a particular state, so not checked on a normal load.
+const CONDITIONAL_HOOKS = {
+  PV_CONFIG_SOURCE: "'fallback' when the viewer runs on the baked county manifest",
+};
+const ADMIN_HOOKS = { PV_ADMIN: 'the admin console state (getState)' };
+
+module.exports = { VIEWER_HOOKS, CONDITIONAL_HOOKS, ADMIN_HOOKS, test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };
