@@ -45,8 +45,14 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if IS_DEPLOYED els
 SESSION_COOKIE_SECURE = IS_DEPLOYED
 CSRF_COOKIE_SECURE = IS_DEPLOYED
 SECURE_SSL_REDIRECT = IS_DEPLOYED
-# Platform health probes call the container over plain HTTP inside the network.
-SECURE_REDIRECT_EXEMPT = [r"^health$"]
+# Platform health probes call the container over plain HTTP inside the network. The match
+# is on request.path, which carries the /api mount when PV_SCRIPT_NAME is set.
+SECURE_REDIRECT_EXEMPT = [r"^(?:api/)?health$"]
+# Behind nginx the API is mounted at /api/ and nginx strips that prefix, so Django is told
+# the mount (FORCE_SCRIPT_NAME) to build its own links with it: the Django admin's forms,
+# redirects and static files (/api/static/...). Routing is unchanged; it uses the path
+# without the mount. Unset when the API is called directly (http://localhost:8001).
+FORCE_SCRIPT_NAME = env.str("PV_SCRIPT_NAME", default="") or None
 # HSTS belongs with TLS, wherever production ends it (DIC-1863, infra/nginx.viewer.conf);
 # off until that's decided.
 SECURE_HSTS_SECONDS = env.int("SECURE_HSTS_SECONDS", default=0)
@@ -192,9 +198,13 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Static files (the admin's) are served by WhiteNoise, so no static bucket is needed.
-STATIC_URL = "static/"
+# Static files (the admin's) are served by WhiteNoise, so no static bucket is needed. The URL
+# carries the /api mount when there is one (WhiteNoise strips it again to find the file).
+STATIC_URL = f"{(FORCE_SCRIPT_NAME or '').rstrip('/')}/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# The production image runs collectstatic; locally (dev image, tests) WhiteNoise serves the
+# files straight from the apps instead.
+WHITENOISE_USE_FINDERS = not IS_DEPLOYED
 STORAGES = {
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
 }

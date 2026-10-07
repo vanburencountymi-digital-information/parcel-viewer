@@ -72,6 +72,14 @@ cutover it accepts both, so the steps above still work.
    in `/django-admin/` (Knox → Auth tokens).
 3. **Retire the shared key** at cutover: set `PV_ADMIN_SHARED_KEY=0` and remove
    `PV_ADMIN_TOKEN` from the service.
+4. **The Django admin config editor** (ADR 0014) is at `/api/django-admin/` →
+   County config → Config versions. It appears only with the writer database
+   (`PV_WRITER_DATABASE_URL`, set up at the top of this checklist).
+   - Give each editor's account *Can view config version* (history) and *Can change
+     config version* (save, publish, roll back). Superusers have both.
+   - Behind nginx, set `PV_SCRIPT_NAME=/api` on the API service and add the public
+     origin to `CSRF_TRUSTED_ORIGINS` (e.g. `https://gis.dicemi.org`), or the admin's
+     links and sign-in form won't work.
 
 ## Known follow-ups (application side, not blocking)
 - Pool/cache the writer connection so the public `GET /config` hot path doesn't

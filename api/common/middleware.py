@@ -50,16 +50,18 @@ class RequestIdMiddleware:
         finally:
             duration_ms = round((time.perf_counter() - started) * 1000, 1)
             client_ip = request.headers.get("X-Real-IP") or request.META.get("REMOTE_ADDR", "")
+            # path_info: the path without the /api mount (PV_SCRIPT_NAME), as FastAPI logs it.
+            path = request.path_info
             access_log.log(
-                _level_for(status, request.path, QUIET_PATHS),
+                _level_for(status, path, QUIET_PATHS),
                 "%s %s %s %sms",
                 request.method,
-                request.path,
+                path,
                 status,
                 duration_ms,
                 extra={
                     "http_method": request.method,
-                    "path": request.path,
+                    "path": path,
                     "status": status,
                     "duration_ms": duration_ms,
                     "client_ip": client_ip,
