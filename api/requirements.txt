@@ -6,6 +6,7 @@ attrs==26.1.0
 certifi==2026.7.22
 Django==6.1.2
 django-environ==0.14.0
+django-rest-knox==5.1.0
 django-stubs==6.1.2
 django-stubs-ext==6.1.2
 djangorestframework==3.18.1

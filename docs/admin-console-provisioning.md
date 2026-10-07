@@ -54,6 +54,25 @@ manifest (`county-config.js` / `county_configs/*.json`); write endpoints return
   exposing the console beyond trusted staff.
 - The public read path stays on the read-only role; writes are isolated.
 
+## Staff sign-in on the Django API (DIC-2151, ADR 0013)
+The Django port replaces the shared key with per-person staff sign-in. Until the
+cutover it accepts both, so the steps above still work.
+1. **Create a staff user** for each person (in the API container):
+   ```
+   python manage.py createsuperuser          # or add users in /django-admin/ and tick "Staff status"
+   ```
+2. **Sign in for a token** and use it instead of the shared key:
+   ```
+   TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
+        -d '{"username":"you","password":"…"}' | jq -r .token)
+   curl -s $API/config/vanburen/versions -H "Authorization: Token $TOKEN" | jq
+   curl -s -X POST $API/auth/logout -H "Authorization: Token $TOKEN"
+   ```
+   Tokens expire after `PV_TOKEN_TTL_HOURS` (10). A superuser can revoke any token
+   in `/django-admin/` (Knox → Auth tokens).
+3. **Retire the shared key** at cutover: set `PV_ADMIN_SHARED_KEY=0` and remove
+   `PV_ADMIN_TOKEN` from the service.
+
 ## Known follow-ups (application side, not blocking)
 - Pool/cache the writer connection so the public `GET /config` hot path doesn't
   open a connection per request (today it does when the store is active; falls
