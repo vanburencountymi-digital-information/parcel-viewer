@@ -5,8 +5,10 @@ The repository is mocked: bad input must be rejected before any database work.
 
 from unittest.mock import create_autospec, patch
 
+from access.auth import OptionalTokenAuthentication
 from django.test import SimpleTestCase
 from parameterized import parameterized
+from rest_framework.permissions import AllowAny
 from rest_framework.test import APIClient
 
 from parcels.repositories import ParcelRepository
@@ -82,6 +84,9 @@ class ParcelViewTests(SimpleTestCase):
 
 class PublicParcelViewTests(SimpleTestCase):
     def test_public_and_rate_limited_with_their_own_scope(self) -> None:
-        self.assertEqual(PublicParcelView.authentication_classes, [])
+        # Anonymous: the only authenticator is the optional staff token, which never refuses
+        # (it only exempts staff from the data-access budget, ADR 0015).
+        self.assertEqual(PublicParcelView.authentication_classes, [OptionalTokenAuthentication])
+        self.assertEqual(PublicParcelView.permission_classes, [AllowAny])
         self.assertTrue(PublicParcelView.throttle_classes)
         self.assertEqual(PublicParcelView.throttle_scope, "parcel_read")

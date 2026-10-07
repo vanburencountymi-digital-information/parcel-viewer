@@ -81,6 +81,7 @@ INSTALLED_APPS = [
     "knox",
     "common",
     "accounts",
+    "access",
     "parcels",
     "county_config",
     "wms",
@@ -256,6 +257,22 @@ REST_KNOX = {
 }
 # Live tokens one user may hold (one per browser, say); signing in past it drops the oldest.
 TOKENS_PER_USER = env.int("PV_TOKENS_PER_USER", default=5)
+
+# Data access (ADR 0015): each county's manifest says open / observe / protected and its
+# daily budget of detailed parcel records per client. PV_ACCESS_MODE overrides the mode
+# for every county (local testing). Days run on the county's clock.
+ACCESS_MODE_OVERRIDE = env.str("PV_ACCESS_MODE", default="")
+ACCESS_DEFAULT_BUDGET = env.int("PV_DETAIL_BUDGET", default=5000)
+ACCESS_TIMEZONE = env.str("PV_ACCESS_TIMEZONE", default="America/Detroit")
+# Our own server-side callers (Map Buddy) send X-PV-Service-Key and aren't metered; they
+# meter their own users. Format: "name:key,name:key".
+ACCESS_SERVICE_KEYS = {
+    name.strip(): key.strip()
+    for name, _, key in (
+        pair.partition(":") for pair in env.str("PV_SERVICE_KEYS", default="").split(",")
+    )
+    if name.strip() and key.strip()
+}
 # Store reads and writes need a real writer database; without one the API serves the baked
 # manifests, as FastAPI did (the config_store alias's local fallback is for tests).
 CONFIG_STORE_CONFIGURED = bool(env.str("PV_WRITER_DATABASE_URL", default=""))

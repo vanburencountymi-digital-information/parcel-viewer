@@ -8,6 +8,8 @@ import math
 import time
 from typing import Any
 
+from access.auth import OptionalTokenAuthentication
+from access.meter import finish, meter_rows
 from django.db import DataError, InternalError
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -46,9 +48,11 @@ NOT_FOUND = "Parcel not found"
 
 class PublicParcelView(APIView):
     """Anonymous reads. The viewer calls these on every map move, so they share a generous
-    `parcel_read` rate (THROTTLE_PARCEL_READ) rather than the default anonymous one."""
+    `parcel_read` rate (THROTTLE_PARCEL_READ) rather than the default anonymous one.
+    Routes that send owner/value fields are metered per county (ADR 0015, access.meter); a
+    staff token, if sent, exempts the caller and is otherwise ignored."""
 
-    authentication_classes = []
+    authentication_classes = [OptionalTokenAuthentication]
     permission_classes = [AllowAny]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "parcel_read"
@@ -71,7 +75,8 @@ class ParcelDetailView(PublicParcelView):
         row = self.repository.get_parcel(path.parcel_id)
         if row is None:
             raise HttpError(status.HTTP_404_NOT_FOUND, NOT_FOUND)
-        return Response(presenters.parcel_feature(row))
+        metered = meter_rows(request, [row])
+        return finish(Response(presenters.parcel_feature(row)), metered, 1)
 
 
 class ParcelHistoryView(PublicParcelView):
@@ -90,7 +95,8 @@ class ParcelsInBboxView(PublicParcelView):
         params = self.query(request, BboxQuery)
         west, south, east, north = parse_bbox(params.bbox)
         rows = self.repository.in_bbox(west, south, east, north, params.limit)
-        return Response(presenters.feature_collection(rows))
+        metered = meter_rows(request, rows)
+        return finish(Response(presenters.feature_collection(rows)), metered, len(rows))
 
 
 class SearchView(PublicParcelView):
@@ -100,7 +106,9 @@ class SearchView(PublicParcelView):
         tokens = params.q.split()[:MAX_SEARCH_TOKENS]
         if not tokens:
             return Response({"results": []})
-        return Response(presenters.search_results(self.repository.search(tokens, params.limit)))
+        rows = self.repository.search(tokens, params.limit)
+        metered = meter_rows(request, rows)
+        return finish(Response(presenters.search_results(rows)), metered, len(rows))
 
 
 class NearestRoadView(PublicParcelView):
@@ -147,7 +155,8 @@ class CohortView(PublicParcelView):
             # in the caller's area is the caller's input, so a 400. Outages are 503s.
             log.warning("cohort: database rejected the selector: %s", type(exc).__name__)
             raise HttpError(status.HTTP_400_BAD_REQUEST, AREA_ERROR) from exc
-        return Response(presenters.cohort(rows, center, resolved))
+        metered = meter_rows(request, rows)
+        return finish(Response(presenters.cohort(rows, center, resolved)), metered, len(rows))
 
 
 class CohortGeographiesView(PublicParcelView):
