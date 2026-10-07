@@ -55,17 +55,40 @@ async function gotoViewer(page, path = '/demo/') {
   }, null, { timeout: 30_000 });
 }
 
+// Locators for the parts of the page most specs use, by role, label or test id (DIC-2180):
+// never by page structure, so the markup can change (ES modules, Vue) without the tests.
+const ui = {
+  searchInput: (page) => page.getByRole('combobox', { name: 'Search parcels by parcel number, owner, or address' }),
+  searchResults: (page) => page.getByRole('listbox', { name: 'Parcel search results' }),
+  parcelPanel: (page) => page.getByRole('region', { name: 'Parcel' }),
+  mapControls: (page) => page.getByRole('complementary', { name: 'Map controls' }),
+  mapCanvas: (page) => page.locator('canvas.maplibregl-canvas'),   // MapLibre's own markup
+  helpMenuButton: (page) => page.getByRole('button', { name: 'Help and tools' }),
+  helpMenu: (page) => page.getByRole('menu', { name: 'Help and tools' }),
+  mapBuddyButton: (page) => page.getByRole('button', { name: 'Open MapBuddy A.I. panel' }),
+  mapBuddyInput: (page) => page.getByRole('textbox', { name: 'Message MapBuddy A.I.' }),
+};
+
+/** Open the map controls panel (if collapsed) and the given tab: Layers, Selection/Drawing/Measurement Tools. */
+async function openMapControlsTab(page, tabName) {
+  if (!(await ui.mapControls(page).isVisible())) await page.getByRole('button', { name: 'Open map controls' }).click();
+  const tab = page.getByRole('tab', { name: tabName });
+  if (!(await tab.isVisible())) await page.getByRole('button', { name: 'Show advanced tools' }).click();
+  await tab.click();
+  return page.getByRole('tabpanel', { name: tabName });
+}
+
 /** Search for `query` through the real search box and pick result `index`. Returns the result's pin. */
 async function selectParcelViaSearch(page, query = 'paw paw', index = 0) {
-  const input = page.locator('#parcel-search-input');
-  if (!(await input.isVisible())) await page.locator('#pv-search-btn').click();
+  const input = ui.searchInput(page);
+  if (!(await input.isVisible())) await page.getByRole('button', { name: 'Search parcels', exact: true }).click();
   await input.fill(query);
-  const rows = page.locator('#parcel-search-results .parcel-search-result');
+  const rows = ui.searchResults(page).getByRole('option');
   await expect(rows.first()).toBeVisible();
-  const pin = (await rows.nth(index).locator('.parcel-search-result-pin').innerText()).split('·')[0].trim();
+  const pin = (await rows.nth(index).getByTestId('parcel-search-result-pin').innerText()).split('·')[0].trim();
   await rows.nth(index).click();
-  await expect(page.locator('#parcel-info-panel')).toBeVisible();
-  await expect(page.locator('.parcel-info-pin')).toHaveText(pin);
+  await expect(ui.parcelPanel(page)).toBeVisible();
+  await expect(page.getByTestId('parcel-info-pin')).toHaveText(pin);
   await waitForMapIdle(page);
   return pin;
 }
@@ -144,4 +167,4 @@ const CONDITIONAL_HOOKS = {
 };
 const ADMIN_HOOKS = { PV_ADMIN: 'the admin console state (getState)' };
 
-module.exports = { VIEWER_HOOKS, CONDITIONAL_HOOKS, ADMIN_HOOKS, test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };
+module.exports = { VIEWER_HOOKS, CONDITIONAL_HOOKS, ADMIN_HOOKS, ui, openMapControlsTab, test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };
