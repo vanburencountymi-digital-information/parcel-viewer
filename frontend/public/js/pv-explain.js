@@ -106,11 +106,27 @@
   // ── 1. Deterministic truth layer ───────────────────────────────────────────
   // Pull the authoritative record and assemble the verified figures. Anything we
   // can't get from the DB is simply omitted — never guessed.
+  // The parcel record both explainers read. Past a Protected county's daily detail limit
+  // (ADR 0015) its owner/value fields are empty, so the explainers say that instead of
+  // explaining blanks (or claiming "no tax description is on record").
+  function fetchRecord(id) {
+    return fetch(apiBase() + '/parcel/' + encodeURIComponent(id), { cache: 'no-cache' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      .then(function (feat) {
+        if (root.PV_ACCESS) root.PV_ACCESS.note(feat);
+        if (root.PV_ACCESS && root.PV_ACCESS.isWithheld(feat && feat.properties)) {
+          var e = new Error('details withheld');
+          e.withheld = true;
+          throw e;
+        }
+        return feat;
+      });
+  }
+
   function assembleAssessmentFacts(parcel) {
     var id = parcel && parcel.id;
     if (id == null) return Promise.reject(new Error('no parcel id'));
-    return fetch(apiBase() + '/parcel/' + encodeURIComponent(id), { cache: 'no-cache' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+    return fetchRecord(id)
       .then(function (feat) {
         var p = (feat && feat.properties) || {};
         var c = core();
@@ -199,8 +215,7 @@
   function assembleTaxDescriptionFacts(parcel) {
     var id = parcel && parcel.id;
     if (id == null) return Promise.reject(new Error('no parcel id'));
-    return fetch(apiBase() + '/parcel/' + encodeURIComponent(id), { cache: 'no-cache' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+    return fetchRecord(id)
       .then(function (feat) {
         var p = (feat && feat.properties) || {};
         var c = core();
@@ -539,6 +554,16 @@
       '<p>' + esc(meta.loading) + '</p></div>';
   }
 
+  function withheldHtml(meta) {
+    var budget = (root.PV_ACCESS && root.PV_ACCESS.getState().budget) || {};
+    var url = typeof budget.data_url === 'string' && /^https?:\/\//i.test(budget.data_url) ? budget.data_url : null;
+    return '<p class="pv-withheld-note" role="note" data-testid="explainer-details-withheld">' +
+      'This parcel’s ' + esc(meta.label.toLowerCase()) + ' details are withheld for the rest of today ' +
+      '(daily detail limit). They return tomorrow' +
+      (url ? '; the county also offers <a href="' + esc(url) + '" target="_blank" rel="noopener">the full dataset</a>.' : '.') +
+      '</p>';
+  }
+
   function errorHtml(meta, msg) {
     return '<p class="pv-modal-lead">Couldn’t load this parcel’s ' + esc(meta.label.toLowerCase()) + '.</p>' +
       '<p class="pv-modal-note">' + esc(msg || 'Please try again.') + '</p>';
@@ -573,7 +598,9 @@
           // on any failure → auto-fallback to facts + notes + links (§4.4b).
           return fetchExplanation(facts, topic).then(function (x) { show(x, !x); });
         })
-        .catch(function (err) { bodyEl.innerHTML = errorHtml(meta, err && err.message); });
+        .catch(function (err) {
+          bodyEl.innerHTML = err && err.withheld ? withheldHtml(meta) : errorHtml(meta, err && err.message);
+        });
     });
   }
 

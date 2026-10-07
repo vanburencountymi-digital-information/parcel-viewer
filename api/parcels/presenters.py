@@ -61,6 +61,8 @@ def search_results(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 "municipality": r["municipality"],
                 "acres": r["acres"],
                 "bbox": [r["w"], r["s"], r["e"], r["n"]],
+                # Only past a protected county's daily budget (ADR 0015).
+                **({"details_withheld": True} if r.get("details_withheld") else {}),
             }
             for r in rows
         ]

@@ -363,6 +363,7 @@
         aboutRow("Maintained by", "DICE Labs") +
         aboutRow("Basemap", "Esri Light/Dark Gray Canvas (Esri, HERE, Garmin, OpenStreetMap contributors)") +
         aboutRow("Parcel data", countyName + " GIS") +
+        dataUseRow() +
       '</div>',
       '<p class="pv-modal-note">This is a preview build. Data shown is for informational purposes only and is not a legal record of survey.</p>'
     ].join(""), function (bodyEl) {
@@ -732,7 +733,9 @@
       return;
     }
     var pin   = pc.pin || "—";
-    var owner = pc.owner_name || "Owner on record";
+    // Past a Protected county's daily detail limit (ADR 0015) the owner is withheld, not unknown.
+    var withheld = !pc.owner_name && window.PV_ACCESS && window.PV_ACCESS.getState().withheld;
+    var owner = pc.owner_name || (withheld ? "Withheld today (daily detail limit)" : "Owner on record");
     var addr  = pc.site_address || "Address on file";
     var muni  = pc.municipality || "Van Buren County";
     var acres = pc.acres != null ? pc.acres.toFixed(2) : "—";
@@ -1326,6 +1329,20 @@
   function helpItem(h, p) {
     return '<div class="pv-help-item"><div class="pv-help-h">' + h + '</div><div class="pv-help-p">' + p + '</div></div>';
   }
+  // Protected counties (ADR 0015): how the data may be used, and where to get all of it.
+  function dataUseRow() {
+    var access = (window.PV_ACCESS && window.PV_ACCESS.countyAccess()) || {};
+    if (access.mode !== "protected") return "";
+    var http = function (u) { return typeof u === "string" && /^https?:\/\//i.test(u) ? u : null; };
+    var a = function (text, url) { return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text) + "</a>"; };
+    var links = [];
+    if (http(access.termsUrl)) links.push(a("Terms of use", access.termsUrl));
+    if (http(access.dataUrl)) links.push(a("Get the full dataset", access.dataUrl));
+    return '<div class="pv-about-k">Data use</div><div class="pv-about-v" data-testid="about-data-use">' +
+      "Owner and value details are limited to a daily amount per visitor." +
+      (links.length ? " " + links.join(" · ") : "") + "</div>";
+  }
+
   function aboutRow(k, v) {
     return '<div class="pv-about-k">' + esc(k) + '</div><div class="pv-about-v">' + esc(v) + '</div>';
   }

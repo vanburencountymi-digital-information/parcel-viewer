@@ -144,11 +144,16 @@ def charge(request: Request, rows: int, policy: AccessPolicy | None = None) -> C
 
 
 def withhold(rows: list[dict[str, Any]], allowed: int) -> bool:
-    """Takes rows and how many keep their details. Blanks the rest's detail fields; True if any."""
+    """
+    Takes rows and how many keep their details. Blanks the rest's detail fields and marks
+    each such row `details_withheld`, so the viewer can say "withheld" rather than "none on
+    record". Returns True if any row was withheld.
+    """
     withheld = False
     for row in rows[allowed:]:
         for field in DETAIL_FIELDS.intersection(row):
             row[field] = None
+        row["details_withheld"] = True
         withheld = True
     return withheld
 

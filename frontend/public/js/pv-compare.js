@@ -146,6 +146,7 @@
       body: JSON.stringify({ selector: selector }),
     })
       .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) { return window.PV_ACCESS ? window.PV_ACCESS.note(data) : data; })
       .then(function (data) {
         if (!data || !data.features || !data.features.length) { toast('Couldn’t load those parcels.'); return; }
         // Learn the ids of parcels that were added by PIN, so later removals match.
@@ -162,9 +163,15 @@
     var eng = core();
     // Inject the computed $/acre so it compares like any other field (kept out of the
     // pure core — it's a presentation-derived field).
+    // A missing value stays missing: Number(null) is 0, which showed "$0" per acre.
+    var num = function (v) { return v == null || v === '' ? NaN : Number(v); };
+    // Parcels past a Protected county's daily detail limit (ADR 0015): their empty value
+    // cells say "Withheld", not "—".
+    var withheldIds = {};
     var feats = data.features.map(function (f) {
       var p = f.properties || {};
-      var av = Number(p.assessed_value), ac = Number(p.gis_acres);
+      if (window.PV_ACCESS && window.PV_ACCESS.isWithheld(p)) withheldIds[String(f.id)] = true;
+      var av = num(p.assessed_value), ac = num(p.gis_acres);
       var perAcre = (!isNaN(av) && !isNaN(ac) && ac > 0) ? Math.round(av / ac) : null;
       return { id: f.id, properties: Object.assign({}, p, { av_per_acre: perAcre }) };
     });
@@ -180,7 +187,11 @@
         '<button type="button" class="pv-cmp-colx" data-id="' + esc(col.id) + '" aria-label="Remove from comparison">×</button></th>';
     }).join('');
     var body = t.rows.map(function (row) {
-      var cells = row.values.map(function (v) { return '<td>' + fmtVal(row.field, v) + '</td>'; }).join('');
+      var cells = row.values.map(function (v, i) {
+        var col = t.columns[i];
+        if (v == null && col && withheldIds[String(col.id)]) return '<td><span class="pv-withheld">Withheld</span></td>';
+        return '<td>' + fmtVal(row.field, v) + '</td>';
+      }).join('');
       return '<tr class="' + (row.differs ? 'pv-cmp-differs' : '') + '"><th scope="row">' + esc(row.label) +
         (row.differs ? ' <span class="pv-cmp-diffdot" title="values differ" aria-label="values differ"></span>' : '') +
         '</th>' + cells + '</tr>';
