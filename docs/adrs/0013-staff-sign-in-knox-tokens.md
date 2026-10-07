@@ -22,4 +22,4 @@ The config admin routes are guarded by one shared key (`PV_ADMIN_TOKEN`, header 
 - Staff users, tokens and sessions live in Django's own `default` database, which needs a production home (DIC-590, Drake).
 - Staff users are created with `manage.py createsuperuser`, or in the Django admin by a superuser; Knox tokens can be revoked there too.
 - The 401 message stays word for word while the key is accepted, because the contract harness compares it.
-- The console still has to learn to sign in (the next phase 5 PR).
+- The admin console signs in from its sidebar and keeps the token in sessionStorage (closing the tab signs out). It still sends `window.PV_ADMIN_TOKEN` when signed out, for the FastAPI backend.

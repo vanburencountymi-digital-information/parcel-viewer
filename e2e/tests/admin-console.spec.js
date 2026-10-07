@@ -73,6 +73,84 @@ test.describe('Admin console', () => {
     await expect(page.locator('#ac-content')).toContainText(/admin token/i, { timeout: 15_000 });
   });
 
+  // Staff sign-in (DIC-2151). The local stack has no staff account, so the sign-in routes
+  // are stubbed: these check what the console does with them, the API tests cover the rest.
+  test.describe('staff sign-in', () => {
+    const TOKEN = 'stub-token-123';
+
+    async function stubSignIn(page, seen) {
+      await page.route('**/api/auth/login', async (route) => {
+        seen.login = route.request().postDataJSON();
+        await route.fulfill({ json: { token: TOKEN, user: { username: 'tester' }, expiry: '2099-01-01T00:00:00+00:00' } });
+      });
+      await page.route('**/api/auth/me', (route) => route.fulfill(
+        route.request().headers().authorization === 'Token ' + TOKEN
+          ? { json: { user: { username: 'tester', is_staff: true }, expiry: '2099-01-01T00:00:00+00:00' } }
+          : { status: 401, json: { detail: 'Invalid token.' } }));
+      await page.route('**/api/auth/logout', async (route) => {
+        seen.logoutAuth = route.request().headers().authorization;
+        await route.fulfill({ json: { ok: true } });
+      });
+      await page.route('**/api/admin/discover/layers*', async (route) => {
+        seen.discoverAuth = route.request().headers().authorization;
+        await route.fulfill({ json: { layers: [] } });
+      });
+    }
+
+    async function signIn(page) {
+      const auth = page.locator('#ac-auth');
+      await auth.getByLabel('Username').fill('tester');
+      await auth.getByLabel('Password').fill('a-password');
+      await auth.getByRole('button', { name: 'Sign in' }).click();
+      await expect(auth).toContainText('Signed in as tester');
+    }
+
+    test('signing in sends the token, survives a reload, and signing out revokes it', async ({ page }) => {
+      const seen = {};
+      await stubSignIn(page, seen);
+      await gotoAdmin(page, 'data');
+      await expect(page.locator('#ac-content')).toContainText(/staff sign-in/i);
+
+      await signIn(page);
+
+      expect(seen.login).toEqual({ username: 'tester', password: 'a-password' });
+      // Signing in redraws the module, so discovery runs again, now with the token.
+      await expect(page.locator('#ac-pg-pick')).toContainText('All available layers added');
+      expect(seen.discoverAuth).toBe('Token ' + TOKEN);
+
+      await page.reload();
+      await expect(page.locator('#ac-auth')).toContainText('Signed in as tester');
+
+      await page.locator('#ac-auth').getByRole('button', { name: 'Sign out' }).click();
+      await expect(page.locator('#ac-auth').getByRole('button', { name: 'Sign in' })).toBeVisible();
+      await expect.poll(() => seen.logoutAuth).toBe('Token ' + TOKEN);
+      expect(await page.evaluate(() => sessionStorage.getItem('pv-admin-auth'))).toBeNull();
+    });
+
+    test('a refused sign-in says why and keeps the form', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 401/);
+      await page.route('**/api/auth/login', (route) => route.fulfill({ status: 401, json: { detail: 'Invalid username or password.' } }));
+      await gotoAdmin(page, 'county');
+      const auth = page.locator('#ac-auth');
+      await auth.getByLabel('Username').fill('tester');
+      await auth.getByLabel('Password').fill('wrong');
+      await auth.getByRole('button', { name: 'Sign in' }).click();
+
+      await expect(auth.getByRole('status')).toContainText(/Wrong username or password/);
+      await expect(auth.getByLabel('Password')).toHaveValue('');
+    });
+
+    test('an expired stored sign-in is dropped on load', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 401/);
+      await stubSignIn(page, {});
+      await page.addInitScript(() => sessionStorage.setItem('pv-admin-auth', JSON.stringify({ token: 'expired', username: 'old' })));
+      await gotoAdmin(page, 'county');
+
+      await expect(page.locator('#ac-auth').getByRole('button', { name: 'Sign in' })).toBeVisible();
+      expect(await page.evaluate(() => sessionStorage.getItem('pv-admin-auth'))).toBeNull();
+    });
+  });
+
   test('manifest: Validate reports a result', async ({ page }) => {
     await gotoAdmin(page, 'manifest');
     await page.locator('#ac-content').getByRole('button', { name: 'Validate' }).click();

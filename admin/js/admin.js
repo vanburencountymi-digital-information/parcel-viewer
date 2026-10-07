@@ -33,12 +33,128 @@
   var STATE = {
     config: window.COUNTY || {}, source: 'fallback',
     editing: false, draft: null,
-    token: window.PV_ADMIN_TOKEN || '',   // interim write auth (DIC-463 replaces it)
+    token: window.PV_ADMIN_TOKEN || '',   // the shared admin key, until the cutover (ADR 0013)
+    auth: null,                           // {token, username, expiry} while a staff user is signed in
   };
   // Debug/test hook (mirrors the viewer's window handles like PS_MAP / PV_MAP_BUDDY):
   // exposes the live console state so automated checks can drive round-trip flows the
   // unprovisioned local store can't (e.g. seed a saved manifest). Not used by the UI.
   window.PV_ADMIN = { getState: function () { return STATE; } };
+
+  // ── Staff sign-in (DIC-2151, ADR 0013) ─────────────────────────────────────
+  // The Django API trades a staff password for a token (POST /auth/login), sent as
+  // "Authorization: Token …". It's kept in sessionStorage: a reload stays signed in,
+  // closing the tab signs out. The FastAPI backend has no sign-in, so until the cutover
+  // the shared key (window.PV_ADMIN_TOKEN) still works when it's set.
+  var AUTH_KEY = 'pv-admin-auth';
+  var onAuthChange = function () {};   // set by init(): re-renders the open module
+
+  function readAuth() {
+    try {
+      var a = JSON.parse(sessionStorage.getItem(AUTH_KEY) || 'null');
+      return a && typeof a.token === 'string' && a.token ? a : null;
+    } catch (_) { return null; }
+  }
+  // Takes the new sign-in (or null to sign out). Updates the sidebar, not the module.
+  function setAuth(a) {
+    STATE.auth = a;
+    try {
+      if (a) sessionStorage.setItem(AUTH_KEY, JSON.stringify(a));
+      else sessionStorage.removeItem(AUTH_KEY);
+    } catch (_) { /* storage blocked: signed in for this page only */ }
+    renderAuth();
+  }
+  function hasAuth() { return !!(STATE.auth || STATE.token); }
+  var DISCOVERY_NEEDS_AUTH = 'Layer discovery needs a staff sign-in, or the shared admin token on the FastAPI backend.';
+  function authHeaders() {
+    if (STATE.auth) return { 'Authorization': 'Token ' + STATE.auth.token };
+    return STATE.token ? { 'X-Admin-Token': STATE.token } : {};
+  }
+  // A 401 while signed in means the token expired or was revoked: forget it.
+  function noteRefused(status) {
+    if (status === 401 && STATE.auth) { setAuth(null); return true; }
+    return false;
+  }
+
+  function signInError(status) {
+    if (status === 401) return 'Wrong username or password, or the account isn’t staff.';
+    if (status === 422) return 'Enter a username and a password.';
+    if (status === 429) return 'Too many attempts. Wait a minute and try again.';
+    if (status === 404) return 'This API has no staff sign-in yet (it still uses the shared admin key).';
+    return 'Couldn’t sign in (' + (status ? 'HTTP ' + status : 'no response') + ').';
+  }
+  function signIn(username, password) {
+    return fetch(API_BASE + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username, password: password }),
+    }).then(function (r) {
+      if (!r.ok) return { error: signInError(r.status) };
+      return r.json().then(function (j) {
+        setAuth({ token: j.token, username: j.user && j.user.username, expiry: j.expiry });
+        onAuthChange();
+        return {};
+      });
+    }).catch(function () { return { error: signInError(0) }; });
+  }
+  function signOut() {
+    var headers = authHeaders();
+    setAuth(null);
+    onAuthChange();
+    // Revoke the token on the server too; signed out locally either way.
+    return fetch(API_BASE + '/auth/logout', { method: 'POST', headers: headers }).catch(function () {});
+  }
+  // On load: keep a stored sign-in only if the API still accepts its token.
+  function checkAuth() {
+    var stored = readAuth();
+    if (!stored) { renderAuth(); return Promise.resolve(); }
+    STATE.auth = stored;
+    renderAuth();
+    return fetch(API_BASE + '/auth/me', { headers: authHeaders(), cache: 'no-cache' })
+      .then(function (r) {
+        if (r.status === 401 || r.status === 404) { setAuth(null); onAuthChange(); return; }
+        if (r.ok) return r.json().then(function (j) {
+          setAuth({ token: stored.token, username: j.user && j.user.username, expiry: j.expiry });
+        });
+      })
+      .catch(function () { /* API unreachable: keep the sign-in; writes will say so */ });
+  }
+
+  function renderAuth() {
+    var box = document.getElementById('ac-auth');
+    if (!box) return;
+    if (STATE.auth) {
+      box.innerHTML = '<p class="ac-auth-who">Signed in as <strong>' + esc(STATE.auth.username || 'staff') + '</strong></p>' +
+        '<button type="button" class="ac-btn ac-btn-sm" id="ac-signout">Sign out</button>';
+      box.querySelector('#ac-signout').addEventListener('click', signOut);
+      return;
+    }
+    box.innerHTML =
+      '<form id="ac-signin" class="ac-signin" novalidate>' +
+        '<p class="ac-auth-title">Staff sign-in</p>' +
+        (STATE.token ? '<p class="ac-auth-note">Using the shared admin key until you sign in.</p>' : '') +
+        '<label class="ac-auth-label" for="ac-signin-user">Username</label>' +
+        '<input class="ac-input ac-auth-input" id="ac-signin-user" name="username" autocomplete="username" required>' +
+        '<label class="ac-auth-label" for="ac-signin-pass">Password</label>' +
+        '<input class="ac-input ac-auth-input" id="ac-signin-pass" name="password" type="password" autocomplete="current-password" required>' +
+        '<button type="submit" class="ac-btn ac-btn-primary ac-btn-sm">Sign in</button>' +
+        '<p class="ac-auth-msg" id="ac-signin-msg" role="status" aria-live="polite"></p>' +
+      '</form>';
+    var form = box.querySelector('#ac-signin');
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var msg = form.querySelector('#ac-signin-msg');
+      var btn = form.querySelector('button[type="submit"]');
+      btn.disabled = true;
+      msg.textContent = 'Signing in…';
+      signIn(form.username.value.trim(), form.password.value).then(function (res) {
+        if (!res.error) return;   // signed in: the sidebar has been redrawn
+        btn.disabled = false;
+        form.password.value = '';
+        msg.textContent = res.error;
+      });
+    });
+  }
   function loadConfig() {
     return fetch(API_BASE + '/config', { cache: 'no-cache' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
@@ -48,15 +164,19 @@
 
   function clone(o) { return JSON.parse(JSON.stringify(o || {})); }
 
-  // Write call with the interim admin token. Resolves {ok, status, body} and never
-  // rejects, so the UI can show a clean message (incl. 503 "not provisioned").
+  // Admin call with the staff token (or the shared key). Resolves {ok, status, body,
+  // expired} and never rejects, so the UI can show a clean message (incl. 503 "not
+  // provisioned").
   function apiWrite(method, path, body) {
+    var headers = authHeaders();
+    headers['Content-Type'] = 'application/json';
     return fetch(API_BASE + path, {
       method: method,
-      headers: { 'Content-Type': 'application/json', 'X-Admin-Token': STATE.token || '' },
+      headers: headers,
       body: body ? JSON.stringify(body) : undefined,
     }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
+      var expired = noteRefused(r.status);
+      return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j, expired: expired }; });
     }).catch(function (e) { return { ok: false, status: 0, body: { detail: String(e && e.message || e) } }; });
   }
 
@@ -66,7 +186,12 @@
   }
   function writeErr(res) {
     if (res.status === 503) return 'Editing is built but not yet provisioned in this environment (writable store — DIC-464 / DIC-400). Save will work once the store is live.';
-    if (res.status === 401) return 'Admin token required/invalid (interim auth until DIC-463). Set window.PV_ADMIN_TOKEN.';
+    if (res.status === 401) {
+      return res.expired
+        ? 'Your staff sign-in has expired. Sign in again to save.'
+        : 'Sign in as staff to save: admin auth required.';
+    }
+    if (res.status === 403) return 'This account isn’t staff, so it can’t change the config.';
     return (res.body && res.body.detail) || ('Request failed (HTTP ' + res.status + ').');
   }
 
@@ -920,18 +1045,19 @@
     var meta = host.querySelector('#ac-pg-pick-meta');
     if (!sel) return;
     sel.disabled = true;
-    // Admin-only since DIC-1872: without a token, say so instead of making a request
-    // that can only be refused.
-    if (!STATE.token) {
-      sel.innerHTML = '<option value="">Discovery needs the admin token</option>';
-      if (meta) meta.innerHTML = '<p class="ac-readonly">Layer discovery needs the admin token (interim auth until DIC-463). Set window.PV_ADMIN_TOKEN.</p>';
+    // Admin-only since DIC-1872: signed out, say so instead of making a request that can
+    // only be refused.
+    if (!hasAuth()) {
+      sel.innerHTML = '<option value="">Discovery needs a staff sign-in</option>';
+      if (meta) meta.innerHTML = '<p class="ac-readonly">' + DISCOVERY_NEEDS_AUTH + '</p>';
       return;
     }
     sel.innerHTML = '<option value="">Loading available layers…</option>';
-    // Admin-only since DIC-1872 (it scans every geo table): send the interim token.
-    fetch(API_BASE + '/admin/discover/layers', { cache: 'no-cache', headers: { 'X-Admin-Token': STATE.token || '' } })
+    // Admin-only since DIC-1872 (it scans every geo table): send the staff token.
+    fetch(API_BASE + '/admin/discover/layers', { cache: 'no-cache', headers: authHeaders() })
       .then(function (r) {
-        if (r.status === 401) return Promise.reject(new Error('admin token required'));
+        if (r.status === 401) { noteRefused(401); return Promise.reject(new Error('admin token required')); }
+        if (r.status === 403) return Promise.reject(new Error('staff only'));
         return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status));
       })
       .then(function (res) {
@@ -963,7 +1089,9 @@
         sel.innerHTML = '<option value="">Discovery unavailable</option>';
         sel.disabled = true;
         if (meta) meta.innerHTML = e.message === 'admin token required'
-          ? '<p class="ac-readonly">Layer discovery needs the admin token (interim auth until DIC-463). Set window.PV_ADMIN_TOKEN.</p>'
+          ? '<p class="ac-readonly">' + DISCOVERY_NEEDS_AUTH + '</p>'
+          : e.message === 'staff only'
+          ? '<p class="ac-readonly">Layer discovery is for staff accounts only.</p>'
           : '<p class="ac-readonly">Couldn’t reach the tile server / DB (' + esc(e.message) + ').</p>';
       });
   }
@@ -1365,6 +1493,10 @@
     var initial = (location.hash || '').replace('#', '');
     show(MODULES.some(function (m) { return m.id === initial; }) ? initial : 'county');
     reflect();
+
+    // Signing in or out redraws the open module (its buttons and messages depend on it).
+    onAuthChange = function () { show(_active || 'county'); };
+    checkAuth();
 
     // Pull the authoritative manifest from the runtime API, then refresh.
     loadConfig().then(function () { reflect(); show(_active || 'county'); });
