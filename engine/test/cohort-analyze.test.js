@@ -69,6 +69,18 @@ test('value-stats: descriptive stats + per-area intensity', () => {
   assert.equal(v.taxable_value.sum, 470000);
 });
 
+test('value-stats: per-area counts only features with a value, and is null when none have one', () => {
+  // Feature 4's values withheld (or missing): its 40 acres must not dilute the rate.
+  const some = FEATURES.map((f) => (f.id === 4
+    ? { id: 4, properties: { ...f.properties, assessed_value: null, taxable_value: null, details_withheld: true } }
+    : f));
+  assert.equal(CORE.valueStats(some, FIELDS).assessed_value.perArea, 32500);   // 520000 / 16 acres
+
+  // No feature has a value: the rate is unknown, not $0.
+  const none = FEATURES.map((f) => ({ id: f.id, properties: { ...f.properties, assessed_value: null } }));
+  assert.equal(CORE.valueStats(none, FIELDS).assessed_value.perArea, null);
+});
+
 test('value-change: current vs prior totals, delta %, up/down/flat counts', () => {
   const vc = CORE.valueChange(FEATURES, FIELDS).assessed_value;
   assert.equal(vc.currentTotal, 570000);

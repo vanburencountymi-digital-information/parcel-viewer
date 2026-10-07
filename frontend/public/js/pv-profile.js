@@ -212,22 +212,40 @@
       body: JSON.stringify({ selector: selector }),
     })
       .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (data) { return window.PV_ACCESS ? window.PV_ACCESS.note(data) : data; })
       .then(function (data) {
         if (!data || !data.features || !data.features.length) { renderBody('<p class="pv-prof-empty">No parcels found in this area.</p>', data && data.selector); return; }
+        // Parcels past a Protected county's daily detail limit (ADR 0015) come without
+        // owner and value fields: the figures then cover only the rest, and say so.
+        _withheld = window.PV_ACCESS
+          ? data.features.filter(function (f) { return window.PV_ACCESS.isWithheld(f.properties); }).length
+          : 0;
         var result = core().core({
           cohort: { selector: data.selector, features: data.features },
           fields: PROFILE_FIELDS, aggregators: AGGS, source_id: 'assessment-roll',
         });
         renderBody(dashboard(result.facts), data.selector);
         maybeEnvironmental(result.facts, data.selector);   // area-wide clip if available, else center read
-        maybeNarrate(result.facts);   // additive AI character read; degrades to no-op
+        // No AI read over partial figures: it would describe a neighborhood it can't see.
+        if (!_withheld) maybeNarrate(result.facts);   // additive AI character read; degrades to no-op
       })
       .catch(function () { renderBody('<p class="pv-prof-empty">Couldn’t reach the server.</p>'); });
   }
 
   // ── Dashboard sections (from the deterministic facts) ───────────────────────
+  var _withheld = 0;   // parcels in the current profile whose details were withheld (ADR 0015)
+
+  function withheldNote(f) {
+    if (!_withheld) return '';
+    var total = (f.composition && f.composition.count) || 0;
+    return '<p class="pv-withheld-note" role="note" data-testid="profile-details-withheld">' +
+      'Owner and value figures cover ' + (total - _withheld) + ' of ' + total + ' parcels; the other ' +
+      _withheld + ' are withheld for the rest of today (daily detail limit). Counts, classes and acreage cover all ' +
+      total + '.</p>';
+  }
+
   function dashboard(f) {
-    return [
+    return withheldNote(f) + [
       overviewCard(f), compositionCard(f), valuesCard(f), changeCard(f), ownershipCard(f), sizeCard(f),
     ].join('') +
       '<p class="pv-prof-note">Derived from the assessment roll — educational summary, not an official valuation. Every figure aggregates the parcels in the selected area.</p>';
@@ -288,7 +306,16 @@
       stat('owners w/ 2+', (o.multiFeatureOwners != null ? o.multiFeatureOwners : '—')) +
       stat('concentration', (o.concentrationHHI != null ? o.concentrationHHI.toFixed(2) : '—')) +
       (o.unknownCount ? stat('unmatched', o.unknownCount) : '') + '</div>' +
-      (o.unknownCount ? '<p class="pv-prof-subnote">Shares are over the ' + ((o.total || 0) - o.unknownCount) + ' parcels with a named owner; ' + o.unknownCount + ' have no owner on record.</p>' : ''));
+      (o.unknownCount ? '<p class="pv-prof-subnote">Shares are over the ' + ((o.total || 0) - o.unknownCount) + ' parcels with a named owner; ' + ownerGapText(o.unknownCount) + '.</p>' : ''));
+  }
+
+  // Withheld owners (ADR 0015) aren't "no owner on record": say which is which.
+  function ownerGapText(unknown) {
+    var withheld = Math.min(_withheld, unknown), missing = unknown - withheld;
+    var parts = [];
+    if (withheld) parts.push(withheld + ' withheld today (daily detail limit)');
+    if (missing) parts.push(missing + ' have no owner on record');
+    return parts.join(' and ');
   }
 
   function sizeCard(f) {

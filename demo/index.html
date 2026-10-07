@@ -734,6 +734,8 @@
   <script src="/api/config.js" onerror="window.PV_CONFIG_SOURCE='fallback'"></script>
   <!-- Service URL resolution (Map Buddy etc.) — after config, before any AI module. -->
   <script src="/frontend/public/js/pv-endpoints.js"></script>
+  <!-- Data-access notices (ADR 0015): only Protected counties ever show anything. -->
+  <script src="/frontend/public/js/pv-access.js"></script>
   <!-- Local draft preview (DIC-512): merges an Admin Console draft from
        localStorage over window.COUNTY for testing, before map.js reads it. -->
   <script src="/frontend/public/js/style-preview.js"></script>

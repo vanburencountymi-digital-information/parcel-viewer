@@ -452,12 +452,18 @@
   // tile-clipped geometry; the authoritative record comes from the API.
   const _parcelCache = new Map();   // id -> Feature
 
+  // Every parcel API response passes through PV_ACCESS (pv-access.js), which tells the
+  // visitor when a Protected county's daily detail limit has been reached (ADR 0015).
+  const noteAccess = (json) => (window.PV_ACCESS ? window.PV_ACCESS.note(json) : json);
+  const isWithheld = (props) => !!(window.PV_ACCESS && window.PV_ACCESS.isWithheld(props));
+
   async function fetchParcel(id) {
     if (_parcelCache.has(id)) return _parcelCache.get(id);
     const res = await fetch(API_BASE + "/parcel/" + id);
     if (!res.ok) throw new Error("Parcel fetch failed (" + res.status + ")");
-    const feature = await res.json();
-    _parcelCache.set(id, feature);
+    const feature = noteAccess(await res.json());
+    // A withheld record isn't cached: once the budget resets, the full one is fetched.
+    if (!isWithheld(feature.properties)) _parcelCache.set(id, feature);
     return feature;
   }
 
@@ -508,6 +514,7 @@
 
     fetch(API_BASE + "/parcels?bbox=" + bbox, { signal: _hydrateController.signal })
       .then(r => r.json())
+      .then(noteAccess)
       .then(data => {
         parcelIndex = (data.features || []).filter(f => f.geometry);
         window.PS_PARCEL_INDEX = parcelIndex;
@@ -719,6 +726,9 @@
       const p = f.properties || {};
       const pin = p.pin || p.PIN;
       if (pin == null) continue;
+      // A withheld row (ADR 0015) has no value to colour by: keep what's already known
+      // rather than overwrite it with blanks.
+      if (isWithheld(p) && _choroCache.has(String(pin))) continue;
       _choroCache.set(String(pin), {
         taxable_value: p.taxable_value, gis_acres: p.gis_acres, school_dist: p.school_dist,
       });
@@ -1964,9 +1974,18 @@
       ? `<div class="parcel-info-row"><span class="parcel-info-label" data-tip="How this geometry row was created (COGO commit, split, merge, boundary adjustment, or original shapefile migration)">Geometry</span><span class="parcel-info-value">${dash(p.source)}</span></div>`
       : "";
 
+    // Past a Protected county's daily detail limit (ADR 0015) the owner and value fields
+    // arrive empty: say so, so "—" isn't read as "none on record".
+    const withheldNote = isWithheld(p)
+      ? `<p class="pv-withheld-note" role="note" data-testid="parcel-details-withheld">` +
+        `Owner and value details are withheld for the rest of today (daily detail limit). ` +
+        `Everything else below is complete.</p>`
+      : "";
+
     infoBody.innerHTML =
       `<div class="parcel-info-pin" data-testid="parcel-info-pin">${_escHtml(displayPin)}</div>` +
       `<div class="parcel-info-zoning">${dash(p.municipality)}</div>` +
+      withheldNote +
       `<hr class="parcel-info-divider">` +
 
       (_engineSectionHtml(_parcelPopupCfg(), _PARCEL_FORMATTERS, p, "Parcel", geometry) ||
@@ -2107,7 +2126,7 @@
     const acresStr = window.PS_STATE.parcel.acres != null ? window.PS_STATE.parcel.acres.toFixed(2) : "?";
     setStatusStrip(n > 1
       ? `${n} parcels selected — viewing ${displayPin}`
-      : `Parcel ${displayPin} · ${p.owner_name || "unknown owner"} · ${acresStr} acres`);
+      : `Parcel ${displayPin} · ${p.owner_name || (isWithheld(p) ? "owner withheld today" : "unknown owner")} · ${acresStr} acres`);
 
     flyToActiveParcel(false);
 
@@ -2480,6 +2499,7 @@
         if (!r.ok) { const e = new Error("search HTTP " + r.status); e.status = r.status; throw e; }
         return r.json();
       })
+      .then(noteAccess)
       .then(data => renderSearchResults(data.results || []))
       .catch(err => {
         if (err && err.name === "AbortError") return;   // superseded by a newer keystroke
@@ -2821,6 +2841,13 @@
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+
+    // Rows past a Protected county's daily detail limit (ADR 0015) have their owner and
+    // value cells empty; the file's details_withheld column marks them. Say so.
+    const withheld = selectedPins.filter(pin => isWithheld((selectedFeatureMap.get(pin) || {}).props)).length;
+    if (withheld) {
+      notifyUser(`${withheld} of ${selectedPins.length} parcels were exported without owner and value details (daily detail limit).`);
+    }
   }
 
   // ── Selection tools ────────────────────────────────────────────────────

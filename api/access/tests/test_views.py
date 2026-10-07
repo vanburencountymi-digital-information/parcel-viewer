@@ -112,6 +112,11 @@ class ProtectedTests(MeteredRouteTestCase):
             # Shapes and public fields still come through: the map keeps working.
             self.assertIsNotNone(f["geometry"])
             self.assertEqual(f["properties"]["prop_class"], "401")
+        # Each withheld row says so, so the viewer can tell "withheld" from "none on record".
+        self.assertEqual(
+            [f["properties"].get("details_withheld") for f in features],
+            [None, None, True, True, True],
+        )
         body = response.json()
         self.assertTrue(body["details_withheld"])
         self.assertEqual(body["detail_budget"]["limit"], 10)
@@ -132,6 +137,7 @@ class ProtectedTests(MeteredRouteTestCase):
 
         self.assertEqual(search.status_code, 200)
         self.assertIsNone(search.json()["results"][0]["owner_name"])
+        self.assertTrue(search.json()["results"][0]["details_withheld"])
         self.assertTrue(search.json()["details_withheld"])
         props = parcel.json()["properties"]
         self.assertEqual(parcel.status_code, 200)

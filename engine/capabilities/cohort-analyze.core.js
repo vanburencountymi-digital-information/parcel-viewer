@@ -94,13 +94,22 @@
   }
 
   // value-stats: descriptive stats per configured value field, plus per-area intensity.
+  // perArea counts only features with both a value and an area, so a missing value can't
+  // pull the rate down, and it is null (not 0) when no feature has one (DIC-2198).
   function valueStats(features, fields) {
     var out = {};
-    var areaSum = fields.area ? stats(col(features, fields.area)).sum : null;
     (fields.values || []).forEach(function (v) {
       var s = stats(col(features, v.key));
       s.label = v.label || v.key;
-      s.perArea = (areaSum && s.sum != null) ? round(s.sum / areaSum, 2) : null;
+      s.perArea = null;
+      if (fields.area) {
+        var valueSum = 0, areaSum = 0;
+        props(features).forEach(function (p) {
+          var x = toNum(p[v.key]), a = toNum(p[fields.area]);
+          if (x != null && a != null && a > 0) { valueSum += x; areaSum += a; }
+        });
+        s.perArea = areaSum ? round(valueSum / areaSum, 2) : null;
+      }
       out[v.key] = s;
     });
     return out;

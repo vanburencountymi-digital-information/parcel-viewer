@@ -232,6 +232,27 @@ html[data-theme="dark"].pv-a11y-solid .maplibregl-popup-content { background: #1
 .pv-toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(10px); background: #1f2937; color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); z-index: 10000; opacity: 0; transition: opacity 0.25s, transform 0.25s; max-width: 90vw; text-align: center; }
 .pv-toast--show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* Data access (ADR 0015, DIC-2198): stays until dismissed; only Protected counties ever show it. */
+.pv-access-notice {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); z-index: 10000;
+  max-width: min(560px, 92vw); padding: 10px 40px 10px 16px; border-radius: 8px;
+  background: #1f2937; color: #fff; font-size: 13px; line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+.pv-access-notice p { margin: 0; }
+.pv-access-notice .pv-access-links { margin-top: 4px; }
+.pv-access-notice a { color: #fde68a; text-decoration: underline; }
+.pv-access-close {
+  position: absolute; top: 6px; right: 8px; width: 26px; height: 26px; border: 0;
+  border-radius: 6px; background: transparent; color: #fff; font-size: 18px; cursor: pointer;
+}
+.pv-access-close:hover, .pv-access-close:focus-visible { background: rgba(255,255,255,0.15); }
+.pv-withheld { color: #92400e; font-style: italic; }
+.pv-withheld-note {
+  margin: 6px 0 8px; padding: 6px 10px; border-radius: 6px; font-size: 12.5px;
+  background: #fef3c7; color: #78350f; border: 1px solid #fcd34d;
+}
+
 /* Startup pill (DIC-571): AI defaults on → point the user at the toggle to turn it off.
    Rounded pill matching the suggestion-chip look; anchored under the sparkle by JS. */
 .pv-ai-pill {
