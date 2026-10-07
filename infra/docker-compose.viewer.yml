@@ -217,6 +217,11 @@ services:
       # The same config switches the FastAPI service reads, so the two answer alike.
       # No PV_ADMIN_TOKEN: the Django API takes staff tokens only (DIC-2151, ADR 0013).
       - PV_DEFAULT_COUNTY
+      # Data access (ADR 0015): unset = each county's manifest decides (open by default).
+      # e.g. PV_ACCESS_MODE=protected PV_DETAIL_BUDGET=50 to try the budget locally.
+      - PV_ACCESS_MODE
+      - PV_DETAIL_BUDGET
+      - PV_SERVICE_KEYS
       - PV_CONFIG_STORE_RETRY_S
       - PV_DISCOVERY_CACHE_S
       - PV_CORS_ORIGINS

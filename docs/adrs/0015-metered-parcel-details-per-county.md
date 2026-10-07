@@ -63,6 +63,22 @@ Esri's parcel viewers can be locked down with field-limited views, export switch
   - coarser public geometry;
   - "canary" records that prove the source of a resold copy (a county-counsel call, since it alters published data).
 
+## As built (DIC-2197)
+
+- **Three modes:**
+  - `open` does no metering at all: no counter write, no header, no body change. The contract diff against FastAPI stays empty.
+  - `observe` counts and logs per client but never withholds, so a county's real usage can be measured before a budget is set.
+  - `protected` withholds past the budget.
+- **Where it lives:**
+  - the policy is read from the county manifest's `access` block, cached for a minute;
+  - `PV_ACCESS_MODE` overrides it for local testing.
+- **Who is exempt:**
+  - **signed-in staff:** an optional Knox token on the public parcel routes. A bad token is simply anonymous, never a 401;
+  - **our own server-side callers:** an `X-PV-Service-Key` header (`PV_SERVICE_KEYS`). Map Buddy will send it and keeps metering its own users.
+- **Metered routes:** `/parcels`, `/search`, `/parcel/<id>`, `/cohort`. History, geographies, Street View and road snapping carry no owner/value fields.
+- **The counter** stores a keyed hash of the client, never the raw address. The alerts log the address.
+- **`detail_usage_report`** logs the day's top clients and prunes rows older than 30 days. It runs once a day.
+
 ## Consequences
 
 - Open counties see no change. The contract harness must still show no difference against today, apart from the new budget headers.
