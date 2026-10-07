@@ -55,12 +55,16 @@ manifest (`county-config.js` / `county_configs/*.json`); write endpoints return
 - The public read path stays on the read-only role; writes are isolated.
 
 ## Staff sign-in on the Django API (DIC-2151, ADR 0013)
-The Django port replaces the shared key with per-person staff sign-in. Until the
-cutover it accepts both, so the steps above still work.
-1. **Create a staff user** for each person (in the API container):
+The Django port replaces the shared key with per-person staff sign-in and **doesn't
+accept the key at all**. The steps above apply to the FastAPI backend until the cutover.
+1. **Create a staff user** for each person (in the API container), and grant the
+   counties they may edit:
    ```
-   python manage.py createsuperuser          # or add users in /django-admin/ and tick "Staff status"
+   python manage.py createsuperuser          # a superuser edits every county
    ```
+   Or add users in `/django-admin/`: tick "Staff status", then under "Counties this
+   user may edit" add each county key (e.g. `vanburen`). A staff user with no county
+   can sign in but edit nothing (403 "No access to county …").
 2. **Sign in for a token** and use it instead of the shared key:
    ```
    TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
@@ -70,8 +74,8 @@ cutover it accepts both, so the steps above still work.
    ```
    Tokens expire after `PV_TOKEN_TTL_HOURS` (10). A superuser can revoke any token
    in `/django-admin/` (Knox → Auth tokens).
-3. **Retire the shared key** at cutover: set `PV_ADMIN_SHARED_KEY=0` and remove
-   `PV_ADMIN_TOKEN` from the service.
+3. **At cutover** remove `PV_ADMIN_TOKEN` from the service (Django ignores it) and
+   give every console user a staff account first.
 4. **The Django admin config editor** (ADR 0014) is at `/api/django-admin/` →
    County config → Config versions. It appears only with the writer database
    (`PV_WRITER_DATABASE_URL`, set up at the top of this checklist).

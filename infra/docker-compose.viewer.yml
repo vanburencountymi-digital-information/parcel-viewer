@@ -215,8 +215,8 @@ services:
       - PV_DATABASE_URL
       - PV_WRITER_DATABASE_URL
       # The same config switches the FastAPI service reads, so the two answer alike.
+      # No PV_ADMIN_TOKEN: the Django API takes staff tokens only (DIC-2151, ADR 0013).
       - PV_DEFAULT_COUNTY
-      - PV_ADMIN_TOKEN
       - PV_CONFIG_STORE_RETRY_S
       - PV_DISCOVERY_CACHE_S
       - PV_CORS_ORIGINS

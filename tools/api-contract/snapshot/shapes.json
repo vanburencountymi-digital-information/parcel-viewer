@@ -2007,73 +2007,31 @@
   },
   "admin-draft-no-token": {
     "status": 401,
-    "headers": {
-      "content-type": "application/json",
-      "x-content-type-options": "nosniff"
-    },
-    "json": {
-      "detail": "string"
-    }
+    "content-type": "application/json"
   },
   "admin-draft-put-no-token": {
     "status": 401,
-    "headers": {
-      "content-type": "application/json",
-      "x-content-type-options": "nosniff"
-    },
-    "json": {
-      "detail": "string"
-    }
+    "content-type": "application/json"
   },
   "admin-publish-no-token": {
     "status": 401,
-    "headers": {
-      "content-type": "application/json",
-      "x-content-type-options": "nosniff"
-    },
-    "json": {
-      "detail": "string"
-    }
+    "content-type": "application/json"
   },
   "admin-versions-no-token": {
     "status": 401,
-    "headers": {
-      "content-type": "application/json",
-      "x-content-type-options": "nosniff"
-    },
-    "json": {
-      "detail": "string"
-    }
+    "content-type": "application/json"
   },
   "admin-rollback-no-token": {
     "status": 401,
-    "headers": {
-      "content-type": "application/json",
-      "x-content-type-options": "nosniff"
-    },
-    "json": {
-      "detail": "string"
-    }
+    "content-type": "application/json"
   },
   "admin-discover-no-token": {
     "status": 401,
-    "headers": {
-      "content-type": "application/json",
-      "x-content-type-options": "nosniff"
-    },
-    "json": {
-      "detail": "string"
-    }
+    "content-type": "application/json"
   },
   "admin-draft-wrong-token": {
     "status": 401,
-    "headers": {
-      "content-type": "application/json",
-      "x-content-type-options": "nosniff"
-    },
-    "json": {
-      "detail": "string"
-    }
+    "content-type": "application/json"
   },
   "unknown-path": {
     "status": 404,

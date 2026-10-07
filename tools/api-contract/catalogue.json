@@ -1,5 +1,5 @@
 {
-  "about": "Requests that pin the parcel API's contract for the GeoDjango port (DIC-2147). Each entry is replayed as-is. Fields: name (unique), method, path (with query string), body (JSON, optional), raw_body (text sent as-is, for malformed bodies) and content_type (optional), auth ('admin' sends X-Admin-Token from PV_ADMIN_TOKEN; skipped when it isn't set), headers (optional; <<repeat:CHAR:N>> expands to N copies of CHAR, in paths and body strings), known_issue (a ticket id: the route is broken today, so its response is reported but not recorded or failed on), compare ('full' = status, contract headers and body; 'shape' = status, contract headers, list lengths and structure but not values, for results cut off at their limit: /parcels and /cohort have no ORDER BY, so which rows come back is arbitrary; 'status' = status and content type only, for routes whose body comes from a third party). Unordered lists of objects with an id are compared by id, so a different order is only a warning. Never add a request that sends email, writes config or reports a fake client error: those routes are only exercised with requests they reject.",
+  "about": "Requests that pin the parcel API's contract for the GeoDjango port (DIC-2147). Each entry is replayed as-is. Fields: name (unique), method, path (with query string), body (JSON, optional), raw_body (text sent as-is, for malformed bodies) and content_type (optional), auth ('admin' sends X-Admin-Token from PV_ADMIN_TOKEN for FastAPI and/or 'Authorization: Token' from PV_STAFF_TOKEN for the Django port, which retired the shared key in DIC-2151; skipped when neither is set), headers (optional; <<repeat:CHAR:N>> expands to N copies of CHAR, in paths and body strings), known_issue (a ticket id: the route is broken today, so its response is reported but not recorded or failed on), compare ('full' = status, contract headers and body; 'shape' = status, contract headers, list lengths and structure but not values, for results cut off at their limit: /parcels and /cohort have no ORDER BY, so which rows come back is arbitrary; 'status' = status and content type only, for routes whose body comes from a third party, and for the admin refusals, whose wording differs by design since the Django port retired the shared key (DIC-2151, ADR 0013)). Unordered lists of objects with an id are compared by id, so a different order is only a warning. Never add a request that sends email, writes config or reports a fake client error: those routes are only exercised with requests they reject.",
   "requests": [
     {"name": "health", "method": "GET", "path": "/health"},
 
@@ -76,13 +76,13 @@
     {"name": "client-errors-invalid-kind", "method": "POST", "path": "/client-errors", "body": {"kind": "nope", "message": "x"}},
     {"name": "client-errors-invalid-message-too-long", "method": "POST", "path": "/client-errors", "body": {"kind": "error", "message": "<<repeat:x:501>>"}},
 
-    {"name": "admin-draft-no-token", "method": "GET", "path": "/config/vanburen/draft"},
-    {"name": "admin-draft-put-no-token", "method": "PUT", "path": "/config/vanburen/draft", "body": {"payload": {}}},
-    {"name": "admin-publish-no-token", "method": "POST", "path": "/config/vanburen/publish", "body": {}},
-    {"name": "admin-versions-no-token", "method": "GET", "path": "/config/vanburen/versions"},
-    {"name": "admin-rollback-no-token", "method": "POST", "path": "/config/vanburen/rollback", "body": {"version": 1}},
-    {"name": "admin-discover-no-token", "method": "GET", "path": "/admin/discover/layers"},
-    {"name": "admin-draft-wrong-token", "method": "GET", "path": "/config/vanburen/draft", "headers": {"X-Admin-Token": "wrong"}},
+    {"name": "admin-draft-no-token", "method": "GET", "path": "/config/vanburen/draft", "compare": "status"},
+    {"name": "admin-draft-put-no-token", "method": "PUT", "path": "/config/vanburen/draft", "body": {"payload": {}}, "compare": "status"},
+    {"name": "admin-publish-no-token", "method": "POST", "path": "/config/vanburen/publish", "body": {}, "compare": "status"},
+    {"name": "admin-versions-no-token", "method": "GET", "path": "/config/vanburen/versions", "compare": "status"},
+    {"name": "admin-rollback-no-token", "method": "POST", "path": "/config/vanburen/rollback", "body": {"version": 1}, "compare": "status"},
+    {"name": "admin-discover-no-token", "method": "GET", "path": "/admin/discover/layers", "compare": "status"},
+    {"name": "admin-draft-wrong-token", "method": "GET", "path": "/config/vanburen/draft", "headers": {"X-Admin-Token": "wrong"}, "compare": "status"},
     {"name": "admin-draft", "method": "GET", "path": "/config/vanburen/draft", "auth": "admin"},
     {"name": "admin-versions", "method": "GET", "path": "/config/vanburen/versions", "auth": "admin"},
     {"name": "admin-discover", "method": "GET", "path": "/admin/discover/layers", "auth": "admin"},

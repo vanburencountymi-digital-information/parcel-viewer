@@ -18,8 +18,10 @@ python tools/api-contract/contract.py diff http://localhost:8080/api http://loca
 | `check BASE` | Replay and compare against `snapshot/shapes.json`. Catches a field renamed, dropped, retyped or turned nullable. |
 | `diff A B` | Replay each request against both backends a moment apart and compare status, contract headers and full bodies. This is the port's done-check. |
 
-`--only REGEX` limits any command to matching request names. Set `PV_ADMIN_TOKEN` to
-include the three admin reads; without it they're skipped. Unit tests for the harness:
+`--only REGEX` limits any command to matching request names. The three admin reads need
+credentials: `PV_ADMIN_TOKEN` (FastAPI's shared key) and/or `PV_STAFF_TOKEN` (a staff
+token from the Django port's `POST /auth/login`, which retired the shared key in DIC-2151).
+Both headers are sent and each backend ignores the other's; without either, they're skipped. Unit tests for the harness:
 `python -m unittest discover -s tools/api-contract`.
 
 ## What is compared

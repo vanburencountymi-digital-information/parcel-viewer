@@ -1,7 +1,8 @@
 """County config routes: the published manifest, the base map style, the config store and layer discovery.
 
-The admin routes take a staff user's Knox token, or the shared key until the cutover
-(ADR 0013), and keep FastAPI's order: auth first, then the store, then the body.
+The admin routes take a staff user's Knox token for a county they may edit (ADR 0013), and
+keep FastAPI's order: auth first, then the store, then the body. The body's `author` is
+still accepted but the signed-in user is recorded instead.
 """
 
 import json
@@ -20,7 +21,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from common.validation import HttpError, ParamSource, json_body, query_params, validate
-from county_config.auth import author, require_admin, require_writer
+from county_config.auth import author, require_county, require_staff, require_writer
 from county_config.baked import load_baked
 from county_config.discovery import discover_layers
 from county_config.params import CountyQuery, DraftBody, PublishBody, RollbackBody
@@ -88,7 +89,7 @@ class CountyConfigScriptView(OpenView):
 
 
 class AdminView(OpenView):
-    """Guarded in the view by require_admin, which sees the Knox token's user (ADR 0013)."""
+    """Guarded in the view (require_staff, require_writer), which sees the Knox token's user."""
 
     authentication_classes = [TokenAuthentication]
     throttle_scope = "admin"
@@ -97,8 +98,9 @@ class AdminView(OpenView):
 class DiscoverLayersView(AdminView):
     def get(self, request: Request) -> Response:
         """Returns the spatial layers Martin can serve, for Admin Console registration (DIC-502)."""
-        require_admin(request)
+        require_staff(request)
         county = _county(request)
+        require_county(request, county)
         cached = _discovery_cache.get(county)
         if cached and time.monotonic() - cached[0] < float(settings.DISCOVERY_CACHE_S):
             return Response({"layers": cached[1]})
@@ -117,30 +119,30 @@ class DiscoverLayersView(AdminView):
 class DraftView(AdminView):
     def get(self, request: Request, county: str) -> Response:
         """Returns the working draft, else the latest published, else the baked manifest, else {}."""
-        store = require_writer(request)
+        store = require_writer(request, county)
         return Response(store.get_draft(county) or load_baked(county) or {})
 
     def put(self, request: Request, county: str) -> Response:
         """Replaces the draft. A county with nothing published is first seeded from its baked file."""
-        store = require_writer(request)
+        store = require_writer(request, county)
         body = validate(DraftBody, json_body(request), ParamSource.BODY)
         baked = load_baked(county)
         if baked:
             store.seed_if_empty(county, baked)
-        store.save_draft(county, body.payload, author(request, body.author))
+        store.save_draft(county, body.payload, author(request))
         return Response({"ok": True})
 
 
 class PublishView(AdminView):
     def post(self, request: Request, county: str) -> Response:
         """Publishes the draft as a new version: 409 if another publish won, 400 if nothing to publish."""
-        store = require_writer(request)
+        store = require_writer(request, county)
         body = validate(PublishBody, json_body(request), ParamSource.BODY)
         baked = load_baked(county)
         if baked:
             store.seed_if_empty(county, baked)
         try:
-            version = store.publish(county, author(request, body.author), body.note)
+            version = store.publish(county, author(request), body.note)
         except PublishConflict as exc:
             raise HttpError(status.HTTP_409_CONFLICT, str(exc)) from exc
         except ValueError as exc:
@@ -151,17 +153,17 @@ class PublishView(AdminView):
 class VersionsView(AdminView):
     def get(self, request: Request, county: str) -> Response:
         """Returns the county's published versions, newest first."""
-        store = require_writer(request)
+        store = require_writer(request, county)
         return Response({"versions": store.list_versions(county)})
 
 
 class RollbackView(AdminView):
     def post(self, request: Request, county: str) -> Response:
         """Republishes an earlier version as the newest: 404 if that version doesn't exist."""
-        store = require_writer(request)
+        store = require_writer(request, county)
         body = validate(RollbackBody, json_body(request), ParamSource.BODY)
         try:
-            version = store.rollback(county, body.version, author(request, body.author))
+            version = store.rollback(county, body.version, author(request))
         except PublishConflict as exc:
             raise HttpError(status.HTTP_409_CONFLICT, str(exc)) from exc
         except ValueError as exc:

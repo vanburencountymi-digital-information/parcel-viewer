@@ -191,7 +191,8 @@
         ? 'Your staff sign-in has expired. Sign in again to save.'
         : 'Sign in as staff to save: admin auth required.';
     }
-    if (res.status === 403) return 'This account isn’t staff, so it can’t change the config.';
+    // 403: not staff, or no access to this county (the API says which).
+    if (res.status === 403) return 'Not allowed: ' + ((res.body && res.body.detail) || 'this account can’t change this county’s config.');
     return (res.body && res.body.detail) || ('Request failed (HTTP ' + res.status + ').');
   }
 
@@ -1091,7 +1092,7 @@
         if (meta) meta.innerHTML = e.message === 'admin token required'
           ? '<p class="ac-readonly">' + DISCOVERY_NEEDS_AUTH + '</p>'
           : e.message === 'staff only'
-          ? '<p class="ac-readonly">Layer discovery is for staff accounts only.</p>'
+          ? '<p class="ac-readonly">Layer discovery isn’t allowed for this account (not staff, or no access to this county).</p>'
           : '<p class="ac-readonly">Couldn’t reach the tile server / DB (' + esc(e.message) + ').</p>';
       });
   }

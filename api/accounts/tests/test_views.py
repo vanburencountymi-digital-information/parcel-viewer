@@ -168,8 +168,7 @@ class SignedInTests(TestCase):
         other = self.client.get("/auth/me", HTTP_AUTHORIZATION=f"Token {other_token}")
         self.assertEqual(other.status_code, 200)
 
-    def test_the_shared_admin_key_is_not_a_sign_in(self) -> None:
-        with self.settings(ADMIN_TOKEN="shared"):
-            response = self.client.get("/auth/me", HTTP_X_ADMIN_TOKEN="shared")
+    def test_the_retired_shared_admin_key_is_not_a_sign_in(self) -> None:
+        response = self.client.get("/auth/me", HTTP_X_ADMIN_TOKEN="the-old-shared-key")
 
         self.assertEqual(response.status_code, 401)

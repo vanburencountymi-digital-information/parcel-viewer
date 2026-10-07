@@ -9,6 +9,7 @@ from django.db import connections
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from accounts.models import CountyAccess
 from common.enums import DatabaseAlias
 from county_config.models import ConfigStatus, ConfigVersion
 from county_config.store import ConfigStore, PublishConflict
@@ -188,9 +189,11 @@ class ConfigEditorPermissionTests(TestCase):
         with connections[DatabaseAlias.CONFIG_STORE].cursor() as cursor:
             cursor.execute(CONFIG_TABLE_DDL + INDEXES_DDL)
 
-    def _staff(self, *perms: str):
+    def _staff(self, *perms: str, counties: tuple[str, ...] = ("vanburen",)):
         user = get_user_model().objects.create_user("staffer", password="x" * 20, is_staff=True)
         user.user_permissions.set(Permission.objects.filter(codename__in=perms))
+        for county in counties:
+            CountyAccess.objects.create(user=user, county=county)
         self.client.force_login(user)
 
     def test_staff_without_permission_cant_see_it(self) -> None:
@@ -215,6 +218,22 @@ class ConfigEditorPermissionTests(TestCase):
         self.client.post(CHANGELIST, {"action": "publish_drafts", "_selected_action": [draft.pk]})
 
         self.assertEqual(store.list_versions("vanburen")[0]["created_by"], "staffer")
+
+    def test_staff_see_and_change_only_their_counties(self) -> None:
+        self._staff("view_configversion", "change_configversion", counties=("vanburen",))
+        store = ConfigStore()
+        store.save_draft("vanburen", {"name": "mine"}, author="a")
+        store.save_draft("kalamazoo", {"name": "theirs"}, author="a")
+        theirs = ConfigVersion.objects.using(DatabaseAlias.CONFIG_STORE).get(county="kalamazoo")
+
+        listing = self.client.get(CHANGELIST)
+        page = self.client.get(change_url(theirs))
+        self.client.post(CHANGELIST, {"action": "publish_drafts", "_selected_action": [theirs.pk]})
+
+        self.assertContains(listing, "vanburen")
+        self.assertNotContains(listing, "kalamazoo")
+        self.assertEqual(page.status_code, 302)  # not in their list: the admin says it's gone
+        self.assertEqual(store.list_versions("kalamazoo"), [])
 
     def test_non_staff_are_sent_to_sign_in(self) -> None:
         user = get_user_model().objects.create_user("viewer", password="x" * 20)

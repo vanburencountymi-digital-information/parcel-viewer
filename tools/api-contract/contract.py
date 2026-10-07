@@ -94,10 +94,16 @@ def send(base: str, req: dict[str, Any]) -> dict[str, Any] | None:
     headers = {"Accept": "application/json, */*"}
     headers.update(req.get("headers") or {})
     if req.get("auth") == "admin":
-        token = os.getenv("PV_ADMIN_TOKEN", "")
-        if not token:
+        # FastAPI takes the shared key; the Django port takes a staff token instead (DIC-2151).
+        # Each backend ignores the other's header, so a diff sends both.
+        key = os.getenv("PV_ADMIN_TOKEN", "")
+        staff = os.getenv("PV_STAFF_TOKEN", "")
+        if not (key or staff):
             return None
-        headers["X-Admin-Token"] = token
+        if key:
+            headers["X-Admin-Token"] = key
+        if staff:
+            headers["Authorization"] = f"Token {staff}"
     data = None
     if "body" in req:
         data = json.dumps(_expand(req["body"])).encode("utf-8")
@@ -351,7 +357,7 @@ def cmd_record(base: str, only: str | None) -> int:
     print(f"  shapes -> {SHAPES.relative_to(HERE.parent.parent)}")
     print(f"  bodies -> {out_dir.relative_to(HERE.parent.parent)} (git-ignored)")
     if skipped:
-        print(f"  skipped (PV_ADMIN_TOKEN not set): {', '.join(skipped)}")
+        print(f"  skipped (PV_ADMIN_TOKEN / PV_STAFF_TOKEN not set): {', '.join(skipped)}")
     return 0
 
 
@@ -361,7 +367,7 @@ def cmd_check(base: str, only: str | None) -> int:
     failed = 0
     for name, resp in _replay(base, only).items():
         if resp is None:
-            print(f"SKIP  {name} (PV_ADMIN_TOKEN not set)")
+            print(f"SKIP  {name} (PV_ADMIN_TOKEN / PV_STAFF_TOKEN not set)")
             continue
         if catalogue[name].get("known_issue"):
             print(f"KNOWN {name} ({catalogue[name]['known_issue']}): status {resp['status']}")
@@ -395,7 +401,7 @@ def cmd_diff(base_a: str, base_b: str, only: str | None) -> int:
         b = send(base_b, req)
         time.sleep(PAUSE_S)
         if a is None or b is None:
-            print(f"SKIP  {name} (PV_ADMIN_TOKEN not set)")
+            print(f"SKIP  {name} (PV_ADMIN_TOKEN / PV_STAFF_TOKEN not set)")
             continue
         timings.append((name, a["ms"], b["ms"]))
         diffs, warns = compare_responses(a, b, req.get("compare", "full"))
