@@ -184,6 +184,7 @@ jobs:
               --add-host api:127.0.0.1 --add-host martin:127.0.0.1 --add-host map-buddy:127.0.0.1 \
               -v "$PWD/infra/nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro" \
               -v "$PWD/infra/nginx/map-buddy-api.$variant.conf:/etc/nginx/pv/map-buddy-api.conf:ro" \
+              -v "$PWD/infra/nginx/api-upstream.fastapi.conf:/etc/nginx/pv/api-upstream.conf:ro" \
               nginx:1.27-alpine nginx -t
             echo "::endgroup::"
           done
