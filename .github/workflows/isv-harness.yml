@@ -224,6 +224,7 @@ jobs:
       - name: Compose files are valid; production has no local Map Buddy
         run: |
           docker compose -f infra/docker-compose.viewer.yml config --quiet
+          docker compose -f infra/docker-compose.viewer.yml -f infra/docker-compose.web-image.yml config --quiet
           docker compose -f infra/docker-compose.prod.yml config --quiet
           services=$(docker compose -f infra/docker-compose.prod.yml config --services)
           echo "production services: $services"
