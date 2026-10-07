@@ -33,5 +33,6 @@ REST_FRAMEWORK = {
         "user": "1000/min",
         "parcel_read": "1000/min",
         "admin": "1000/min",
+        "login": "1000/min",
     },
 }

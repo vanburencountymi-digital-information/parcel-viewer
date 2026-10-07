@@ -3,6 +3,7 @@ Django~=6.0
 django-environ
 djangorestframework
 drf-spectacular
+django-rest-knox
 psycopg[binary,pool]
 whitenoise
 gunicorn

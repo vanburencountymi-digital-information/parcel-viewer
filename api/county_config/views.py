@@ -1,7 +1,7 @@
 """County config routes: the published manifest, the base map style, the config store and layer discovery.
 
-The admin routes keep the interim shared key until phase 5 (ADR 0008), so their contract
-stays FastAPI's: auth first, then the store, then the body.
+The admin routes take a staff user's Knox token, or the shared key until the cutover
+(ADR 0013), and keep FastAPI's order: auth first, then the store, then the body.
 """
 
 import json
@@ -11,6 +11,7 @@ from typing import Any
 
 from django.conf import settings
 from django.http import HttpResponse
+from knox.auth import TokenAuthentication
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
@@ -19,7 +20,7 @@ from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from common.validation import HttpError, ParamSource, json_body, query_params, validate
-from county_config.auth import require_admin, require_writer
+from county_config.auth import author, require_admin, require_writer
 from county_config.baked import load_baked
 from county_config.discovery import discover_layers
 from county_config.params import CountyQuery, DraftBody, PublishBody, RollbackBody
@@ -36,7 +37,7 @@ _discovery_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
 class OpenView(APIView):
-    """No Django auth: these are public, or guarded by the shared admin key in the view."""
+    """No Django auth: these routes are public."""
 
     authentication_classes = []
     permission_classes = [AllowAny]
@@ -87,6 +88,9 @@ class CountyConfigScriptView(OpenView):
 
 
 class AdminView(OpenView):
+    """Guarded in the view by require_admin, which sees the Knox token's user (ADR 0013)."""
+
+    authentication_classes = [TokenAuthentication]
     throttle_scope = "admin"
 
 
@@ -123,7 +127,7 @@ class DraftView(AdminView):
         baked = load_baked(county)
         if baked:
             store.seed_if_empty(county, baked)
-        store.save_draft(county, body.payload, body.author)
+        store.save_draft(county, body.payload, author(request, body.author))
         return Response({"ok": True})
 
 
@@ -136,7 +140,7 @@ class PublishView(AdminView):
         if baked:
             store.seed_if_empty(county, baked)
         try:
-            version = store.publish(county, body.author, body.note)
+            version = store.publish(county, author(request, body.author), body.note)
         except PublishConflict as exc:
             raise HttpError(status.HTTP_409_CONFLICT, str(exc)) from exc
         except ValueError as exc:
@@ -157,7 +161,7 @@ class RollbackView(AdminView):
         store = require_writer(request)
         body = validate(RollbackBody, json_body(request), ParamSource.BODY)
         try:
-            version = store.rollback(county, body.version, body.author)
+            version = store.rollback(county, body.version, author(request, body.author))
         except PublishConflict as exc:
             raise HttpError(status.HTTP_409_CONFLICT, str(exc)) from exc
         except ValueError as exc:

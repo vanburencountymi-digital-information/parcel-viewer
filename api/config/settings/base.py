@@ -5,6 +5,7 @@ All environment-specific values come from environment variables (django-environ)
 .env.example. `config.settings.test` layers test-only overrides on top of this module.
 """
 
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -71,7 +72,9 @@ INSTALLED_APPS = [
     "django.contrib.postgres",
     "rest_framework",
     "drf_spectacular",
+    "knox",
     "common",
+    "accounts",
     "parcels",
     "county_config",
     "wms",
@@ -215,8 +218,10 @@ REST_FRAMEWORK = {
         # The viewer's own reads (/parcels on every map move, search as you type). Many
         # county staff can share one public IP, so this is per client but generous.
         "parcel_read": env.str("THROTTLE_PARCEL_READ", default="600/min"),
-        # The config admin routes (shared admin key until phase 5, ADR 0008).
+        # The config admin routes and the signed-in staff routes (ADR 0013).
         "admin": env.str("THROTTLE_ADMIN", default="120/min"),
+        # Staff sign-in, per client address: slows password guessing (ADR 0013).
+        "login": env.str("THROTTLE_LOGIN", default="10/min"),
     },
     # Outages, load, rate limits and wrong methods answer as the FastAPI backend did.
     "EXCEPTION_HANDLER": "common.exceptions.api_exception_handler",
@@ -232,6 +237,18 @@ REST_FRAMEWORK = {
 # and the config store's switches, named as the FastAPI backend named them.
 DEFAULT_COUNTY = env.str("PV_DEFAULT_COUNTY", default="vanburen")
 ADMIN_TOKEN = env.str("PV_ADMIN_TOKEN", default="")
+# Whether the admin routes still take the shared key beside staff tokens. On until the
+# cutover, so the contract harness and the FastAPI-era admin console keep working (ADR 0013).
+ADMIN_SHARED_KEY_ACCEPTED = env.bool("PV_ADMIN_SHARED_KEY", default=True)
+
+# Staff sign-in (ADR 0013): POST /auth/login trades a staff user's password for a Knox
+# token, sent as "Authorization: Token <token>". Tokens expire; staff sign in again.
+REST_KNOX = {
+    "TOKEN_TTL": timedelta(hours=env.int("PV_TOKEN_TTL_HOURS", default=10)),
+    "AUTO_REFRESH": False,
+}
+# Live tokens one user may hold (one per browser, say); signing in past it drops the oldest.
+TOKENS_PER_USER = env.int("PV_TOKENS_PER_USER", default=5)
 # Store reads and writes need a real writer database; without one the API serves the baked
 # manifests, as FastAPI did (the config_store alias's local fallback is for tests).
 CONFIG_STORE_CONFIGURED = bool(env.str("PV_WRITER_DATABASE_URL", default=""))
