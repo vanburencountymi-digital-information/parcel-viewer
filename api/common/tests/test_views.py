@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, TestCase
 from rest_framework.test import APIClient
 
 from common.services import HealthReport
@@ -41,9 +41,28 @@ class HealthViewTests(SimpleTestCase):
 
 
 class ApiDocsTests(SimpleTestCase):
-    def test_schema_and_docs_are_staff_only(self) -> None:
+    def test_schema_and_docs_are_invisible_to_anyone_but_staff(self) -> None:
+        # A 404, not 401/403: the docs mustn't even be seen to exist (smoke test: "API docs").
         client = APIClient()
 
         for path in ("/schema", "/docs"):
             with self.subTest(path):
-                self.assertIn(client.get(path).status_code, (401, 403))
+                response = client.get(path)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.json(), {"detail": "Not Found"})
+
+
+class ApiDocsForStaffTests(TestCase):
+    databases = {"default"}
+
+    def test_staff_get_the_schema(self) -> None:
+        from django.contrib.auth.models import User
+
+        staff = User.objects.create_user("staff", is_staff=True)
+        client = APIClient()
+        client.force_login(staff)  # Django staff sign in with a session (ADR 0008)
+
+        response = client.get("/schema")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"/parcels", response.content)

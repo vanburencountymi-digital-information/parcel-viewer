@@ -11,6 +11,7 @@ from typing import Any
 import django_stubs_ext
 import environ
 from django.core.exceptions import ImproperlyConfigured
+from psycopg_pool import ConnectionPool
 
 from common.enums import DatabaseAlias, Environment
 from common.error_logging_client import init_error_monitoring
@@ -142,7 +143,14 @@ def _database(
         session += " -c default_transaction_read_only=on"
     config["CONN_MAX_AGE"] = 0  # required by the pool; the pool keeps connections
     config["OPTIONS"] = {
-        "pool": {"min_size": 1, "max_size": POOL_MAX_SIZE, "timeout": 10},
+        # check: test each connection before handing it out, so one the server or the
+        # network dropped while idle is replaced instead of failing the request with a 503.
+        "pool": {
+            "min_size": 1,
+            "max_size": POOL_MAX_SIZE,
+            "timeout": 10,
+            "check": ConnectionPool.check_connection,
+        },
         "application_name": APPLICATION_NAME,
         "options": session,
         "connect_timeout": 5,

@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase
 from parameterized import parameterized
+from psycopg_pool import ConnectionPool
 
 from common.db_routers import DatabaseRouter
 from common.enums import DatabaseAlias
@@ -59,3 +60,12 @@ class DatabaseSettingsTests(SimpleTestCase):
                 self.assertEqual(options["pool"]["max_size"], 5)
                 self.assertEqual(options["application_name"], "parcel-viewer-django")
                 self.assertIn("statement_timeout=10000", options["options"])
+
+    def test_pooled_connections_are_checked_before_use(self) -> None:
+        # A connection dropped while idle must be replaced, not fail the request (503).
+        for alias in DatabaseAlias:
+            with self.subTest(alias):
+                self.assertIs(
+                    settings.DATABASES[alias]["OPTIONS"]["pool"]["check"],
+                    ConnectionPool.check_connection,
+                )
