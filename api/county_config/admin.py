@@ -16,6 +16,7 @@ from django.http import HttpRequest
 from django.urls import reverse
 from django.utils.html import format_html
 
+from accounts.models import can_edit_county, editable_counties
 from county_config import store
 from county_config.models import ConfigStatus, ConfigVersion
 from county_config.store import ConfigStore, PublishConflict
@@ -68,13 +69,21 @@ class ConfigVersionAdmin(admin.ModelAdmin):
     def has_view_permission(self, request: HttpRequest, obj: Any = None) -> bool:
         return store.is_configured() and super().has_view_permission(request, obj)
 
+    def get_queryset(self, request: HttpRequest) -> QuerySet[ConfigVersion]:
+        """Only the counties the user may edit (accounts.CountyAccess; superusers see all)."""
+        rows = super().get_queryset(request)
+        counties = editable_counties(request.user)
+        return rows if counties is None else rows.filter(county__in=counties)
+
     # Drafts start from a published version (the "Start a draft" action), never from a
     # blank form, and published versions are read-only history.
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
     def has_change_permission(self, request: HttpRequest, obj: Any = None) -> bool:
-        if obj is not None and obj.status != ConfigStatus.DRAFT:
+        if obj is not None and (
+            obj.status != ConfigStatus.DRAFT or not can_edit_county(request.user, obj.county)
+        ):
             return False
         return store.is_configured() and super().has_change_permission(request, obj)
 
@@ -83,7 +92,9 @@ class ConfigVersionAdmin(admin.ModelAdmin):
         # bulk delete, which couldn't tell the two apart) it's refused, so it isn't offered.
         if obj is None or obj.status != ConfigStatus.DRAFT:
             return False
-        return super().has_delete_permission(request, obj)
+        return can_edit_county(request.user, obj.county) and super().has_delete_permission(
+            request, obj
+        )
 
     def get_readonly_fields(self, request: HttpRequest, obj: Any = None) -> list[str]:
         if obj is not None and obj.status != ConfigStatus.DRAFT:

@@ -243,13 +243,10 @@ REST_FRAMEWORK = {
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
 }
 
-# County config (DIC-465): the default county, the interim shared admin key (ADR 0008)
-# and the config store's switches, named as the FastAPI backend named them.
+# County config (DIC-465): the default county and the config store's switches, named as
+# the FastAPI backend named them. The shared admin key (PV_ADMIN_TOKEN) is retired here
+# (DIC-2151): the admin routes take staff tokens only.
 DEFAULT_COUNTY = env.str("PV_DEFAULT_COUNTY", default="vanburen")
-ADMIN_TOKEN = env.str("PV_ADMIN_TOKEN", default="")
-# Whether the admin routes still take the shared key beside staff tokens. On until the
-# cutover, so the contract harness and the FastAPI-era admin console keep working (ADR 0013).
-ADMIN_SHARED_KEY_ACCEPTED = env.bool("PV_ADMIN_SHARED_KEY", default=True)
 
 # Staff sign-in (ADR 0013): POST /auth/login trades a staff user's password for a Knox
 # token, sent as "Authorization: Token <token>". Tokens expire; staff sign in again.
@@ -274,6 +271,7 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT"]
+# X-Admin-Token stays listed so preflights answer as FastAPI's do until the cutover.
 CORS_ALLOW_HEADERS = ["Content-Type", "X-Admin-Token"]
 CORS_EXPOSE_HEADERS = ["X-Request-ID"]
 

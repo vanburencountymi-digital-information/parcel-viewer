@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted (DIC-2151). Builds on ADR 0008.
+Accepted (DIC-2151). Builds on ADR 0008. **Updated (DIC-2151 PR 4):** the shared key is retired in Django (no `PV_ADMIN_SHARED_KEY`; the admin routes take staff tokens only) and access is per county; see "Retired key and county access" below.
 
 ## Context
 
@@ -17,9 +17,18 @@ The config admin routes are guarded by one shared key (`PV_ADMIN_TOKEN`, header 
 - **The author is the signed-in user.** With a token, drafts, publishes and rollbacks are recorded under the token's username; the body's `author` only counts with the shared key.
 - **Retiring the key** in Django means turning `PV_ADMIN_SHARED_KEY` off, then removing the code path (DIC-2151). Retiring it in production lands with the cutover.
 
+## Retired key and county access (DIC-2151 PR 4)
+
+- **The Django API no longer accepts the shared key.** The admin routes take a staff token only. Without one the answer is 401 "Staff sign-in required." `PV_ADMIN_TOKEN` is gone from the Django settings and its compose service. The FastAPI backend in production keeps the key until the cutover, and the console still sends `window.PV_ADMIN_TOKEN` when signed out, for FastAPI.
+- **Access is per county.** `accounts.CountyAccess` lists the counties each staff user may edit, and is granted on the user's page in the Django admin.
+  - **Superusers** edit every county.
+  - **Other staff** edit only the counties granted to them, so a new account edits nothing until granted one.
+  - **The API:** a staff user without the county gets 403 "No access to county '…'." That covers draft, publish, versions, rollback, and discovery for the `county` asked for.
+  - **The Django editor:** each user sees and changes only their counties.
+- **The contract harness** sends the key to FastAPI and a staff token (`PV_STAFF_TOKEN`) to Django. The admin refusals compare status only, because their wording differs by design.
+
 ## Consequences
 
 - Staff users, tokens and sessions live in Django's own `default` database, which needs a production home (DIC-590, Drake).
 - Staff users are created with `manage.py createsuperuser`, or in the Django admin by a superuser; Knox tokens can be revoked there too.
-- The 401 message stays word for word while the key is accepted, because the contract harness compares it.
 - The admin console signs in from its sidebar and keeps the token in sessionStorage (closing the tab signs out). It still sends `window.PV_ADMIN_TOKEN` when signed out, for the FastAPI backend.

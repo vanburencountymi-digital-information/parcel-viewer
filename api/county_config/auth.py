@@ -1,76 +1,52 @@
-"""The admin guard: a signed-in staff user's Knox token, or (until the cutover) the shared key.
+"""The admin guard: a signed-in staff user's Knox token, for a county they may edit (ADR 0013).
 
-ADR 0013. The admin views authenticate with Knox only, so `request.user` is the token's user
-or anonymous. The shared key (PV_ADMIN_TOKEN) is still accepted while
-ADMIN_SHARED_KEY_ACCEPTED is on, so the contract harness and the FastAPI-era console keep
-working; turning it off retires the key in Django.
+The admin views authenticate with Knox only, so `request.user` is the token's user or
+anonymous. The shared admin key (PV_ADMIN_TOKEN) is retired here (DIC-2151); the FastAPI
+backend keeps it until the cutover. Which counties a staff user may edit is in
+accounts.models (superusers: all).
 """
 
-import hmac
-
-from django.conf import settings
 from rest_framework import status
 from rest_framework.request import Request
 
+from accounts.models import can_edit_county
 from common.validation import HttpError
 from county_config import store
 
-ADMIN_HEADER = "X-Admin-Token"
-# Kept word for word while the shared key is accepted: the contract harness compares it.
-ADMIN_REQUIRED = "Admin auth required (interim PV_ADMIN_TOKEN; real auth is DIC-463)."
+SIGN_IN_REQUIRED = "Staff sign-in required."
 STAFF_ONLY = "Staff only."
 NOT_CONFIGURED = "Config store not configured (set PV_WRITER_DATABASE_URL)."
 TRY_AGAIN = "Config store unavailable; try again shortly."
 
 
-def staff_username(request: Request) -> str | None:
-    """Takes the request. Returns the signed-in staff user's username, or None."""
+def require_staff(request: Request) -> None:
+    """Takes the request. Raises 401 unless a user signed in, and 403 unless they're active staff."""
     user = request.user
-    if user is not None and user.is_authenticated and user.is_active and user.is_staff:
-        return str(user.get_username())
-    return None
-
-
-def _has_shared_key(request: Request) -> bool:
-    """
-    Takes the request. Returns True if the shared key is accepted and the request carries it.
-    With no key configured on the server, nobody has it. The comparison is constant-time, so
-    timing can't leak the key (DIC-1853).
-    """
-    if not settings.ADMIN_SHARED_KEY_ACCEPTED:
-        return False
-    expected = str(settings.ADMIN_TOKEN or "")
-    given = request.headers.get(ADMIN_HEADER) or ""
-    return bool(expected) and hmac.compare_digest(given.encode(), expected.encode())
-
-
-def require_admin(request: Request) -> None:
-    """
-    Takes the request. Returns if a staff user signed in or the shared key came with it.
-    Raises 403 for a signed-in user who isn't staff, else 401.
-    """
-    if staff_username(request) or _has_shared_key(request):
-        return
-    if request.user is not None and request.user.is_authenticated:
+    if user is None or not user.is_authenticated:
+        raise HttpError(status.HTTP_401_UNAUTHORIZED, SIGN_IN_REQUIRED)
+    if not (user.is_active and user.is_staff):
         raise HttpError(status.HTTP_403_FORBIDDEN, STAFF_ONLY)
-    raise HttpError(status.HTTP_401_UNAUTHORIZED, ADMIN_REQUIRED)
 
 
-def author(request: Request, given: str | None) -> str | None:
-    """
-    Takes the request and the author its body named. Returns the signed-in staff user's
-    username when there is one (a token can't claim to be someone else), else the body's.
-    """
-    return staff_username(request) or given
+def require_county(request: Request, county: str) -> None:
+    """Takes the request and a county. Raises 403 unless the staff user may edit that county."""
+    if not can_edit_county(request.user, county):
+        raise HttpError(status.HTTP_403_FORBIDDEN, f"No access to county {county!r}.")
 
 
-def require_writer(request: Request) -> store.ConfigStore:
+def author(request: Request) -> str:
+    """Takes the request. Returns the signed-in user's username: the author of a change."""
+    return str(request.user.get_username())
+
+
+def require_writer(request: Request, county: str) -> store.ConfigStore:
     """
-    Takes the request. Checks admin auth first (so an anonymous caller never reaches the
-    writer database), then that the store is configured and not backing off after an outage.
-    Returns the store, or raises 401/403/503 as the FastAPI backend did.
+    Takes the request and the county it changes. Checks sign-in and county access first (so
+    nobody else ever reaches the writer database), then that the store is configured and not
+    backing off after an outage. Returns the store, or raises 401/403/503.
     """
-    require_admin(request)
+    require_staff(request)
+    require_county(request, county)
     if not store.is_configured():
         raise HttpError(status.HTTP_503_SERVICE_UNAVAILABLE, NOT_CONFIGURED)
     try:
