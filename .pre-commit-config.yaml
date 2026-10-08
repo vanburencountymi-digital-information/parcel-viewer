@@ -21,6 +21,9 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        # Compose override files use Compose's own !override tag, which a plain YAML
+        # loader can't construct; CI validates them with `docker compose config`.
+        exclude: ^infra/docker-compose\.web-image\.yml$
       - id: check-toml
       - id: check-added-large-files
       - id: check-merge-conflict

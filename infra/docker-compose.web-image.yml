@@ -1,0 +1,20 @@
+# Serve the built web image instead of the live source folders (DIC-2180), so the e2e
+# suite can run against exactly what a deploy serves. Layer it over the dev stack:
+#
+#   docker compose -f docker-compose.viewer.yml -f docker-compose.web-image.yml \
+#     --env-file ../.env up -d --build web
+#
+# Edits to the front end then need a rebuild (`--build`); drop this file to go back to
+# live source.
+services:
+  web:
+    image: parcel-viewer-web:local
+    build:
+      context: ..
+      dockerfile: infra/web.Dockerfile
+    # Only nginx's config and per-environment includes are mounted; the pages, assets and
+    # script folders come from the image.
+    volumes: !override
+      - ./nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/map-buddy-api.dev.conf:/etc/nginx/pv/map-buddy-api.conf:ro
+      - ./nginx/api-upstream.${PV_API_BACKEND:-fastapi}.conf:/etc/nginx/pv/api-upstream.conf:ro
