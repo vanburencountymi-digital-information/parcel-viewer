@@ -183,13 +183,17 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Vite build (pages + hashed CSS)
+      - name: Vite build (pages, hashed CSS, classic-script bundles)
         run: |
           npm ci --no-audit --no-fund
+          npm run test:build
           npm run build
           test -f dist/demo/index.html && test -f dist/admin/index.html
           grep -q '/assets/demo-.*\.css' dist/demo/index.html
-          grep -q '/frontend/public/js/map.js' dist/demo/index.html   # scripts untouched (slice 2a)
+          grep -q '/assets/scripts-.*\.js' dist/demo/index.html
+          ! grep -q '/frontend/public/js/map.js' dist/demo/index.html   # bundled (slice 2b)
+          # The baked county config stays its own tag, just before the served one.
+          grep -A1 '/frontend/public/js/county-config.js' dist/demo/index.html | grep -q '/api/config.js'
 
       - name: Build the web image
         run: docker build -f infra/web.Dockerfile --tag parcel-viewer-web:ci .

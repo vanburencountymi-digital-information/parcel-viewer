@@ -5,8 +5,9 @@
 #
 #   docker build -f infra/web.Dockerfile -t parcel-viewer-web .      # from the repo root
 #
-# Step 1 (slice 2a): Vite builds the /demo/ and /admin/ pages and their CSS (/assets/,
-# content-hashed); the scripts are still the classic files, served from their folders.
+# Vite builds the /demo/ and /admin/ pages, their CSS and their classic-script bundles
+# into /assets/ (content-hashed; tools/vite/classic-scripts.mjs). The script folders are
+# still served, for anything that loads a file by path (and the bundles' source maps).
 # nginx's per-environment includes (api-upstream, map-buddy-api) are mounted by compose;
 # the image carries production defaults so it also starts on its own.
 
@@ -15,9 +16,12 @@ WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY vite.config.mjs ./
+COPY tools/vite ./tools/vite
 COPY demo ./demo
 COPY admin ./admin
 COPY frontend/public ./frontend/public
+COPY engine ./engine
+COPY map-buddy/js ./map-buddy/js
 RUN npm run build
 
 FROM nginx:1.27-alpine

@@ -17,8 +17,11 @@
 (function (root) {
   'use strict';
 
-  // Capture now — document.currentScript is null after the script finishes executing
-  var _scriptSrc = document.currentScript ? document.currentScript.src : '';
+  // Capture now — document.currentScript is null after the script finishes executing.
+  // Only trusted when it IS map-buddy.js: inside the viewer's build bundle (DIC-2180) it
+  // is /assets/scripts-….js, and the stylesheet is at the default path.
+  var _script = document.currentScript;
+  var _scriptSrc = _script && /js\/map-buddy\.js(\?.*)?$/.test(_script.src) ? _script.src : '';
 
   var STORAGE_COLLAPSED = 'mb:collapsed';
   var STORAGE_WIDTH     = 'mb:width';
