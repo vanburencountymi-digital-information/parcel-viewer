@@ -83,8 +83,9 @@ docker compose -f infra/docker-compose.viewer.yml --env-file .env up -d --build 
   `vanburen.json` (the manifest is baked into the image; `/config`/`/config.js` won't update otherwise).
 - `/api/config.js` (from `backend/parcel_viewer/county_configs/vanburen.json`) **overrides** the baked
   `frontend/public/js/county-config.js` — **edit both** when changing config the viewer reads.
-- Frontend (`frontend/public/**`, `demo/**`, `admin/**`) **is** bind-mounted (live), but **nginx caches
-  JS/CSS** — hard-refresh or `?v=` bust. Map handle is `window.PS_MAP`.
+- Frontend: the pages and scripts are served from Vite's build (DIC-2180). Run `npm run dev`
+  (vite build --watch) beside the stack; it rebuilds `dist/` about a second after a save, and the
+  bundles are content-hashed, so a plain reload picks them up. Map handle is `window.PS_MAP`.
 - **Browser verification:** the **Claude Preview MCP** needs port 8080, which Docker holds — free it with
   `docker stop infra-web-1`, then `preview_start parcel-viewer`. Restore detached with `up -d` when done.
 - **Branch discipline:** the Admin Console's nginx route + compose mount live in `infra/` — checking out a

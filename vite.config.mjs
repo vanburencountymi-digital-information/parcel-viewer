@@ -2,10 +2,10 @@
 //
 // Vite hashes and minifies the pages' stylesheets into /assets/ (slice 2a). The scripts
 // stay classic: Vite only bundles modules, and modules would change load timing and error
-// isolation, so tools/vite/classic-scripts.mjs bundles each run of classic script tags
-// into one classic script in /assets/ instead (slice 2b; its header has the rules). The
-// web image still serves the script folders (infra/web.Dockerfile) for anything that
-// loads a file by path, and the dev stack serves the source files unbundled.
+// isolation, so tools/vite/classic-scripts.mjs bundles each run of script tags into one
+// classic script in /assets/ instead (slice 2b; its header has the rules). An ES module
+// entry in a run (engine/browser.js, slice 3) is bundled by Rolldown into that script.
+// The dev stack serves this build too: `npm run dev` runs it with --watch.
 //
 // The pages link everything with root-absolute paths (/frontend/public/…, /admin/…), so
 // the project root is the repo root.

@@ -21,14 +21,10 @@
  *   - 'none'     : no citable document — the surface renders nothing and SAYS so
  *                  (an uncitable AI claim is treated as freelancing, not a citation).
  *
- * UMD: Node module (harness) + browser global (window.ISV_CITATION).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_CITATION by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_CITATION = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   var STATES = { RESOLVES: 'resolves', COARSE: 'coarse', NONE: 'none' };
@@ -102,4 +98,6 @@
     resolveCitations: resolveCitations,
     floorState: floorState,
   };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

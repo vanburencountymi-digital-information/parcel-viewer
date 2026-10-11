@@ -1,10 +1,11 @@
 // npm run test:build  (DIC-2180 slice 2b)
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
 import vm from 'node:vm';
-import { bundle, checkFile, findRuns } from './classic-scripts.mjs';
+import { bundle, checkFile, decodeMappings, findRuns, isModule, loadFile } from './classic-scripts.mjs';
 
 const repo = resolve(import.meta.dirname, '../..');
 
@@ -92,14 +93,56 @@ test('the source map points each code line back to its file and line', () => {
   assert.deepEqual(found, { 'a();': '/one.js:1', 'b();': '/one.js:2', 'c();': '/two.js:1', 'd();': '/two.js:2' });
 });
 
-test("every script the pages bundle today passes the build's checks", () => {
+test("every script the pages bundle today passes the build's checks", async () => {
   for (const page of ['demo/index.html', 'admin/index.html']) {
     const runs = findRuns(readFileSync(resolve(repo, page), 'utf8'));
     assert.ok(runs.length >= 2, page);
     for (const src of runs.flatMap((r) => r.srcs)) {
       assert.notEqual(src, '/api/config.js');
-      checkFile(src, readFileSync(resolve(repo, '.' + src), 'utf8'));
+      await loadFile(repo, src); // classic files are checked; ES module entries bundled, then checked
     }
+  }
+});
+
+test('an ES module entry is bundled into a classic IIFE that joins its run', async () => {
+  const dir = mkdtempSync(resolve(tmpdir(), 'pv-classic-'));
+  try {
+    writeFileSync(resolve(dir, 'dep.js'), 'const mod = { n: 41 };\nexport { mod as default };\n');
+    writeFileSync(resolve(dir, 'entry.js'), "import dep from './dep.js';\n\nwindow.HOOK = dep.n + 1;\n");
+    writeFileSync(resolve(dir, 'after.js'), '(function () { window.AFTER = window.HOOK; })();\n');
+    assert.ok(isModule(readFileSync(resolve(dir, 'entry.js'), 'utf8')));
+    assert.ok(!isModule(readFileSync(resolve(dir, 'after.js'), 'utf8')));
+
+    const files = [await loadFile(dir, '/entry.js'), await loadFile(dir, '/after.js')];
+    assert.deepEqual(files[0].map.sources.sort(), ['/dep.js', '/entry.js']);
+    const { code, map } = bundle(files);
+    const { window } = run(code);
+    assert.equal(window.HOOK, 42);
+    assert.equal(window.AFTER, 42, 'the entry ran synchronously, before the next file');
+
+    // The bundle's map sends the entry's lines to the original modules.
+    const lines = code.split('\n');
+    const found = new Set();
+    decodeMappings(map.mappings).forEach((segs, i) => segs.forEach(([, s]) => {
+      if (/HOOK = /.test(lines[i])) found.add(map.sources[s]);
+    }));
+    assert.ok(found.has('/entry.js'), 'the hook line maps to entry.js');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a throwing ES module entry stops only itself', async () => {
+  const dir = mkdtempSync(resolve(tmpdir(), 'pv-classic-'));
+  try {
+    writeFileSync(resolve(dir, 'boom.js'), "import './dep.js';\nthrow new Error('entry boom');\n");
+    writeFileSync(resolve(dir, 'dep.js'), 'window.DEP = 1;\nexport {};\n');
+    writeFileSync(resolve(dir, 'after.js'), '(function () { window.AFTER = 1; })();\n');
+    const { code } = bundle([await loadFile(dir, '/boom.js'), await loadFile(dir, '/after.js')]);
+    const { window, reported } = run(code);
+    assert.deepEqual([window.DEP, window.AFTER, reported], [1, 1, ['entry boom']]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });
 

@@ -18,22 +18,14 @@
  *
  * core(brief) -> { facts: { draftManifest, capabilities, rationale }, provenance: Citation[] }
  *
- * UMD: Node module (harness) + browser global (window.ISV_THEME_COMPOSER_CORE).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_THEME_COMPOSER_CORE by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_THEME_COMPOSER_CORE = mod;
-}(typeof self !== 'undefined' ? self : this, function (root) {
-  'use strict';
+import ASSEMBLE from '../manifest-assemble.js';
+import CATALOG from '../capability-catalog.js';
 
-  function req(nodePath, globalName) {
-    if (typeof module !== 'undefined' && module.exports) return require(nodePath);
-    return root[globalName];
-  }
-  var ASSEMBLE = req('../manifest-assemble.js', 'ISV_MANIFEST_ASSEMBLE');
-  var CATALOG = req('../capability-catalog.js', 'ISV_CAPABILITY_CATALOG');
+const mod = (function () {
+  'use strict';
 
   // A provenance entry in the shared citation-envelope shape (§6.4): which brief input
   // drove which manifest decision. `state: 'resolves'` — the brief field is the source.
@@ -126,4 +118,6 @@
   }
 
   return { core: core, chooseCapabilities: chooseCapabilities };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

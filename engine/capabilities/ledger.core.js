@@ -14,14 +14,10 @@
  * core(typedInput) -> { facts, provenance }
  *   typedInput = { events: LedgerEvent[] }
  *
- * UMD: Node module (harness) + browser global (window.ISV_LEDGER_CORE).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_LEDGER_CORE by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_LEDGER_CORE = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   function num(v) { if (v == null || v === '') return null; var n = Number(v); return isNaN(n) ? null : n; }
@@ -148,4 +144,6 @@
     core: core, normalizeEvent: normalizeEvent, eventProvenance: eventProvenance,
     ledgerDisplayModel: ledgerDisplayModel, categorize: categorize,
   };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

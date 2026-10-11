@@ -11,24 +11,16 @@
  * the harness can mock it without a live model. In the browser the transport is the
  * real POST /explain; in CI it's a stub.
  *
- * UMD: Node module (harness) + browser global (window.ISV_REGISTER).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_REGISTER by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_REGISTER = mod;
-}(typeof self !== 'undefined' ? self : this, function (root) {
-  'use strict';
+import EXPLAINER from './explainer.core.js';
+import LEDGER from './ledger.core.js';
+import COMPOSER from './theme-composer.core.js';
+import COHORT from './cohort-analyze.core.js';
 
-  function req(nodePath, globalName) {
-    if (typeof module !== 'undefined' && module.exports) return require(nodePath);
-    return root[globalName];
-  }
-  var EXPLAINER = req('./explainer.core.js', 'ISV_EXPLAINER_CORE');
-  var LEDGER = req('./ledger.core.js', 'ISV_LEDGER_CORE');
-  var COMPOSER = req('./theme-composer.core.js', 'ISV_THEME_COMPOSER_CORE');
-  var COHORT = req('./cohort-analyze.core.js', 'ISV_COHORT_ANALYZE_CORE');
+const mod = (function () {
+  'use strict';
 
   // Register the v1 capabilities into the given registry (an ISV.createRegistry()
   // result, or ISV.registry). Returns the registry for chaining.
@@ -85,4 +77,6 @@
   }
 
   return { registerAll: registerAll };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

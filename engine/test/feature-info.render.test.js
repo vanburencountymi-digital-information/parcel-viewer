@@ -14,7 +14,9 @@ function load() {
   const sandbox = {}; sandbox.window = sandbox; sandbox.self = sandbox; sandbox.console = console;
   vm.createContext(sandbox);
   const run = (p) => vm.runInContext(fs.readFileSync(p, 'utf8'), sandbox, { filename: p });
-  run(path.join(REPO, 'engine/popup.js'));
+  // The engine is ES modules now (DIC-2180): put its window hooks on the sandbox, as the
+  // page's engine entry (engine/browser.js) puts them on window.
+  Object.assign(sandbox, require('../window-hooks.js').viewerHooks);
   run(path.join(REPO, 'frontend/public/js/pv-feature-info.js'));
   return sandbox;
 }

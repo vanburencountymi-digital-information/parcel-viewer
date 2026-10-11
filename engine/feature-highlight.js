@@ -15,14 +15,10 @@
  *     single-active slot (clear the previous feature, set the new) — event-driven,
  *     so chrome/selection drive rendering by emitting, not by calling the map.
  *
- * UMD: Node module (harness) + browser global (window.ISV_HIGHLIGHT).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_HIGHLIGHT by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_HIGHLIGHT = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   function createFeatureHighlighter(opts) {
@@ -59,4 +55,6 @@
   }
 
   return { createFeatureHighlighter: createFeatureHighlighter };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

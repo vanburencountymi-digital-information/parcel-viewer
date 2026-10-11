@@ -15,14 +15,10 @@
  * Source of truth: ISV_BUILD_SPEC §5.1 capabilities block. Keep in sync with the manifest
  * schema. A theme's manifest.capabilities is a SUBSET of these ids; absent = not enabled.
  *
- * UMD: Node module (harness) + browser global (window.ISV_CAPABILITY_CATALOG).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_CAPABILITY_CATALOG by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_CAPABILITY_CATALOG = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   // Each entry: { id, ai (default tri-state), disclosure, label }. `ai` is the SUGGESTED
@@ -73,4 +69,6 @@
     byId: byId,
     defaultCapabilities: defaultCapabilities,
   };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

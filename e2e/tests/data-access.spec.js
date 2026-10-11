@@ -92,7 +92,12 @@ test('compare shows "Withheld" for a withheld parcel, never $0 per acre', async 
   const dialog = page.getByRole('dialog', { name: 'Compare parcels' });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText('Withheld', { exact: true }).first()).toBeVisible();
-  await expect(dialog.getByRole('cell', { name: '$0', exact: true })).toHaveCount(0);
+  // Only the withheld parcel (the second column) is checked: the first is a real parcel,
+  // and an exempt one (e.g. a village's land) honestly shows $0.
+  for (const label of ['Assessed Value', 'Taxable Value', 'Assessed $/acre']) {
+    const row = dialog.getByRole('row').filter({ has: page.getByRole('rowheader', { name: label }) });
+    await expect(row.getByRole('cell').nth(1)).toHaveText('Withheld');
+  }
 });
 
 test('the neighborhood profile says which figures cover which parcels', async ({ page }) => {

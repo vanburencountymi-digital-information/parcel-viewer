@@ -19,14 +19,10 @@
  *     parcelNumber: COUNTY.parcelNumber (PIN segment config).
  *     statutes:     curated MI tax-statute corpus (engine/data/mi-tax-statutes.json).
  *
- * UMD: Node module (harness) + browser global (window.ISV_EXPLAINER_CORE).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_EXPLAINER_CORE by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_EXPLAINER_CORE = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   function num(v) { if (v == null || v === '') return null; var n = Number(v); return isNaN(n) ? null : n; }
@@ -209,4 +205,6 @@
     assessmentProvenance: assessmentProvenance,
     taxDescriptionProvenance: taxDescriptionProvenance,
   };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

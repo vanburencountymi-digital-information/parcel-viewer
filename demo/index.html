@@ -753,39 +753,14 @@
   <script src="/frontend/public/js/drawing/drawing-tools.js"></script>
   <script src="/frontend/public/js/drawing/measure-tool.js"></script>
   <script src="/frontend/public/js/pv-template.js"></script>
-  <!-- ISV engine (A1 contract + capability cores + source-agnostic doc utils).
-       Loaded before its consumers (pv-doc, pv-explain, pv-ledger) so the browser runs
-       the SAME modules the CI harness tests. Progressive enhancement: each consumer
-       feature-detects these and falls back to its inline path if absent. -->
-  <script src="/engine/capability.js"></script>
-  <script src="/engine/app-context.js"></script>
-  <script src="/engine/selection.js"></script>
-  <script src="/engine/feature-highlight.js"></script>
-  <script src="/engine/source.js"></script>
-  <script src="/engine/popup.js"></script>
-  <script src="/engine/doc.js"></script>
-  <!-- Citation Renderer core (DIC-522 / §6.4): source-agnostic resolveCitation(envelope, resolver). -->
-  <script src="/engine/citation.js"></script>
-  <script src="/engine/capabilities/explainer.core.js"></script>
-  <script src="/engine/capabilities/ledger.core.js"></script>
-  <script src="/engine/capabilities/theme-composer.core.js"></script>
-  <!-- Cohort Analysis core (DIC-587): selectors × aggregators × provenance — the engine
-       behind Compare (DIC-589) + Neighborhood/Area Profile (DIC-588). -->
-  <script src="/engine/capabilities/cohort-analyze.core.js"></script>
-  <script src="/engine/capabilities/register.js"></script>
-  <!-- Manifest schema versioning + migrate-on-load seam (C2 / DIC-583). load-manifest.js
-       composes migrate (manifest-version.js) THEN validate (validate-manifest.js) into the
-       one loadManifest() entry point B2/console/boot call. Same modules the CI harness runs. -->
-  <script src="/engine/manifest-version.js"></script>
-  <script src="/engine/validate-manifest.js"></script>
-  <script src="/engine/load-manifest.js"></script>
-  <!-- Manifest assembler + capability catalog (B2): pv-manifest.js assembles a complete
-       theme manifest from window.COUNTY at boot (Phase 0 of manifest-driven boot). -->
-  <script src="/engine/capability-catalog.js"></script>
-  <script src="/engine/manifest-assemble.js"></script>
-  <!-- Per-tenant feature flags (C4 / DIC-585): override layer over the manifest capability
-       tri-state. Consumed at runtime by pv-capabilities.js (Phase 2). -->
-  <script src="/engine/feature-flags.js"></script>
+  <!-- ISV engine (ES modules, DIC-2180): engine/browser.js imports the capability contract,
+       the capability cores, the source-agnostic doc utils, manifest versioning, validation
+       and assembly (C2 / DIC-583, B2), the capability catalog and per-tenant feature flags
+       (C4 / DIC-585), and puts their window.ISV_* hooks (engine/window-hooks.js) on window.
+       The build bundles it into a classic script right here, so the hooks exist before the
+       consumers below run (pv-doc, pv-explain, pv-ledger, pv-manifest, pv-capabilities…):
+       the SAME modules the CI harness tests. -->
+  <script src="/engine/browser.js"></script>
   <!-- Manifest bridge + boot (C2 + Phase 1): assembles a complete theme manifest from
        window.COUNTY and publishes window.PS_MANIFEST EAGERLY here — BEFORE map.js — so the
        viewer's branding/map/scheme reads can resolve from the manifest (COUNTY fallback).

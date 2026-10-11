@@ -14,14 +14,10 @@
  * manager + a non-invasive bridge that mirrors the viewer's existing selection onto
  * the bus, with no surgery to map.js yet.
  *
- * UMD: Node module (harness) + browser global (window.ISV_SELECTION).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_SELECTION by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_SELECTION = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   function refKey(ref) {
@@ -91,4 +87,6 @@
   }
 
   return { createSelectionManager: createSelectionManager, toRef: toRef, refKey: refKey };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

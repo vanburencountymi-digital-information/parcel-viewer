@@ -11,14 +11,10 @@
  * The viewer's domain-specific document layer (pv-doc.js) now delegates to this; its
  * record-specific templates + field mapping stay there as domain code.
  *
- * UMD: Node module (harness) + browser global (window.ISV_DOC).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_DOC by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_DOC = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   // Bake a map or canvas to a PNG data URL. `handle` is either a map instance
@@ -63,4 +59,6 @@
   }
 
   return { captureCanvasImage: captureCanvasImage, print: print, downloadHtml: downloadHtml };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

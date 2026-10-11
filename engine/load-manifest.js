@@ -20,22 +20,14 @@
  * dependency cuts against the zero-dep harness + no-build-tool frontend ethos. When that
  * lands, only validate-manifest.js changes; this seam's contract stays put.
  *
- * UMD: Node module (harness) + browser global (window.ISV_LOAD_MANIFEST).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_LOAD_MANIFEST by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_LOAD_MANIFEST = mod;
-}(typeof self !== 'undefined' ? self : this, function (root) {
-  'use strict';
+import MV from './manifest-version.js';
+import VALIDATE from './validate-manifest.js';
 
-  function req(nodePath, globalName) {
-    if (typeof module !== 'undefined' && module.exports) return require(nodePath);
-    return root[globalName];
-  }
-  var MV = req('./manifest-version.js', 'ISV_MANIFEST_VERSION');
-  var VALIDATE = req('./validate-manifest.js', 'ISV_VALIDATE_MANIFEST');
+const mod = (function () {
+  'use strict';
 
   // loadManifest(raw) -> {
   //   ok,                       // migrated AND valid
@@ -74,4 +66,6 @@
   }
 
   return { loadManifest: loadManifest };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };
