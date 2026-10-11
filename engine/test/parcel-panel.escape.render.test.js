@@ -9,6 +9,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadFile } = require('./helpers/sandbox.js');
 
 const REPO = path.resolve(__dirname, '..', '..');
 const EVIL = '<img src=x onerror=alert(1)>';
@@ -36,7 +37,7 @@ function stub(name, extra) {
   });
 }
 
-function load(searchResults) {
+async function load(searchResults) {
   const elements = {};
   const el = (id) => elements[id] || (elements[id] = stub('#' + id, { innerHTML: '', value: '', hidden: true }));
   const infoBody = stub('.parcel-info-body', { innerHTML: '' });
@@ -77,8 +78,7 @@ function load(searchResults) {
   });
   vm.createContext(sandbox);
   // Same order as demo/index.html: map.js uses the shared coordinate formatters (DIC-1882).
-  const coords = path.join(REPO, 'frontend/public/js/pv-coords.js');
-  vm.runInContext(fs.readFileSync(coords, 'utf8'), sandbox, { filename: coords });
+  await loadFile(sandbox, 'frontend/public/js/pv-coords.js');
   const file = path.join(REPO, 'frontend/public/js/map.js');
   try { vm.runInContext(fs.readFileSync(file, 'utf8'), sandbox, { filename: file }); }
   catch (e) { if (process.env.DEBUG_LOAD) console.error(e); /* late map-init code may trip on the stub; the handlers we need are wired earlier */ }
@@ -96,8 +96,8 @@ const EVIL_PARCEL = {
   source: EVIL,
 };
 
-test('parcel info panel escapes tax-roll values (fallback inline render)', () => {
-  const { busHandlers, infoBody } = load();
+test('parcel info panel escapes tax-roll values (fallback inline render)', async () => {
+  const { busHandlers, infoBody } = (await load());
   assert.ok(busHandlers['active-feature-changed'], 'map.js should subscribe to active-feature-changed');
   busHandlers['active-feature-changed']({ ref: { sourceId: 'parcels', pin: '80-01-001-001-00', properties: EVIL_PARCEL } });
   const html = infoBody.innerHTML;
@@ -107,8 +107,8 @@ test('parcel info panel escapes tax-roll values (fallback inline render)', () =>
   assert.ok(html.includes('SMITH &amp; JONES'), 'ampersands are escaped');
 });
 
-test('a hostile PIN in the selection key is escaped in the tool buttons (data-pin)', () => {
-  const { busHandlers, infoBody } = load();
+test('a hostile PIN in the selection key is escaped in the tool buttons (data-pin)', async () => {
+  const { busHandlers, infoBody } = (await load());
   busHandlers['active-feature-changed']({ ref: { sourceId: 'parcels', pin: '"><img src=x onerror=alert(1)>', properties: { owner_name: 'A' } } });
   const html = infoBody.innerHTML;
   assert.doesNotMatch(html, /<img/i, 'no markup escapes the data-pin attribute');
@@ -116,7 +116,7 @@ test('a hostile PIN in the selection key is escaped in the tool buttons (data-pi
 });
 
 test('search results escape pin, municipality, owner and address', async () => {
-  const { el, created } = load([{ id: 1, pin: EVIL, municipality: EVIL, owner_name: 'A & B ' + EVIL, address: EVIL }]);
+  const { el, created } = (await load([{ id: 1, pin: EVIL, municipality: EVIL, owner_name: 'A & B ' + EVIL, address: EVIL }]));
   const input = el('parcel-search-input');
   input.value = 'smith';
   input._fire('input');

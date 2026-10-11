@@ -41,7 +41,9 @@ jobs:
 
       - name: JS — capability cores + contract + facts-parity + schema (node --test)
         working-directory: engine
-        run: node --test
+        # --experimental-vm-modules: the render tests run converted viewer files as ES
+        # modules in a vm sandbox (DIC-2180; engine/test/helpers/sandbox.js). Same as npm test.
+        run: node --experimental-vm-modules --test
 
       - name: Python — explainer contract, cohort SQL, quota, cache, citations, KB, parcel store, workflow params (stdlib only)
         working-directory: engine

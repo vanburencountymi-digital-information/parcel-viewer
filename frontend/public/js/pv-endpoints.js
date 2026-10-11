@@ -16,7 +16,7 @@
  *
  * Load after county-config.js and before any module that calls Map Buddy.
  */
-(function (root) {
+const PV_ENDPOINTS = (function (root) {
   'use strict';
 
   function countyConfig() {
@@ -40,5 +40,9 @@
     return String(base).replace(/\/+$/, '');
   }
 
-  root.PV_ENDPOINTS = { mapBuddyBase: mapBuddyBase };
-})(typeof window !== 'undefined' ? window : globalThis);
+  return { mapBuddyBase: mapBuddyBase };
+})(globalThis);
+
+// The window hook the page's classic scripts and the tests read (DIC-2180).
+globalThis.PV_ENDPOINTS = PV_ENDPOINTS;
+export default PV_ENDPOINTS;

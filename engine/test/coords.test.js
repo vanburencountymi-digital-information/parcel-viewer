@@ -4,16 +4,13 @@
 // menu. Pure module, loaded here in a sandbox with an optional proj4 stub.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
+const { loadFile } = require('./helpers/sandbox.js');
 
-const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'frontend', 'public', 'js', 'pv-coords.js'), 'utf8');
-
-function load(proj4) {
+async function load(proj4) {
   const sandbox = { proj4 };
   vm.createContext(sandbox);
-  vm.runInContext(SRC.replace('typeof window !== \'undefined\' ? window : globalThis', 'globalThis'), sandbox);
+  await loadFile(sandbox, 'frontend/public/js/pv-coords.js');
   return sandbox.PV_COORD_FMT;
 }
 
@@ -42,8 +39,8 @@ function legacyReadout(ll, f, proj4) {
 
 const stubProj4 = (from, to, xy) => [13123359.58 + (xy[0] + 84.3666666667) * 272000, (xy[1] - 41.5) * 364000];
 
-test('copy rows: every format, exactly as copied', () => {
-  const rows = load(stubProj4).copyRows(HERE);
+test('copy rows: every format, exactly as copied', async () => {
+  const rows = (await load(stubProj4)).copyRows(HERE);
   const byId = Object.fromEntries(rows.map((r) => [r.id, r.text]));
   assert.deepStrictEqual(plain(rows.map((r) => r.id)), ['dd', 'dms', 'ddm', 'spc', 'lnglat']);
   assert.strictEqual(byId.dd, '42.212340, -86.098760');
@@ -54,18 +51,18 @@ test('copy rows: every format, exactly as copied', () => {
   for (const r of rows) assert.ok(r.label && r.label.length > 3, r.id + ' has a label');
 });
 
-test('copy rows: no State Plane row without proj4', () => {
-  assert.deepStrictEqual(plain(load(undefined).copyRows(HERE).map((r) => r.id)), ['dd', 'dms', 'ddm', 'lnglat']);
+test('copy rows: no State Plane row without proj4', async () => {
+  assert.deepStrictEqual(plain((await load(undefined)).copyRows(HERE).map((r) => r.id)), ['dd', 'dms', 'ddm', 'lnglat']);
 });
 
-test('copy rows: a proj4 failure drops only the State Plane row', () => {
-  const rows = load(() => { throw new Error('bad'); }).copyRows(HERE);
+test('copy rows: a proj4 failure drops only the State Plane row', async () => {
+  const rows = (await load(() => { throw new Error('bad'); })).copyRows(HERE);
   assert.ok(!rows.some((r) => r.id === 'spc'));
   assert.strictEqual(rows.length, 4);
 });
 
-test('rounding carries: never 60 seconds or 60 minutes', () => {
-  const f = load(undefined);
+test('rounding carries: never 60 seconds or 60 minutes', async () => {
+  const f = (await load(undefined));
   const rows = f.copyRows({ lng: -86.9999999, lat: 42.9999999 });
   const byId = Object.fromEntries(rows.map((r) => [r.id, r.text]));
   assert.strictEqual(byId.dms, '43°00\'00.0"N 87°00\'00.0"W');
@@ -75,22 +72,22 @@ test('rounding carries: never 60 seconds or 60 minutes', () => {
   assert.ok(s.startsWith('42°13\'00.0"N'), s);
 });
 
-test('southern and western hemispheres, and zero', () => {
-  const byId = Object.fromEntries(load(undefined).copyRows({ lng: 151.2093, lat: -33.8688 }).map((r) => [r.id, r.text]));
+test('southern and western hemispheres, and zero', async () => {
+  const byId = Object.fromEntries((await load(undefined)).copyRows({ lng: 151.2093, lat: -33.8688 }).map((r) => [r.id, r.text]));
   assert.strictEqual(byId.dms, '33°52\'07.7"S 151°12\'33.5"E');
   assert.strictEqual(byId.dd, '-33.868800, 151.209300');
-  const zero = load(undefined).copyRows({ lng: 0, lat: 0 });
+  const zero = (await load(undefined)).copyRows({ lng: 0, lat: 0 });
   assert.strictEqual(zero[1].text, '0°00\'00.0"N 0°00\'00.0"E');
 });
 
-test('invalid input gives no rows', () => {
-  const f = load(undefined);
+test('invalid input gives no rows', async () => {
+  const f = (await load(undefined));
   assert.deepStrictEqual(plain(f.copyRows({ lng: NaN, lat: 1 })), []);
   assert.deepStrictEqual(plain(f.copyRows({ lng: 1, lat: Infinity })), []);
 });
 
-test('readout is unchanged from the pre-DIC-1882 map.js code', () => {
-  const f = load(stubProj4);
+test('readout is unchanged from the pre-DIC-1882 map.js code', async () => {
+  const f = (await load(stubProj4));
   let seed = 7;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
   for (let i = 0; i < 5000; i++) {
@@ -102,6 +99,6 @@ test('readout is unchanged from the pre-DIC-1882 map.js code', () => {
   assert.deepStrictEqual(plain(f.readoutFormats), ['dd', 'dms', 'spc']);
 });
 
-test('readout falls back to decimal degrees when State Plane is unavailable', () => {
-  assert.strictEqual(load(undefined).readout(HERE, 'spc'), load(undefined).readout(HERE, 'dd'));
+test('readout falls back to decimal degrees when State Plane is unavailable', async () => {
+  assert.strictEqual((await load(undefined)).readout(HERE, 'spc'), (await load(undefined)).readout(HERE, 'dd'));
 });

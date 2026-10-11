@@ -11,13 +11,14 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadFile } = require('./helpers/sandbox.js');
 
 const REPO = path.resolve(__dirname, '..', '..');           // parcel-viewer/
 const corpus = require('../data/mi-tax-statutes.json');
 const parcel = require('./fixtures/parcel-assessment.json');
 const county = require('./fixtures/county-labels.json');
 
-function makeViewer() {
+async function makeViewer() {
   // Minimal browser globals the explainer touches at render time.
   const sandbox = {};
   sandbox.window = sandbox;
@@ -30,7 +31,7 @@ function makeViewer() {
   vm.createContext(sandbox);
 
   const load = (p) => vm.runInContext(fs.readFileSync(p, 'utf8'), sandbox, { filename: p });
-  load(path.join(REPO, 'frontend/public/js/pv-template.js'));
+  await loadFile(sandbox, 'frontend/public/js/pv-template.js');
   // The engine is ES modules now (DIC-2180): put its window hooks on the sandbox, as the
   // page's engine entry (engine/browser.js) does, capabilities registered.
   require('../window-hooks.js').installViewerHooks(sandbox);
@@ -38,8 +39,8 @@ function makeViewer() {
   return sandbox;
 }
 
-test('the live pv-explain.js loads and consumes the shared engine core', () => {
-  const w = makeViewer();
+test('the live pv-explain.js loads and consumes the shared engine core', async () => {
+  const w = (await makeViewer());
   assert.ok(w.PV_EXPLAIN, 'PV_EXPLAIN should be defined');
   assert.ok(w.ISV_EXPLAINER_CORE, 'engine core should be loaded');
   // The viewer-facing facts come from the SAME core the harness tests.
@@ -48,8 +49,8 @@ test('the live pv-explain.js loads and consumes the shared engine core', () => {
   assert.equal(facts.classification, '401 – Residential');
 });
 
-test('AI-OFF renders facts + curated statute LINKS, no prose (§4.5)', () => {
-  const w = makeViewer();
+test('AI-OFF renders facts + curated statute LINKS, no prose (§4.5)', async () => {
+  const w = (await makeViewer());
   const facts = w.ISV_EXPLAINER_CORE.buildAssessmentFacts(parcel, { labels: county.labels, currentYear: 2026 });
   const html = w.PV_EXPLAIN.renderHtml(facts, null, 'assessment', corpus.statutes);
 
@@ -61,8 +62,8 @@ test('AI-OFF renders facts + curated statute LINKS, no prose (§4.5)', () => {
   assert.doesNotMatch(html, /Assessing values every parcel for taxation/, 'no prose fallback AI-off');
 });
 
-test('AI-ON adds narration over the IDENTICAL facts (render-layer facts-parity)', () => {
-  const w = makeViewer();
+test('AI-ON adds narration over the IDENTICAL facts (render-layer facts-parity)', async () => {
+  const w = (await makeViewer());
   const facts = w.ISV_EXPLAINER_CORE.buildAssessmentFacts(parcel, { labels: county.labels, currentYear: 2026 });
   const explanation = {
     summary: 'Your assessed value is $98,000.',
@@ -81,8 +82,8 @@ test('AI-ON adds narration over the IDENTICAL facts (render-layer facts-parity)'
   assert.doesNotMatch(htmlOff, /What these mean/);
 });
 
-test('AI ON but unreachable says so — never "AI walkthrough is off"', () => {
-  const w = makeViewer();
+test('AI ON but unreachable says so — never "AI walkthrough is off"', async () => {
+  const w = (await makeViewer());
   const facts = w.ISV_EXPLAINER_CORE.buildAssessmentFacts(parcel, { labels: county.labels, currentYear: 2026 });
   const down = w.PV_EXPLAIN.renderHtml(facts, null, 'assessment', corpus.statutes, true);
   assert.match(down, /\$98,000/, 'figures still shown');

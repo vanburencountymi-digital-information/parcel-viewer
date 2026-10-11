@@ -11,7 +11,7 @@
  * While open: Esc calls closeFn, Tab / Shift+Tab stay inside, and on close focus returns
  * to whatever had it before. One dialog at a time (the last opened wins).
  */
-(function (root) {
+const PV_DIALOG = (function (root) {
   'use strict';
 
   var active = null;   // { el, close, returnTo }
@@ -69,5 +69,9 @@
     if (back && back.focus && root.document.contains(back)) back.focus();
   }
 
-  root.PV_DIALOG = { opened: opened, closed: closed };
-})(typeof window !== 'undefined' ? window : globalThis);
+  return { opened: opened, closed: closed };
+})(globalThis);
+
+// The window hook the page's classic scripts and the tests read (DIC-2180).
+globalThis.PV_DIALOG = PV_DIALOG;
+export default PV_DIALOG;

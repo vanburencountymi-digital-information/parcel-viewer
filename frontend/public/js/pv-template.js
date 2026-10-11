@@ -16,7 +16,7 @@
  *
  * Exposes: window.PV_TEMPLATE { render(template, data) -> html, escape(s) }
  */
-(function (root) {
+const PV_TEMPLATE = (function (root) {
   'use strict';
 
   function escape(s) {
@@ -101,5 +101,9 @@
     return renderNode(parse(String(template == null ? '' : template)), [data || {}]);
   }
 
-  root.PV_TEMPLATE = { render: render, escape: escape };
-}(typeof window !== 'undefined' ? window : (typeof globalThis !== 'undefined' ? globalThis : this)));
+  return { render: render, escape: escape };
+})(globalThis);
+
+// The window hook the page's classic scripts and the tests read (DIC-2180).
+globalThis.PV_TEMPLATE = PV_TEMPLATE;
+export default PV_TEMPLATE;

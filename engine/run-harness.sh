@@ -12,7 +12,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$HERE"
 
 echo "== ISV harness: JS capability cores + contract (node --test) =="
-node --test
+# --experimental-vm-modules: viewer ES modules run in vm sandboxes (engine/test/helpers/sandbox.js).
+node --experimental-vm-modules --test
 
 echo
 echo "== ISV harness: Python contract tests (stdlib only) =="
