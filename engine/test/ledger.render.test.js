@@ -21,8 +21,8 @@ function makeViewer() {
   const load = (p) => vm.runInContext(fs.readFileSync(p, 'utf8'), sandbox, { filename: p });
   load(path.join(REPO, 'frontend/public/js/pv-template.js'));
   // The engine is ES modules now (DIC-2180): put its window hooks on the sandbox, as the
-  // page's engine entry (engine/browser.js) puts them on window.
-  Object.assign(sandbox, require('../window-hooks.js').viewerHooks);
+  // page's engine entry (engine/browser.js) does, capabilities registered.
+  require('../window-hooks.js').installViewerHooks(sandbox);
   load(path.join(REPO, 'frontend/public/js/pv-ledger.js'));
   return sandbox;
 }
@@ -52,4 +52,25 @@ test('empty ledger degrades to a clean message, not an error', () => {
   const facts = w.ISV_LEDGER_CORE.core({ events: [] }).facts;
   const html = w.PV_LEDGER.renderLedger(facts);
   assert.match(html, /No recorded events for this parcel yet/);
+});
+
+// DIC-2266: the page's boot (installViewerHooks) must register the v1 capabilities, or
+// fetchLedger's ISV.invoke('ledger') rejects with "unknown capability ledger".
+test('the viewer boot registers the v1 capabilities in the shared registry', () => {
+  const w = makeViewer();
+  const ids = w.ISV.list().map((c) => c.id).sort();
+  assert.deepStrictEqual(ids, ['cohort-analyze', 'explainer', 'ledger', 'theme-composer']);
+});
+
+test('fetchLedger runs the history endpoint through ISV.invoke to facts', async () => {
+  const w = makeViewer();
+  const urls = [];
+  w.fetch = (url) => {
+    urls.push(url);
+    return Promise.resolve({ ok: true, json: () => Promise.resolve(ledgerFixture) });
+  };
+  const res = await w.PV_LEDGER.fetchLedger(4021);
+  assert.deepStrictEqual(urls, ['/api/parcel/4021/history']);
+  assert.deepStrictEqual(res.facts, w.ISV_LEDGER_CORE.core(ledgerFixture).facts);
+  assert.ok(Array.isArray(res.provenance) && res.provenance.length > 0, 'native provenance');
 });
