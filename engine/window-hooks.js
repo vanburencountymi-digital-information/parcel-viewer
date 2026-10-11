@@ -60,3 +60,15 @@ export const adminHooks = {
   ISV_MANIFEST_ASSEMBLE,
   ISV_THEME_COMPOSER_CORE,
 };
+
+/**
+ * Put the viewer's hooks on `target` (window, or a test sandbox) and register the v1
+ * capabilities into the page's shared registry (ISV.registry), once. Consumers like
+ * pv-ledger.js call ISV.invoke(), which rejects with "unknown capability" until this
+ * runs (DIC-2266). The registry is one per module instance, so a second call is a no-op.
+ */
+export function installViewerHooks(target) {
+  Object.assign(target, viewerHooks);
+  if (!ISV.get('ledger')) ISV_REGISTER.registerAll(ISV.registry);
+  return target;
+}

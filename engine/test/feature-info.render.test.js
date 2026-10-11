@@ -15,8 +15,8 @@ function load() {
   vm.createContext(sandbox);
   const run = (p) => vm.runInContext(fs.readFileSync(p, 'utf8'), sandbox, { filename: p });
   // The engine is ES modules now (DIC-2180): put its window hooks on the sandbox, as the
-  // page's engine entry (engine/browser.js) puts them on window.
-  Object.assign(sandbox, require('../window-hooks.js').viewerHooks);
+  // page's engine entry (engine/browser.js) does, capabilities registered.
+  require('../window-hooks.js').installViewerHooks(sandbox);
   run(path.join(REPO, 'frontend/public/js/pv-feature-info.js'));
   return sandbox;
 }
