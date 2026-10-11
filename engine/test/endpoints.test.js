@@ -8,6 +8,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadFile } = require('./helpers/sandbox.js');
 
 const REPO = path.resolve(__dirname, '..', '..');
 
@@ -54,23 +55,23 @@ test('every config copy of the Map Buddy URL agrees', () => {
   for (const [where, url] of Object.entries(copies)) assert.equal(url, baked, `${where} differs`);
 });
 
-function resolver(win) {
+async function resolver(win) {
   const sandbox = Object.assign({}, win);
   sandbox.window = sandbox;
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(path.join(REPO, 'frontend/public/js/pv-endpoints.js'), 'utf8'), sandbox);
+  await loadFile(sandbox, 'frontend/public/js/pv-endpoints.js');
   return sandbox.PV_ENDPOINTS.mapBuddyBase;
 }
 
-test('PV_ENDPOINTS precedence: override > county config > same-origin proxy', () => {
+test('PV_ENDPOINTS precedence: override > county config > same-origin proxy', async () => {
   const cfg = { endpoints: { mapBuddy: 'https://mb.example/' } };
-  assert.equal(resolver({ MAP_BUDDY_API: '/map-buddy-api', COUNTY: cfg })(), '/map-buddy-api');
-  assert.equal(resolver({ COUNTY: cfg })(), 'https://mb.example');          // trailing slash trimmed
-  assert.equal(resolver({ PS_CONTEXT: { config: cfg }, COUNTY: {} })(), 'https://mb.example');
-  assert.equal(resolver({ COUNTY: {} })(), '/map-buddy-api');              // never a baked-in URL
+  assert.equal((await resolver({ MAP_BUDDY_API: '/map-buddy-api', COUNTY: cfg }))(), '/map-buddy-api');
+  assert.equal((await resolver({ COUNTY: cfg }))(), 'https://mb.example');          // trailing slash trimmed
+  assert.equal((await resolver({ PS_CONTEXT: { config: cfg }, COUNTY: {} }))(), 'https://mb.example');
+  assert.equal((await resolver({ COUNTY: {} }))(), '/map-buddy-api');              // never a baked-in URL
   // Local dev stack: the bundled container, unless explicitly overridden.
   const local = { location: { hostname: '127.0.0.1' }, COUNTY: cfg };
-  assert.equal(resolver(local)(), '/map-buddy-api');
-  assert.equal(resolver(Object.assign({ MAP_BUDDY_API: 'https://mb.test' }, local))(), 'https://mb.test');
-  assert.equal(resolver({ location: { hostname: 'parcels.dicemi.org' }, COUNTY: cfg })(), 'https://mb.example');
+  assert.equal((await resolver(local))(), '/map-buddy-api');
+  assert.equal((await resolver(Object.assign({ MAP_BUDDY_API: 'https://mb.test' }, local)))(), 'https://mb.test');
+  assert.equal((await resolver({ location: { hostname: 'parcels.dicemi.org' }, COUNTY: cfg }))(), 'https://mb.example');
 });

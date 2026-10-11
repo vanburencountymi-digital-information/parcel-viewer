@@ -322,7 +322,7 @@ Zero third-party dependencies. Run it:
 ```bash
 bash engine/run-harness.sh
 # or individually:
-cd engine && node --test                          # JS tests
+cd engine && npm test                            # JS tests
 cd engine && python -m unittest test.run_explain_contract_test -v  # Python: explainer contract
 ```
 

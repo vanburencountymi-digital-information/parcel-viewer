@@ -12,7 +12,7 @@
  * It needs proj4 (loaded from the CDN); without it the State Plane forms are omitted.
  * Pure and DOM-free, so engine/test/coords.test.js can load it in node.
  */
-(function (root) {
+const PV_COORD_FMT = (function (root) {
   'use strict';
 
   var MI_STATE_PLANE_DEF = '+proj=lcc +lat_0=41.5 +lon_0=-84.3666666666667 ' +
@@ -100,9 +100,13 @@
     return rows;
   }
 
-  root.PV_COORD_FMT = {
+  return {
     readout: readout,
     copyRows: copyRows,
     readoutFormats: READOUT_FORMATS.slice(),
   };
-})(typeof window !== 'undefined' ? window : globalThis);
+})(globalThis);
+
+// The window hook the page's classic scripts and the tests read (DIC-2180).
+globalThis.PV_COORD_FMT = PV_COORD_FMT;
+export default PV_COORD_FMT;

@@ -7,22 +7,23 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { loadFile } = require('./helpers/sandbox.js');
 
 const REPO = path.resolve(__dirname, '..', '..');
 
-function load() {
+async function load() {
   const sandbox = {}; sandbox.window = sandbox; sandbox.self = sandbox; sandbox.console = console;
   vm.createContext(sandbox);
   const run = (p) => vm.runInContext(fs.readFileSync(p, 'utf8'), sandbox, { filename: p });
   // The engine is ES modules now (DIC-2180): put its window hooks on the sandbox, as the
   // page's engine entry (engine/browser.js) does, capabilities registered.
   require('../window-hooks.js').installViewerHooks(sandbox);
-  run(path.join(REPO, 'frontend/public/js/pv-feature-info.js'));
+  await loadFile(sandbox, 'frontend/public/js/pv-feature-info.js');
   return sandbox;
 }
 
-test('renders a NON-parcel source into info-panel HTML', () => {
-  const w = load();
+test('renders a NON-parcel source into info-panel HTML', async () => {
+  const w = (await load());
   const roads = { id: 'roads', idField: 'road_id', popup: { sections: [
     { title: 'Road', fields: [{ label: 'Name', field: 'name' }, { label: 'Surface', field: 'surface' }] } ] } };
   const html = w.PV_FEATURE_INFO.renderHtml(roads, { properties: { name: '32nd Ave', surface: 'Gravel' } }, null);
@@ -32,8 +33,8 @@ test('renders a NON-parcel source into info-panel HTML', () => {
   assert.match(html, /parcel-info-row/);   // uses the panel's styling
 });
 
-test('auto "Details" fallback renders scalar fields and skips objects', () => {
-  const w = load();
+test('auto "Details" fallback renders scalar fields and skips objects', async () => {
+  const w = (await load());
   const html = w.PV_FEATURE_INFO.renderHtml(null, { properties: { zone: 'R-1', max_ft: 35, geom: { x: 1 } } }, null);
   assert.match(html, /zone/);
   assert.match(html, /R-1/);
@@ -41,14 +42,14 @@ test('auto "Details" fallback renders scalar fields and skips objects', () => {
   assert.doesNotMatch(html, /geom/);        // object field skipped
 });
 
-test('empty feature degrades to a clean "No details" row, never throws', () => {
-  const w = load();
+test('empty feature degrades to a clean "No details" row, never throws', async () => {
+  const w = (await load());
   assert.doesNotThrow(() => w.PV_FEATURE_INFO.renderHtml(null, { properties: {} }, null));
   assert.match(w.PV_FEATURE_INFO.renderHtml(null, { properties: {} }, null), /No details/);
 });
 
-test('select renders detail and emits source-aware selection events', () => {
-  const w = load();
+test('select renders detail and emits source-aware selection events', async () => {
+  const w = (await load());
   const events = [];
   const titleEl = { textContent: '' };
   const bodyEl = { innerHTML: '' };

@@ -19,13 +19,17 @@
  *
  * Exposes: window.PV_LEDGER
  */
-(function (root) {
+import PV_TEMPLATE from './pv-template.js';
+import ISV from '../../../engine/capability.js';
+import ISV_LEDGER_CORE from '../../../engine/capabilities/ledger.core.js';
+
+const PV_LEDGER = (function (root) {
   'use strict';
 
-  var T = root.PV_TEMPLATE;
+  var T = PV_TEMPLATE;
   function esc(s) { return T ? T.escape(s) : String(s == null ? '' : s); }
   function apiBase() { return root.API_BASE || (root.PS_CONFIG && root.PS_CONFIG.API_BASE) || '/api'; }
-  function ledgerCore() { return root.ISV_LEDGER_CORE || null; }
+  function ledgerCore() { return ISV_LEDGER_CORE || null; }
 
   // Category → display color (presentation only; the category KEY + label come from
   // the deterministic core). Mirrors the Parcel Packet palette so the look is shared.
@@ -44,8 +48,8 @@
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
       .then(function (data) {
         var input = { events: (data && data.events) || [] };
-        if (root.ISV && root.ISV.invoke) {
-          return root.ISV.invoke('ledger', input, { ai: false })
+        if (ISV && ISV.invoke) {
+          return ISV.invoke('ledger', input, { ai: false })
             .then(function (res) { return { facts: res.facts, provenance: res.provenance }; });
         }
         var c = ledgerCore();
@@ -138,10 +142,14 @@
     });
   }
 
-  root.PV_LEDGER = {
+  return {
     fetchLedger: fetchLedger,
     renderLedger: renderLedger,
     openLedger: openLedger,
     wireRows: wireRows,
   };
-}(typeof window !== 'undefined' ? window : this));
+})(globalThis);
+
+// The window hook the page's classic scripts and the tests read (DIC-2180).
+globalThis.PV_LEDGER = PV_LEDGER;
+export default PV_LEDGER;

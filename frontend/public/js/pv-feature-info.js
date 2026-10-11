@@ -16,7 +16,9 @@
  *
  * Exposes: window.PV_FEATURE_INFO { renderHtml, show, select, autoConfig }
  */
-(function (root) {
+import ISV_POPUP from '../../../engine/popup.js';
+
+const PV_FEATURE_INFO = (function (root) {
   'use strict';
 
   function esc(s) {
@@ -55,9 +57,9 @@
   }
 
   function renderHtml(sourceConfig, feature, labels) {
-    if (!root.ISV_POPUP) return '';
+    if (!ISV_POPUP) return '';
     var cfg = (sourceConfig && sourceConfig.popup && sourceConfig.popup.sections) ? sourceConfig : autoConfig(feature);
-    var sections = root.ISV_POPUP.renderSections(cfg, feature, { labels: labels });
+    var sections = ISV_POPUP.renderSections(cfg, feature, { labels: labels });
     var html = sections.map(sectionHtml).join('');
     return html || '<div class="parcel-info-row"><span class="parcel-info-value">No details.</span></div>';
   }
@@ -109,5 +111,9 @@
     return true;
   }
 
-  root.PV_FEATURE_INFO = { renderHtml: renderHtml, show: show, select: select, autoConfig: autoConfig };
-}(typeof window !== 'undefined' ? window : this));
+  return { renderHtml: renderHtml, show: show, select: select, autoConfig: autoConfig };
+})(globalThis);
+
+// The window hook the page's classic scripts and the tests read (DIC-2180).
+globalThis.PV_FEATURE_INFO = PV_FEATURE_INFO;
+export default PV_FEATURE_INFO;

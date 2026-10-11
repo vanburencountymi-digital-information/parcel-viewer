@@ -22,7 +22,9 @@
 // entry. Rolldown bundles it and everything it imports into one IIFE, which then joins
 // its run like any classic file: same place, same synchronous timing, its own try/catch
 // (so the isolation unit is the entry, not each module it imports). Its source map points
-// at the original modules.
+// at the original modules. An import of a module that is already a shared instance on the
+// page (the engine's, or another converted viewer file's) reads its window hook instead of
+// bundling a copy (see module-hooks.mjs).
 //
 // Left alone: module/async/defer scripts, scripts with any attribute besides src (e.g.
 // /api/config.js's onerror), remote and /api/ URLs, and a lone local script (so the baked
@@ -30,9 +32,10 @@
 // stack serves this build too (`npm run dev` = `vite build --watch`, on the host).
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { rolldown } from 'rolldown';
 import { parseAst } from 'rolldown/parseAst';
+import { engineHooks, hookFor } from './module-hooks.mjs';
 
 // The folders the pages load scripts from, watched in `vite build --watch`: this plugin
 // reads those files itself, so Vite wouldn't otherwise know a change needs a rebuild.
@@ -211,10 +214,13 @@ export async function loadFile(root, src) {
     checkFile(src, code);
     return { src, code };
   }
-  const build = await rolldown({ input: file, cwd: root, logLevel: 'warn' });
+  const build = await rolldown({ input: file, cwd: root, logLevel: 'warn', plugins: [sharedInstances(root)] });
   try {
     // dir: root, so the map's sources are relative to the root (generate() writes nothing).
-    const { output: [chunk] } = await build.generate({ format: 'iife', sourcemap: true, dir: root });
+    const { output: [chunk] } = await build.generate({
+      format: 'iife', sourcemap: true, dir: root,
+      globals: (id) => (id.startsWith(HOOK_ID) ? `globalThis.${id.slice(HOOK_ID.length)}` : undefined),
+    });
     const out = chunk.code.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n');
     checkFile(src, out);
     const sources = chunk.map.sources.map((s) => urlPath(root, isAbsolute(s) ? s : resolve(root, s)));
@@ -222,6 +228,25 @@ export async function loadFile(root, src) {
   } finally {
     await build.close();
   }
+}
+
+// An import of a module that is a shared instance on the page (tools/vite/module-hooks.mjs)
+// is left out of the bundle and read from its window hook, so every entry uses the one
+// instance (e.g. one capability registry). Imports inside the engine stay bundled: the
+// engine entry is what creates those instances.
+const HOOK_ID = 'pv-hook:';
+function sharedInstances(root) {
+  const engineDir = resolve(root, 'engine') + sep;
+  const engine = engineHooks(root);
+  return {
+    name: 'pv-shared-instances',
+    resolveId(source, importer) {
+      if (!importer || !source.startsWith('.') || importer.startsWith(engineDir)) return null;
+      const target = resolve(dirname(importer), source);
+      const hook = hookFor(target, engine);
+      return hook ? { id: HOOK_ID + hook, external: true } : null;
+    },
+  };
 }
 
 function scriptFiles(root) {

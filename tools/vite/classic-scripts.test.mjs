@@ -1,6 +1,6 @@
 // npm run test:build  (DIC-2180 slice 2b)
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { test } from 'node:test';
@@ -141,6 +141,31 @@ test('a throwing ES module entry stops only itself', async () => {
     const { code } = bundle([await loadFile(dir, '/boom.js'), await loadFile(dir, '/after.js')]);
     const { window, reported } = run(code);
     assert.deepEqual([window.DEP, window.AFTER, reported], [1, 1, ['entry boom']]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an entry importing a shared instance reads its window hook instead of bundling a copy', async () => {
+  const dir = mkdtempSync(resolve(tmpdir(), 'pv-classic-'));
+  try {
+    mkdirSync(resolve(dir, 'engine'));
+    // An engine module (named in window-hooks.js) and a converted viewer module (its own hook).
+    writeFileSync(resolve(dir, 'engine/core.js'), 'const mod = { calls: 0 };\nexport { mod as default };\n');
+    writeFileSync(resolve(dir, 'engine/window-hooks.js'), "import ISV_CORE from './core.js';\nexport const viewerHooks = { ISV_CORE };\n");
+    writeFileSync(resolve(dir, 'engine/browser.js'), "import { viewerHooks } from './window-hooks.js';\nObject.assign(window, viewerHooks);\n");
+    writeFileSync(resolve(dir, 'shared.js'), 'const PV_SHARED = { made: 1 };\n\nglobalThis.PV_SHARED = PV_SHARED;\nexport default PV_SHARED;\n');
+    writeFileSync(resolve(dir, 'user.js'),
+      "import PV_SHARED from './shared.js';\nimport ISV_CORE from './engine/core.js';\n\n" +
+      'ISV_CORE.calls++;\nwindow.SAME = PV_SHARED === window.PV_SHARED && ISV_CORE === window.ISV_CORE;\n');
+
+    const files = [];
+    for (const src of ['/engine/browser.js', '/shared.js', '/user.js']) files.push(await loadFile(dir, src));
+    assert.doesNotMatch(files[2].code, /made: 1|calls: 0/, 'user.js bundles no copy of either module');
+    const { window, reported } = run(bundle(files).code);
+    assert.deepEqual(reported, []);
+    assert.equal(window.SAME, true, 'user.js got the instances already on the page');
+    assert.equal(window.ISV_CORE.calls, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

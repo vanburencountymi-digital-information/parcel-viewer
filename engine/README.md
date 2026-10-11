@@ -76,7 +76,7 @@ Zero third-party dependencies. Run the whole thing:
 ```bash
 bash engine/run-harness.sh
 # or individually:
-cd engine && node --test                                   # JS: cores, contract, parity, schema, smoke
+cd engine && npm test                                     # JS: cores, contract, parity, schema, smoke
 cd engine && python -m unittest test.run_explain_contract_test -v   # Python: run_explain structured output
 ```
 
