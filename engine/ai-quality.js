@@ -16,14 +16,9 @@
  * Runs in CI on golden/mock examples — no live model. The LLM-judge gate for prompt/
  * model changes is a separate, heavier layer; this is the cheap automated floor.
  *
- * UMD: Node module (harness) + browser global (window.ISV_AI_QUALITY).
+ * ES module (DIC-2180), Node only: the harness imports it; the pages don't load it.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_AI_QUALITY = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   // Extract MCL "cores" (e.g. 211.27a, 205.731, 211.7cc) from any citation text,
@@ -224,4 +219,6 @@
     mclCores: mclCores,
     dollarsIn: dollarsIn,
   };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

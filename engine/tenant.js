@@ -23,14 +23,9 @@
  * Source-agnostic: holds no domain field names, only the tenant registry data. The map is the
  * one place a new county's DB code is declared, so RLS, quotas, and flags resolve consistently.
  *
- * UMD: Node module (harness) + browser global (window.ISV_TENANT).
+ * ES module (DIC-2180), Node only: the harness imports it; the pages don't load it.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_TENANT = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   // Canonical tenant key → DB `county` code (the value RLS sets as app.current_tenant).
@@ -74,4 +69,6 @@
     register: register,
     tenants: tenants,
   };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

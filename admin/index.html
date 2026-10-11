@@ -46,17 +46,11 @@
        today; a runtime /config API (DIC-465) replaces this bake later. -->
   <script src="/frontend/public/js/county-config.js"></script>
   <script src="/frontend/public/js/pv-endpoints.js"></script>
-  <!-- ISV engine (C2 + B2): the Theme Manifest module assembles the editor slices into
-       one §5 manifest and validates it through the SAME loadManifest() gate CI uses.
-       Same modules the harness tests; engine dir is volume-mounted at /engine/. -->
-  <script src="/engine/manifest-version.js"></script>
-  <script src="/engine/validate-manifest.js"></script>
-  <script src="/engine/load-manifest.js"></script>
-  <script src="/engine/capability-catalog.js"></script>
-  <script src="/engine/manifest-assemble.js"></script>
-  <!-- B3 AI autoconfigure capability core (DIC-579): brief → draft manifest + rationale,
-       deterministic (works with no AI); lands in the Theme Manifest editor below. -->
-  <script src="/engine/capabilities/theme-composer.core.js"></script>
+  <!-- ISV engine (C2 + B2, ES modules since DIC-2180): the Theme Manifest module assembles
+       the editor slices into one §5 manifest and validates it through the SAME
+       loadManifest() gate CI uses; plus the B3 theme-composer core (DIC-579). The entry
+       puts the console's window.ISV_* hooks on window; the build bundles it in place. -->
+  <script src="/engine/browser-admin.js"></script>
   <script src="/admin/js/admin.js"></script>
 </body>
 </html>

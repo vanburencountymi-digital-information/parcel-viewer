@@ -16,21 +16,13 @@
  *
  * resolveCapabilities(manifest, flags) -> a new capabilities map (manifest untouched).
  *
- * UMD: Node module (harness) + browser global (window.ISV_FEATURE_FLAGS).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_FEATURE_FLAGS by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_FEATURE_FLAGS = mod;
-}(typeof self !== 'undefined' ? self : this, function (root) {
-  'use strict';
+import CATALOG from './capability-catalog.js';
 
-  function req(nodePath, globalName) {
-    if (typeof module !== 'undefined' && module.exports) return require(nodePath);
-    return root[globalName];
-  }
-  var CATALOG = req('./capability-catalog.js', 'ISV_CAPABILITY_CATALOG');
+const mod = (function () {
+  'use strict';
 
   function catalogDefault(id) {
     var spec = CATALOG && CATALOG.byId(id);
@@ -76,4 +68,6 @@
   }
 
   return { resolveCapabilities: resolveCapabilities, applyFlags: applyFlags, isEnabled: isEnabled };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

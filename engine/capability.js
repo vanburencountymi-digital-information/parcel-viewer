@@ -29,15 +29,10 @@
  * PROVISIONAL (§4.10): it is derived from two real capabilities (explainer +
  * ledger) and is expected to be refactored as A6/A7 add more.
  *
- * UMD: usable as a vanilla browser global (window.ISV) and as a Node module
- * (require) so the same code the viewer runs is the code the harness tests.
+ * ES module (DIC-2180): the harness imports it, and the viewer gets it as window.ISV
+ * (engine/window-hooks.js), so the same code the viewer runs is the code the harness tests.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod; // Node / harness
-  root.ISV = mod;                                                            // browser global
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   var AI_MODES = ['no-ai', 'ai-optional', 'ai-required'];
@@ -179,4 +174,6 @@
     AI_MODES: AI_MODES.slice(),
     CITATION_STATES: CITATION_STATES.slice(),
   };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

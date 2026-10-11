@@ -13,14 +13,10 @@
  * objects the globals point at, so old code and downstream consumers keep working
  * while new code moves to `ctx.map`. See engine/MIGRATION.md.
  *
- * UMD: Node module (harness) + browser global (window.ISV_CONTEXT).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_CONTEXT by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_CONTEXT = mod;
-}(typeof self !== 'undefined' ? self : this, function (root) {
+const mod = (function (root) {
   'use strict';
 
   // ── Event bus ───────────────────────────────────────────────────────────────
@@ -71,4 +67,6 @@
   }
 
   return { createEventBus: createEventBus, createAppContext: createAppContext };
-}));
+})(globalThis);
+
+export { mod as default, mod as 'module.exports' };

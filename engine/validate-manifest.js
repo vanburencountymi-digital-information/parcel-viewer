@@ -13,14 +13,10 @@
  *
  * validate(manifest) -> { valid: boolean, errors: string[] }
  *
- * UMD: Node module (harness) + browser global (window.ISV_VALIDATE_MANIFEST).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_VALIDATE_MANIFEST by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_VALIDATE_MANIFEST = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   var AI_TRISTATE = ['no-ai', 'ai-optional', 'ai-required'];
@@ -78,4 +74,6 @@
   }
 
   return { validate: validate, AI_TRISTATE: AI_TRISTATE.slice(), SOURCE_TYPES: SOURCE_TYPES.slice() };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

@@ -10,14 +10,10 @@
  * Migrations are an ordered chain of pure { from, to, migrate } steps. To evolve the
  * shape: bump CURRENT_VERSION, append a migration step, and update the JSON Schema.
  *
- * UMD: Node module (harness) + browser global (window.ISV_MANIFEST_VERSION).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_MANIFEST_VERSION by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_MANIFEST_VERSION = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   var CURRENT_VERSION = '1.0';
@@ -116,4 +112,6 @@
     isSupported: isSupported,
     MIGRATIONS: MIGRATIONS,
   };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

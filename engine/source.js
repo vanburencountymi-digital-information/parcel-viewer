@@ -20,14 +20,10 @@
  * interactive behavior. The primary domain layer becomes one configured source;
  * zoning/roads/etc. are others rendered through the same engine.
  *
- * UMD: Node module (harness) + browser global (window.ISV_SOURCE).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_SOURCE by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_SOURCE = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   function isObj(v) { return v != null && typeof v === 'object' && !Array.isArray(v); }
@@ -76,4 +72,6 @@
   }
 
   return { createSourceRegistry: createSourceRegistry, validate: validate };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

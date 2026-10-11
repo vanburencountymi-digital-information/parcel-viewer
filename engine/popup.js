@@ -16,14 +16,10 @@
  * renderSections(source, feature, opts?) -> [{ section, rows }]
  *   opts = { labels?, formatters? }
  *
- * UMD: Node module (harness) + browser global (window.ISV_POPUP).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_POPUP by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory();
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_POPUP = mod;
-}(typeof self !== 'undefined' ? self : this, function () {
+const mod = (function () {
   'use strict';
 
   function num(v) { if (v == null || v === '') return null; var n = Number(v); return isNaN(n) ? null : n; }
@@ -91,4 +87,6 @@
   }
 
   return { renderSections: renderSections, FORMATTERS: FORMATTERS };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

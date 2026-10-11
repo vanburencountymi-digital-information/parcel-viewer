@@ -91,22 +91,26 @@ CI runs the same checks on every pull request (`.github/workflows/lint.yml`). Ru
 
 ## Viewer stack — local development
 
-No frontend build step. nginx serves static JS/CSS directly.
+The pages are built by Vite (Node 22.12+), and nginx serves the build (DIC-2180). Keep the
+watch build running beside the stack: it rebuilds `dist/` about a second after you save a
+file; reload the page to see it.
 
 ```powershell
 git clone https://github.com/vanburencountymi-digital-information/parcel-viewer.git
 cd parcel-viewer
 cp .env.example .env          # fill PV_DATABASE_URL and MARTIN_DATABASE_URL
+npm ci
+npm run dev                   # vite build --watch; leave it running (own terminal)
 .\infra\compose.ps1 up --build -d
 ```
 
-Open `http://localhost:8080/demo/`. Stop with `.\infra\compose.ps1 down`.
+Open `http://localhost:8080/demo/`. Stop with `.\infra\compose.ps1 down` (and Ctrl-C the watch).
 
 ### What runs in Docker
 
 | Service | Role |
 |---------|------|
-| **web** (nginx) | Static assets + `/api` and `/tiles` proxy |
+| **web** (nginx) | The Vite build in `dist/` (pages + `/assets/` bundles), runtime data files, `/api` and `/tiles` proxy |
 | **api** | FastAPI parcel read API |
 | **martin** | Vector tiles from `geo.parcel_tiles()` |
 

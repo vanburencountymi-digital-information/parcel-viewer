@@ -17,22 +17,14 @@
  * assembleManifest(config, opts) -> manifest (a plain object; NOT yet validated — the caller
  * runs it through ISV_LOAD_MANIFEST.loadManifest to validate, same as every other consumer).
  *
- * UMD: Node module (harness) + browser global (window.ISV_MANIFEST_ASSEMBLE).
+ * ES module (DIC-2180): imported by the harness and, in the browser, put on
+ * window.ISV_MANIFEST_ASSEMBLE by engine/window-hooks.js.
  */
-(function (root, factory) {
-  'use strict';
-  var mod = factory(root);
-  if (typeof module !== 'undefined' && module.exports) module.exports = mod;
-  root.ISV_MANIFEST_ASSEMBLE = mod;
-}(typeof self !== 'undefined' ? self : this, function (root) {
-  'use strict';
+import MV from './manifest-version.js';
+import CATALOG from './capability-catalog.js';
 
-  function req(nodePath, globalName) {
-    if (typeof module !== 'undefined' && module.exports) return require(nodePath);
-    return root[globalName];
-  }
-  var MV = req('./manifest-version.js', 'ISV_MANIFEST_VERSION');
-  var CATALOG = req('./capability-catalog.js', 'ISV_CAPABILITY_CATALOG');
+const mod = (function () {
+  'use strict';
 
   // Generic layer-config keys copied verbatim onto a manifest source entry (source-agnostic
   // — these are layer vocabulary, not domain nouns). `source` = the tile-function/provider
@@ -198,4 +190,6 @@
   }
 
   return { assembleManifest: assembleManifest, normType: normType };
-}));
+})();
+
+export { mod as default, mod as 'module.exports' };

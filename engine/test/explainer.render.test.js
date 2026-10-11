@@ -31,10 +31,9 @@ function makeViewer() {
 
   const load = (p) => vm.runInContext(fs.readFileSync(p, 'utf8'), sandbox, { filename: p });
   load(path.join(REPO, 'frontend/public/js/pv-template.js'));
-  load(path.join(REPO, 'engine/capability.js'));
-  load(path.join(REPO, 'engine/capabilities/explainer.core.js'));
-  load(path.join(REPO, 'engine/capabilities/ledger.core.js'));
-  load(path.join(REPO, 'engine/capabilities/register.js'));
+  // The engine is ES modules now (DIC-2180): put its window hooks on the sandbox, as the
+  // page's engine entry (engine/browser.js) puts them on window.
+  Object.assign(sandbox, require('../window-hooks.js').viewerHooks);
   load(path.join(REPO, 'frontend/public/js/pv-explain.js'));
   return sandbox;
 }
