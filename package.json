@@ -7,7 +7,8 @@
     "node": ">=22.12"
   },
   "scripts": {
-    "build": "vite build --config vite.config.mjs"
+    "build": "vite build --config vite.config.mjs",
+    "test:build": "node --test tools/vite/classic-scripts.test.mjs"
   },
   "devDependencies": {
     "vite": "8.3.3"

@@ -3,6 +3,7 @@
 !package.json
 !package-lock.json
 !vite.config.mjs
+!tools/vite/
 !demo/
 !admin/
 !frontend/public/
