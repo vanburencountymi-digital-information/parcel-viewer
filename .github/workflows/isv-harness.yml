@@ -196,6 +196,8 @@ jobs:
           ! grep -q '/frontend/public/js/map.js' dist/demo/index.html   # bundled (slice 2b)
           # The baked county config stays its own tag, just before the served one.
           grep -A1 '/frontend/public/js/county-config.js' dist/demo/index.html | grep -q '/api/config.js'
+          # No code from a CDN: MapLibre, Turf and proj4 are bundled from npm (slice 4).
+          ! grep -qE '(src|href)="https://(unpkg|cdn\.jsdelivr|cdnjs)' dist/demo/index.html dist/admin/index.html
 
       - name: Build the web image
         run: docker build -f infra/web.Dockerfile --tag parcel-viewer-web:ci .

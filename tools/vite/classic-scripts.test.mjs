@@ -27,6 +27,29 @@ test('findRuns bundles only runs of 2+ local classic scripts', () => {
   assert.deepEqual(findRuns(html).map((r) => r.srcs), [['/a.js', '/b.js'], ['/g.js', '/h.js']]);
 });
 
+test('libraries from node_modules get runs of their own, even a lone one', () => {
+  const html = `
+    <script src="/a.js"></script>
+    <script src="/node_modules/lib1/dist/lib1.js"></script>
+    <script src="/node_modules/lib2/lib2.min.js"></script>
+    <script src="/b.js"></script>
+    <script src="/c.js"></script>
+    <script src="https://cdn.example/x.js"></script>
+    <script src="/node_modules/lone/lone.js"></script>`;
+  assert.deepEqual(findRuns(html).map((r) => r.srcs), [
+    ['/node_modules/lib1/dist/lib1.js', '/node_modules/lib2/lib2.min.js'],
+    ['/b.js', '/c.js'],
+    ['/node_modules/lone/lone.js'],
+  ]);
+});
+
+test('the viewer loads no script or stylesheet from a CDN', () => {
+  for (const page of ['demo/index.html', 'admin/index.html']) {
+    const html = readFileSync(resolve(repo, page), 'utf8');
+    assert.doesNotMatch(html, /<(script|link)\b[^>]*(src|href)="https?:\/\/(?!fonts\.(googleapis|gstatic)\.com)/, page);
+  }
+});
+
 test('checkFile accepts a single IIFE and rejects what a block would change', () => {
   checkFile('ok.js', "(function (root) { 'use strict'; root.X = 1; })(window);");
   checkFile('var.js', 'var shared = 1;');

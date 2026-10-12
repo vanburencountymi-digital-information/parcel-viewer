@@ -113,8 +113,12 @@ Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
 - **Headers:** `X-Content-Type-Options: nosniff` everywhere; `Referrer-Policy`,
   `X-Frame-Options: SAMEORIGIN` and a Content-Security-Policy on the pages.
 - **CSP is report-only for now.** It allows `'unsafe-inline'` because `demo/index.html` has
-  inline scripts, and three CDNs with Subresource Integrity on pinned libraries. Plan: move
-  the inline scripts out, run a clean report period with testers, then enforce.
+  inline scripts. No CDN hosts: MapLibre, Turf and proj4 are pinned npm packages
+  (package-lock integrity) bundled into the site (DIC-2180); fonts come from Google. Plan:
+  move the inline scripts out, run a clean report period with testers, then enforce.
+- **Third-party libraries:** `npm audit` covers them now. Known: MapLibre 4.7.1 has a
+  critical advisory (GHSA-jrc7-96c5-q579, sanitizer bypass, fixed in 6.14); upgrading is
+  its own ticket.
 - **HSTS** is added where TLS terminates (nginx on the VM with Certbot; Drake to confirm).
 
 **The AI boundary**
