@@ -1,0 +1,5 @@
+{
+  "private": true,
+  "description": "The viewer's Vue islands (DIC-2389, ADR 0017): ES modules, built and tested from the repo root (npm run build, npm test).",
+  "type": "module"
+}
