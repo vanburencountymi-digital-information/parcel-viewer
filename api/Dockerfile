@@ -35,7 +35,9 @@ RUN SECRET_KEY=build-only DATABASE_URL=postgis://x@localhost/x PV_DATABASE_URL=p
     python manage.py collectstatic --noinput
 USER app
 # Two workers × a pool of 5 = at most 10 parcel connections (ADR 0005).
-CMD ["sh", "-c", "exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers 2 --threads 4 --timeout 60 --access-logfile -"]
+# Workers and threads are settings: each worker has its own database pools, so production
+# sizes them with the shared database's connection budget (infra/DEPLOY-CHECKLIST.md).
+CMD ["sh", "-c", "exec gunicorn config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers ${GUNICORN_WORKERS:-2} --threads ${GUNICORN_THREADS:-4} --timeout 60 --access-logfile -"]
 
 
 FROM base AS dev

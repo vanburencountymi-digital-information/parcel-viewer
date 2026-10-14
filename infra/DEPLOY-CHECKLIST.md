@@ -6,7 +6,7 @@ Target: a live URL for testing at `gis.dicemi.org` during the parallel rollout, 
 [DIC-1851 Pre-launch hardening](https://linear.app/dicelabs/issue/DIC-1851).
 
 Two deployables:
-- **Viewer** — nginx + `api` (FastAPI) + `martin` (tiles). **Production: `infra/docker-compose.prod.yml`** + `infra/nginx.viewer.conf`. `infra/docker-compose.viewer.yml` is the local dev stack (adds a local Map Buddy, API docs and readable logs); don't deploy it.
+- **Viewer** — nginx + `django-api` (the Django API, the first deployed backend; DIC-2150) with its own `django-db`, + `martin` (tiles). **Production: `infra/docker-compose.prod.yml`** + `infra/nginx.viewer.conf`. `infra/docker-compose.viewer.yml` is the local dev stack (adds a local Map Buddy, API docs and readable logs); don't deploy it.
 - **Map Buddy** — the AI service, separate, on **Cloud Run** (`map-buddy/deploy.sh`).
 
 Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / hosting · **[verify]** = check before/after.
@@ -32,28 +32,41 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
 
 2. **[verify] Viewer points at the deployed Map Buddy URL.** `deploy.sh` prints the Cloud Run URL. It lives in **config only**, in three files, and every browser module resolves it through `frontend/public/js/pv-endpoints.js`:
    - `frontend/public/js/county-config.js` (`endpoints.mapBuddy`)
-   - `backend/parcel_viewer/county_configs/vanburen.json` (served as `/api/config.js`; the `api` image is baked, **rebuild it** if changed)
+   - `api/county_config/baked/vanburen.json` (production serves it as `/api/config.js`; the `django-api` image is baked, **rebuild it** if changed)
+   - `backend/parcel_viewer/county_configs/vanburen.json` (the same file for the FastAPI backend, which now runs only locally; keep the two identical)
    - `engine/themes/vanburen.json` (`endpoints.mapBuddy` and `mapBuddy.apiBase`)
 
-   Today they read `https://map-buddy-toaozre74a-uc.a.run.app`. If the URL changes, update all three; `engine/test/endpoints.test.js` (runs in CI) fails if they disagree or if any code file hardcodes the URL.
+   Today they read `https://map-buddy-toaozre74a-uc.a.run.app`. If the URL changes, update all four; `engine/test/endpoints.test.js` (runs in CI) fails if they disagree or if any code file hardcodes the URL.
 
-3. **[infra] Host the viewer stack** behind the live URL (nginx + api + martin) with `infra/docker-compose.prod.yml`:
+3. **[infra] Host the viewer stack** behind the live URL (nginx + Django API + martin) with `infra/docker-compose.prod.yml`. First set the three settings it requires in `.env` (compose refuses to start without them): `DJANGO_SECRET_KEY`, `DJANGO_DB_PASSWORD` and `PV_PUBLIC_HOST` (see "Django API" below). Then:
    ```bash
    APP_VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//') docker compose -f infra/docker-compose.prod.yml --env-file .env up --build -d
    ```
    If you host nginx some other way, use `infra/nginx.viewer.conf` plus `infra/nginx/map-buddy-api.prod.conf` (mounted at `/etc/nginx/pv/map-buddy-api.conf`), or replicate everything under "nginx" below — the rate limits, security headers and private-file blocks live there. **Never** mount the `.dev.conf` snippet in production: it proxies `/map-buddy-api/` to a local Map Buddy (the smoke test fails if that route answers).
-   - Each service gets **only its own settings** (compose `environment:` lists, not `env_file`): `api` never sees the Anthropic key or Martin's login, `martin` sees only `MARTIN_DATABASE_URL`. A new setting must be added to the service's list to take effect.
+   - **Start-up order:** `django-db` (healthy) → `django-migrate` (applies Django's migrations, then exits) → `django-api` (healthy on `/health`) → `web`. A failed migration stops the deploy before anything is served.
+   - Each service gets **only its own settings** (compose `environment:` lists, not `env_file`): the Django API never sees the Anthropic key or Martin's login, and `martin` sees only `MARTIN_DATABASE_URL`. A new setting must be added to the service's list to take effect (for Django, the shared `x-django-environment` block).
    - **The `web` service is a built image** (`infra/web.Dockerfile`, DIC-2180): `--build` runs the Vite build in a Node stage and copies the pages, the hashed CSS (`/assets/`) and the script/engine/Map Buddy folders into nginx. The host needs Docker only. Only nginx's config and its two per-environment includes are mounted.
    - **Caching:** `/assets/` files are content-hashed and sent with a one-year `immutable` cache. The pages and the scripts still load by literal paths (bundling them is DIC-2180 slice 2b), so `/demo/`, `/admin/`, `/frontend/public/`, `/engine/` and `/map-buddy/js|css/` keep `Cache-Control: no-store` for now.
-   - **Rebuild `api`** from `backend/` — it's a baked image and much of the hardening is in it.
+   - **`--build` rebuilds the Django image** (`api/`, target `production`: gunicorn, with the admin's static files collected at build). It's a baked image, config included.
+   - **TLS** ends at the proxy in front of nginx (DIC-1863 Q3). That proxy must send `X-Forwarded-Proto: https`; nginx passes it on to Django, which otherwise redirects every API call to HTTPS (and would loop). Django's own redirect stays on as a backstop (`SECURE_SSL_REDIRECT=1`); set `0` only for a deployment served over plain HTTP.
+   - **First staff account** (signs in to the Admin Console, and to the Django admin at `/api/django-admin/`):
+     ```bash
+     docker compose -f infra/docker-compose.prod.yml --env-file .env exec django-api python manage.py createsuperuser
+     ```
+     Then, in the Django admin, give each staff user the counties they may edit (County access). Further staff accounts can be made there.
+   - **Back up `django-db`** (staff accounts, sign-in tokens, data-access counters; the parcel data is elsewhere):
+     ```bash
+     docker compose -f infra/docker-compose.prod.yml --env-file .env exec -T django-db pg_dump -U django parcel_viewer_api > django-db-$(date +%F).sql
+     ```
+     The data lives in the `django_db_data` volume: `docker compose down` keeps it, `down -v` deletes it.
 
-4. **[verify] Database.** `api` + `martin` must reach the shared Cloud SQL PostGIS from the prod host. Restart `martin` after deploy so it discovers the `geo.*_tiles` functions.
-   - **Connection budget (DIC-1884).** `infra/docker-compose.prod.yml` defaults to the stopgap until PgBouncer (DIC-316): **1 API worker with a read pool of 5**, plus up to 4 config-store connections, plus Martin's 8 (`pool_size` in `infra/martin/martin.yaml`) = **at most 17**.
+4. **[verify] Database.** `django-api` + `martin` must reach the shared Cloud SQL PostGIS from the prod host. Restart `martin` after deploy so it discovers the `geo.*_tiles` functions.
+   - **Connection budget (DIC-1884).** `infra/docker-compose.prod.yml` defaults to the stopgap until PgBouncer (DIC-316): **1 gunicorn worker (4 threads) with a read pool of 4**, plus up to 4 config-store connections (only when `PV_WRITER_DATABASE_URL` points at db-dice), plus Martin's 8 (`pool_size` in `infra/martin/martin.yaml`) = **at most 16** of the 17 this checklist allows. (The FastAPI figures below, from before DIC-2150, used a read pool of 5.)
      - *Measured* during a full e2e run against the production stack (2026-09-26): the viewer peaked at **14** (API 6, Martin 8; the config store wasn't enabled). One API worker kept up: the suite took 23.9 min against 23.5 min with 2 workers.
      - *The database:* db-dice's `max_connections` is **50** (3 reserved for superusers), not the 25 noted in June. Other clients held up to 16 at their separate peaks (10 `postgres` sessions; 6 untagged `parcel_studio_app`, probably parcel-studio, which shares the viewer's role). Everything together peaked at **27**.
-     - The old defaults (2 workers × (10 + 4) + 8 = 36) could exhaust it alongside those, which is why they're no longer the production default. Raise `UVICORN_WORKERS` / `PV_POOL_MAX` only when the budget allows.
-     - *Counting:* the API's connections are named in `pg_stat_activity` (`application_name` = `parcel-viewer-api` / `parcel-viewer-config`), so `SELECT application_name, count(*) FROM pg_stat_activity GROUP BY 1` shows the viewer's share.
-   - **Admin config store (optional):** if `PV_WRITER_DATABASE_URL` is set, apply `backend/migrations/0001_config_store.sql` first (creates schema `config` + role `pv_writer`), then `0002_config_versions_unique_version.sql` (one row per published version, so simultaneous publishes get a 409 rather than a duplicate; DIC-1872). The `pv_writer` bug where the store never initialized (no `CREATE` on schema `config`) is fixed (#17).
+     - The old defaults (2 workers × (10 + 4) + 8 = 36) could exhaust it alongside those, which is why they're no longer the production default. Raise `GUNICORN_WORKERS` / `DB_POOL_MAX` only when the budget allows: every worker has its own pools.
+     - *Counting:* the Django API's connections are named in `pg_stat_activity` (`application_name` = `parcel-viewer-django`; FastAPI's were `parcel-viewer-api` / `parcel-viewer-config`), so `SELECT application_name, count(*) FROM pg_stat_activity GROUP BY 1` shows the viewer's share.
+   - **Admin config store:** without `PV_WRITER_DATABASE_URL`, it lives in `django-db`, which creates its tables on first start. To keep it on db-dice instead, set `PV_WRITER_DATABASE_URL` and apply `backend/migrations/0001_config_store.sql` first (creates schema `config` + role `pv_writer`), then `0002_config_versions_unique_version.sql` (one row per published version, so simultaneous publishes get a 409 rather than a duplicate; DIC-1872). The `pv_writer` bug where the store never initialized (no `CREATE` on schema `config`) is fixed (#17).
 
 5. **[decide] Tenant isolation (RLS).** Single-tenant VBC (current) → migration 015 can wait. Multi-tenant → apply `county-data-services/migrations/015_tenant_isolation_rls.sql` and set `app.current_tenant` per request.
 
@@ -63,7 +76,24 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
 
 ## Settings changed by the pre-launch hardening (2026-09-25, PRs #16–#21)
 
-### Viewer `api` (env)
+### Django API (`django-api`, production; DIC-2150)
+
+Set in `.env`; compose passes them through the `x-django-environment` block of `infra/docker-compose.prod.yml`.
+
+| Variable | Default | Prod guidance |
+|---|---|---|
+| `DJANGO_SECRET_KEY` | **required** | A long random string (`python -c "import secrets; print(secrets.token_urlsafe(48))"`). Signs sessions and tokens; never reuse the dev one. |
+| `DJANGO_DB_PASSWORD` | **required** | Password for Django's own database (`django-db`). Set it before the first start: the volume is created with it. |
+| `PV_PUBLIC_HOST` | **required** | The public host name, e.g. `gis.vanburencountymi.gov` (no scheme). Becomes `ALLOWED_HOSTS` and the trusted origin `https://<host>` for the Django admin's forms. |
+| `GUNICORN_WORKERS` / `GUNICORN_THREADS` / `DB_POOL_MAX` | `1` / `4` / `4` | Size with the DB connection budget (step 4): every worker has its own pools. |
+| `SECURE_SSL_REDIRECT` | `1` | Django's HTTPS backstop behind the TLS proxy. `0` only when serving over plain HTTP. |
+| `SECURE_HSTS_SECONDS` | `0` | HSTS from Django; normally set where TLS terminates instead (DIC-1863 Q3). |
+| `PV_ACCESS_MODE` / `PV_DETAIL_BUDGET` / `PV_SERVICE_KEYS` | per county / `5000` / unset | Data access for counties that sell data (ADR 0015). |
+| `LOG_FORMAT` | `json` | Set by the compose file. |
+
+The rest (`PV_DATABASE_URL`, `PV_WRITER_DATABASE_URL`, `PV_CORS_ORIGINS`, mail, rate limits, Sentry, `LOG_LEVEL`) mean what they do for FastAPI below. Not used by Django: `UVICORN_WORKERS` and `PV_POOL_MAX` (see `GUNICORN_*` / `DB_POOL_MAX`), and `PV_ADMIN_TOKEN` (staff sign in with accounts instead; DIC-2151).
+
+### FastAPI `api` (env; the local dev stack only since DIC-2150)
 
 | Variable | Default | Prod guidance |
 |---|---|---|

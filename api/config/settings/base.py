@@ -44,7 +44,10 @@ CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if IS_DEPLOYED else None
 SESSION_COOKIE_SECURE = IS_DEPLOYED
 CSRF_COOKIE_SECURE = IS_DEPLOYED
-SECURE_SSL_REDIRECT = IS_DEPLOYED
+# The proxy in front normally redirects HTTP to HTTPS itself; this is Django's own backstop.
+# SECURE_SSL_REDIRECT=0 turns it off for a deployment served over plain HTTP (a local run of
+# the production compose, or a demo before TLS), where it would send every API call to https.
+SECURE_SSL_REDIRECT = env.bool("SECURE_SSL_REDIRECT", default=IS_DEPLOYED)
 # Platform health probes call the container over plain HTTP inside the network. The match
 # is on request.path, which carries the /api mount when PV_SCRIPT_NAME is set.
 SECURE_REDIRECT_EXEMPT = [r"^(?:api/)?health$"]

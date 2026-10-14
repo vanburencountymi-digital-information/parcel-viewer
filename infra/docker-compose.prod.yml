@@ -1,64 +1,127 @@
 # PRODUCTION stack for the Parcel Viewer (DIC-1871). Differences from the dev
 # docker-compose.viewer.yml:
+#   - the API is the Django port (DIC-2150): the first deployed backend, so FastAPI isn't
+#     part of production at all;
 #   - no local map-buddy container: the viewer calls the Cloud Run service directly,
 #     and nginx answers /map-buddy-api/ with 404 (infra/nginx/map-buddy-api.prod.conf);
-#   - API docs off, JSON logs (the image defaults), no source bind-mounts for services;
+#   - JSON logs, no source bind-mounts for services;
 #   - each service receives only the settings it reads.
 #
 # Usage (from the repo root, with the release version baked in; ADR 0002):
 #   APP_VERSION=$(git describe --tags --abbrev=0 | sed 's/^v//') \
 #     docker compose -f infra/docker-compose.prod.yml --env-file .env up --build -d
 #
-# See infra/DEPLOY-CHECKLIST.md for every setting, then run infra/smoke-test.sh.
+# Required in .env: DJANGO_SECRET_KEY, DJANGO_DB_PASSWORD, PV_PUBLIC_HOST, PV_DATABASE_URL,
+# MARTIN_DATABASE_URL. See infra/DEPLOY-CHECKLIST.md for every setting (and for creating the
+# first staff account), then run infra/smoke-test.sh.
+
+# Django's settings, shared by the one-shot migration and the API so they can't drift.
+x-django-environment: &django-environment
+  ENVIRONMENT: production
+  APP_VERSION: ${APP_VERSION:-0.0.0}
+  SECRET_KEY: ${DJANGO_SECRET_KEY:?set DJANGO_SECRET_KEY in .env (a long random string)}
+  # Django's own database (staff accounts, sign-in tokens, data-access counters): django-db.
+  DATABASE_URL: postgis://django:${DJANGO_DB_PASSWORD:?set DJANGO_DB_PASSWORD in .env}@django-db:5432/parcel_viewer_api
+  # The shared parcel database (read-only session) and the county config store. Without a
+  # writer URL, the config store lives in django-db (its tables are created there below).
+  PV_DATABASE_URL:
+  PV_WRITER_DATABASE_URL:
+  # The public host name (e.g. gis.vanburencountymi.gov). Django answers only for it (plus
+  # the in-network names), and trusts form posts from its HTTPS origin (the Django admin).
+  ALLOWED_HOSTS: ${PV_PUBLIC_HOST:?set PV_PUBLIC_HOST in .env (the public host name)},localhost,127.0.0.1,django-api
+  CSRF_TRUSTED_ORIGINS: https://${PV_PUBLIC_HOST:?set PV_PUBLIC_HOST in .env (the public host name)}
+  # nginx serves the API at /api/ and strips the prefix; Django builds its links with it.
+  PV_SCRIPT_NAME: /api
+  # Connection budget on the shared database (DIC-1884, DIC-316), same as FastAPI's
+  # stopgap: 1 worker x (4 read + up to 4 config store) + Martin's 8 = at most 16 of the
+  # 17 the checklist allows. Raise only when the database's budget allows.
+  GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
+  GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+  DB_POOL_MAX: ${DB_POOL_MAX:-4}
+  DB_STATEMENT_TIMEOUT_MS:
+  # HTTPS: TLS ends at the proxy in front of nginx, which redirects HTTP itself. Django's
+  # own redirect is a backstop; SECURE_SSL_REDIRECT=0 only for a plain-HTTP deployment.
+  SECURE_SSL_REDIRECT: ${SECURE_SSL_REDIRECT:-1}
+  SECURE_HSTS_SECONDS:
+  PV_DEFAULT_COUNTY:
+  PV_CORS_ORIGINS:
+  PV_ACCESS_MODE:
+  PV_DETAIL_BUDGET:
+  PV_ACCESS_TIMEZONE:
+  PV_SERVICE_KEYS:
+  PV_TOKENS_PER_USER:
+  PV_CONFIG_STORE_RETRY_S:
+  PV_DISCOVERY_CACHE_S:
+  PV_SMTP_HOST:
+  PV_SMTP_PORT:
+  PV_SMTP_USER:
+  PV_SMTP_PASSWORD:
+  PV_SMTP_STARTTLS:
+  PV_REPORT_TO:
+  PV_REPORT_FROM:
+  REPORT_ERROR_RATE_LIMIT:
+  REPORT_ERROR_GLOBAL_LIMIT:
+  CLIENT_ERROR_RATE_LIMIT:
+  CLIENT_ERROR_GLOBAL_LIMIT:
+  WMS_PROXY_RATE_LIMIT:
+  WMS_PROXY_MAX_BYTES:
+  SENTRY_DSN:
+  SENTRY_ENVIRONMENT:
+  SENTRY_TRACES_SAMPLE_RATE:
+  LOG_LEVEL:
+  LOG_FORMAT: json
 
 services:
-  api:
+  # Django's own database. Small (accounts, tokens, daily counters), but it holds the staff
+  # accounts: back up the volume (infra/DEPLOY-CHECKLIST.md). Never published on a port.
+  django-db:
+    image: postgis/postgis:17-3.5-alpine
+    environment:
+      POSTGRES_DB: parcel_viewer_api
+      POSTGRES_USER: django
+      POSTGRES_PASSWORD: ${DJANGO_DB_PASSWORD:?set DJANGO_DB_PASSWORD in .env}
+    volumes:
+      - django_db_data:/var/lib/postgresql/data
+      # The config store's tables, for when PV_WRITER_DATABASE_URL isn't set (the dev
+      # stack does the same). Run once, when the volume is first created.
+      - ../backend/migrations/0001_config_store.sql:/docker-entrypoint-initdb.d/10_config_store.sql:ro
+      - ../backend/migrations/0002_config_versions_unique_version.sql:/docker-entrypoint-initdb.d/20_config_versions_unique_version.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U django -d parcel_viewer_api"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # Applies Django's migrations (its own tables only; ADR 0010), then exits. The API starts
+  # only after it succeeds, so a deploy never serves an unmigrated database.
+  django-migrate:
+    image: parcel-viewer-django:local
     build:
-      context: ../backend
-      dockerfile: Dockerfile
+      context: ../api
+      target: production
       args:
         APP_VERSION: ${APP_VERSION:-0.0.0}
-    environment:
-      # Only what the API reads (DIC-1871): no Anthropic key, no Martin credentials.
-      - PV_DATABASE_URL
-      - PV_DEFAULT_COUNTY
-      - PV_CORS_ORIGINS
-      # Connection-budget stopgap until PgBouncer (DIC-316, DIC-1884): 1 worker x
-      # (5 read + up to 4 config) + Martin's 8 = at most 17 connections to db-dice.
-      # Raise both only when the database's budget allows (infra/DEPLOY-CHECKLIST.md).
-      - PV_POOL_MAX=${PV_POOL_MAX:-5}
-      - PV_POOL_TIMEOUT_S
-      - PV_STATEMENT_TIMEOUT_MS
-      - PV_DB_CONNECT_TIMEOUT_S
-      - PV_DB_TCP_USER_TIMEOUT_MS
-      - PV_WRITER_DATABASE_URL
-      - PV_WRITER_POOL_MAX
-      - PV_WRITER_POOL_TIMEOUT_S
-      - PV_WRITER_CONNECT_TIMEOUT_S
-      - PV_CONFIG_STORE_RETRY_S
-      - PV_ADMIN_TOKEN
-      - PV_DISCOVERY_CACHE_S
-      - PV_SMTP_HOST
-      - PV_SMTP_PORT
-      - PV_SMTP_USER
-      - PV_SMTP_PASSWORD
-      - PV_SMTP_STARTTLS
-      - PV_REPORT_TO
-      - PV_REPORT_FROM
-      - REPORT_ERROR_RATE_LIMIT
-      - REPORT_ERROR_GLOBAL_LIMIT
-      - CLIENT_ERROR_RATE_LIMIT
-      - CLIENT_ERROR_GLOBAL_LIMIT
-      - WMS_PROXY_RATE_LIMIT
-      - WMS_PROXY_MAX_BYTES
-      # A bare name that isn't set REMOVES the variable, image ENV default included,
-      # so anything the Dockerfile defaults needs an explicit fallback here.
-      - UVICORN_WORKERS=${UVICORN_WORKERS:-1}
-      - SENTRY_DSN
-      - SENTRY_ENVIRONMENT
-      - SENTRY_TRACES_SAMPLE_RATE
-      - LOG_LEVEL
-      - PV_MARTIN_PUBLIC_URL=/tiles
+    command: ["python", "manage.py", "migrate", "--noinput"]
+    environment: *django-environment
+    depends_on:
+      django-db:
+        condition: service_healthy
+    restart: "no"
+
+  django-api:
+    image: parcel-viewer-django:local
+    environment: *django-environment
+    depends_on:
+      django-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # /health is exempt from the HTTPS redirect; the image has Python but no curl.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://localhost:8000/health', timeout=3).status != 200)"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     restart: unless-stopped
     expose:
       - "8000"
@@ -87,11 +150,16 @@ services:
       - ./nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro
       # Prod: /map-buddy-api/ is a 404; there is no local Map Buddy (DIC-1871).
       - ./nginx/map-buddy-api.prod.conf:/etc/nginx/pv/map-buddy-api.conf:ro
-      # /api/ is FastAPI until the Django port's cutover (DIC-2150).
-      - ./nginx/api-upstream.fastapi.conf:/etc/nginx/pv/api-upstream.conf:ro
+      # /api/ is the Django port (DIC-2150).
+      - ./nginx/api-upstream.django.conf:/etc/nginx/pv/api-upstream.conf:ro
     ports:
       - "${PV_HTTP_PORT:-8080}:80"
     depends_on:
-      - api
-      - martin
+      django-api:
+        condition: service_healthy
+      martin:
+        condition: service_started
     restart: unless-stopped
+
+volumes:
+  django_db_data:

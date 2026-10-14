@@ -16,6 +16,8 @@ const REPO = path.resolve(__dirname, '..', '..');
 const CONFIG_FILES = new Set([
   'frontend/public/js/county-config.js',
   'backend/parcel_viewer/county_configs/vanburen.json',
+  // The Django API's copy, which production serves as /api/config.js (DIC-2150).
+  'api/county_config/baked/vanburen.json',
   'engine/themes/vanburen.json',
 ]);
 
@@ -44,10 +46,12 @@ test('every config copy of the Map Buddy URL agrees', () => {
   const countyJs = fs.readFileSync(path.join(REPO, 'frontend/public/js/county-config.js'), 'utf8');
   const baked = (countyJs.match(/mapBuddy:\s*"([^"]+)"/) || [])[1];
   const served = require(path.join(REPO, 'backend/parcel_viewer/county_configs/vanburen.json')).endpoints.mapBuddy;
+  const servedDjango = require(path.join(REPO, 'api/county_config/baked/vanburen.json')).endpoints.mapBuddy;
   const theme = require(path.join(REPO, 'engine/themes/vanburen.json'));
   const copies = {
     'county-config.js endpoints.mapBuddy': baked,
     'county_configs/vanburen.json endpoints.mapBuddy': served,
+    'api baked/vanburen.json endpoints.mapBuddy (production)': servedDjango,
     'themes/vanburen.json endpoints.mapBuddy': theme.endpoints && theme.endpoints.mapBuddy,
     'themes/vanburen.json mapBuddy.apiBase': theme.mapBuddy && theme.mapBuddy.apiBase,
   };
