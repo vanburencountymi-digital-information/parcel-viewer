@@ -88,7 +88,9 @@ exposes and what it needs loaded first.
 The panels are moving to Vue 3, one at a time (ADR 0017, DIC-2389). Vue components live in
 `frontend/src/` and mount as islands from one module entry, `frontend/src/main.js`, after the
 classic scripts. They keep the `window` API their callers use (Compare keeps `PV_COMPARE`) and
-read the rest of the viewer only through `frontend/src/shared/viewer.js`. Compare is the first.
+read the rest of the viewer only through `frontend/src/shared/viewer.js`. So far: Compare, and
+the Selection Tools pane, whose map side (the selection, the box and lasso gestures, the buffer
+highlights) stays in `map.js` behind `PS_SELECT_MAP`.
 
 ### The engine (`engine/`)
 The start of a source-agnostic engine shared with other viewers (ZIP, for zoning). It

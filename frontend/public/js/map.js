@@ -105,11 +105,10 @@
   let activeInfoIndex = 0;
 
   // ── Active spatial tool (IIFE-scope so map click handler can read it) ──
+  // Set by the Selection Tools pane (a Vue island) through PS_SELECT_MAP.setTool.
   let activeTool        = null;
   let bufferSeedPin     = null;
-  let bufferSeedGeom    = null;
   let bufferPreviewPins = [];
-  let bufferDebounceTimer = null;
 
   // Track Shift key state independently — more reliable than e.originalEvent.shiftKey in MapLibre v4
   let isShiftDown = false;
@@ -325,11 +324,10 @@
 
   function updateSelectionBadge() {
     // Notify listeners (Parcel Edits pane) whenever the selection set changes
+    // and the Selection Tools pane (its CSV and Clear buttons).
     document.dispatchEvent(new CustomEvent("ps:selection-changed", {
       detail: { pins: [...selectedPins] },
     }));
-    const selActions = document.getElementById("sel-actions");
-    if (selActions) selActions.hidden = selectedPins.length === 0;
     if (_spotlightFn) _spotlightFn();   // re-evaluate the focus/dim spotlight
   }
 
@@ -1200,7 +1198,9 @@
         fetchParcel(id)
           .then((full) => {
             if (activeTool === "buffer") {
-              handleBufferSeedClick(full);
+              // The Selection Tools pane seeds its buffer from the clicked parcel.
+              const onSeed = window.PS_SELECT_MAP && window.PS_SELECT_MAP.onBufferSeed;
+              if (onSeed) onSeed(full);
               return;
             }
             selectParcel(full.properties, full.geometry, shift);
@@ -2827,194 +2827,115 @@
     };
   }
 
-  // ── CSV download ───────────────────────────────────────────────────────
-  function downloadSelectionCSV() {
-    if (selectedPins.length === 0) return;
+  // ── Selection tools: the map side (DIC-2389) ────────────────────────────
+  // The Selection Tools pane is a Vue island (frontend/src/select-tools/): it owns the
+  // pane (the active tool, the filter and buffer forms, the CSV export). What touches the
+  // map stays here: the box and lasso gestures, the buffer highlights, and the selection
+  // itself. PS_SELECT_MAP is what the pane calls.
 
-    // Gather all field names from selected features (union of keys)
-    const fieldSet = new Set();
-    for (const entry of selectedFeatureMap.values()) {
-      for (const k of Object.keys(entry.props)) fieldSet.add(k);
+  // Adds features to the selection and shows the first new one; returns how many were new.
+  function addFeaturesToSelection(features) {
+    const firstIdx = selectedPins.length;
+    let added = 0;
+    for (const f of features) {
+      if (addToSelection(f.properties.pin || f.properties.PIN, f.properties, f.geometry)) added++;
     }
-    const fields = [...fieldSet];
+    updateSelectionBadge();
+    if (added > 0) showParcelAtIndex(firstIdx);
+    return added;
+  }
 
-    // Text starting with = + - @ (or tab/CR) is run as a formula when the CSV is opened
-    // in Excel/Sheets, so prefix it with ' (OWASP CSV-injection guidance). Numbers,
-    // including negatives, pass through unchanged.
-    const cell = (v) => {
-      if (v == null) return "";
-      let s = String(v);
-      if (typeof v !== "number" && /^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = "'" + s;
-      return /[,"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-
-    const rows = [fields.map(cell).join(",")];
-    for (const pin of selectedPins) {
-      const entry = selectedFeatureMap.get(pin);
-      if (!entry) continue;
-      rows.push(fields.map(f => cell(entry.props[f])).join(","));
+  // Removes pins from the selection; returns how many were in it. The info panel then
+  // keeps its parcel if it survived, moves to the first one left, or closes.
+  function removePinsFromSelection(pins) {
+    let removed = 0;
+    for (const pin of pins) if (removeFromSelection(pin)) removed++;
+    if (removed === 0) return 0;
+    updateSelectionBadge();
+    if (selectedPins.length === 0) {
+      setActiveInfoPin(null);
+      hideInfoPanel();
+      setStatusStrip(DEFAULT_STATUS);
+      window.PS_STATE.parcel = null;
+      announceSelectionCleared();
+    } else if (!selectedPins.includes(activeInfoPin)) {
+      showParcelAtIndex(0);
+    } else {
+      activeInfoIndex = selectedPins.indexOf(activeInfoPin);
+      updateInfoPanelNav();
     }
+    return removed;
+  }
 
-    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8;" });
-    const url  = URL.createObjectURL(blob);
-    const a    = Object.assign(document.createElement("a"), { href: url, download: `parcels_${selectedPins.length}_selected.csv` });
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    // Rows past a Protected county's daily detail limit (ADR 0015) have their owner and
-    // value cells empty; the file's details_withheld column marks them. Say so.
-    const withheld = selectedPins.filter(pin => isWithheld((selectedFeatureMap.get(pin) || {}).props)).length;
-    if (withheld) {
-      notifyUser(`${withheld} of ${selectedPins.length} parcels were exported without owner and value details (daily detail limit).`);
+  // Arms a tool's map side: box and lasso take the pointer (no panning), buffer takes
+  // map clicks as seeds (the parcel click handler checks activeTool).
+  function setSpatialTool(tool) {
+    activeTool = tool || null;
+    const lassoCanvas = document.getElementById("lasso-canvas");
+    const boxOverlay  = document.getElementById("box-select-overlay");
+    if (lassoCanvas) {
+      lassoCanvas.style.pointerEvents = tool === "lasso" ? "all" : "none";
+      if (tool !== "lasso") lassoCanvas.getContext("2d").clearRect(0, 0, lassoCanvas.width, lassoCanvas.height);
+    }
+    if (boxOverlay) {
+      // display:none blocks pointer-events regardless of the property, so set both
+      boxOverlay.style.display       = tool === "box" ? "block" : "none";
+      boxOverlay.style.pointerEvents = tool === "box" ? "all"   : "none";
+    }
+    if (!map) return;
+    if (tool === "box" || tool === "lasso") {
+      map.dragPan.disable();
+      map.getCanvas().style.cursor = "crosshair";
+    } else if (tool === "buffer") {
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = "crosshair";
+    } else {
+      map.dragPan.enable();
+      map.getCanvas().style.cursor = "";
     }
   }
 
-  // ── Selection tools ────────────────────────────────────────────────────
-  function initSelectionTools() {
-    // activeTool lives at IIFE scope so the map click handler can read it
+  function setParcelState(pin, state) {
+    if (map && pin != null) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, state);
+  }
 
-    function setActiveTool(tool) {
-      if (activeTool === tool) tool = null; // toggle off
+  window.PS_SELECT_MAP = {
+    /** The parcels in the viewport index (the tools select from these). */
+    parcels: () => parcelIndex,
+    /** How many parcels are selected. */
+    selectionSize: () => selectedPins.length,
+    /** The selected parcels' properties, in selection order. */
+    selectedRecords: () => selectedPins.map((pin) => (selectedFeatureMap.get(pin) || {}).props).filter(Boolean),
+    /** The parcel in the info panel, as a feature, or null. */
+    activeParcel() {
+      const cur = activeInfoPin && selectedFeatureMap.get(activeInfoPin);
+      return cur && cur.geometry ? { properties: cur.props, geometry: cur.geometry } : null;
+    },
+    add: addFeaturesToSelection,
+    remove: removePinsFromSelection,
+    clear: clearSelectionAll,
+    setTool: setSpatialTool,
+    /** Highlights the buffer's seed parcel (null: none). */
+    setBufferSeed(pin) {
+      setParcelState(bufferSeedPin, { bufferSeed: false });
+      bufferSeedPin = pin || null;
+      setParcelState(bufferSeedPin, { bufferSeed: true });
+    },
+    /** Draws the buffer polygon and highlights the parcels in it (null: clears both). */
+    setBufferPreview(polygon, pins) {
+      for (const pin of bufferPreviewPins) setParcelState(pin, { bufferPreview: false });
+      bufferPreviewPins = polygon ? (pins || []).slice() : [];
+      for (const pin of bufferPreviewPins) setParcelState(pin, { bufferPreview: true });
+      const src = map && map.getSource("buffer-preview-source");
+      if (src) src.setData({ type: "FeatureCollection", features: polygon ? [polygon] : [] });
+    },
+    /** Set by the pane: called with the clicked parcel while the buffer tool is armed. */
+    onBufferSeed: null,
+    notify: (msg) => notifyUser(msg),
+  };
 
-      // Clean up buffer state when leaving buffer mode
-      if (activeTool === "buffer" && tool !== "buffer") clearBufferState();
-
-      activeTool = tool;
-
-      document.getElementById("tool-box-select")?.classList.toggle("active", tool === "box");
-      document.getElementById("tool-lasso")?.classList.toggle("active", tool === "lasso");
-      document.getElementById("tool-filter")?.classList.toggle("active", tool === "filter");
-      document.getElementById("tool-buffer")?.classList.toggle("active", tool === "buffer");
-
-      const filterPanel = document.getElementById("filter-panel");
-      if (filterPanel) filterPanel.hidden = tool !== "filter";
-
-      const bufferPanel = document.getElementById("buffer-panel");
-      if (bufferPanel) bufferPanel.hidden = tool !== "buffer";
-
-      const lassoCanvas = document.getElementById("lasso-canvas");
-      const boxOverlay  = document.getElementById("box-select-overlay");
-
-      if (lassoCanvas) {
-        lassoCanvas.style.pointerEvents = tool === "lasso" ? "all" : "none";
-        if (tool !== "lasso") {
-          const ctx = lassoCanvas.getContext("2d");
-          ctx.clearRect(0, 0, lassoCanvas.width, lassoCanvas.height);
-        }
-      }
-      if (boxOverlay) {
-        // display:none blocks pointer-events regardless of the property, so set both
-        boxOverlay.style.display       = tool === "box" ? "block" : "none";
-        boxOverlay.style.pointerEvents = tool === "box" ? "all"   : "none";
-      }
-
-      const toolActiveBar = document.getElementById("tool-active-bar");
-      if (toolActiveBar) {
-        toolActiveBar.hidden = (tool !== "box" && tool !== "lasso");
-        const label = toolActiveBar.querySelector(".tool-active-label");
-        if (label) label.textContent = tool === "box" ? "Box Select active" : tool === "lasso" ? "Lasso active" : "";
-      }
-
-      if (map) {
-        if (tool === "box" || tool === "lasso") {
-          map.dragPan.disable();
-          map.getCanvas().style.cursor = "crosshair";
-        } else if (tool === "buffer") {
-          map.getCanvas().style.cursor = "crosshair";
-          // Seed from the parcel already on screen; a map click still re-seeds.
-          const cur = activeInfoPin && selectedFeatureMap.get(activeInfoPin);
-          if (cur && cur.geometry) handleBufferSeedClick({ properties: cur.props, geometry: cur.geometry });
-        } else {
-          map.dragPan.enable();
-          map.getCanvas().style.cursor = "";
-        }
-      }
-    }
-
-    document.getElementById("tool-box-select")?.addEventListener("click", () => setActiveTool("box"));
-    document.getElementById("tool-lasso")?.addEventListener("click",      () => setActiveTool("lasso"));
-    document.getElementById("tool-filter")?.addEventListener("click",     () => setActiveTool("filter"));
-    document.getElementById("tool-buffer")?.addEventListener("click",     () => setActiveTool("buffer"));
-    document.getElementById("exit-tool-btn")?.addEventListener("click",   () => setActiveTool(null));
-    document.getElementById("clear-selection-btn")?.addEventListener("click", clearSelectionAll);
-    document.getElementById("download-csv-btn")?.addEventListener("click", downloadSelectionCSV);
-
-    // ── Buffer event handlers ────────────────────────────────────────────
-    document.getElementById("buffer-cancel-btn")?.addEventListener("click", () => setActiveTool(null));
-
-    document.getElementById("buffer-apply-btn")?.addEventListener("click", () => {
-      if (!bufferSeedGeom) return;
-      const dist  = parseFloat(document.getElementById("buffer-distance")?.value);
-      const units = document.getElementById("buffer-units")?.value || "feet";
-      if (!dist || dist <= 0) return;
-      const includeSeed = document.getElementById("buffer-include-seed")?.checked ?? true;
-      const bufferPoly  = computeBufferGeometry(bufferSeedGeom, dist, units);
-      if (!bufferPoly) return;
-
-      const firstIdx = selectedPins.length;
-      let added = 0;
-      for (const f of findParcelsInBuffer(bufferPoly)) {
-        const pin = f.properties.pin || f.properties.PIN;
-        if (!includeSeed && pin === bufferSeedPin) continue;
-        if (addToSelection(pin, f.properties, f.geometry)) added++;
-      }
-      clearBufferState();
-      updateSelectionBadge();
-      if (added > 0) showParcelAtIndex(firstIdx);
-      setActiveTool(null);
-    });
-
-    document.getElementById("buffer-remove-btn")?.addEventListener("click", () => {
-      if (!bufferSeedGeom) return;
-      const dist  = parseFloat(document.getElementById("buffer-distance")?.value);
-      const units = document.getElementById("buffer-units")?.value || "feet";
-      if (!dist || dist <= 0) return;
-      const includeSeed = document.getElementById("buffer-include-seed")?.checked ?? true;
-      const bufferPoly  = computeBufferGeometry(bufferSeedGeom, dist, units);
-      if (!bufferPoly) return;
-
-      let removed = 0;
-      for (const f of findParcelsInBuffer(bufferPoly)) {
-        const pin = f.properties.pin || f.properties.PIN;
-        if (!includeSeed && pin === bufferSeedPin) continue;
-        if (removeFromSelection(pin)) removed++;
-      }
-      if (removed > 0) {
-        updateSelectionBadge();
-        if (selectedPins.length === 0) {
-          setActiveInfoPin(null);
-          hideInfoPanel();
-          setStatusStrip(DEFAULT_STATUS);
-          window.PS_STATE.parcel = null;
-          announceSelectionCleared();
-        } else if (!selectedPins.includes(activeInfoPin)) {
-          showParcelAtIndex(0);
-        } else {
-          activeInfoIndex = selectedPins.indexOf(activeInfoPin);
-          updateInfoPanelNav();
-        }
-      }
-      clearBufferState();
-      setActiveTool(null);
-    });
-
-    document.getElementById("buffer-distance")?.addEventListener("input",  scheduleBufferPreview);
-    document.getElementById("buffer-units")?.addEventListener("change",    scheduleBufferPreview);
-    document.getElementById("buffer-include-seed")?.addEventListener("change", scheduleBufferPreview);
-    document.getElementById("buffer-live-preview")?.addEventListener("change", () => {
-      const live = document.getElementById("buffer-live-preview");
-      if (live?.checked) scheduleBufferPreview(); else clearBufferPreviewOnly();
-    });
-
-    // Escape key cancels active spatial tool
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && (activeTool === "box" || activeTool === "lasso" || activeTool === "buffer")) {
-        setActiveTool(null);
-      }
-    });
-
+  // The box and lasso gestures: drawn on overlays above the map while their tool is armed.
+  function initSelectionGestures() {
     // Forward scroll wheel from spatial tool overlays so map zoom still works
     for (const elId of ["lasso-canvas", "box-select-overlay"]) {
       const el = document.getElementById(elId);
@@ -3072,16 +2993,10 @@
         const [minLng, maxLng] = [Math.min(sw.lng, ne.lng), Math.max(sw.lng, ne.lng)];
         const [minLat, maxLat] = [Math.min(sw.lat, ne.lat), Math.max(sw.lat, ne.lat)];
 
-        let added = 0;
-        const firstIdx = selectedPins.length;
-        for (const f of parcelIndex) {
+        addFeaturesToSelection(parcelIndex.filter((f) => {
           const [lng, lat] = computeCentroid(f.geometry);
-          if (lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat) {
-            if (addToSelection(f.properties.pin || f.properties.PIN, f.properties, f.geometry)) added++;
-          }
-        }
-        updateSelectionBadge();
-        if (added > 0) showParcelAtIndex(firstIdx);
+          return lng >= minLng && lng <= maxLng && lat >= minLat && lat <= maxLat;
+        }));
 
         if (boxRect) { boxRect.remove(); boxRect = null; }
         boxStart = null;
@@ -3143,126 +3058,19 @@
         });
         ring.push(ring[0]);
 
-        let added = 0;
-        const firstIdx = selectedPins.length;
-
+        let inside = [];
         if (typeof turf !== "undefined") {
           try {
             const polygon = turf.polygon([ring]);
-            for (const f of parcelIndex) {
-              const [lng, lat] = computeCentroid(f.geometry);
-              if (turf.booleanPointInPolygon(turf.point([lng, lat]), polygon)) {
-                if (addToSelection(f.properties.pin || f.properties.PIN, f.properties, f.geometry)) added++;
-              }
-            }
+            inside = parcelIndex.filter((f) => turf.booleanPointInPolygon(turf.point(computeCentroid(f.geometry)), polygon));
           } catch (_) {}
         }
-
-        updateSelectionBadge();
-        if (added > 0) showParcelAtIndex(firstIdx);
+        addFeaturesToSelection(inside);
 
         if (lassoCtx) lassoCtx.clearRect(0, 0, lassoCanvas.width, lassoCanvas.height);
         lassoPoints = [];
       });
     }
-
-    // ── Filter Select ──────────────────────────────────────────────────
-    const filterField = document.getElementById("filter-field");
-    const filterOp    = document.getElementById("filter-op");
-    const filterValue = document.getElementById("filter-value");
-    const matchCount  = document.getElementById("filter-match-count");
-
-    // Populate field list once parcelIndex loads
-    const fieldPoll = setInterval(() => {
-      if (!parcelIndex.length || !filterField) return;
-      clearInterval(fieldPoll);
-      const existing = new Set(Array.from(filterField.options).map(o => o.value));
-      for (const key of Object.keys(parcelIndex[0].properties)) {
-        if (!existing.has(key)) {
-          const opt = document.createElement("option");
-          opt.value = key;
-          opt.textContent = key.replace(/_/g, " ");
-          filterField.appendChild(opt);
-        }
-      }
-    }, 400);
-
-    function runFilter() {
-      if (!filterField || !filterOp || !filterValue) return [];
-      const field = filterField.value;
-      const op    = filterOp.value;
-      const val   = filterValue.value.trim().toLowerCase();
-      if (!field || !val) return [];
-
-      return parcelIndex.filter(f => {
-        const raw = f.properties[field];
-        if (raw == null) return false;
-        const v  = String(raw).toLowerCase();
-        const n  = parseFloat(raw);
-        const qn = parseFloat(val);
-        switch (op) {
-          case "eq":       return v === val;
-          case "contains": return v.includes(val);
-          case "gt":       return !isNaN(n) && !isNaN(qn) && n > qn;
-          case "lt":       return !isNaN(n) && !isNaN(qn) && n < qn;
-          default:         return false;
-        }
-      });
-    }
-
-    function refreshMatchCount() {
-      if (!matchCount) return;
-      if (!filterField?.value || !filterValue?.value.trim()) { matchCount.textContent = ""; return; }
-      const m = runFilter();
-      matchCount.textContent = `${m.length} parcel${m.length !== 1 ? "s" : ""} match`;
-    }
-
-    filterField?.addEventListener("change", refreshMatchCount);
-    filterOp?.addEventListener("change",    refreshMatchCount);
-    filterValue?.addEventListener("input",  refreshMatchCount);
-
-    document.getElementById("filter-add-btn")?.addEventListener("click", () => {
-      const matches = runFilter();
-      const firstIdx = selectedPins.length;
-      let added = 0;
-      for (const f of matches) {
-        if (addToSelection(f.properties.pin || f.properties.PIN, f.properties, f.geometry)) added++;
-      }
-      updateSelectionBadge();
-      if (added > 0) showParcelAtIndex(firstIdx);
-      if (matchCount) matchCount.textContent = `Added ${added} parcel${added !== 1 ? "s" : ""}`;
-    });
-
-    document.getElementById("filter-replace-btn")?.addEventListener("click", () => {
-      const matches = runFilter();
-      let removed = 0;
-      for (const f of matches) {
-        const pin = f.properties.pin || f.properties.PIN;
-        if (selectedPins.includes(pin)) {
-          removeFromSelection(pin);
-          removed++;
-        }
-      }
-      if (removed > 0) {
-        updateSelectionBadge();
-        if (selectedPins.length === 0) {
-          setActiveInfoPin(null);
-          hideInfoPanel();
-          setStatusStrip(DEFAULT_STATUS);
-          window.PS_STATE.parcel = null;
-          announceSelectionCleared();
-        } else {
-          // keep activeInfoPin if it survived; otherwise reset to first
-          if (!selectedPins.includes(activeInfoPin)) {
-            showParcelAtIndex(0);
-          } else {
-            activeInfoIndex = selectedPins.indexOf(activeInfoPin);
-            updateInfoPanelNav();
-          }
-        }
-      }
-      if (matchCount) matchCount.textContent = removed > 0 ? `Removed ${removed} parcel${removed !== 1 ? "s" : ""}` : "None in selection";
-    });
   }
 
   // ── Annotation visualization layers ─────────────────────────────────────
@@ -3623,111 +3431,6 @@
     }
   }
 
-  // ── Buffer geometry — isolated for future PostGIS migration ────────────
-  function computeBufferGeometry(geometry, distance, units) {
-    if (typeof turf === "undefined") return null;
-    try {
-      return turf.buffer({ type: "Feature", geometry }, distance, { units });
-    } catch (e) {
-      console.warn("turf.buffer:", e);
-      return null;
-    }
-  }
-
-  function findParcelsInBuffer(bufferPolygon) {
-    if (!bufferPolygon) return [];
-    return parcelIndex.filter(f => {
-      try { return turf.booleanIntersects(f, bufferPolygon); }
-      catch (_) { return false; }
-    });
-  }
-
-  // ── Buffer state helpers ───────────────────────────────────────────────
-  function clearBufferPreviewOnly() {
-    for (const pin of bufferPreviewPins) {
-      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { bufferPreview: false });
-    }
-    bufferPreviewPins = [];
-    if (map && map.getSource("buffer-preview-source")) {
-      map.getSource("buffer-preview-source").setData({ type: "FeatureCollection", features: [] });
-    }
-    const countEl = document.getElementById("buffer-match-count");
-    if (countEl) countEl.textContent = "";
-  }
-
-  function clearBufferState() {
-    if (bufferSeedPin && map) {
-      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: bufferSeedPin }, { bufferSeed: false });
-    }
-    bufferSeedPin  = null;
-    bufferSeedGeom = null;
-    clearBufferPreviewOnly();
-    const statusEl   = document.getElementById("buffer-seed-status");
-    const controlsEl = document.getElementById("buffer-controls");
-    if (statusEl)   { statusEl.textContent = "Click a parcel on the map to set the seed"; statusEl.classList.remove("has-seed"); }
-    if (controlsEl) controlsEl.hidden = true;
-  }
-
-  function handleBufferSeedClick(feature) {
-    if (bufferSeedPin && map) {
-      map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: bufferSeedPin }, { bufferSeed: false });
-    }
-    bufferSeedPin  = feature.properties.pin || feature.properties.PIN;
-    bufferSeedGeom = feature.geometry;
-    if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: bufferSeedPin }, { bufferSeed: true });
-
-    const statusEl   = document.getElementById("buffer-seed-status");
-    const controlsEl = document.getElementById("buffer-controls");
-    if (statusEl)   { statusEl.textContent = `Seed: ${bufferSeedPin}`; statusEl.classList.add("has-seed"); }
-    if (controlsEl) controlsEl.hidden = false;
-
-    scheduleBufferPreview();
-  }
-
-  // ── Buffer preview ─────────────────────────────────────────────────────
-  function scheduleBufferPreview() {
-    clearTimeout(bufferDebounceTimer);
-    bufferDebounceTimer = setTimeout(updateBufferPreview, 300);
-  }
-
-  function updateBufferPreview() {
-    if (!bufferSeedGeom) return;
-
-    const liveEl = document.getElementById("buffer-live-preview");
-    if (!liveEl?.checked) { clearBufferPreviewOnly(); return; }
-
-    const dist  = parseFloat(document.getElementById("buffer-distance")?.value);
-    const units = document.getElementById("buffer-units")?.value || "feet";
-    if (!dist || dist <= 0) { clearBufferPreviewOnly(); return; }
-
-    const bufferPoly = computeBufferGeometry(bufferSeedGeom, dist, units);
-    if (!bufferPoly) { clearBufferPreviewOnly(); return; }
-
-    if (map && map.getSource("buffer-preview-source")) {
-      map.getSource("buffer-preview-source").setData({ type: "FeatureCollection", features: [bufferPoly] });
-    }
-
-    // Clear old preview states
-    for (const pin of bufferPreviewPins) {
-      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { bufferPreview: false });
-    }
-    bufferPreviewPins = [];
-
-    // Seed gets its own highlight; skip it in the preview set
-    const matches = findParcelsInBuffer(bufferPoly);
-    for (const f of matches) {
-      const pin = f.properties.pin || f.properties.PIN;
-      if (pin === bufferSeedPin) continue;
-      if (map) map.setFeatureState({ source: "parcels", sourceLayer: SOURCE_LAYER, id: pin }, { bufferPreview: true });
-      bufferPreviewPins.push(pin);
-    }
-
-    const includeSeed = document.getElementById("buffer-include-seed")?.checked ?? true;
-    const total = bufferPreviewPins.length + (includeSeed && bufferSeedPin ? 1 : 0);
-    const countEl = document.getElementById("buffer-match-count");
-    if (countEl) countEl.textContent = `${total} parcel${total !== 1 ? "s" : ""} in buffer`;
-  }
-
   // ── Unified mobile tab bar ─────────────────────────────────────────────
   // One bar under the topbar with Parcel Info | Map Controls | Map Buddy.
   // Parcel Info and Map Controls are mutually-exclusive top dropdowns; Map
@@ -3853,6 +3556,6 @@
   initTheme();
   initMap().catch(showMapLoadError);
   initMapControlPanel();
-  initSelectionTools();
+  initSelectionGestures();
   initMobileTabs();
 })();

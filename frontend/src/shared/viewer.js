@@ -25,3 +25,9 @@ export const dialog = () => w.PV_DIALOG || null;
 
 /** The engine's cohort-analyze core (engine/browser.js). */
 export const cohortCore = () => w.ISV_COHORT_ANALYZE_CORE || null;
+
+/** The map side of the Selection Tools pane (map.js): the selection, gestures, highlights. */
+export const selectMap = () => w.PS_SELECT_MAP || null;
+
+/** Turf, for geometry (bundled from npm as a classic library). */
+export const turf = () => w.turf || null;
