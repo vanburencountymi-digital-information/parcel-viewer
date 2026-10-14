@@ -58,6 +58,39 @@ test('rapid radius changes settle on the last one chosen', async ({ page }) => {
   await expect(sub(page)).toContainText(new RegExp('Within (' + ft + '|' + Number(ft).toLocaleString('en-US') + ') ft'));
 });
 
+// The test above only fails when the server happens to answer out of order (seen once on
+// gunicorn, DIC-2380). This one forces it: the larger radius's /cohort answer is held back
+// until after the smaller one has rendered, so a profile that paints whatever lands last
+// shows the wrong area.
+test('a slow earlier /cohort answer never overwrites the radius chosen after it', async ({ page }) => {
+  const radii = radiusButtons(page);
+  const n = await radii.count();
+  const bigFt = await radii.nth(n - 1).getAttribute('data-ft');
+  const smallFt = await radii.nth(0).getAttribute('data-ft');
+  let first = true, releaseSlow, slowDone;
+  const slowSettled = new Promise((r) => { slowDone = r; });
+  const held = new Promise((r) => { releaseSlow = r; });
+  await page.route('**/api/cohort', async (route) => {
+    if (!first) return route.continue();
+    first = false;
+    try {
+      const res = await route.fetch();
+      await held;                                                   // land after the second answer
+      await route.fulfill({ response: res });
+    } catch { /* the page aborted it: also fine */ }
+    slowDone();
+  });
+  await radii.nth(n - 1).click();
+  await radii.nth(0).click();
+  const within = (ft) => new RegExp('Within (' + ft + '|' + Number(ft).toLocaleString('en-US') + ') ft');
+  await expect(sub(page)).toContainText(within(smallFt), { timeout: 20_000 });
+  releaseSlow();
+  await slowSettled;
+  await page.waitForTimeout(500);                                   // let a late render happen, if it's going to
+  await expect(sub(page)).toContainText(within(smallFt));
+  await expect(sub(page)).not.toContainText(within(bigFt));
+});
+
 for (const mode of ['subdivision', 'section', 'township', 'school']) {
   test(`${mode}: picking one gives a profile`, async ({ page }) => {
     await dialog(page).getByLabel('Area type').selectOption(mode);
