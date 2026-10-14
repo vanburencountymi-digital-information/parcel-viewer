@@ -93,7 +93,10 @@ the Selection Tools pane, whose map side (the selection, the box and lasso gestu
 highlights) stays in `map.js` behind `PS_SELECT_MAP`; and the parcel info panel
 (`frontend/src/parcel-panel/`, with its card in `frontend/src/parcel-card/`). `map.js` decides
 when the panel shows through `PV_PARCEL_PANEL` and what it shows through `PV_PARCEL_CARD`
-(`pv-feature-info.js` too, for other layers); the panel's controls call `PS_PARCEL_PANEL`.
+(`pv-feature-info.js` too, for other layers); the panel's controls call `PS_PARCEL_PANEL`; and the Map Control
+Panel's header, tabs and Advanced toggle (`frontend/src/map-controls/`), which keeps the page's own
+pane elements (classic scripts wire the Layers, Drawing and Measurement panes) and is
+switched through `PS_MAP_PANEL.setTab`.
 
 ### The engine (`engine/`)
 The start of a source-agnostic engine shared with other viewers (ZIP, for zoning). It
