@@ -76,18 +76,19 @@ const PV_FEATURE_INFO = (function (root) {
   // opts.labels overrides the label maps (defaults to COUNTY.labels).
   function show(sourceConfig, feature, opts) {
     opts = opts || {};
+    var html = renderHtml(sourceConfig, feature, opts.labels || countyConfig().labels);
+    // The panel is the parcel panel Vue island's (DIC-2389): it shows the feature and opens.
+    if (root.PV_PARCEL_CARD) {
+      root.PV_PARCEL_CARD.showFeature(html, opts.title);
+      return true;
+    }
+    // Without the island (the engine harness loads this file alone): write the panel's markup.
     var panel = document.getElementById('parcel-info-panel');
     var body = panel && panel.querySelector('.parcel-info-body');
     if (!panel || !body) return false;
-    var html = renderHtml(sourceConfig, feature, opts.labels || countyConfig().labels);
-    if (root.PV_PARCEL_CARD) {
-      // The panel's body is the parcel card island's (DIC-2389): it shows this instead.
-      root.PV_PARCEL_CARD.showFeature(html, opts.title);
-    } else {
-      body.innerHTML = html;
-      var titleEl = panel.querySelector('.parcel-info-title');
-      if (titleEl && opts.title != null) titleEl.textContent = opts.title;
-    }
+    body.innerHTML = html;
+    var titleEl = panel.querySelector('.parcel-info-title');
+    if (titleEl && opts.title != null) titleEl.textContent = opts.title;
     panel.hidden = false;
     return true;
   }

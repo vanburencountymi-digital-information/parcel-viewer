@@ -427,6 +427,10 @@ html.pv-a11y-motion *, html.pv-a11y-motion *::before, html.pv-a11y-motion *::aft
   box-sizing: border-box;
 }
 
+/* A Vue island's mount point that adds no box of its own (DIC-2389): its content is
+   laid out as if it were the container's own child. */
+.pv-island-contents { display: contents; }
+
 /* Ensure [hidden] attribute works even on flex/grid containers */
 [hidden] {
   display: none !important;

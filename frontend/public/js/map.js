@@ -1409,12 +1409,10 @@
   }
 
   // ── Parcel info panel ──────────────────────────────────────────────────
-  const infoPanel     = document.getElementById("parcel-info-panel");
-  const infoBody      = infoPanel ? infoPanel.querySelector(".parcel-info-body") : null;
-  const infoHeader    = infoPanel ? infoPanel.querySelector(".parcel-info-header") : null;
-  const infoClose     = infoPanel ? infoPanel.querySelector(".parcel-info-close") : null;
-  const infoReopenTab = document.getElementById("parcel-info-reopen-tab");
-  let   infoPanelCollapsed = false;
+  // The panel is a Vue island, frontend/src/parcel-panel/ (DIC-2389): it renders the header,
+  // next/previous, the card and the reopen tab. map.js decides when it shows (selection,
+  // mobile tabs) through PV_PARCEL_PANEL, and answers its calls through PS_PARCEL_PANEL.
+  const panelUi = () => window.PV_PARCEL_PANEL || null;
 
   // ── Focus management + theme re-render for the parcel region (DIC-385) ──
   let _focusInfoPanelOnShow = false;   // set when opened via the keyboard search path
@@ -1424,7 +1422,8 @@
   // Re-render the open parcel popup (theme change, area-units change, etc.)
   // without stealing focus.
   function rerenderOpenParcel() {
-    if (infoPanel && !infoPanel.hidden && _lastParcelArgs) {
+    const ui = panelUi();
+    if (ui && ui.isOpen() && _lastParcelArgs) {
       const wasFocus = _focusInfoPanelOnShow;
       _focusInfoPanelOnShow = false;
       showParcelInfo(_lastParcelArgs.pin, _lastParcelArgs.p, _lastParcelArgs.geometry);
@@ -1501,125 +1500,24 @@
     },
   };
 
+  // Collapse keeps the selection and leaves the reopen tab; hide closes both.
   function collapseInfoPanel() {
-    infoPanelCollapsed = true;
-    if (infoPanel) infoPanel.hidden = true;
-    const navEl = document.getElementById("parcel-info-nav");
-    if (navEl) navEl.hidden = true;
-    if (infoReopenTab) infoReopenTab.hidden = false;
+    const ui = panelUi();
+    if (ui) ui.collapse();
     if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
   }
 
   function expandInfoPanel() {
-    infoPanelCollapsed = false;
-    if (infoReopenTab) infoReopenTab.hidden = true;
-    if (infoPanel) infoPanel.hidden = false;
+    const ui = panelUi();
+    if (ui) ui.expand();
     if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
   }
 
   function hideInfoPanel() {
-    infoPanelCollapsed = false;
-    if (infoPanel) infoPanel.hidden = true;
-    if (infoReopenTab) infoReopenTab.hidden = true;
-    const navEl = document.getElementById("parcel-info-nav");
-    if (navEl) navEl.hidden = true;
+    const ui = panelUi();
+    if (ui) ui.hide();
     if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
   }
-
-  // ── Field tooltip — single fixed-position div, avoids overflow-y:auto clipping ──
-  const _tip = document.createElement("div");
-  _tip.id = "parcel-tip";
-  _tip.setAttribute("aria-hidden", "true");
-  document.body.appendChild(_tip);
-
-  if (infoBody) {
-    infoBody.addEventListener("mouseover", (e) => {
-      const el = e.target.closest("[data-tip]");
-      if (!el) return;
-      _tip.textContent = el.dataset.tip;
-      _tip.classList.add("parcel-tip-visible");
-    });
-    infoBody.addEventListener("mousemove", (e) => {
-      if (!_tip.classList.contains("parcel-tip-visible")) return;
-      // Position above the cursor, clamped to viewport
-      const tw = _tip.offsetWidth || 220;
-      const th = _tip.offsetHeight || 40;
-      let x = e.clientX + 12;
-      let y = e.clientY - th - 8;
-      if (x + tw > window.innerWidth  - 8) x = e.clientX - tw - 12;
-      if (y < 8) y = e.clientY + 20;
-      _tip.style.left = x + "px";
-      _tip.style.top  = y + "px";
-    });
-    infoBody.addEventListener("mouseout", (e) => {
-      if (!e.target.closest("[data-tip]")) return;
-      _tip.classList.remove("parcel-tip-visible");
-    });
-  }
-
-  if (infoClose) {
-    // The card's × deselects (DIC-508 follow-up): clears the selection so the
-    // focus/dim spotlight lifts and the map returns to normal. (Panel-vs-panel
-    // mutual exclusion still uses collapseInfoPanel, which keeps the selection.)
-    infoClose.addEventListener("click", () => {
-      clearSelectionAll();
-      if (_lastFocusBeforeInfo && document.contains(_lastFocusBeforeInfo)) _lastFocusBeforeInfo.focus();
-    });
-  }
-
-  if (infoReopenTab) {
-    infoReopenTab.addEventListener("click", () => {
-      expandInfoPanel();
-      if (infoPanel) infoPanel.focus();
-    });
-  }
-
-  // Drag
-  if (infoHeader && infoPanel) {
-    let dragging = false, startX, startY, startLeft, startTop;
-    infoHeader.addEventListener("pointerdown", (e) => {
-      if (e.target === infoClose) return;
-      dragging = true;
-      infoHeader.setPointerCapture(e.pointerId);
-      const rect = infoPanel.getBoundingClientRect();
-      startX = e.clientX; startY = e.clientY;
-      startLeft = rect.left; startTop = rect.top;
-      infoPanel.style.bottom = "auto";
-      infoPanel.style.left = startLeft + "px";
-      infoPanel.style.top  = startTop + "px";
-    });
-    infoHeader.addEventListener("pointermove", (e) => {
-      if (!dragging) return;
-      const panel = infoPanel.parentElement.getBoundingClientRect();
-      const newLeft = Math.max(0, Math.min(panel.width  - infoPanel.offsetWidth,  startLeft - panel.left + e.clientX - startX));
-      const newTop  = Math.max(0, Math.min(panel.height - infoPanel.offsetHeight, startTop  - panel.top  + e.clientY - startY));
-      infoPanel.style.left = newLeft + "px";
-      infoPanel.style.top  = newTop  + "px";
-    });
-    infoHeader.addEventListener("pointerup",     () => { dragging = false; });
-    infoHeader.addEventListener("pointercancel", () => { dragging = false; });
-  }
-
-  // Nav buttons and keyboard cycling
-  const navEl    = document.getElementById("parcel-info-nav");
-  const navPrev  = document.getElementById("parcel-nav-prev");
-  const navNext  = document.getElementById("parcel-nav-next");
-  const navLabel = document.getElementById("parcel-nav-label");
-  const navFly   = document.getElementById("parcel-fly-btn");
-
-  if (navPrev) navPrev.addEventListener("click", () => cycleParcel(-1));
-  if (navNext) navNext.addEventListener("click", () => cycleParcel(1));
-  if (navFly)  navFly.addEventListener("click",  () => flyToActiveParcel(true));
-
-  document.addEventListener("keydown", (e) => {
-    if (!infoPanel || infoPanel.hidden) return;
-    if (selectedPins.length < 2) return;
-    if (dialogOpen()) return;
-    const tag = document.activeElement && document.activeElement.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-    if (e.key === "ArrowLeft")  { e.preventDefault(); cycleParcel(-1); }
-    if (e.key === "ArrowRight") { e.preventDefault(); cycleParcel(1); }
-  });
 
   function cycleParcel(direction) {
     if (selectedPins.length === 0) return;
@@ -1652,12 +1550,12 @@
   }
 
   function showParcelInfo(pin, p, geometry) {
-    if (!infoPanel || !infoBody) return;
     _lastParcelArgs = { pin, p, geometry };   // for re-render on theme toggle
     if (window.PV_PARCEL_CARD) window.PV_PARCEL_CARD.show(pin, p, geometry);
 
-    if (!infoPanelCollapsed) {
-      infoPanel.hidden = false;
+    const ui = panelUi();
+    if (ui && !ui.isCollapsed()) {
+      ui.open();
       // Mobile: Parcel Info and Map Controls are mutually exclusive top
       // dropdowns — selecting a parcel closes Map Controls so they don't stack.
       if (window.innerWidth <= 640) {
@@ -1667,21 +1565,36 @@
       if (window.PV_MOBILE_TABS) window.PV_MOBILE_TABS.refresh();
       // When opened via the keyboard search path, move focus into the region so
       // screen-reader users land on the new parcel content (DIC-385).
-      if (_focusInfoPanelOnShow) { infoPanel.focus(); _focusInfoPanelOnShow = false; }
+      if (_focusInfoPanelOnShow) { ui.focus(); _focusInfoPanelOnShow = false; }
     }
   }
 
-  // The panel's map side, for the card island: it renders a parcel already on show when
-  // it mounts (one shown before the module ran).
-  window.PS_PARCEL_PANEL = { rerender: rerenderOpenParcel };
+  // The panel's map side: what the panel island asks map.js for.
+  window.PS_PARCEL_PANEL = {
+    /** Shows the selection's parcel, if any: for the island when it mounts, in case a
+     *  parcel was selected before it did. */
+    restore() {
+      if (!_lastParcelArgs || !selectedPins.length) return;
+      showParcelInfo(_lastParcelArgs.pin, _lastParcelArgs.p, _lastParcelArgs.geometry);
+      updateInfoPanelNav();
+    },
+    /** Next (1) or previous (-1) parcel of a multi-parcel selection. */
+    cycle: cycleParcel,
+    flyTo: () => flyToActiveParcel(true),
+    /** The reopen tab: shows the collapsed panel again. */
+    reopen: () => expandInfoPanel(),
+    /** The panel's ×: clears the selection, and focus goes back where it came from. */
+    close() {
+      clearSelectionAll();
+      if (_lastFocusBeforeInfo && document.contains(_lastFocusBeforeInfo)) _lastFocusBeforeInfo.focus();
+    },
+    /** A dialog owns the keyboard while open (the arrow keys don't cycle parcels then). */
+    dialogOpen: () => dialogOpen(),
+  };
 
   function updateInfoPanelNav() {
-    if (!navEl) return;
-    const multi = selectedPins.length > 1;
-    navEl.hidden = !multi;
-    if (multi && navLabel) {
-      navLabel.textContent = `${activeInfoIndex + 1} of ${selectedPins.length}`;
-    }
+    const ui = panelUi();
+    if (ui) ui.setNav(activeInfoIndex, selectedPins.length);
   }
 
   function showParcelAtIndex(idx) {
@@ -3031,11 +2944,10 @@
     const tabControls = document.getElementById("pv-mtab-controls");
     const tabBuddy    = document.getElementById("pv-mtab-buddy");
     const mcpPanel    = document.getElementById("map-control-panel");
-    const infoPanelEl = document.getElementById("parcel-info-panel");
 
     const isMobile     = () => window.innerWidth <= 640;
     const controlsOpen = () => mcpPanel && !mcpPanel.hidden;
-    const parcelOpen   = () => infoPanelEl && !infoPanelEl.hidden;
+    const parcelOpen   = () => !!(panelUi() && panelUi().isOpen());
     const buddyOpen    = () => !!(window.PV_MAP_BUDDY && window.PV_MAP_BUDDY.isOpen && window.PV_MAP_BUDDY.isOpen());
     const hasParcel    = () => selectedPins.length > 0;
 
