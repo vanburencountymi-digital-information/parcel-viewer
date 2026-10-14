@@ -85,6 +85,11 @@ Others hang off it through a few globals: `PS_MAP` (the map), `PS_BUS` (an event
 `PS_selectParcelById`, `PV_COORDS`, and so on. Each module says in its header what it
 exposes and what it needs loaded first.
 
+The panels are moving to Vue 3, one at a time (ADR 0017, DIC-2389). Vue components live in
+`frontend/src/` and mount as islands from one module entry, `frontend/src/main.js`, after the
+classic scripts. They keep the `window` API their callers use (Compare keeps `PV_COMPARE`) and
+read the rest of the viewer only through `frontend/src/shared/viewer.js`. Compare is the first.
+
 ### The engine (`engine/`)
 The start of a source-agnostic engine shared with other viewers (ZIP, for zoning). It
 holds **no parcel vocabulary** (a test enforces this). It provides the capability contract
@@ -170,6 +175,7 @@ See ADR 0001 and `docs/RUNBOOK.md`.
 | Layer | Where | Runs in CI |
 |---|---|---|
 | Engine and front-end units (Node) | `engine/test/*.test.js` | Yes |
+| Vue components and their stores (Vitest, happy-dom; `npm test`) | `frontend/src/**/*.test.js` | Yes |
 | Python contracts (stdlib only) | `engine/test/run_*_test.py` | Yes |
 | The parcel API (Django; a throwaway PostGIS, never the shared database) | `api/**/tests` | Yes |
 | Map Buddy (FastAPI TestClient; no DB, no model) | `map-buddy/backend/tests` | Yes |
@@ -186,4 +192,5 @@ See ADR 0001 and `docs/RUNBOOK.md`.
 | Change a limit or timeout | Its environment variable (`infra/DEPLOY-CHECKLIST.md`); nginx limits in `infra/nginx.viewer.conf` |
 | Add a Map Buddy command | The tool in `map-buddy/backend/agent.py` **and** its handler in `_CMDS` (`map-buddy/js/map-buddy.js`) |
 | Add an explainer or other capability | A core in `engine/capabilities/`, registered in `register.js` |
+| Change a panel that's a Vue island | Its folder in `frontend/src/` (component, store, tests); ADR 0017 |
 | Change the look | Theme tokens in `frontend/public/css/style.css`; the theme manifest |

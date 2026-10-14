@@ -784,10 +784,9 @@
   <!-- Citation Renderer surface (DIC-522): the in-app synchronized Sources doc panel,
        bus-driven, capability-gated. Loads after pv-explain (emits citation-activated). -->
   <script src="/frontend/public/js/pv-citations.js"></script>
-  <!-- Compare preset (DIC-589): the cohort-analyze 'compare' aggregator surfaced as a
-       compare tray + side-by-side diff table (explicit cohort via /cohort). -->
+  <!-- Overlay dialogs' Esc, focus and Tab handling (DIC-1873); Compare (a Vue island,
+       below) and the Neighborhood Profile use it. -->
   <script src="/frontend/public/js/pv-dialog.js"></script>
-  <script src="/frontend/public/js/pv-compare.js"></script>
   <!-- Neighborhood/Area Profile (DIC-588): the flagship cohort-analyze preset — a buffer
        cohort via /cohort → composition/value/ownership dashboard from the engine core. -->
   <script src="/frontend/public/js/pv-profile.js"></script>
@@ -838,5 +837,9 @@
       }
     })();
   </script>
+  <!-- Vue islands (DIC-2389, ADR 0017): panels moved to Vue components, starting with the
+       Compare tray and table (DIC-589). A module runs after the page is parsed, so after
+       every classic script above: the window hooks the islands read exist by then. -->
+  <script type="module" src="/frontend/src/main.js"></script>
 </body>
 </html>

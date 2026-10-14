@@ -6,7 +6,8 @@
 #   docker build -f infra/web.Dockerfile -t parcel-viewer-web .      # from the repo root
 #
 # Vite builds the /demo/ and /admin/ pages, their CSS and their classic-script bundles
-# into /assets/ (content-hashed; tools/vite/classic-scripts.mjs). The script folders are
+# into /assets/ (content-hashed; tools/vite/classic-scripts.mjs). The Vue islands
+# (frontend/src, DIC-2389) build into a module bundle there too. The script folders are
 # still served, for anything that loads a file by path (and the bundles' source maps).
 # nginx's per-environment includes (api-upstream, map-buddy-api) are mounted by compose;
 # the image carries production defaults so it also starts on its own.
@@ -20,6 +21,7 @@ COPY tools/vite ./tools/vite
 COPY demo ./demo
 COPY admin ./admin
 COPY frontend/public ./frontend/public
+COPY frontend/src ./frontend/src
 COPY engine ./engine
 COPY map-buddy/js ./map-buddy/js
 COPY vendor ./vendor

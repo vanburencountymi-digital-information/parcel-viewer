@@ -1097,8 +1097,8 @@
       })();
     }, { wide: true, flush: true });
   }
-  // Compare (DIC-589) is now the cohort-analyze 'compare' preset (pv-compare.js): the
-  // parcel-action button ADDS the current parcel to the compare tray; the tray's button
+  // Compare (DIC-589) is now the cohort-analyze 'compare' preset (a Vue island in
+  // frontend/src/compare/): the parcel-action button ADDS the current parcel to the compare tray; the tray's button
   // renders the side-by-side table. Delegate; fall back to a hint if the module is absent.
   function openCompare() {
     if (window.PV_COMPARE && window.PV_COMPARE.addCurrent) { window.PV_COMPARE.addCurrent(); return; }
