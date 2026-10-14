@@ -9,8 +9,8 @@ Logs go to stdout, one line per record, where Docker and Cloud Logging collect t
 
 Every line carries the current request id (see request_context).
 
-This file is kept identical in backend/parcel_viewer/common/ and map-buddy/backend/common/
-(a test checks it).
+This file is kept identical in api/common/ and map-buddy/backend/common/ (a CI step checks
+it).
 """
 
 import json

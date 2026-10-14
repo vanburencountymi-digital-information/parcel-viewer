@@ -8,8 +8,8 @@ attached to every log line written while the request runs, so a tester's report
 One access-log line per request records method, path, status and duration. The query
 string is left out on purpose: search terms can be owner names.
 
-This file is kept identical in backend/parcel_viewer/common/ and map-buddy/backend/common/
-(a test checks it).
+This file is kept identical in api/common/ and map-buddy/backend/common/ (a CI step checks
+it).
 """
 
 from __future__ import annotations

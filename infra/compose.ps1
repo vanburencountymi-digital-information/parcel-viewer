@@ -23,7 +23,7 @@ $ComposeFile = Join-Path $InfraDir "docker-compose.viewer.yml"
 $MapJs = Join-Path $RootDir "frontend\public\js\map.js"
 $DemoIndex = Join-Path $RootDir "demo\index.html"
 $MartinYaml = Join-Path $InfraDir "martin\martin.yaml"
-$BackendPkg = Join-Path $RootDir "backend\parcel_viewer\__init__.py"
+$ApiManage = Join-Path $RootDir "api\manage.py"
 
 function Test-ComposeNeedsPreflight {
     param([string[]]$CmdArgs)
@@ -48,8 +48,8 @@ if ($needsPreflight) {
     if (-not (Test-Path $MartinYaml)) {
         throw "Missing $MartinYaml - Martin config not found."
     }
-    if (-not (Test-Path $BackendPkg)) {
-        throw "Missing parcel_viewer Python package at backend/parcel_viewer/ (needed for api Docker build)."
+    if (-not (Test-Path $ApiManage)) {
+        throw "Missing the Django API at api/ (needed for the django-api Docker build)."
     }
 }
 

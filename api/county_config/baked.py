@@ -1,7 +1,7 @@
 """The baked county manifests: the offline fallback when the config store is unset or down.
 
-The JSON files in baked/ are copied byte for byte from backend/parcel_viewer/county_configs
-until cutover (DIC-2149); a CI step fails if the two copies differ.
+The JSON files in baked/ are the canonical copies (the FastAPI backend's are retired,
+DIC-2150). engine/test/endpoints.test.js checks their Map Buddy URL against the other config.
 """
 
 import json

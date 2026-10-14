@@ -73,15 +73,15 @@ the issues.
 `.env` lives in repo root (gitignored; Cloud SQL at `34.170.241.253` — **the new machine's IP must be
 allowlisted** on the instance's authorized networks before the stack can reach the DB). Slim stack:
 ```
-docker compose -f infra/docker-compose.viewer.yml --env-file .env up -d --build --no-deps api martin web
+docker compose -f infra/docker-compose.viewer.yml --env-file .env up -d --build django-api martin web
 ```
 - Viewer: **http://127.0.0.1:8080/demo/** · Admin Console: **http://127.0.0.1:8080/admin/** (also via Settings → "Staff sign-in / Admin").
 - **Use `127.0.0.1`, not `localhost`** — `localhost`→`::1` can hit a stale WSL instance; `127.0.0.1` forces the Docker container.
 
 **Gotchas (these bit us before):**
-- **`api` is NOT bind-mounted** — rebuild it (`--build api`) after any Python edit *or* after changing
-  `vanburen.json` (the manifest is baked into the image; `/config`/`/config.js` won't update otherwise).
-- `/api/config.js` (from `backend/parcel_viewer/county_configs/vanburen.json`) **overrides** the baked
+- **`django-api` bind-mounts `api/`**: Python edits reload on their own. New migrations:
+  `docker compose -f infra/docker-compose.viewer.yml --env-file .env exec django-api python manage.py migrate`.
+- `/api/config.js` (from `api/county_config/baked/vanburen.json`) **overrides** the baked
   `frontend/public/js/county-config.js` — **edit both** when changing config the viewer reads.
 - Frontend: the pages and scripts are served from Vite's build (DIC-2180). Run `npm run dev`
   (vite build --watch) beside the stack; it rebuilds `dist/` about a second after a save, and the

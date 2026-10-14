@@ -45,7 +45,7 @@ jobs:
         # modules in a vm sandbox (DIC-2180; engine/test/helpers/sandbox.js). Same as npm test.
         run: node --experimental-vm-modules --test
 
-      - name: Python — explainer contract, cohort SQL, quota, cache, citations, KB, parcel store, workflow params (stdlib only)
+      - name: Python — explainer contract, cohort SQL, quota, cache, citations, KB, workflow params (stdlib only)
         working-directory: engine
         run: |
           python -VV
@@ -55,20 +55,21 @@ jobs:
           # run_knowledge_store and run_tenant_isolation import the ZIP backend from a
           # sibling repo (../ZIP/zip-poc/backend) that isn't checked out here.
           set -e
-          for t in run_explain_contract run_cohort_query run_quota run_cost_cache run_citation_extract run_kb_resolver run_pv_parcel_store run_workflow_params; do
+          for t in run_explain_contract run_cohort_query run_quota run_cost_cache run_citation_extract run_kb_resolver run_workflow_params; do
             echo "::group::$t"
             python "test/${t}_test.py"
             echo "::endgroup::"
           done
 
-  # FastAPI endpoint + observability tests for both services (DIC-1879, DIC-1874).
+  # Map Buddy's FastAPI endpoint + observability tests (DIC-1879, DIC-1874). The parcel
+  # API's tests are in the django-api job below (the FastAPI parcel API is retired).
   # Uses TestClient: no database, no model, no secrets.
   server-tests:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        service: [backend, map-buddy/backend]
+        service: [map-buddy/backend]
     steps:
       - uses: actions/checkout@v7
 
@@ -87,7 +88,7 @@ jobs:
         working-directory: ${{ matrix.service }}
         run: pytest -q
 
-  # The Django port of the parcel API (DIC-2146): lint, types, missing migrations and tests,
+  # The parcel API (GeoDjango, DIC-2146): lint, types, missing migrations and tests,
   # against a throwaway PostGIS (tests never reach the shared database).
   django-api:
     runs-on: ubuntu-latest
@@ -138,13 +139,13 @@ jobs:
       - name: Migrations are up to date
         run: python manage.py makemigrations --check --dry-run
 
-      # The cohort selector builder is copied verbatim from the FastAPI backend until
-      # cutover (DIC-2149); the two copies must not drift.
-      - name: cohort_query matches the FastAPI copy
-        run: cmp ../backend/parcel_viewer/cohort_query.py parcels/cohort_query.py
-
-      - name: Baked county manifests match the FastAPI copies
-        run: diff -r ../backend/parcel_viewer/county_configs county_config/baked
+      # Logging, request ids and error reporting are one implementation shared with Map
+      # Buddy (ADR 0001): the copies must not drift.
+      - name: Shared common modules match Map Buddy's
+        run: |
+          for f in error_logging_client.py logging_setup.py request_context.py; do
+            cmp "common/$f" "../map-buddy/backend/common/$f"
+          done
 
       - name: Tests
         run: python manage.py test --noinput
@@ -157,8 +158,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: api
-            context: backend
           - name: map-buddy
             context: map-buddy/backend
           - name: django-api
@@ -218,12 +217,11 @@ jobs:
 
       - name: nginx -t with the dev and the prod snippet, and each API upstream
         run: |
-          # prod = Django (DIC-2150); FastAPI is still selectable on the dev stack.
-          for combo in dev:fastapi dev:django prod:django; do
+          for combo in dev:django prod:django; do
             variant=${combo%%:*}; upstream=${combo##*:}
             echo "::group::nginx -t ($variant, $upstream)"
             docker run --rm \
-              --add-host api:127.0.0.1 --add-host django-api:127.0.0.1 \
+              --add-host django-api:127.0.0.1 \
               --add-host martin:127.0.0.1 --add-host map-buddy:127.0.0.1 \
               -v "$PWD/infra/nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro" \
               -v "$PWD/infra/nginx/map-buddy-api.$variant.conf:/etc/nginx/pv/map-buddy-api.conf:ro" \

@@ -1,10 +1,9 @@
 # Parcel viewer API (Django)
 
-The GeoDjango replacement for the FastAPI backend in `backend/` (DIC-2146). It keeps the same
-URLs and JSON, so the viewer and its tests check it unchanged. Until the swap (DIC-2150) it runs
-beside FastAPI on port 8001, and the viewer keeps using FastAPI.
-
-**Status:** porting the routes (DIC-2149). At parity so far: `/health`, the parcel reads (`/parcel/{id}`, `/history`, `/parcels`, `/search`, `/nearest-road`, `/streetview-target`) the cohorts (`/cohort`, `/cohort/geographies`), and config: `/config`, `/config.js`, `/style.json`, the config store (`/config/{county}/draft`, `publish`, `versions`, `rollback`) and `/admin/discover/layers`. `/wms-proxy`, `/report-error` and `/client-errors`, with FastAPI's request ids, logs, CORS and error answers. Every route in the contract catalogue now matches FastAPI; the swap behind nginx is next (DIC-2150).
+The parcel API, in GeoDjango (DIC-2146). It replaced the FastAPI backend with the same URLs and
+JSON (ADR 0011), so the viewer and its tests didn't change, and it's the only backend since
+FastAPI was retired (DIC-2150). nginx serves it at `/api/`; production runs it under gunicorn
+(`infra/docker-compose.prod.yml`), the dev stack under `runserver` with `api/` bind-mounted.
 
 ## Run it
 
@@ -23,7 +22,7 @@ make test                    # the test suite, against the local database only
 | Path | What it holds |
 | --- | --- |
 | `config/` | Settings (`base`, `test`) and URLs |
-| `common/` | Health check, database router, request ids, CORS, error answers, rate limits, validation, and the logging and Sentry modules shared with FastAPI and Map Buddy |
+| `common/` | Health check, database router, request ids, CORS, error answers, rate limits, validation, and the logging and Sentry modules shared with Map Buddy (a CI step keeps them identical) |
 | `parcels/` | Read-only models over the assessing and geo tables |
 | `county_config/` | Published county config, map style, the config store (`config.config_versions`), layer discovery |
 | `wms/` | The server-side proxy for the federal WMS overlays |
@@ -32,10 +31,13 @@ make test                    # the test suite, against the local database only
 It talks to three databases (ADR 0004): Django's own, the shared parcel database (read-only,
 ADR 0007), and the config store table (ADR 0010).
 
-## Checking parity with FastAPI
+## Checking the contract
+
+`tools/api-contract` replays the recorded requests and compares the answers with the
+snapshot taken from the FastAPI backend before it was retired (the frozen contract):
 
 ```bash
-python ../tools/api-contract/contract.py diff http://localhost:8080/api http://localhost:8001
+python ../tools/api-contract/contract.py check http://localhost:8001
 ```
 
 A route is ported when its diff is empty (ADR 0011). Decisions are in `../docs/adrs/`.

@@ -12,8 +12,8 @@ Exceptions the code catches and recovers from are reported with
 `ErrorLoggingClient.report_exception`, so a recurring failure can't hide behind a
 friendly fallback message.
 
-This file is kept identical in backend/parcel_viewer/common/ and map-buddy/backend/common/
-(a test checks it).
+This file is kept identical in api/common/ and map-buddy/backend/common/ (a CI step checks
+it).
 """
 
 import os

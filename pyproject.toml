@@ -41,9 +41,9 @@ quote-style = "double"
 python_version = "3.12"
 # Both services are checked in one run; their modules don't collide (the API's are
 # app.* / parcel_viewer.*, Map Buddy's are top-level).
-mypy_path = ["backend", "map-buddy/backend"]
+mypy_path = ["map-buddy/backend"]
 explicit_package_bases = true
-files = ["backend", "map-buddy/backend"]
+files = ["map-buddy/backend"]
 check_untyped_defs = true
 disallow_untyped_defs = true
 no_implicit_optional = true

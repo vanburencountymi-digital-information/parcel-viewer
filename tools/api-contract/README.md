@@ -1,15 +1,16 @@
 # API contract harness
 
-Pins down what the parcel API returns, so the GeoDjango port (DIC-2146) has a finish line:
-**a route is ported when its `diff` against the FastAPI backend is empty** and its unit
-contract tests pass on Django. Phase 1 of the port, DIC-2147.
+Pins down what the parcel API returns. It gave the GeoDjango port (DIC-2146) its finish line:
+**a route was ported when its `diff` against the FastAPI backend was empty** (DIC-2147). The
+FastAPI backend is retired now (DIC-2150), so `snapshot/shapes.json`, recorded from it, is the
+frozen contract: `check` replays the catalogue against the Django API and compares with it.
 
 ## Run it
 
 Standard library only; Python 3.12. Run from the repo root, with the local stack up.
 
 ```bash
-python tools/api-contract/contract.py diff http://localhost:8080/api http://localhost:8001
+python tools/api-contract/contract.py check http://localhost:8080/api
 ```
 
 | Command | What it does |
@@ -19,9 +20,8 @@ python tools/api-contract/contract.py diff http://localhost:8080/api http://loca
 | `diff A B` | Replay each request against both backends a moment apart and compare status, contract headers and full bodies. This is the port's done-check. |
 
 `--only REGEX` limits any command to matching request names. The three admin reads need
-credentials: `PV_ADMIN_TOKEN` (FastAPI's shared key) and/or `PV_STAFF_TOKEN` (a staff
-token from the Django port's `POST /auth/login`, which retired the shared key in DIC-2151).
-Both headers are sent and each backend ignores the other's; without either, they're skipped. Unit tests for the harness:
+credentials: `PV_STAFF_TOKEN` (a staff token from `POST /auth/login`; `PV_ADMIN_TOKEN`, the
+retired FastAPI backend's shared key, is still sent if set). Without one, they're skipped. Unit tests for the harness:
 `python -m unittest discover -s tools/api-contract`.
 
 ## What is compared
@@ -62,7 +62,8 @@ easy on the shared database: about 70 requests in 20–25 s.
 
 ## The unit contract tests are the other half of the spec
 
-`backend/app/tests/test_api_contract.py` and the router tests (DIC-1874) pin admin
-gating, input validation, error hiding and rate limits, with the database mocked. Every
+The Django API's unit tests (`api/**/tests`, carried over from the FastAPI backend's
+`test_api_contract.py` and router tests, DIC-1874) pin admin gating, input validation, error
+hiding and rate limits. Every
 route has at least one unit test except `GET /config` (JSON). Because the database is
 mocked there, real SQL is only exercised here.

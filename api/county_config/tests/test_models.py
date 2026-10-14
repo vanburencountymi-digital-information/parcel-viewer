@@ -4,7 +4,7 @@ from django.test import TestCase
 from common.enums import DatabaseAlias
 from county_config.models import ConfigStatus, ConfigVersion
 
-# The table backend/migrations/0001_config_store.sql creates, so the model is tested against
+# The table county_config/sql/0001_config_store.sql creates, so the model is tested against
 # the real shape. The model is unmanaged (ADR 0010), so the test database doesn't have it.
 CONFIG_TABLE_DDL = """
 CREATE SCHEMA IF NOT EXISTS config;

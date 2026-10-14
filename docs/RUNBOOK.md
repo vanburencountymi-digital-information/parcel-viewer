@@ -25,8 +25,8 @@ docker compose -f infra/docker-compose.prod.yml restart martin   # picks up new 
 bash infra/smoke-test.sh https://<viewer host>
 ```
 
-- **Migrations first**, if the release notes list any (`backend/migrations/`). Run them as an admin against the database *before* `up --build`. They're idempotent and additive, so the old code keeps working while you deploy.
-- **Check it worked:** the smoke test exits 0; `curl -s https://<host>/api/health` gives `{"status":"ok","db":true}`; the API's `/openapi.json` is a 404 (docs off). A quick look in the browser: select a parcel, open an explainer.
+- **Migrations:** Django's own run by themselves (`django-migrate`, before the API starts). Config-store SQL, if the release notes list any (`api/county_config/sql/`), is run as an admin against the database *before* `up --build`. They're idempotent and additive, so the old code keeps working while you deploy.
+- **Check it worked:** the smoke test exits 0; `curl -s https://<host>/api/health` gives `{"status":"ok","db":true}`; the API's docs (`/api/docs`) are a 404 when not signed in as staff. A quick look in the browser: select a parcel, open an explainer.
 - **Write down the tag you replaced** (`git describe --tags` before checking out): it's your rollback target.
 
 **Map Buddy (Cloud Run):**
@@ -91,17 +91,16 @@ Rotate on a schedule, whenever someone with access leaves, and **immediately** i
 
 **Database passwords** (`PV_DATABASE_URL`, `MARTIN_DATABASE_URL`, `PV_WRITER_DATABASE_URL`):
 1. Set a new password for the role (Cloud SQL console → Users, or `ALTER ROLE <role> PASSWORD '…'` as an admin). Existing connections stay up; new ones need the new password.
-2. Update the URL in the VM's `.env` straight away, then restart only that service: `docker compose -f infra/docker-compose.prod.yml --env-file .env up -d api` (or `martin`).
+2. Update the URL in the VM's `.env` straight away, then restart only that service: `docker compose -f infra/docker-compose.prod.yml --env-file .env up -d django-api` (or `martin`).
 3. Check: `curl -s https://<host>/api/health` (read role), a map pan loads tiles (Martin), the admin console loads its versions (writer).
 
 Between steps 1 and 2 new connections fail, so do it at a quiet time and quickly; the pools recover by themselves once the service restarts.
 
-**Admin token** (`PV_ADMIN_TOKEN`):
-1. Generate one: `python -c "import secrets; print(secrets.token_urlsafe(32))"`.
-2. Put it in the VM's `.env`, then `docker compose -f infra/docker-compose.prod.yml --env-file .env up -d api`.
-3. Give it to the admins privately (not by email or chat in plain text); the old one stops working at once.
+**Staff accounts** (there's no shared admin key since DIC-2151):
+1. A leaver or a leaked password: in the Django admin (`/api/django-admin/`), untick *Active* (or change the password), and delete their tokens under Knox → Auth tokens.
+2. `DJANGO_SECRET_KEY`: generate one (`python -c "import secrets; print(secrets.token_urlsafe(48))"`), put it in the VM's `.env`, then `docker compose -f infra/docker-compose.prod.yml --env-file .env up -d django-api`. Open sessions and CSRF tokens stop working; sign-in tokens (Knox) don't depend on it.
 
-**Others:** the SMTP password (`PV_SMTP_PASSWORD`, then restart `api` and send a test problem report) and the Sentry DSN (create a new client key in Sentry, update Secret Manager / `.env`, redeploy both, revoke the old key). The Google Maps Embed key is public by design; if it's abused, create a new referrer-restricted key, update `integrations.googleMapsEmbedKey` in the admin console, publish, and delete the old key.
+**Others:** the SMTP password (`PV_SMTP_PASSWORD`, then restart `django-api` and send a test problem report) and the Sentry DSN (create a new client key in Sentry, update Secret Manager / `.env`, redeploy both, revoke the old key). The Google Maps Embed key is public by design; if it's abused, create a new referrer-restricted key, update `integrations.googleMapsEmbedKey` in the admin console, publish, and delete the old key.
 
 
 ## Finding out what went wrong
@@ -112,7 +111,7 @@ Between steps 1 and 2 new connections fail, so do it at a quiet time and quickly
 
 | Service | Where | How to filter |
 |---|---|---|
-| API (on the VM) | `docker logs <api container>` | `docker logs api 2>&1 \| grep <request-id>` |
+| API (on the VM) | `docker logs <django-api container>` | `docker logs <django-api container> 2>&1 \| grep <request-id>` |
 | Map Buddy (Cloud Run) | Cloud Console → Cloud Run → map-buddy → **Logs** | `jsonPayload.request_id="<id>"` |
 | nginx | `docker logs <web container>` | `grep rid=<id>` |
 

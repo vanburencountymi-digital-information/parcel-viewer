@@ -1071,9 +1071,9 @@ def _build_user_message(
 # A couple of tools resolve real data instead of driving the map. We run these
 # server-side against the main Parcel Viewer API and feed the result back into
 # the loop, so the model can find a parcel the user names (even off-screen) and
-# then act on it. PARCEL_API_BASE is the in-cluster API (http://api:8000) locally
+# then act on it. PARCEL_API_BASE is the in-cluster API (http://django-api:8000) locally
 # and the deployed API URL in prod.
-PARCEL_API_BASE = os.getenv("PARCEL_API_BASE", "http://api:8000").rstrip("/")
+PARCEL_API_BASE = os.getenv("PARCEL_API_BASE", "http://django-api:8000").rstrip("/")
 DATA_TOOLS = {"search_parcels", "get_parcel_info", "get_environmental_info"}
 # Browser commands with cost rules enforced here before they're forwarded (DIC-2135).
 VISION_TOOLS = {"look_at_map", "offer_map_look"}

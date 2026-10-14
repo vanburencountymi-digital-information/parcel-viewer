@@ -1,6 +1,6 @@
 # Parcel Viewer
 
-Public-facing, read-only parcel map for Van Buren County (and other PostGIS-backed county deployments). Tiles come from Martin, the read API from a FastAPI backend, and an AI assistant (Map Buddy) runs as a separate Cloud Run microservice.
+Public-facing, read-only parcel map for Van Buren County (and other PostGIS-backed county deployments). Tiles come from Martin, the read API from a GeoDjango service (`api/`), and an AI assistant (Map Buddy) runs as a separate Cloud Run microservice.
 
 **Parcel Studio** ([parcel-studio](https://github.com/vanburencountymi-digital-information/parcel-studio)) consumes this repo as a git submodule and adds COGO traverse, split/merge, auth, and write paths.
 
@@ -10,12 +10,12 @@ Public-facing, read-only parcel map for Van Buren County (and other PostGIS-back
 
 | Service | Where | What it does |
 |---------|-------|--------------|
-| **api** | `backend/` | FastAPI read-only parcel API (search, parcel records, config) |
+| **django-api** | `api/` | GeoDjango parcel API (search, parcel records, cohorts, config, staff sign-in) with its own Postgres |
 | **martin** | Docker image | Vector tile server — serves `geo.parcel_tiles()` as MVT |
-| **web** (nginx) | `infra/nginx.viewer.conf` | Serves static JS/CSS; proxies `/api` → api, `/tiles` → martin, `/aerial` → Esri. The browser calls Map Buddy directly (in local dev, through `/map-buddy-api`) |
+| **web** (nginx) | `infra/nginx.viewer.conf` | Serves static JS/CSS; proxies `/api` → django-api, `/tiles` → martin, `/aerial` → Esri. The browser calls Map Buddy directly (in local dev, through `/map-buddy-api`) |
 | **Map Buddy** | `map-buddy/` | AI assistant microservice — deployed independently to Cloud Run |
 
-The viewer stack (api + martin + nginx) and Map Buddy are **two separate deployables**. The viewer works without Map Buddy; AI features degrade gracefully when Map Buddy is unreachable or the key is missing.
+The viewer stack (django-api + martin + nginx) and Map Buddy are **two separate deployables**. The viewer works without Map Buddy; AI features degrade gracefully when Map Buddy is unreachable or the key is missing.
 
 **More documentation:**
 - `ARCHITECTURE.md`: how the pieces fit, request flow, the AI boundary, where to change things.
@@ -30,7 +30,6 @@ The viewer stack (api + martin + nginx) and Map Buddy are **two separate deploya
 
 - PostGIS with `geo.parcel_geometry`, `assessing.vbc_parcels`, and `geo.parcel_tiles()` (see [county-data-services](https://github.com/vanburencountymi-digital-information/county-data-services))
 - Docker (for the full viewer stack)
-- Python 3.11+ (optional, for API hot-reload dev)
 - A GCP project with Cloud Run and Artifact Registry enabled (for Map Buddy)
 
 ---
@@ -72,8 +71,7 @@ CI runs the same checks on every pull request (`.github/workflows/lint.yml`). Ru
 |------|----------|
 | `frontend/public/js/` | Vanilla JS IIFE modules — map, drawing, overlay layers, AI UI |
 | `frontend/public/css/` | Shared map styles |
-| `backend/parcel_viewer/` | Importable read-only FastAPI package |
-| `backend/app/main.py` | Standalone read-only API entrypoint |
+| `api/` | The parcel API (GeoDjango): parcels, county config and its store, staff accounts, data access (see `api/README.md`) |
 | `map-buddy/backend/` | Map Buddy FastAPI microservice |
 | `map-buddy/js/map-buddy.js` | Browser client — SSE stream consumer, command dispatcher |
 | `map-buddy/css/map-buddy.css` | Map Buddy panel styles |
@@ -82,7 +80,7 @@ CI runs the same checks on every pull request (`.github/workflows/lint.yml`). Ru
 | `admin/` | Operator admin console (theme management, config) |
 | `demo/index.html` | Standalone demo (Layers \| Select \| Draw \| Measure) |
 | `infra/compose.ps1` | Docker compose wrapper with preflight checks |
-| `infra/docker-compose.viewer.yml` | api + martin + nginx stack |
+| `infra/docker-compose.viewer.yml` | The local dev stack: django-api (+ its Postgres), martin, nginx, a local Map Buddy |
 | `infra/DEPLOY-CHECKLIST.md` | Pre-launch checklist, prod settings and smoke tests |
 | `infra/smoke-test.sh` | Automated post-deploy check: `bash infra/smoke-test.sh <viewer-url>` |
 | `tools/a11y-proxy.py` | Accessibility audit proxy |
@@ -111,23 +109,17 @@ Open `http://localhost:8080/demo/`. Stop with `.\infra\compose.ps1 down` (and Ct
 | Service | Role |
 |---------|------|
 | **web** (nginx) | The Vite build in `dist/` (pages + `/assets/` bundles), runtime data files, `/api` and `/tiles` proxy |
-| **api** | FastAPI parcel read API |
+| **django-api** | The parcel API (Django), on port 8001 too; **api-db** is its Postgres |
 | **martin** | Vector tiles from `geo.parcel_tiles()` |
 
-`compose.ps1` fails fast if `.env`, map JS, demo HTML, Martin config, or the Python package is missing.
+`compose.ps1` fails fast if `.env`, map JS, demo HTML, Martin config, or the Django app is missing. First run: `docker compose -f infra/docker-compose.viewer.yml --env-file .env exec django-api python manage.py migrate`.
 
-### API-only hot reload (without Docker)
+### Working on the API
 
-```powershell
-cp .env.example .env
-cd backend
-python -m venv .venv; .venv\Scripts\activate
-pip install -r requirements.txt
-$env:PYTHONPATH = (Get-Location).Path
-uvicorn app.main:app --reload --port 8000
-```
+The dev stack bind-mounts `api/`, so Django reloads on save. Tests, lint and types run in
+its container; `api/README.md` has the commands (`make test`, `make check`).
 
-Martin in a separate terminal:
+Martin on its own, without the stack:
 
 ```powershell
 docker run -p 3000:3000 --env-file .env `
@@ -143,9 +135,8 @@ For a **working map in the browser**, use the full Docker stack — `npx serve` 
 |----------|---------|
 | `PV_DATABASE_URL` | Read API → PostGIS (falls back to `PS_DATABASE_URL`) |
 | `MARTIN_DATABASE_URL` | Martin → PostGIS (`martin_ro` role) |
-| `UVICORN_WORKERS` | API worker processes (default `2`); each has its own DB pool |
-| `PV_POOL_MAX` / `PV_POOL_TIMEOUT_S` | Read pool size per worker (default `10`) and max wait for a connection (default `10`s → 503) |
-| `PV_STATEMENT_TIMEOUT_MS` | Server-side cap on any one query, read and config pools (default `10000` → 503) |
+| `DB_POOL_MAX` | Connections per database pool, per worker (default `5`; production `4`) |
+| `DB_STATEMENT_TIMEOUT_MS` | Server-side cap on any one query (default `10000` → 503) |
 | `PV_HTTP_PORT` | Host port (default `8080`) |
 | `PV_CORS_ORIGINS` | Comma-separated origins allowed to call the API cross-origin (default: the prod viewer origins; the viewer itself is same-origin via `/api/`) |
 | `REPORT_ERROR_RATE_LIMIT` / `REPORT_ERROR_GLOBAL_LIMIT` | `/report-error` limits: per client IP (default `5/hour`) and across all callers (default `100/day`) |
@@ -166,7 +157,7 @@ bash map-buddy/deploy.sh
 
 This builds the Docker image, pushes it to Artifact Registry, and deploys to Cloud Run (`core-db-475718 / us-central1`). The service URL is printed at the end — update it in three places if it changes (see [infra/DEPLOY-CHECKLIST.md](infra/DEPLOY-CHECKLIST.md)).
 
-The viewer is configured to reach Map Buddy via `COUNTY.endpoints.mapBuddy` in `frontend/public/js/county-config.js`, `backend/parcel_viewer/county_configs/vanburen.json`, and `engine/themes/vanburen.json`.
+The viewer is configured to reach Map Buddy via `COUNTY.endpoints.mapBuddy` in `frontend/public/js/county-config.js`, `api/county_config/baked/vanburen.json`, and `engine/themes/vanburen.json`.
 
 ### Map Buddy API endpoints
 
@@ -249,7 +240,7 @@ Both use forced tool calls (`render_explanation`) so the frontend always gets a 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `ANTHROPIC_API_KEY` | — | Required for all AI endpoints |
-| `PARCEL_API_BASE` | `http://api:8000` | Parcel API for server-side tool resolution |
+| `PARCEL_API_BASE` | `http://django-api:8000` | Parcel API for server-side tool resolution |
 | `ALLOWED_ORIGINS` | localhost variants | CORS allowed origins |
 | `MAP_BUDDY_RATE_LIMIT` | `120/minute` | Per-IP rate limit |
 | `MAP_BUDDY_MODEL` | `claude-sonnet-4-6` | Model for chat and cohort narration |

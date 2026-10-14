@@ -28,7 +28,7 @@ IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/map-buddy/${SERVICE}:${GIT_SHA}"
 # gis.vanburencountymi.gov at launch (readiness checklist, B5). Comma-separated.
 VIEWER_ORIGINS="${VIEWER_ORIGINS:-https://gis.dicemi.org}"
 # Public Parcel API the agent's data tools call (DIC-1852). The in-code default
-# (http://api:8000) only resolves inside docker compose, so Cloud Run must be told.
+# (http://django-api:8000) only resolves inside docker compose, so Cloud Run must be told.
 # nginx strips the /api/ prefix.
 PARCEL_API_BASE="${PARCEL_API_BASE:-https://gis.dicemi.org/api}"
 MAP_BUDDY_TENANT="${MAP_BUDDY_TENANT:-vanburen}"

@@ -32,11 +32,10 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
 
 2. **[verify] Viewer points at the deployed Map Buddy URL.** `deploy.sh` prints the Cloud Run URL. It lives in **config only**, in three files, and every browser module resolves it through `frontend/public/js/pv-endpoints.js`:
    - `frontend/public/js/county-config.js` (`endpoints.mapBuddy`)
-   - `api/county_config/baked/vanburen.json` (production serves it as `/api/config.js`; the `django-api` image is baked, **rebuild it** if changed)
-   - `backend/parcel_viewer/county_configs/vanburen.json` (the same file for the FastAPI backend, which now runs only locally; keep the two identical)
+   - `api/county_config/baked/vanburen.json` (served as `/api/config.js` when the config store is empty or down; the `django-api` image is baked, **rebuild it** if changed)
    - `engine/themes/vanburen.json` (`endpoints.mapBuddy` and `mapBuddy.apiBase`)
 
-   Today they read `https://map-buddy-toaozre74a-uc.a.run.app`. If the URL changes, update all four; `engine/test/endpoints.test.js` (runs in CI) fails if they disagree or if any code file hardcodes the URL.
+   Today they read `https://map-buddy-toaozre74a-uc.a.run.app`. If the URL changes, update all three; `engine/test/endpoints.test.js` (runs in CI) fails if they disagree or if any code file hardcodes the URL.
 
 3. **[infra] Host the viewer stack** behind the live URL (nginx + Django API + martin) with `infra/docker-compose.prod.yml`. First set the three settings it requires in `.env` (compose refuses to start without them): `DJANGO_SECRET_KEY`, `DJANGO_DB_PASSWORD` and `PV_PUBLIC_HOST` (see "Django API" below). Then:
    ```bash
@@ -61,12 +60,12 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
      The data lives in the `django_db_data` volume: `docker compose down` keeps it, `down -v` deletes it.
 
 4. **[verify] Database.** `django-api` + `martin` must reach the shared Cloud SQL PostGIS from the prod host. Restart `martin` after deploy so it discovers the `geo.*_tiles` functions.
-   - **Connection budget (DIC-1884).** `infra/docker-compose.prod.yml` defaults to the stopgap until PgBouncer (DIC-316): **1 gunicorn worker (4 threads) with a read pool of 4**, plus up to 4 config-store connections (only when `PV_WRITER_DATABASE_URL` points at db-dice), plus Martin's 8 (`pool_size` in `infra/martin/martin.yaml`) = **at most 16** of the 17 this checklist allows. (The FastAPI figures below, from before DIC-2150, used a read pool of 5.)
+   - **Connection budget (DIC-1884).** `infra/docker-compose.prod.yml` defaults to the stopgap until PgBouncer (DIC-316): **1 gunicorn worker (4 threads) with a read pool of 4**, plus up to 4 config-store connections (only when `PV_WRITER_DATABASE_URL` points at db-dice), plus Martin's 8 (`pool_size` in `infra/martin/martin.yaml`) = **at most 16** of the 17 this checklist allows. (The measurements below, from before DIC-2150, were of the FastAPI backend with a read pool of 5.)
      - *Measured* during a full e2e run against the production stack (2026-09-26): the viewer peaked at **14** (API 6, Martin 8; the config store wasn't enabled). One API worker kept up: the suite took 23.9 min against 23.5 min with 2 workers.
      - *The database:* db-dice's `max_connections` is **50** (3 reserved for superusers), not the 25 noted in June. Other clients held up to 16 at their separate peaks (10 `postgres` sessions; 6 untagged `parcel_studio_app`, probably parcel-studio, which shares the viewer's role). Everything together peaked at **27**.
      - The old defaults (2 workers × (10 + 4) + 8 = 36) could exhaust it alongside those, which is why they're no longer the production default. Raise `GUNICORN_WORKERS` / `DB_POOL_MAX` only when the budget allows: every worker has its own pools.
-     - *Counting:* the Django API's connections are named in `pg_stat_activity` (`application_name` = `parcel-viewer-django`; FastAPI's were `parcel-viewer-api` / `parcel-viewer-config`), so `SELECT application_name, count(*) FROM pg_stat_activity GROUP BY 1` shows the viewer's share.
-   - **Admin config store:** without `PV_WRITER_DATABASE_URL`, it lives in `django-db`, which creates its tables on first start. To keep it on db-dice instead, set `PV_WRITER_DATABASE_URL` and apply `backend/migrations/0001_config_store.sql` first (creates schema `config` + role `pv_writer`), then `0002_config_versions_unique_version.sql` (one row per published version, so simultaneous publishes get a 409 rather than a duplicate; DIC-1872). The `pv_writer` bug where the store never initialized (no `CREATE` on schema `config`) is fixed (#17).
+     - *Counting:* the Django API's connections are named in `pg_stat_activity` (`application_name` = `parcel-viewer-django`; the retired FastAPI backend's were `parcel-viewer-api` / `parcel-viewer-config`), so `SELECT application_name, count(*) FROM pg_stat_activity GROUP BY 1` shows the viewer's share.
+   - **Admin config store:** without `PV_WRITER_DATABASE_URL`, it lives in `django-db`, which creates its tables on first start. To keep it on db-dice instead, set `PV_WRITER_DATABASE_URL` and apply `api/county_config/sql/0001_config_store.sql` first (creates schema `config` + role `pv_writer`), then `0002_config_versions_unique_version.sql` (one row per published version, so simultaneous publishes get a 409 rather than a duplicate; DIC-1872). The `pv_writer` bug where the store never initialized (no `CREATE` on schema `config`) is fixed (#17).
 
 5. **[decide] Tenant isolation (RLS).** Single-tenant VBC (current) → migration 015 can wait. Multi-tenant → apply `county-data-services/migrations/015_tenant_isolation_rls.sql` and set `app.current_tenant` per request.
 
@@ -91,29 +90,17 @@ Set in `.env`; compose passes them through the `x-django-environment` block of `
 | `PV_ACCESS_MODE` / `PV_DETAIL_BUDGET` / `PV_SERVICE_KEYS` | per county / `5000` / unset | Data access for counties that sell data (ADR 0015). |
 | `LOG_FORMAT` | `json` | Set by the compose file. |
 
-The rest (`PV_DATABASE_URL`, `PV_WRITER_DATABASE_URL`, `PV_CORS_ORIGINS`, mail, rate limits, Sentry, `LOG_LEVEL`) mean what they do for FastAPI below. Not used by Django: `UVICORN_WORKERS` and `PV_POOL_MAX` (see `GUNICORN_*` / `DB_POOL_MAX`), and `PV_ADMIN_TOKEN` (staff sign in with accounts instead; DIC-2151).
+The rest are below ("Shared API settings"). Staff sign in with accounts (DIC-2151); there is no shared admin key.
 
-### FastAPI `api` (env; the local dev stack only since DIC-2150)
+### Shared API settings
 
-| Variable | Default | Prod guidance |
-|---|---|---|
-| `UVICORN_WORKERS` | `2` | Worker processes. Size with the DB connection budget (step 4). |
-| `PV_POOL_MAX` / `PV_POOL_TIMEOUT_S` | `10` / `10` | Read pool per worker; waiting longer than the timeout for a connection → 503. |
-| `PV_STATEMENT_TIMEOUT_MS` | `10000` | Server-side cap on any one query (read + config pools) → 503. |
-| `PV_CORS_ORIGINS` | `https://gis.dicemi.org` | Set to the real origin(s) at launch (`https://gis.vanburencountymi.gov`). The viewer itself is same-origin via `/api/`. |
-| `REPORT_ERROR_RATE_LIMIT` / `REPORT_ERROR_GLOBAL_LIMIT` | `5/hour` / `100/day` | `/report-error` emails the county GIS inbox; per-IP and overall caps. |
-| `PV_API_DOCS` | unset (off) | **Leave unset in prod.** `1` re-enables `/docs` + `/openapi.json` (the dev compose sets it). |
-| `PV_WRITER_DATABASE_URL` / `PV_ADMIN_TOKEN` | unset | Admin config writes and admin layer discovery. No token → 401; no store → 503 (safe defaults). |
-| `PV_DB_CONNECT_TIMEOUT_S` / `PV_DB_TCP_USER_TIMEOUT_MS` | `5` / `10000` | Read pool: a dead DB connection fails in ~10s (then 503, and the pool recovers) instead of hanging (DIC-1872). |
-| `PV_WRITER_POOL_TIMEOUT_S` / `PV_WRITER_CONNECT_TIMEOUT_S` | `3` / `3` | Config store: the public `/config.js` path gives up on the writer DB within seconds. |
-| `PV_CONFIG_STORE_RETRY_S` | `30` | After a writer-DB failure, serve the baked manifest (and 503 admin writes) without retrying for this long. |
-| `PV_DISCOVERY_CACHE_S` | `60` | Admin layer discovery (a `count(*)` per geo table) is cached this long. |
-| `PV_SMTP_HOST` / `PV_SMTP_PORT` / `PV_SMTP_USER` / `PV_SMTP_PASSWORD` / `PV_SMTP_STARTTLS` | unset / `587` / unset / unset / `true` | Mail for "Report a problem". **No host → `/report-error` answers 503** (the button fails). |
-| `PV_REPORT_TO` / `PV_REPORT_FROM` | `gis@vanburencountymi.gov` / the SMTP user | Where problem reports go, and the sender. |
-| `WMS_PROXY_RATE_LIMIT` / `WMS_PROXY_MAX_BYTES` | `45/minute` / `5242880` | Per-IP cap on `/api/wms-proxy` (federal flood/wetland maps), and the largest image it relays. |
-| `CLIENT_ERROR_RATE_LIMIT` / `CLIENT_ERROR_GLOBAL_LIMIT` | `20/minute` / `5000/day` | Browser error beacon (`/api/client-errors`; DIC-1879). |
-| `SENTRY_DSN` / `SENTRY_ENVIRONMENT` / `SENTRY_TRACES_SAMPLE_RATE` | unset / unset / `0` | Error reporting (ADR 0001). No DSN → errors go to the logs only. |
-| `LOG_LEVEL` / `LOG_FORMAT` | `INFO` / `json` (image default) | The dev compose sets `LOG_FORMAT=text`. |
+`PV_DATABASE_URL` (read role), `PV_WRITER_DATABASE_URL` (config store; see step 4), `PV_CORS_ORIGINS`
+(set to the real origin(s) at launch), mail (`PV_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` /
+`_STARTTLS`, `PV_REPORT_TO` / `_FROM`; **no host → `/report-error` answers 503**), limits
+(`REPORT_ERROR_RATE_LIMIT` / `_GLOBAL_LIMIT` `5/hour` / `100/day`, `CLIENT_ERROR_RATE_LIMIT` /
+`_GLOBAL_LIMIT` `20/minute` / `5000/day`, `WMS_PROXY_RATE_LIMIT` / `WMS_PROXY_MAX_BYTES` `45/minute` /
+5 MB), `PV_CONFIG_STORE_RETRY_S` (`30`), `PV_DISCOVERY_CACHE_S` (`60`), Sentry (`SENTRY_DSN` /
+`_ENVIRONMENT` / `_TRACES_SAMPLE_RATE`; no DSN → logs only) and `LOG_LEVEL`.
 
 ### nginx (`infra/nginx.viewer.conf`)
 
@@ -125,7 +112,7 @@ The rest (`PV_DATABASE_URL`, `PV_WRITER_DATABASE_URL`, `PV_CORS_ORIGINS`, mail, 
 - **Security headers:** `X-Content-Type-Options: nosniff` everywhere; `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN` and a **report-only** `Content-Security-Policy` on the viewer and admin pages. The CSP string is defined once in the `map $host $pv_csp` block. Switch it to enforced once testers report a clean console. **HSTS** goes wherever TLS terminates (DIC-1863 Q3).
   ⚠ nginx drops server-level `add_header`s in any location that sets its own — if you add a location with `add_header`, repeat the security headers there.
 - **Private files:** only `/map-buddy/js/` and `/map-buddy/css/` are served (everything else under `/map-buddy/` is a 404), and dotfiles (`.env`, `.git`) are a 404 from every static root.
-- **Admin console:** `/admin/` is publicly reachable until real auth ([DIC-463](https://linear.app/dicelabs/issue/DIC-463)). Gate it with basic auth or an IP allowlist (DIC-1863 Q4). Writes already require `PV_ADMIN_TOKEN`.
+- **Admin console:** `/admin/` is publicly reachable until real auth ([DIC-463](https://linear.app/dicelabs/issue/DIC-463)). Gate it with basic auth or an IP allowlist (DIC-1863 Q4). Writes already require a staff sign-in with access to the county.
 
 ### Map Buddy (Cloud Run env — set by `deploy.sh`)
 
@@ -157,7 +144,7 @@ First done 2026-09-26 (DIC-1884): smoke test 48/48 and the full e2e suite (181 p
 against it.
 
 ```bash
-# 1. The production stack on a spare port (stop the dev stack's api and martin first:
+# 1. The production stack on a spare port (stop the dev stack's django-api and martin first:
 #    both stacks share db-dice's connections).
 PV_HTTP_PORT=8090 APP_VERSION=0.0.0-rehearsal \
   docker compose -p pv-rehearsal -f infra/docker-compose.prod.yml --env-file .env up --build -d
@@ -167,7 +154,7 @@ PV_HTTP_PORT=8090 APP_VERSION=0.0.0-rehearsal \
 docker build -t pv-rehearsal-mb map-buddy/backend
 (set -a; . ./.env; set +a; docker run -d --name pv-rehearsal-mb --network pv-rehearsal_default \
   -p 127.0.0.1:8095:8000 -e ANTHROPIC_API_KEY="$MAP_BUDDY_ANTHROPIC_API_KEY" \
-  -e ALLOWED_ORIGINS=http://127.0.0.1:8090 -e PARCEL_API_BASE=http://api:8000 \
+  -e ALLOWED_ORIGINS=http://127.0.0.1:8090 -e PARCEL_API_BASE=http://django-api:8000 \
   -e MAP_BUDDY_TENANT=vanburen -e AI_QUOTA_DEFAULT=200 -e AI_QUOTA_WINDOW=86400 pv-rehearsal-mb)
 
 # 3. Check it.

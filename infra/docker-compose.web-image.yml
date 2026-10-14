@@ -19,4 +19,4 @@ services:
     volumes: !override
       - ./nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro
       - ./nginx/map-buddy-api.dev.conf:/etc/nginx/pv/map-buddy-api.conf:ro
-      - ./nginx/api-upstream.${PV_API_BACKEND:-fastapi}.conf:/etc/nginx/pv/api-upstream.conf:ro
+      - ./nginx/api-upstream.django.conf:/etc/nginx/pv/api-upstream.conf:ro
