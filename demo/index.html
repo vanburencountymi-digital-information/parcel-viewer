@@ -740,9 +740,10 @@
   <!-- Local draft preview (DIC-512): merges an Admin Console draft from
        localStorage over window.COUNTY for testing, before map.js reads it. -->
   <script src="/frontend/public/js/style-preview.js"></script>
-  <!-- MapLibre, Turf and proj4: the packages' prebuilt files (the same bytes the CDNs
-       served), bundled into one library script that only changes with a version bump. -->
-  <script src="/node_modules/maplibre-gl/dist/maplibre-gl.js"></script>
+  <!-- MapLibre, Turf and proj4, bundled into one library script that only changes with a
+       version bump. MapLibre 6 is ES modules only, so it comes in through vendor/, which
+       sets window.maplibregl and points it at its worker (DIC-2379). -->
+  <script src="/vendor/maplibre-gl.js"></script>
   <script src="/node_modules/@turf/turf/turf.min.js"></script>
   <!-- proj4.js — coordinate projection (State Plane etc.) for Measurement tab -->
   <script src="/node_modules/proj4/dist/proj4.js"></script>

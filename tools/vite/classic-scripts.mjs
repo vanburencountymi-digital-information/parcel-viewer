@@ -33,14 +33,14 @@
 // stack serves this build too (`npm run dev` = `vite build --watch`, on the host).
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { rolldown } from 'rolldown';
 import { parseAst } from 'rolldown/parseAst';
 import { engineHooks, hookFor } from './module-hooks.mjs';
 
 // The folders the pages load scripts from, watched in `vite build --watch`: this plugin
 // reads those files itself, so Vite wouldn't otherwise know a change needs a rebuild.
-const SCRIPT_DIRS = ['frontend/public/js', 'engine', 'admin/js', 'map-buddy/js'];
+const SCRIPT_DIRS = ['frontend/public/js', 'engine', 'admin/js', 'map-buddy/js', 'vendor'];
 
 // A run of <script src="/local.js"></script> tags separated only by whitespace and comments.
 const SCRIPT_TAG = /<script\s+src="(\/[^"]*)"\s*><\/script>/y;
@@ -50,11 +50,12 @@ function bundleable(src) {
   return src.startsWith('/') && !src.startsWith('//') && !src.startsWith('/api/');
 }
 
-// Third-party libraries come from node_modules (slice 4) as their packages' prebuilt files.
-// They get runs (so bundles) of their own: a library bundle only changes with a version
-// bump, so it stays cached across app releases. nginx never serves /node_modules/, so even
-// a lone library tag is bundled.
-const isLibrary = (src) => src.startsWith('/node_modules/');
+// Third-party libraries come from node_modules (slice 4) as their packages' prebuilt files,
+// or through a small entry in vendor/ when the package is ES modules only (MapLibre 6,
+// DIC-2379). They get runs (so bundles) of their own: a library bundle only changes with a
+// version bump, so it stays cached across app releases. nginx never serves /node_modules/
+// or /vendor/, so even a lone library tag is bundled.
+const isLibrary = (src) => src.startsWith('/node_modules/') || src.startsWith('/vendor/');
 
 /** Finds runs of bundleable script tags: [{ start, end, srcs }]. */
 export function findRuns(html) {
@@ -222,17 +223,29 @@ export async function loadFile(root, src) {
     checkFile(src, code);
     return { src, code };
   }
-  const build = await rolldown({ input: file, cwd: root, logLevel: 'warn', plugins: [sharedInstances(root)] });
+  const assets = [];
+  const library = isLibrary(src);
+  const build = await rolldown({
+    input: file, cwd: root, logLevel: 'warn', plugins: [sharedInstances(root), assetUrls(assets)],
+    // A library entry (vendor/) bundles a package's ES build, which may read import.meta.url
+    // as a fallback the entry overrides (MapLibre's worker URL). There is no import.meta in a
+    // classic script; say so explicitly instead of warning on every build.
+    ...(library ? { transform: { define: { 'import.meta': '{}' } } } : {}),
+  });
   try {
     // dir: root, so the map's sources are relative to the root (generate() writes nothing).
     const { output: [chunk] } = await build.generate({
       format: 'iife', sourcemap: true, dir: root,
+      // Libraries ship minified; re-printing them unminified would add ~0.6 MB. App code
+      // keeps Rolldown's default (not minified, so devtools shows it as written); an
+      // explicit `minify: false` would also turn off its dead-code removal.
+      ...(library ? { minify: true } : {}),
       globals: (id) => (id.startsWith(HOOK_ID) ? `globalThis.${id.slice(HOOK_ID.length)}` : undefined),
     });
     const out = chunk.code.replace(/\n\/\/# sourceMappingURL=.*\n?$/, '\n');
     checkFile(src, out);
     const sources = chunk.map.sources.map((s) => urlPath(root, isAbsolute(s) ? s : resolve(root, s)));
-    return { src, code: out, map: { sources, sourcesContent: chunk.map.sourcesContent, mappings: chunk.map.mappings } };
+    return { src, code: out, assets, map: { sources, sourcesContent: chunk.map.sourcesContent, mappings: chunk.map.mappings } };
   } finally {
     await build.close();
   }
@@ -253,6 +266,32 @@ function sharedInstances(root) {
       const target = resolve(dirname(importer), source);
       const hook = hookFor(target, engine);
       return hook ? { id: HOOK_ID + hook, external: true } : null;
+    },
+  };
+}
+
+// `import url from './file?url'` (as in Vite): the file is published as-is in /assets/,
+// content-hashed, and the import is its path. MapLibre 6's worker comes in this way: the
+// worker must be its own file, and the bundle can't find it through import.meta.url.
+const URL_QUERY = '?url';
+function assetUrls(assets) {
+  return {
+    name: 'pv-asset-urls',
+    async resolveId(source, importer) {
+      if (!source.endsWith(URL_QUERY)) return null;
+      const target = await this.resolve(source.slice(0, -URL_QUERY.length), importer, { skipSelf: true });
+      return target ? { id: target.id + URL_QUERY } : null;
+    },
+    load(id) {
+      if (!id.endsWith(URL_QUERY)) return null;
+      const file = id.slice(0, -URL_QUERY.length);
+      const source = readFileSync(file);
+      const hash = createHash('sha256').update(source).digest('base64url').slice(0, 8);
+      // .js, not .mjs: nginx's mime.types may not know .mjs, and a module worker needs a
+      // JavaScript MIME type.
+      const fileName = `assets/${basename(file).replace(/\.m?js$/, '')}-${hash}.js`;
+      assets.push({ fileName, source });
+      return `export default ${JSON.stringify('/' + fileName)};`;
     },
   };
 }
@@ -282,6 +321,7 @@ export default function classicScripts({ root }) {
         for (const run of runs) {
           const files = [];
           for (const src of run.srcs) files.push(await loadFile(root, src));
+          for (const { fileName, source } of files.flatMap((f) => f.assets || [])) emitted.set(fileName, source);
           const { code, map } = bundle(files);
           const hash = createHash('sha256').update(code).digest('base64url').slice(0, 8);
           // Named by content only, so pages loading the same run share one cached file.

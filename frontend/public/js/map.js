@@ -570,7 +570,10 @@
     // not just the current viewport. This covers wider-zoom tiles that
     // clearTiles()+update(transform) misses because update() only queues tiles
     // for the current zoom.
-    const sc = map.style && map.style.sourceCaches && map.style.sourceCaches["parcels"];
+    // MapLibre internals: `tileManagers` since 6.x (SourceCache became TileManager),
+    // `sourceCaches` before. Not public API, so check it still exists after an upgrade.
+    const caches = map.style && (map.style.tileManagers || map.style.sourceCaches);
+    const sc = caches && caches["parcels"];
     if (sc) {
       sc.reload();
       map.triggerRepaint();
@@ -1234,6 +1237,24 @@
         return (ch && ch.opacity != null) ? ch.opacity : origFillOpacity;
       }
 
+      // MapLibre 6 throws ("this.expression.evaluate is not a function") when one of these
+      // opacities goes from a feature-state expression back to a plain number and a feature
+      // state then changes: the tiles built for the expression still evaluate it (DIC-2379;
+      // 4.7.1 coped). So they stay feature-state expressions: a resting value is a case
+      // whose branches are equal. A zoom curve (the style's own fill-opacity is one) must
+      // stay the top level of its expression, so there the case goes into each output.
+      const stateful = (v) => {
+        if (Array.isArray(v)) {
+          const interp = /^interpolate/.test(v[0]), step = v[0] === "step";
+          const input = interp ? v[2] : step ? v[1] : null;
+          if (Array.isArray(input) && input[0] === "zoom") {
+            const first = interp ? 4 : 2;   // index of the first output
+            return v.map((x, i) => (i >= first && (i - first) % 2 === 0 ? stateful(x) : x));
+          }
+        }
+        return ["case", ["boolean", ["feature-state", "selected"], false], v, v];
+      };
+
       // Focus/dim spotlight painter (DIC-508). When a parcel is selected (user or
       // AI), the non-selected parcels recede (fill + line) and the subject keeps
       // its wash + accent outline. Subtle = instant; Full = animated transition
@@ -1253,7 +1274,7 @@
           map.setPaintProperty("parcels-fill", "fill-opacity",
             active
               ? ["case", ["boolean", ["feature-state", "selected"], false], Math.max(restingFillOpacity(), 0.24), 0.04]
-              : restingFillOpacity());
+              : stateful(restingFillOpacity()));
         }
         // Unselected outlines recede — but only as far as stays visible. With no
         // fill doing the dimming (Plain view, or aerial where the fill isn't
@@ -1264,21 +1285,21 @@
         map.setPaintProperty("parcels-line", "line-opacity",
           active
             ? ["case", ["boolean", ["feature-state", "selected"], false], 1, outlineOnly ? Math.min(0.55, sc.rest) : 0.18]
-            : sc.rest);
+            : stateful(sc.rest));
         if (map.getLayer("parcels-line-casing")) map.setPaintProperty("parcels-line-casing", "line-opacity",
           active
             ? ["case", ["boolean", ["feature-state", "selected"], false], sc.casingRest, outlineOnly ? 0.35 : 0.1]
-            : sc.casingRest);
+            : stateful(sc.casingRest));
       };
 
       function updateZoningOpacity() {
         const zoningOn = zoningToggle.checked;
         const aerialOn = aerialToggle.checked;
         if (!zoningOn) {
-          map.setPaintProperty("parcels-fill", "fill-opacity", 0);
+          map.setPaintProperty("parcels-fill", "fill-opacity", stateful(0));
         } else if (aerialOn) {
           // Plain view stays outline-only even over aerial (DIC-527).
-          map.setPaintProperty("parcels-fill", "fill-opacity", _choroIsPlain() ? 0 : 0.25);
+          map.setPaintProperty("parcels-fill", "fill-opacity", stateful(_choroIsPlain() ? 0 : 0.25));
         }
         // Normal-mode resting fill + the focus/dim spotlight are owned by _spotlightFn.
         _spotlightFn();

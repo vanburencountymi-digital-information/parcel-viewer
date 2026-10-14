@@ -106,7 +106,9 @@ test('parcel outline adapts to the background: dark on light, softened white on 
   const style = () => page.evaluate(() => ({
     line: window.PS_MAP.getPaintProperty('parcels-line', 'line-color'),
     casing: window.PS_MAP.getPaintProperty('parcels-line-casing', 'line-color'),
-    op: window.PS_MAP.getPaintProperty('parcels-line', 'line-opacity'),
+    // The resting opacity is a feature-state case with equal branches (DIC-2379): its
+    // last element is the unselected value, as in the test above.
+    op: ((v) => (Array.isArray(v) ? v[v.length - 1] : v))(window.PS_MAP.getPaintProperty('parcels-line', 'line-opacity')),
   }));
   const light = await style();
   expect(light.line).not.toBe('#ffffff');

@@ -49,5 +49,7 @@ test('size buttons change label size; unchecking removes the labels', async ({ p
   expect(await size()).not.toBe(m);
   await labelsToggle(page).uncheck();
   await waitForMapIdle(page);
-  expect((await rendered(page, '_z15')).length).toBe(0);
+  // Polled: after a size change, MapLibre 6 can still report the previous frame's label
+  // symbols for a moment after the layers are hidden (none are drawn) (DIC-2379).
+  await expect.poll(async () => (await rendered(page, '_z15')).length, { timeout: 10_000 }).toBe(0);
 });

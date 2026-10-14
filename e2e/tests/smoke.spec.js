@@ -18,13 +18,19 @@ test('basemap is Esri Canvas (no CARTO watermark tiles)', async ({ page }) => {
   expect([...hosts].some((h) => h.includes('cartocdn'))).toBe(false);
 });
 
-test('pinned CDN libraries load under SRI', async ({ page }) => {
+test('the pinned libraries load from the site, MapLibre with its worker in /assets/', async ({ page }) => {
+  // Bundled from npm at the versions package.json pins (DIC-2180, DIC-2379), not a CDN.
+  const pinned = require('../../package.json').devDependencies;
   await gotoViewer(page);
   const v = await page.evaluate(() => ({
     maplibre: window.maplibregl && window.maplibregl.getVersion(),
+    worker: window.maplibregl && window.maplibregl.getWorkerUrl().replace(location.origin, ''),
     turf: typeof window.turf, proj4: typeof window.proj4,
   }));
-  expect(v).toEqual({ maplibre: '4.7.1', turf: 'object', proj4: 'function' });
+  expect(v).toEqual({
+    maplibre: pinned['maplibre-gl'], worker: expect.stringMatching(/^\/assets\/maplibre-gl-worker-[\w-]{8}\.js$/),
+    turf: 'object', proj4: 'function',
+  });
 });
 
 test('served config and Map Buddy endpoint resolve (local stack -> bundled container)', async ({ page }) => {
