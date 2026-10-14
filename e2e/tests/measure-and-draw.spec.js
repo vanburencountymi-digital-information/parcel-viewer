@@ -2,6 +2,14 @@
 // Shapes are drawn with real mouse clicks on the map canvas.
 const { test, expect, gotoViewer, waitForMapIdle, clickGate, ui, openMapControlsTab } = require('./fixtures');
 
+// Drawings on the map, through MapLibre's public GeoJSONSource.getData(); its private
+// _data changed shape in 6.x (DIC-2379). null if the source is missing, never a silent 0.
+const annotationCount = (page) => page.evaluate(async () => {
+  const src = window.PS_MAP.getSource('annotation-source');
+  const data = src && (await src.getData());
+  return data && data.features ? data.features.length : null;
+});
+
 const measureTab = (page) => page.getByRole('tabpanel', { name: 'Measurement Tools' });
 const drawTab = (page) => page.getByRole('tabpanel', { name: 'Drawing Tools' });
 const hud = (page) => page.getByTestId('msr-hud');
@@ -131,10 +139,7 @@ test.describe('Draw', () => {
     await drawTab(page).getByRole('button', { name: 'Point', exact: true }).click();
     const [p] = await squareOnMap(page);
     await page.mouse.click(p.x, p.y);
-    const count = () => page.evaluate(() => {
-      const src = window.PS_MAP.getSource('annotation-source');
-      return src && src._data && src._data.features ? src._data.features.length : null;
-    });
+    const count = () => annotationCount(page);
     const after = await count();
     await drawTab(page).getByRole('button', { name: 'Undo (Ctrl+Z)' }).click();
     expect(await count(), 'undo removes it').toBe(after - 1);
@@ -148,10 +153,6 @@ test.describe('Draw', () => {
     await page.keyboard.press('Escape');
     page.once('dialog', (d) => d.accept());
     await drawTab(page).getByRole('button', { name: 'Clear', exact: true }).click();
-    const left = await page.evaluate(() => {
-      const src = window.PS_MAP.getSource('annotation-source');
-      return src && src._data && src._data.features ? src._data.features.length : 0;
-    });
-    expect(left).toBe(0);
+    expect(await annotationCount(page)).toBe(0);
   });
 });

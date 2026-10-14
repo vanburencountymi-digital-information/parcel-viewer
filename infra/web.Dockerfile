@@ -22,6 +22,7 @@ COPY admin ./admin
 COPY frontend/public ./frontend/public
 COPY engine ./engine
 COPY map-buddy/js ./map-buddy/js
+COPY vendor ./vendor
 RUN npm run build
 
 FROM nginx:1.27-alpine

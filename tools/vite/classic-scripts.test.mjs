@@ -43,6 +43,26 @@ test('libraries from node_modules get runs of their own, even a lone one', () =>
   ]);
 });
 
+test('a ?url import publishes the file in /assets/ (content-hashed) and returns its path', async () => {
+  const dir = mkdtempSync(resolve(tmpdir(), 'pv-classic-'));
+  try {
+    mkdirSync(resolve(dir, 'vendor'));
+    writeFileSync(resolve(dir, 'vendor/worker.mjs'), 'self.onmessage = () => {};\n');
+    writeFileSync(resolve(dir, 'vendor/lib.js'), "import url from './worker.mjs?url';\nwindow.WORKER_URL = url;\n");
+    assert.deepEqual(findRuns('<script src="/vendor/lib.js"></script>').map((r) => r.srcs), [['/vendor/lib.js']],
+      'a lone vendor entry is still bundled (nginx never serves /vendor/)');
+    const file = await loadFile(dir, '/vendor/lib.js');
+    assert.equal(file.assets.length, 1);
+    const [{ fileName, source }] = file.assets;
+    assert.match(fileName, /^assets\/worker-[\w-]{8}\.js$/);
+    assert.equal(String(source), 'self.onmessage = () => {};\n', 'published as-is');
+    const { window } = run(bundle([file]).code);
+    assert.equal(window.WORKER_URL, '/' + fileName);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('the viewer loads no script or stylesheet from a CDN', () => {
   for (const page of ['demo/index.html', 'admin/index.html']) {
     const html = readFileSync(resolve(repo, page), 'utf8');
