@@ -60,24 +60,17 @@ test('selection CSV has a header plus one row per selected parcel', async ({ pag
 test('selection CSV neutralises spreadsheet formulas and quotes awkward text', async ({ page }) => {
   // Plant hostile values the way bad upstream data would arrive: in the /parcels response.
   // (Editing the in-memory index raced the index refresh after the map moved, which
-  // replaced the edited features and made this test flaky.)
+  // replaced the edited features and made this test flaky.) The response is built from the
+  // features the page already loaded, not fetched again: a live refetch could stall on the
+  // shared dev DB under full-suite load and leave the index unplanted (DIC-2392).
   const EVIL_OWNER = '=HYPERLINK("http://evil","x")';
-  await page.route(/\/api\/parcels\?/, async (route) => {
-    let res, body;
-    try {
-      res = await route.fetch();
-      body = await res.json();
-    } catch {
-      // The page aborted this request (a newer index refresh superseded it): nothing to answer.
-      await route.abort().catch(() => {});
-      return;
-    }
-    for (const f of body.features || []) {
-      f.properties.owner_name = EVIL_OWNER;
-      f.properties.prop_class = 'a,b\r\nc';
-    }
-    await route.fulfill({ response: res, json: body }).catch(() => {});
-  });
+  const features = await page.evaluate(() => window.PS_PARCEL_INDEX);
+  for (const f of features) {
+    f.properties.owner_name = EVIL_OWNER;
+    f.properties.prop_class = 'a,b\r\nc';
+  }
+  const body = { type: 'FeatureCollection', features };
+  await page.route(/\/api\/parcels\?/, (route) => route.fulfill({ json: body }).catch(() => {}));
   // Pan past the index's 20% padding so it refetches through the route above, then wait for
   // what the export needs: the index holding the planted values. (Waiting for the
   // ps:parcel-index-updated event raced: an earlier refresh could fire it, or one aborted
