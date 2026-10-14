@@ -61,19 +61,32 @@ test('selection CSV neutralises spreadsheet formulas and quotes awkward text', a
   // Plant hostile values the way bad upstream data would arrive: in the /parcels response.
   // (Editing the in-memory index raced the index refresh after the map moved, which
   // replaced the edited features and made this test flaky.)
+  const EVIL_OWNER = '=HYPERLINK("http://evil","x")';
   await page.route(/\/api\/parcels\?/, async (route) => {
-    const res = await route.fetch();
-    const body = await res.json();
+    let res, body;
+    try {
+      res = await route.fetch();
+      body = await res.json();
+    } catch {
+      // The page aborted this request (a newer index refresh superseded it): nothing to answer.
+      await route.abort().catch(() => {});
+      return;
+    }
     for (const f of body.features || []) {
-      f.properties.owner_name = '=HYPERLINK("http://evil","x")';
+      f.properties.owner_name = EVIL_OWNER;
       f.properties.prop_class = 'a,b\r\nc';
     }
-    await route.fulfill({ response: res, json: body });
+    await route.fulfill({ response: res, json: body }).catch(() => {});
   });
-  const refreshed = page.evaluate(() => new Promise((r) => document.addEventListener('ps:parcel-index-updated', r, { once: true })));
-  // Pan past the index's 20% padding so it really refetches (through the route above).
+  // Pan past the index's 20% padding so it refetches through the route above, then wait for
+  // what the export needs: the index holding the planted values. (Waiting for the
+  // ps:parcel-index-updated event raced: an earlier refresh could fire it, or one aborted
+  // by a newer refresh never did; DIC-2205.)
   await page.evaluate(() => window.PS_MAP.panBy([window.PS_MAP.getCanvas().clientWidth * 0.6, 0], { duration: 0 }));
-  await refreshed;
+  await page.waitForFunction(
+    (owner) => (window.PS_PARCEL_INDEX || []).some((f) => (f.properties || {}).owner_name === owner),
+    EVIL_OWNER, { timeout: 30_000 },
+  );
   await openSelectTab(page);
   await selectOver5Acres(page);
   const [dl] = await Promise.all([page.waitForEvent('download'), selectTab(page).getByRole('button', { name: /Download CSV/ }).click()]);
