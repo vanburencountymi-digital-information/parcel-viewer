@@ -116,23 +116,10 @@
         <button class="pv-mtab" id="pv-mtab-docs"     data-target="docs"     role="tab" aria-selected="false" hidden>Sources</button>
       </div>
 
-      <button id="parcel-info-reopen-tab" class="parcel-info-reopen-tab" hidden title="Open parcel info" aria-label="Open parcel info">
-        Parcel Info
-      </button>
-
-      <div id="parcel-info-panel" class="parcel-info-panel" role="region" aria-labelledby="parcel-info-title" tabindex="-1" hidden>
-        <div class="parcel-info-header">
-          <span class="parcel-info-title" id="parcel-info-title" role="heading" aria-level="2">Parcel</span>
-          <button class="parcel-info-close" title="Clear selection" aria-label="Clear selection">✕</button>
-        </div>
-        <div id="parcel-info-nav" class="parcel-info-nav" hidden>
-          <button id="parcel-nav-prev" class="parcel-nav-btn" title="Previous parcel" aria-label="Previous parcel">&#8249;</button>
-          <span id="parcel-nav-label" class="parcel-nav-label" data-testid="parcel-nav-label">1 of 1</span>
-          <button id="parcel-fly-btn" class="parcel-nav-fly" title="Fly to parcel">&#8982;</button>
-          <button id="parcel-nav-next" class="parcel-nav-btn" title="Next parcel" aria-label="Next parcel">&#8250;</button>
-        </div>
-        <div class="parcel-info-body"></div>
-      </div>
+      <!-- The parcel info panel and its reopen tab: rendered by the parcel panel Vue island
+           (frontend/src/parcel-panel/, DIC-2389). display: contents, so the panel is
+           positioned and styled as a child of this container, as before. -->
+      <div id="parcel-panel-root" class="pv-island-contents"></div>
 
       <!-- Sources / Docs panel (Citation Renderer, DIC-522): the in-app, synchronized
            surface the citation renderer mounts into. Opened on demand when a citation is
