@@ -18,7 +18,7 @@ module = ["environ.*", "parameterized.*", "drf_spectacular.*", "knox.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# common/request_context.py is kept identical to the FastAPI copies, which import
+# common/request_context.py is kept identical to Map Buddy's (FastAPI) copy, which imports
 # Starlette's types for type-checking only; Starlette isn't installed here.
 module = ["starlette.*"]
 ignore_missing_imports = true

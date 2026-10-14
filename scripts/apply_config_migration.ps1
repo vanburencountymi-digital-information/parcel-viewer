@@ -1,6 +1,6 @@
 # apply_config_migration.ps1
 #
-# Runs backend/migrations/0001_config_store.sql against the production database.
+# Runs api/county_config/sql/0001_config_store.sql against the production database.
 # Creates the config schema, config_versions table, and pv_writer role.
 # Safe to re-run: the migration is idempotent (IF NOT EXISTS / DO $$ blocks).
 #
@@ -29,7 +29,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $RepoRoot     = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$MigrationFile = Join-Path $RepoRoot "backend\migrations\0001_config_store.sql"
+$MigrationFile = Join-Path $RepoRoot "api\county_config\sql\0001_config_store.sql"
 
 if (-not (Test-Path $MigrationFile)) {
     throw "Migration file not found: $MigrationFile"
@@ -112,5 +112,5 @@ Write-Host "    ALTER ROLE pv_writer PASSWORD '<strong-generated-password>';" -F
 Write-Host "  Then store the connection string in Secret Manager:" -ForegroundColor Yellow
 Write-Host ("    postgresql://pv_writer:<password>@" + $PgHost + ":5432/" + $PgDb + "?sslmode=require") -ForegroundColor DarkGray
 Write-Host ""
-Write-Host "  Step 3 - wire PV_WRITER_DATABASE_URL + PV_ADMIN_TOKEN on the API service." -ForegroundColor Yellow
+Write-Host "  Step 3 - set PV_WRITER_DATABASE_URL for the API (django-api)." -ForegroundColor Yellow
 Write-Host "           See docs/admin-console-provisioning.md for the full checklist." -ForegroundColor DarkGray

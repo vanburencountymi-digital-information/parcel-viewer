@@ -10,7 +10,7 @@ line between facts and AI sits, and where to change things. For running it, see
 ```mermaid
 flowchart LR
   B[Browser<br/>viewer / admin console] -->|HTTPS| N[nginx<br/>static files + proxy]
-  N -->|/api/| A[api<br/>FastAPI, read-only]
+  N -->|/api/| A[django-api<br/>GeoDjango]
   N -->|/tiles/| M[martin<br/>vector tiles]
   N -->|/aerial/| E[Esri World Imagery]
   A -->|read role| DB[(db-dice<br/>PostGIS)]
@@ -26,7 +26,7 @@ flowchart LR
 
 | Deployable | Runs on | Pieces | Deployed by |
 |---|---|---|---|
-| **Viewer stack** | A GCE VM (Docker Compose), shared with parcel-studio | `web` (nginx), `api` (FastAPI), `martin` (tiles) | `infra/docker-compose.prod.yml` |
+| **Viewer stack** | A GCE VM (Docker Compose), shared with parcel-studio | `web` (nginx), `django-api` (Django) + `django-db`, `martin` (tiles) | `infra/docker-compose.prod.yml` |
 | **Map Buddy** | Google Cloud Run (`core-db-475718`, `us-central1`) | One FastAPI service | `map-buddy/deploy.sh` |
 
 **The viewer works without Map Buddy.** If Map Buddy is down, slow or out of quota, the
@@ -48,14 +48,19 @@ authentication and write paths. Nothing here writes parcel data.
 - `/map-buddy-api/` comes from an include: a proxy to a local Map Buddy in development,
   a 404 in production (`infra/nginx/`).
 
-### api (`backend/`)
-FastAPI, **synchronous routes** on a bounded `psycopg` pool. Two parts:
-- `backend/parcel_viewer/`: the importable package. Routers for parcels (search, records,
-  history, bbox, cohort/area queries, style), problem reports and the browser error beacon;
-  the DB pool (`db.py`), cohort SQL (`cohort_query.py`), the config store
-  (`config_store.py`), and the shared observability module (`common/`).
-- `backend/app/main.py`: the standalone app. Adds `/health`, the county config endpoints,
-  the admin endpoints (token-guarded) and `/wms-proxy`.
+### django-api (`api/`)
+GeoDjango + Django REST Framework under gunicorn (DIC-2146; the FastAPI backend it replaced
+was retired, DIC-2150). Same URLs and JSON as before (ADR 0011). Apps:
+- `parcels/`: search, records, history, bbox, cohort/area queries (`cohort_query.py`).
+- `county_config/`: the published config (`/config`, `/config.js`, `/style.json`), the config
+  store (`config.config_versions`; its SQL in `county_config/sql/`), layer discovery, and the
+  Django admin as the config editor.
+- `accounts/`: staff sign-in (Knox tokens) and per-county edit access (ADR 0013).
+- `access/`: metered parcel details for counties that sell data (ADR 0015).
+- `wms/` (the federal map proxy), `feedback/` (problem reports, the error beacon), and
+  `common/` (request ids, logging and Sentry shared with Map Buddy, error answers, limits).
+It talks to three databases: its own (`django-db`: accounts, tokens, counters), the shared
+parcel database (read-only), and the config store.
 
 Key properties: a statement timeout on every query; a dead database gives a 503 within
 about 10 s and the pool heals itself; bad input gives 400/422, never a 500.
@@ -97,7 +102,7 @@ admin endpoints, which require the admin token (interim until DIC-463).
 1. nginx serves `demo/index.html` and the scripts it lists.
 2. `frontend/public/js/county-config.js` sets a baked copy of the county config; then
    `/api/config.js` replaces it with the **published** config (from the config store, or
-   the JSON in `backend/parcel_viewer/county_configs/` if the store is empty or down).
+   the JSON in `api/county_config/baked/` if the store is empty or down).
 3. `map.js` builds the map from `/api/style.json`, which points MapLibre at `/tiles/`.
 
 **Clicking a parcel:** MapLibre finds the feature in the tile → `GET /api/parcel/{id}`
@@ -138,7 +143,7 @@ The rule: **facts come from data and code; AI only narrates facts it is given.**
 
 | What | Where | Changed by |
 |---|---|---|
-| County config: layers, labels, integrations, endpoints (including the Map Buddy URL) | Published versions in the `config` schema; fallback JSON in `backend/parcel_viewer/county_configs/`; baked copy in `frontend/public/js/county-config.js` | Admin console (published), or a PR (fallbacks) |
+| County config: layers, labels, integrations, endpoints (including the Map Buddy URL) | Published versions in the `config` schema; fallback JSON in `api/county_config/baked/`; baked copy in `frontend/public/js/county-config.js` | Admin console (published), or a PR (fallbacks) |
 | Theme manifests (look, capabilities) | `engine/themes/*.json`, listed in `engine/themes/index.json` | PR |
 | Server settings | Environment variables per service (`infra/DEPLOY-CHECKLIST.md` lists all of them) | Deploy |
 | User preferences (units, coordinate format, dark mode, accessibility) | The browser's `localStorage` | The user (Settings) |
@@ -166,7 +171,8 @@ See ADR 0001 and `docs/RUNBOOK.md`.
 |---|---|---|
 | Engine and front-end units (Node) | `engine/test/*.test.js` | Yes |
 | Python contracts (stdlib only) | `engine/test/run_*_test.py` | Yes |
-| API and Map Buddy (FastAPI TestClient; no DB, no model) | `backend/**/tests`, `map-buddy/backend/tests` | Yes |
+| The parcel API (Django; a throwaway PostGIS, never the shared database) | `api/**/tests` | Yes |
+| Map Buddy (FastAPI TestClient; no DB, no model) | `map-buddy/backend/tests` | Yes |
 | Lint, format, types, secrets | pre-commit (ruff, mypy, gitleaks) | Yes |
 | Security scanning | CodeQL | Yes, plus weekly |
 | Browser end-to-end + accessibility (Playwright, axe) | `e2e/` | No: needs a database. Run locally against the stack |
@@ -176,7 +182,7 @@ See ADR 0001 and `docs/RUNBOOK.md`.
 | To… | Look at |
 |---|---|
 | Add a map layer | A `geo.<name>_tiles` function (county-data-services), then the county config (admin console) |
-| Add an API route | `backend/parcel_viewer/routers/`, with a test in `backend/**/tests` |
+| Add an API route | A view and URL in the right `api/` app, with a test in its `tests/` |
 | Change a limit or timeout | Its environment variable (`infra/DEPLOY-CHECKLIST.md`); nginx limits in `infra/nginx.viewer.conf` |
 | Add a Map Buddy command | The tool in `map-buddy/backend/agent.py` **and** its handler in `_CMDS` (`map-buddy/js/map-buddy.js`) |
 | Add an explainer or other capability | A core in `engine/capabilities/`, registered in `register.js` |

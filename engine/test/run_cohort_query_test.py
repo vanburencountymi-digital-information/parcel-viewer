@@ -1,16 +1,16 @@
 """run_cohort_query_test.py — cohort selector → SQL predicate builder (DIC-587).
 
-Proves the spatial-selection half of the cohort capability (backend/parcel_viewer/
-cohort_query.py) builds correct, parameterized predicates and fails closed on malformed
-selectors — WITHOUT a database (the module has no DB imports; loaded directly so the
-parcel_viewer package __init__ / db pool never run).
+Proves the spatial-selection half of the cohort capability (api/parcels/cohort_query.py,
+the Django API's; FastAPI's identical copy was retired, DIC-2150) builds correct,
+parameterized predicates and fails closed on malformed selectors — WITHOUT a database (the
+module has no DB imports; loaded directly by path, so no Django setup runs).
 """
 
 import importlib.util
 import unittest
 from pathlib import Path
 
-_CQ_PATH = Path(__file__).resolve().parents[2] / "backend" / "parcel_viewer" / "cohort_query.py"
+_CQ_PATH = Path(__file__).resolve().parents[2] / "api" / "parcels" / "cohort_query.py"
 _spec = importlib.util.spec_from_file_location("cohort_query", _CQ_PATH)
 cq = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(cq)

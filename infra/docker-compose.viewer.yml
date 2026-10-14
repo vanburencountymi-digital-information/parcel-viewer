@@ -15,56 +15,6 @@
 # about a second after you save a file; reload the page to see it.
 
 services:
-  api:
-    build:
-      context: ../backend
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-0.0.0}   # e.g. APP_VERSION=$(git describe --tags --abbrev=0)
-    environment:
-      # Only what the API reads (DIC-1871): no Anthropic key, no Martin credentials.
-      - PV_DATABASE_URL
-      - PV_DEFAULT_COUNTY
-      - PV_CORS_ORIGINS
-      - PV_POOL_MAX
-      - PV_POOL_TIMEOUT_S
-      - PV_STATEMENT_TIMEOUT_MS
-      - PV_DB_CONNECT_TIMEOUT_S
-      - PV_DB_TCP_USER_TIMEOUT_MS
-      - PV_WRITER_DATABASE_URL
-      - PV_WRITER_POOL_MAX
-      - PV_WRITER_POOL_TIMEOUT_S
-      - PV_WRITER_CONNECT_TIMEOUT_S
-      - PV_CONFIG_STORE_RETRY_S
-      - PV_ADMIN_TOKEN
-      - PV_DISCOVERY_CACHE_S
-      - PV_SMTP_HOST
-      - PV_SMTP_PORT
-      - PV_SMTP_USER
-      - PV_SMTP_PASSWORD
-      - PV_SMTP_STARTTLS
-      - PV_REPORT_TO
-      - PV_REPORT_FROM
-      - REPORT_ERROR_RATE_LIMIT
-      - REPORT_ERROR_GLOBAL_LIMIT
-      - CLIENT_ERROR_RATE_LIMIT
-      - CLIENT_ERROR_GLOBAL_LIMIT
-      - WMS_PROXY_RATE_LIMIT
-      - WMS_PROXY_MAX_BYTES
-      # A bare name that isn't set REMOVES the variable, image ENV default included,
-      # so anything the Dockerfile defaults needs an explicit fallback here.
-      - UVICORN_WORKERS=${UVICORN_WORKERS:-2}
-      - SENTRY_DSN
-      - SENTRY_ENVIRONMENT
-      - SENTRY_TRACES_SAMPLE_RATE
-      - LOG_LEVEL
-      - PV_MARTIN_PUBLIC_URL=/tiles
-      - PV_API_DOCS=1             # dev only: /api/docs (off by default, DIC-1855)
-      - LOG_FORMAT=text           # dev only: readable logs (images default to JSON, DIC-1879)
-    restart: unless-stopped
-    expose:
-      - "8000"
-
   martin:
     image: ghcr.io/maplibre/martin:1.10.1
     platform: linux/amd64
@@ -95,7 +45,7 @@ services:
       # (and the Cloud Run secret) use MAP_BUDDY_ANTHROPIC_API_KEY.
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-${MAP_BUDDY_ANTHROPIC_API_KEY:-}}
       - ALLOWED_ORIGINS=http://localhost:8080,http://localhost:8091,http://127.0.0.1:8080
-      - PARCEL_API_BASE=http://api:8000
+      - PARCEL_API_BASE=http://django-api:8000
       - MAP_BUDDY_TENANT
       - MAP_BUDDY_MODEL
       - MAP_BUDDY_MAX_TOKENS
@@ -171,7 +121,7 @@ services:
       # Dev: /map-buddy-api/ proxies to the local map-buddy container (DIC-1871).
       - ./nginx/map-buddy-api.dev.conf:/etc/nginx/pv/map-buddy-api.conf:ro
       # /api/ backend: fastapi (default) or django, with `--profile django` running (DIC-2150).
-      - ./nginx/api-upstream.${PV_API_BACKEND:-fastapi}.conf:/etc/nginx/pv/api-upstream.conf:ro
+      - ./nginx/api-upstream.django.conf:/etc/nginx/pv/api-upstream.conf:ro
       - ../dist:/usr/share/nginx/dist:ro
       # Still served by path: runtime data (county config, statutes, themes) and Map Buddy's CSS.
       - ../frontend/public:/usr/share/nginx/html/parcel-viewer:ro
@@ -186,17 +136,14 @@ services:
     ports:
       - "${PV_HTTP_PORT:-8080}:80"
     depends_on:
-      - api
+      - django-api
       - martin
       - map-buddy
     restart: unless-stopped
 
-  # ── GeoDjango port (DIC-2146) ────────────────────────────────────────────────
-  # The new API beside the FastAPI one. Not started by default: add `--profile django`.
-  # It answers on port 8001 and isn't behind nginx until phase 4 (DIC-2150), so the
-  # viewer keeps using FastAPI. Compare the two with tools/api-contract (diff).
+  # ── The parcel API: GeoDjango (DIC-2146), the only backend since DIC-2150 ─────
+  # nginx sends /api/ to it; it also answers directly on port 8001.
   api-db:
-    profiles: ["django"]
     # Django's own tables, and locally the config store table (created from the same SQL
     # migrations production used). Tests run here too.
     image: postgis/postgis:17-3.5-alpine
@@ -206,8 +153,8 @@ services:
       POSTGRES_PASSWORD: api
     volumes:
       - api_db_data:/var/lib/postgresql/data
-      - ../backend/migrations/0001_config_store.sql:/docker-entrypoint-initdb.d/10_config_store.sql:ro
-      - ../backend/migrations/0002_config_versions_unique_version.sql:/docker-entrypoint-initdb.d/20_config_versions_unique_version.sql:ro
+      - ../api/county_config/sql/0001_config_store.sql:/docker-entrypoint-initdb.d/10_config_store.sql:ro
+      - ../api/county_config/sql/0002_config_versions_unique_version.sql:/docker-entrypoint-initdb.d/20_config_versions_unique_version.sql:ro
     ports:
       - "5433:5432"
     healthcheck:
@@ -217,7 +164,6 @@ services:
       retries: 10
 
   django-api:
-    profiles: ["django"]
     build:
       context: ../api
       target: dev
@@ -228,7 +174,7 @@ services:
       - PV_DATABASE_URL
       - PV_WRITER_DATABASE_URL
       # The same config switches the FastAPI service reads, so the two answer alike.
-      # No PV_ADMIN_TOKEN: the Django API takes staff tokens only (DIC-2151, ADR 0013).
+      # Staff sign in with accounts (DIC-2151, ADR 0013); there's no shared admin key.
       - PV_DEFAULT_COUNTY
       # Data access (ADR 0015): unset = each county's manifest decides (open by default).
       # e.g. PV_ACCESS_MODE=protected PV_DETAIL_BUDGET=50 to try the budget locally.

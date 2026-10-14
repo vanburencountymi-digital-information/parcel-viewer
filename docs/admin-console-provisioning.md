@@ -14,7 +14,8 @@ manifest (`county-config.js` / `county_configs/*.json`); write endpoints return
 1. **Create the schema, table, and writer role** — run the migration against the
    production database as an admin/superuser:
    ```
-   psql "$ADMIN_DATABASE_URL" -f backend/migrations/0001_config_store.sql
+   psql "$ADMIN_DATABASE_URL" -f api/county_config/sql/0001_config_store.sql
+   psql "$ADMIN_DATABASE_URL" -f api/county_config/sql/0002_config_versions_unique_version.sql
    ```
    This creates the isolated `config` schema, the `config.config_versions` table,
    and the least-privilege `pv_writer` role (config schema only — no access to
@@ -27,36 +28,28 @@ manifest (`county-config.js` / `county_configs/*.json`); write endpoints return
    Store the resulting connection string in **Secret Manager**, e.g.
    `postgresql://pv_writer:<password>@<host>:5432/<db>?sslmode=require`.
 
-3. **Wire two env vars** on the parcel-viewer API service (from Secret Manager):
-   - `PV_WRITER_DATABASE_URL` → the `pv_writer` connection string (step 2).
-   - `PV_ADMIN_TOKEN` → a strong shared token. *Interim* gate on write endpoints
-     until real auth (Google SSO) lands — see **DIC-463**. The console sends it as
-     the `X-Admin-Token` header.
+3. **Set `PV_WRITER_DATABASE_URL`** on the API (`django-api`) to the `pv_writer` connection
+   string (step 2), and redeploy it.
 
-4. **Redeploy** the API service.
-
-5. **Verify** against the deployed service:
+4. **Verify** against the deployed service, with a staff sign-in (below):
    ```
    curl -s $API/config | jq .name                       # published manifest (JSON)
    curl -s $API/config.js | head -c 60                   # window.COUNTY = {…}
-   curl -s -X PUT $API/config/vanburen/draft \
-        -H "X-Admin-Token: $PV_ADMIN_TOKEN" -H 'Content-Type: application/json' \
-        -d '{"payload": {"name":"Van Buren County"}, "author":"you@vbco"}'
-   curl -s -X POST $API/config/vanburen/publish \
-        -H "X-Admin-Token: $PV_ADMIN_TOKEN" -d '{}' | jq .version
-   curl -s $API/config/vanburen/versions -H "X-Admin-Token: $PV_ADMIN_TOKEN" | jq
+   curl -s $API/config/vanburen/versions -H "Authorization: Token $TOKEN" | jq
    ```
+   Without `PV_WRITER_DATABASE_URL`, the production compose keeps the store in Django's own
+   database (`django-db`) instead, which creates the table on its first start.
 
 ## Security review before go-live
 - Confirm `pv_writer` has **no** grants outside the `config` schema (the migration
   grants only there; verify in prod).
-- Replace the interim `PV_ADMIN_TOKEN` with real auth + roles (**DIC-463**) before
-  exposing the console beyond trusted staff.
+- Staff accounts are per person, with per-county edit access (below). Google SSO
+  (**DIC-463**) is still open for later.
 - The public read path stays on the read-only role; writes are isolated.
 
-## Staff sign-in on the Django API (DIC-2151, ADR 0013)
-The Django port replaces the shared key with per-person staff sign-in and **doesn't
-accept the key at all**. The steps above apply to the FastAPI backend until the cutover.
+## Staff sign-in (DIC-2151, ADR 0013)
+Each person has their own staff account; there is no shared admin key (it went with the
+FastAPI backend, DIC-2150).
 1. **Create a staff user** for each person (in the API container), and grant the
    counties they may edit:
    ```
@@ -65,7 +58,7 @@ accept the key at all**. The steps above apply to the FastAPI backend until the 
    Or add users in `/django-admin/`: tick "Staff status", then under "Counties this
    user may edit" add each county key (e.g. `vanburen`). A staff user with no county
    can sign in but edit nothing (403 "No access to county …").
-2. **Sign in for a token** and use it instead of the shared key:
+2. **Sign in for a token:**
    ```
    TOKEN=$(curl -s -X POST $API/auth/login -H 'Content-Type: application/json' \
         -d '{"username":"you","password":"…"}' | jq -r .token)
@@ -74,16 +67,13 @@ accept the key at all**. The steps above apply to the FastAPI backend until the 
    ```
    Tokens expire after `PV_TOKEN_TTL_HOURS` (10). A superuser can revoke any token
    in `/django-admin/` (Knox → Auth tokens).
-3. **At cutover** remove `PV_ADMIN_TOKEN` from the service (Django ignores it) and
-   give every console user a staff account first.
-4. **The Django admin config editor** (ADR 0014) is at `/api/django-admin/` →
+3. **The Django admin config editor** (ADR 0014) is at `/api/django-admin/` →
    County config → Config versions. It appears only with the writer database
    (`PV_WRITER_DATABASE_URL`, set up at the top of this checklist).
    - Give each editor's account *Can view config version* (history) and *Can change
      config version* (save, publish, roll back). Superusers have both.
-   - Behind nginx, set `PV_SCRIPT_NAME=/api` on the API service and add the public
-     origin to `CSRF_TRUSTED_ORIGINS` (e.g. `https://gis.dicemi.org`), or the admin's
-     links and sign-in form won't work.
+   - The production compose already sets `PV_SCRIPT_NAME=/api` and trusts
+     `https://<PV_PUBLIC_HOST>` for its forms (`infra/docker-compose.prod.yml`).
 
 ## Known follow-ups (application side, not blocking)
 - Pool/cache the writer connection so the public `GET /config` hot path doesn't

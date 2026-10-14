@@ -71,10 +71,10 @@ stack + map-buddy on Cloud Run) from current code, plus a couple of decisions (b
    `COUNTY.endpoints.mapBuddy` in **all three** copies — today they read
    `https://map-buddy-toaozre74a-uc.a.run.app`:
    - `frontend/public/js/county-config.js`
-   - `backend/parcel_viewer/county_configs/vanburen.json`  ← served as `/api/config.js` (rebuild `api` if changed)
+   - `api/county_config/baked/vanburen.json`  ← served as `/api/config.js` when the config store is empty (rebuild `django-api` if changed)
    - `engine/themes/vanburen.json`
    If the deployed URL matches today's value, nothing to change. If it differs, update all three and
-   rebuild `api`.
+   rebuild `django-api`.
 
 ---
 

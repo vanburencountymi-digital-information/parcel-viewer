@@ -18,7 +18,7 @@ the preferred channel once an admin turns it on; readiness checklist B3.)
 |---|---|
 | **The Anthropic API key** (Map Buddy) | Anyone holding it can spend the county's money. |
 | **Database credentials** (read role, Martin's role, the config writer role) | Direct access to the parcel database and the admin config store. |
-| **The admin token** (`PV_ADMIN_TOKEN`) | Lets the holder change the published viewer configuration. |
+| **Staff accounts and their sign-in tokens** | Let the holder change the published viewer configuration (for the counties the account may edit). |
 | **The shared database's capacity** (db-dice, 25 connections) | Other county services share it; the viewer mustn't be able to starve them. |
 | **Owner names and mailing addresses** | Public tax-roll records, but bulk scraping of them is still a harm (see 5). |
 | **Visitors** | Script injection through data we render (owner names, addresses, config). |
@@ -47,8 +47,9 @@ the API should not be public; the approach is decision B1, still open.** Until t
 | `/api/wms-proxy` (federal flood / wetland / soil maps) | Anyone | HTTPS allowlist, no redirects, image types only, 5 MB cap, rate limit |
 | `/api/report-error`, `/api/client-errors` | Anyone | Per-IP and global rate limits, size limits |
 | Map Buddy (Cloud Run) | Anyone who knows the URL | CORS allowlist, per-IP rate limits, AI quota, request-size caps |
-| Admin console page (`/admin/`) | Anyone | Page is public; **every write and layer discovery needs the admin token** |
-| API docs (`/docs`, `/openapi.json`) | Nobody in production | Off unless `PV_API_DOCS=1` / `MAP_BUDDY_API_DOCS=1` (dev only) |
+| Admin console page (`/admin/`) | Anyone | Page is public; **every write and layer discovery needs a staff sign-in** with access to that county |
+| Django admin (`/api/django-admin/`) | Staff | Staff accounts only; CSRF-protected forms over HTTPS |
+| API docs (`/api/docs`) | Signed-in staff | Everyone else gets the same 404 as an unknown path (ADR 0009). Map Buddy's: off unless `MAP_BUDDY_API_DOCS=1` (dev only) |
 
 **Never served:** dotfiles (`.env`, `.git`), Map Buddy's backend source and deploy
 script, `*.md` files, engine tests. `infra/smoke-test.sh` checks each of these returns 404.
@@ -58,12 +59,14 @@ script, `*.md` files, engine tests. `infra/smoke-test.sh` checks each of these r
 | Secret | Production home | Seen by |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Secret Manager `MAP_BUDDY_ANTHROPIC_API_KEY`, mounted into Cloud Run by `map-buddy/deploy.sh` | Map Buddy only |
-| `PV_DATABASE_URL` (read role) | The VM's `.env` (not in git) | `api` only |
+| `PV_DATABASE_URL` (read role) | The VM's `.env` (not in git) | `django-api` only |
 | `MARTIN_DATABASE_URL` (`martin_ro`, SELECT-only) | The VM's `.env` | `martin` only |
-| `PV_WRITER_DATABASE_URL` (`pv_writer`, `config` schema only) | The VM's `.env` / Secret Manager | `api` only |
-| `PV_ADMIN_TOKEN` | The VM's `.env` | `api`; admins type it into their own browser session |
-| `PV_SMTP_PASSWORD` | The VM's `.env` | `api` only |
-| `SENTRY_DSN` | Secret Manager `dice-sentry-dsn` (to be created with the Sentry project) | `api`, Map Buddy |
+| `PV_WRITER_DATABASE_URL` (`pv_writer`, `config` schema only) | The VM's `.env` / Secret Manager | `django-api` only |
+| `DJANGO_SECRET_KEY` (signs sessions and CSRF tokens) | The VM's `.env` | `django-api` only |
+| `DJANGO_DB_PASSWORD` (Django's own database) | The VM's `.env` | `django-api`, `django-db` |
+| Staff passwords | Hashed in Django's database (`django-db`) | Each staff member knows their own |
+| `PV_SMTP_PASSWORD` | The VM's `.env` | `django-api` only |
+| `SENTRY_DSN` | Secret Manager `dice-sentry-dsn` (to be created with the Sentry project) | `django-api`, Map Buddy |
 | Google Maps **Embed** key (`integrations.googleMapsEmbedKey`) | County config | Public by design: browser keys are visible; it must be **HTTP-referrer-restricted** in the Google console |
 
 **How that's enforced:**
@@ -71,14 +74,16 @@ script, `*.md` files, engine tests. `infra/smoke-test.sh` checks each of these r
   (`infra/docker-compose.prod.yml`); nothing uses a shared `env_file`. The API never sees
   the Anthropic key; Martin sees only its own login.
 - **Least privilege per database role.** Read paths use read-only roles. The config writer
-  role can touch only the `config` schema (`backend/migrations/0001_config_store.sql`).
+  role can touch only the `config` schema (`api/county_config/sql/0001_config_store.sql`).
 - **Nothing secret in git.** `gitleaks` runs on every commit (pre-commit) and in CI; the
   full history scan is clean. `.gitignore` covers `.env.*`, keys and service-account files.
 - **Nothing secret in logs.** Logs never contain query strings (owner-name searches) or
   request bodies; Sentry scrubs personal data (ADR 0001).
-- **The admin token** is compared in constant time, is never stored by the admin console
-  (it lives only in the page's memory: `window.PV_ADMIN_TOKEN`), and is checked **before**
-  any database work, so an unauthenticated request can't even probe the store.
+- **Staff sign-in** (ADR 0013, DIC-2151): each person has their own staff account, and edits
+  only the counties it's granted (`County access`). Signing in gives a Knox token: stored
+  hashed, expiring after `PV_TOKEN_TTL_HOURS` (10), at most `PV_TOKENS_PER_USER` (5) per
+  person, revocable in the Django admin. The admin console keeps it in `sessionStorage`
+  (closing the tab signs out). The old shared admin key went with the FastAPI backend.
 
 Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
 
@@ -98,7 +103,7 @@ Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
   Anthropic Console** (set before going public).
 
 **Input handling**
-- Every query parameter and body is validated (FastAPI / Pydantic). Coordinates, drawn
+- Every query parameter and body is validated (DRF serializers, answering as FastAPI/Pydantic did; ADR 0012). Coordinates, drawn
   polygons, buffer sizes (≤ 5 miles), search length (≤ 100 chars, ≤ 8 terms) and ids are
   checked before they reach PostGIS; bad input gets a 400/422, never a 500.
 - All SQL is parameterized. Attribute ids are bound as text.

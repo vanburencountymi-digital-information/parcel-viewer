@@ -179,8 +179,8 @@ def _database(
 DATABASES = {
     DatabaseAlias.DEFAULT: _database("DATABASE_URL"),
     DatabaseAlias.PARCELS: _database("PV_DATABASE_URL", read_only=True),
-    # Locally, without a writer URL, the config table lives in the Django database (the
-    # compose database creates it from backend/migrations).
+    # Without a writer URL, the config table lives in the Django database (the compose
+    # databases create it from county_config/sql).
     DatabaseAlias.CONFIG_STORE: _database(
         "PV_WRITER_DATABASE_URL", default_url=env.str("DATABASE_URL")
     ),

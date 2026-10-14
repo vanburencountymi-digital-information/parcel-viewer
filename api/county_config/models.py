@@ -1,7 +1,7 @@
 """The versioned county config store, mapped onto the existing table (ADR 0010).
 
-config.config_versions was created by backend/migrations/0001 and 0002 and is shared with
-the FastAPI backend until cutover, so Django reads and writes it but doesn't migrate it.
+config.config_versions is created by county_config/sql/0001 and 0002 (applied by an admin, or
+by the compose databases on first start), so Django reads and writes it but doesn't migrate it.
 """
 
 from django.db import models

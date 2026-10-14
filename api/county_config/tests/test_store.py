@@ -11,7 +11,7 @@ from county_config import store
 from county_config.store import ConfigStore, PublishConflict, published_config
 from county_config.tests.test_models import CONFIG_TABLE_DDL
 
-# The partial unique indexes backend/migrations/0001 and 0002 add.
+# The partial unique indexes county_config/sql/0001 and 0002 add.
 INDEXES_DDL = """
 CREATE UNIQUE INDEX IF NOT EXISTS config_versions_one_draft
     ON config.config_versions (county) WHERE status = 'draft';

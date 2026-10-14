@@ -29,7 +29,7 @@ fi
 # resolves `test` to the stdlib package, not engine/test/. Not listed (as in CI):
 # run_parcel_store, run_knowledge_store and run_tenant_isolation need the ZIP backend
 # from a sibling repo (../ZIP/zip-poc/backend).
-for t in run_explain_contract run_cohort_query run_quota run_cost_cache run_citation_extract run_kb_resolver run_pv_parcel_store run_workflow_params; do
+for t in run_explain_contract run_cohort_query run_quota run_cost_cache run_citation_extract run_kb_resolver run_workflow_params; do
   echo "-- $t"
   "$PY" "test/${t}_test.py"
 done

@@ -1,7 +1,6 @@
 # PRODUCTION stack for the Parcel Viewer (DIC-1871). Differences from the dev
 # docker-compose.viewer.yml:
-#   - the API is the Django port (DIC-2150): the first deployed backend, so FastAPI isn't
-#     part of production at all;
+#   - the API runs the production image (gunicorn), migrated by a one-shot service first;
 #   - no local map-buddy container: the viewer calls the Cloud Run service directly,
 #     and nginx answers /map-buddy-api/ with 404 (infra/nginx/map-buddy-api.prod.conf);
 #   - JSON logs, no source bind-mounts for services;
@@ -84,8 +83,8 @@ services:
       - django_db_data:/var/lib/postgresql/data
       # The config store's tables, for when PV_WRITER_DATABASE_URL isn't set (the dev
       # stack does the same). Run once, when the volume is first created.
-      - ../backend/migrations/0001_config_store.sql:/docker-entrypoint-initdb.d/10_config_store.sql:ro
-      - ../backend/migrations/0002_config_versions_unique_version.sql:/docker-entrypoint-initdb.d/20_config_versions_unique_version.sql:ro
+      - ../api/county_config/sql/0001_config_store.sql:/docker-entrypoint-initdb.d/10_config_store.sql:ro
+      - ../api/county_config/sql/0002_config_versions_unique_version.sql:/docker-entrypoint-initdb.d/20_config_versions_unique_version.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U django -d parcel_viewer_api"]
       interval: 5s

@@ -2,13 +2,11 @@
  * generate.mjs — single-source generator for the shared ParcelStore contract (A6 / D1).
  *
  * parcel_contract.py here is the CANONICAL source of the canonical-parcel-record shape +
- * the ParcelStore interface. The Parcel Viewer backend (psycopg3) and the ZIP backend
- * (psycopg2) each have their own ParcelStore impl but must produce the SAME record, so
- * the contract is defined once and copied — verbatim, since Python is identical in both
- * (no namespace prefix, unlike the JS drawing stack in engine/drawing/).
+ * the ParcelStore interface, copied verbatim into each backend that implements a
+ * ParcelStore. Today that's ZIP (psycopg2). The Parcel Viewer's FastAPI backend had one too;
+ * it was retired with that backend (DIC-2150), and the Django API doesn't use the store.
  *
  * Running this writes parcel_contract.py to:
- *   - Parcel Viewer:  backend/parcel_viewer/stores/parcel_contract.py
  *   - ZIP:            ../ZIP/zip-poc/backend/parcel_contract.py   (if the sibling repo is on disk)
  *
  * After editing the master, run `node engine/stores/generate.mjs`. The drift-guard
@@ -23,7 +21,6 @@ const repo = path.resolve(here, '..', '..');                    // parcel-viewer
 const claude = path.resolve(repo, '..');                        // Desktop/Claude/
 
 export const CONTRACT_FILE = 'parcel_contract.py';
-export const PV_PATH = path.join(repo, 'backend', 'parcel_viewer', 'stores', CONTRACT_FILE);
 export const ZIP_PATH = path.join(claude, 'ZIP', 'zip-poc', 'backend', CONTRACT_FILE);
 
 export function masterSource() {
@@ -32,8 +29,6 @@ export function masterSource() {
 
 function generate() {
   const master = masterSource();
-  fs.writeFileSync(PV_PATH, master);
-  console.log('generated', path.relative(claude, PV_PATH));
   if (fs.existsSync(path.dirname(ZIP_PATH))) {
     fs.writeFileSync(ZIP_PATH, master);
     console.log('generated', path.relative(claude, ZIP_PATH));

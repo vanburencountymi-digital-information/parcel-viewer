@@ -1,7 +1,7 @@
 """Request ids, the access log and CORS, behaving exactly as the FastAPI backend (ADR 0011).
 
 The id, access-log levels and safe-id rule come from common/request_context.py, which is
-kept identical to the FastAPI and Map Buddy copies; Django runs WSGI, so it gets this
+kept identical to Map Buddy's copy (a FastAPI app); Django runs WSGI, so it gets this
 middleware instead of that module's ASGI one. CORS reproduces Starlette's CORSMiddleware
 with the FastAPI settings (DIC-1852), down to the preflight bodies.
 """

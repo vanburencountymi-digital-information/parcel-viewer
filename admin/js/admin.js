@@ -33,7 +33,6 @@
   var STATE = {
     config: window.COUNTY || {}, source: 'fallback',
     editing: false, draft: null,
-    token: window.PV_ADMIN_TOKEN || '',   // the shared admin key, until the cutover (ADR 0013)
     auth: null,                           // {token, username, expiry} while a staff user is signed in
   };
   // Debug/test hook (mirrors the viewer's window handles like PS_MAP / PV_MAP_BUDDY):
@@ -44,8 +43,7 @@
   // ── Staff sign-in (DIC-2151, ADR 0013) ─────────────────────────────────────
   // The Django API trades a staff password for a token (POST /auth/login), sent as
   // "Authorization: Token …". It's kept in sessionStorage: a reload stays signed in,
-  // closing the tab signs out. The FastAPI backend has no sign-in, so until the cutover
-  // the shared key (window.PV_ADMIN_TOKEN) still works when it's set.
+  // closing the tab signs out. (The shared admin key went with the FastAPI backend.)
   var AUTH_KEY = 'pv-admin-auth';
   var onAuthChange = function () {};   // set by init(): re-renders the open module
 
@@ -64,11 +62,10 @@
     } catch (_) { /* storage blocked: signed in for this page only */ }
     renderAuth();
   }
-  function hasAuth() { return !!(STATE.auth || STATE.token); }
-  var DISCOVERY_NEEDS_AUTH = 'Layer discovery needs a staff sign-in, or the shared admin token on the FastAPI backend.';
+  function hasAuth() { return !!STATE.auth; }
+  var DISCOVERY_NEEDS_AUTH = 'Layer discovery needs a staff sign-in.';
   function authHeaders() {
-    if (STATE.auth) return { 'Authorization': 'Token ' + STATE.auth.token };
-    return STATE.token ? { 'X-Admin-Token': STATE.token } : {};
+    return STATE.auth ? { 'Authorization': 'Token ' + STATE.auth.token } : {};
   }
   // A 401 while signed in means the token expired or was revoked: forget it.
   function noteRefused(status) {
@@ -132,7 +129,7 @@
     box.innerHTML =
       '<form id="ac-signin" class="ac-signin" novalidate>' +
         '<p class="ac-auth-title">Staff sign-in</p>' +
-        (STATE.token ? '<p class="ac-auth-note">Using the shared admin key until you sign in.</p>' : '') +
+
         '<label class="ac-auth-label" for="ac-signin-user">Username</label>' +
         '<input class="ac-input ac-auth-input" id="ac-signin-user" name="username" autocomplete="username" required>' +
         '<label class="ac-auth-label" for="ac-signin-pass">Password</label>' +
