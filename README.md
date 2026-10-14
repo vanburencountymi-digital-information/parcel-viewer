@@ -104,6 +104,9 @@ npm run dev                   # vite build --watch; leave it running (own termin
 
 Open `http://localhost:8080/demo/`. Stop with `.\infra\compose.ps1 down` (and Ctrl-C the watch).
 
+Panels are moving to Vue components in `frontend/src/` (ADR 0017); `npm test` runs their
+Vitest tests.
+
 ### What runs in Docker
 
 | Service | Role |

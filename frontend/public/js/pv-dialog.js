@@ -2,8 +2,8 @@
  * pv-dialog.js — keyboard behaviour for the viewer's overlay dialogs (DIC-1873).
  *
  * The admin-menu modal already handles Esc, focus and Tab; the Compare and Neighborhood
- * Profile overlays (aria-modal dialogs built in pv-compare.js / pv-profile.js) didn't, so
- * keyboard and screen-reader users could neither reach nor leave them. Call:
+ * Profile overlays (aria-modal dialogs: Compare, in frontend/src/compare/, and
+ * pv-profile.js) didn't, so keyboard and screen-reader users could neither reach nor leave them. Call:
  *
  *   PV_DIALOG.opened(overlayEl, closeFn)  after showing the overlay
  *   PV_DIALOG.closed(overlayEl)           after hiding it

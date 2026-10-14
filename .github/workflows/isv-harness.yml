@@ -184,11 +184,14 @@ jobs:
           node-version: '22'
           cache: npm
 
-      - name: Vite build (pages, hashed CSS, classic-script bundles)
+      - name: Vite build (pages, hashed CSS, classic-script bundles, Vue islands)
         run: |
           npm ci --no-audit --no-fund
           npm run test:build
+          npm test                                  # Vue components (Vitest, DIC-2389)
           npm run build
+          # The Vue islands' entry is a module bundle of Vite's own (DIC-2389).
+          grep -qE '<script type="module"[^>]* src="/assets/demo-[^"]*\.js"' dist/demo/index.html
           test -f dist/demo/index.html && test -f dist/admin/index.html
           grep -q '/assets/demo-.*\.css' dist/demo/index.html
           grep -q '/assets/scripts-.*\.js' dist/demo/index.html
