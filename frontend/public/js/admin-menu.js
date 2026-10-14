@@ -1,7 +1,7 @@
 /* Administrative tools menu — Help / Feedback / Data Request / About.
  *
- * A topbar button opens a dropdown of administrative tools. Each tool opens a
- * lightweight in-app modal: Help and About are read-only info windows; Feedback
+ * The Help & tools dropdown (a Vue island, frontend/src/admin-menu/) opens these tools
+ * through PV_TOOLS; each opens a lightweight in-app modal (frontend/src/modal/): Help and About are read-only info windows; Feedback
  * and Data Request are forms. Form submission is a PLACEHOLDER for now — it shows
  * a thank-you state but does not POST anywhere yet (no backend endpoint wired).
  *
@@ -10,10 +10,6 @@
  */
 (function () {
   "use strict";
-
-  var btn  = document.getElementById("pv-admin-btn");
-  var menu = document.getElementById("pv-admin-menu");
-  if (!btn || !menu) return;
 
   function countyConfig() {
     return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {};
@@ -25,167 +21,17 @@
     return (window.PS_CONTEXT && window.PS_CONTEXT.prefs) || window.PV_PREFS || null;
   }
 
-  // ── Dropdown open/close ────────────────────────────────────────────────────
-  function openMenu() {
-    menu.hidden = false;
-    btn.setAttribute("aria-expanded", "true");
-    document.addEventListener("click", onDocClick, true);
-    document.addEventListener("keydown", onMenuKey);
-  }
-  function closeMenu() {
-    menu.hidden = true;
-    btn.setAttribute("aria-expanded", "false");
-    document.removeEventListener("click", onDocClick, true);
-    document.removeEventListener("keydown", onMenuKey);
-  }
-  function toggleMenu() { menu.hidden ? openMenu() : closeMenu(); }
-
-  function onDocClick(e) {
-    if (!menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) closeMenu();
-  }
-  function onMenuKey(e) { if (e.key === "Escape") { closeMenu(); btn.focus(); } }
-
-  btn.addEventListener("click", function (e) { e.stopPropagation(); toggleMenu(); });
-
-  menu.addEventListener("click", function (e) {
-    var item = e.target.closest(".pv-admin-item");
-    if (!item) return;
-    closeMenu();
-    openTool(item.getAttribute("data-tool"));
-  });
-
-  // ── Modal builder ───────────────────────────────────────────────────────────
-  var _modal = null;
-  var _modalReturnFocus = null;   // element to restore focus to on close (DIC-373)
-
-  function getModalFocusables() {
-    if (!_modal) return [];
-    var sel = 'a[href], button:not([disabled]), input:not([disabled]), ' +
-              'select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-    return Array.prototype.slice.call(_modal.querySelectorAll(sel))
-      .filter(function (el) { return el.offsetParent !== null || el === document.activeElement; });
-  }
-
-  function closeModal() {
-    if (!_modal) return;
-    document.removeEventListener("keydown", onModalKey);
-    _modal.remove();
-    _modal = null;
-    // Un-hide the rest of the page.
-    var app = document.getElementById("app");
-    if (app) { app.removeAttribute("inert"); app.removeAttribute("aria-hidden"); }
-    // Restore focus to whatever opened the modal; if that trigger is now hidden
-    // (e.g. an admin-menu item that closed with the menu), fall back to the
-    // tools button so focus never lands on <body>.
-    var ret = _modalReturnFocus;
-    _modalReturnFocus = null;
-    if (ret && document.contains(ret) && ret.offsetParent !== null) {
-      ret.focus();
-    } else {
-      var ab = document.getElementById("pv-admin-btn");
-      if (ab) ab.focus();
-    }
-  }
-
-  function onModalKey(e) {
-    if (e.key === "Escape") { closeModal(); return; }
-    if (e.key !== "Tab" || !_modal) return;
-    // Trap focus inside the dialog.
-    var f = getModalFocusables();
-    if (!f.length) { e.preventDefault(); return; }
-    var first = f[0], last = f[f.length - 1], active = document.activeElement;
-    if (e.shiftKey) {
-      if (active === first || !_modal.contains(active)) { e.preventDefault(); last.focus(); }
-    } else {
-      if (active === last || !_modal.contains(active)) { e.preventDefault(); first.focus(); }
-    }
-  }
-
-  // Make a dialog draggable by its header and resizable from a corner handle.
-  // Desktop-only — on narrow screens the modal stays full-width/centered.
-  function makeModalMovable(modalEl, headerEl) {
-    if (!modalEl || !headerEl) return;
-    if (!window.matchMedia("(min-width: 641px)").matches) return;
-    var tx = 0, ty = 0, pinned = false;
-    // Lift the size constraints to the modal's CURRENT rendered size — but only
-    // once a drag/resize actually begins. Pinning up front ran before the body
-    // content was mounted (Bookmarks builds its list in onMount; What's New
-    // fetches its changelog async), so the modal locked to its tiny empty-state
-    // height: content then overflowed and the first resize snapped from that
-    // stale size. Pinning lazily lets the modal open at its natural content size
-    // and makes resizing start from what's actually on screen.
-    function pinSize() {
-      if (pinned) return;
-      modalEl.style.width = modalEl.offsetWidth + "px";
-      modalEl.style.height = modalEl.offsetHeight + "px";
-      modalEl.style.maxWidth = "none";
-      modalEl.style.maxHeight = "none";
-      pinned = true;
-    }
-    headerEl.classList.add("pv-modal-header--drag");
-    headerEl.addEventListener("pointerdown", function (e) {
-      if (e.target.closest("button")) return;          // let the close button work
-      e.preventDefault();
-      pinSize();
-      var sx = e.clientX, sy = e.clientY, ox = tx, oy = ty;
-      headerEl.setPointerCapture(e.pointerId);
-      function mv(ev) { tx = ox + (ev.clientX - sx); ty = oy + (ev.clientY - sy); modalEl.style.transform = "translate(" + tx + "px," + ty + "px)"; }
-      function up() { try { headerEl.releasePointerCapture(e.pointerId); } catch (x) {} headerEl.removeEventListener("pointermove", mv); headerEl.removeEventListener("pointerup", up); }
-      headerEl.addEventListener("pointermove", mv);
-      headerEl.addEventListener("pointerup", up);
-    });
-    // Resize handle (bottom-right).
-    var rh = document.createElement("div");
-    rh.className = "pv-modal-resize";
-    rh.setAttribute("aria-hidden", "true");
-    modalEl.appendChild(rh);
-    rh.addEventListener("pointerdown", function (e) {
-      e.preventDefault(); e.stopPropagation();
-      pinSize();
-      var sx = e.clientX, sy = e.clientY, sw = modalEl.offsetWidth, sh = modalEl.offsetHeight;
-      rh.setPointerCapture(e.pointerId);
-      function mv(ev) {
-        modalEl.style.width  = Math.max(360, Math.min(window.innerWidth  - 40, sw + (ev.clientX - sx))) + "px";
-        modalEl.style.height = Math.max(280, Math.min(window.innerHeight - 40, sh + (ev.clientY - sy))) + "px";
-      }
-      function up() { try { rh.releasePointerCapture(e.pointerId); } catch (x) {} rh.removeEventListener("pointermove", mv); rh.removeEventListener("pointerup", up); }
-      rh.addEventListener("pointermove", mv);
-      rh.addEventListener("pointerup", up);
-    });
-  }
-
+  // ── The menu and the modal ─────────────────────────────────────────────────
+  // The Help & tools dropdown and the modal dialog are Vue islands (frontend/src/admin-menu/,
+  // frontend/src/modal/, DIC-2389): the dropdown opens windows through PV_TOOLS below, and
+  // openModal/closeModal hand the windows built here to the modal (PV_MODAL). Same contract
+  // as before: openModal(title, bodyHtml, onMount(bodyEl), { wide, flush }), with onMount
+  // running once the body is on the page.
   function openModal(title, bodyHtml, onMount, opts) {
-    opts = opts || {};
-    closeModal();
-    _modalReturnFocus = document.activeElement;   // restore here on close (DIC-373)
-    var modalCls = "pv-modal" + (opts.wide ? " pv-modal--wide" : "");
-    var bodyCls  = "pv-modal-body" + (opts.flush ? " pv-modal-body--flush" : "");
-    var back = document.createElement("div");
-    back.className = "pv-modal-backdrop";
-    back.innerHTML =
-      '<div class="' + modalCls + '" role="dialog" aria-modal="true" aria-label="' + escAttr(title) + '">' +
-        '<div class="pv-modal-header">' +
-          '<span class="pv-modal-title">' + esc(title) + '</span>' +
-          '<button class="pv-modal-close" aria-label="Close">&#10005;</button>' +
-        '</div>' +
-        '<div class="' + bodyCls + '">' + bodyHtml + '</div>' +
-      '</div>';
-
-    // Backdrop click (outside the dialog) closes; clicks inside do not.
-    back.addEventListener("click", function (e) { if (e.target === back) closeModal(); });
-    back.querySelector(".pv-modal-close").addEventListener("click", closeModal);
-    document.addEventListener("keydown", onModalKey);
-
-    document.body.appendChild(back);
-    _modal = back;
-    makeModalMovable(back.querySelector(".pv-modal"), back.querySelector(".pv-modal-header"));
-    // Make the rest of the page inert + hidden from AT while the dialog is open.
-    var app = document.getElementById("app");
-    if (app) { app.setAttribute("inert", ""); app.setAttribute("aria-hidden", "true"); }
-    if (typeof onMount === "function") onMount(back.querySelector(".pv-modal-body"));
-    // Focus the first interactive element in the dialog for keyboard users.
-    var focusable = back.querySelector("input, textarea, select, button.pv-modal-close");
-    if (focusable) focusable.focus();
+    if (window.PV_MODAL) window.PV_MODAL.open(title, bodyHtml, onMount, opts);
+  }
+  function closeModal() {
+    if (window.PV_MODAL) window.PV_MODAL.close();
   }
 
   // Parcel/map-tool buttons and the tax-description info icon live outside the

@@ -97,7 +97,9 @@ when the panel shows through `PV_PARCEL_PANEL` and what it shows through `PV_PAR
 Panel's header, tabs and Advanced toggle (`frontend/src/map-controls/`), which keeps the page's own
 pane elements (classic scripts wire the Layers, Drawing and Measurement panes) and is
 switched through `PS_MAP_PANEL.setTab`; and parcel search (`frontend/src/search/`), which
-selects a result through `PS_SEARCH_MAP`.
+selects a result through `PS_SEARCH_MAP`; and the Help & tools menu
+(`frontend/src/admin-menu/`) with the viewer's modal (`frontend/src/modal/`, `PV_MODAL`), which
+`admin-menu.js`, `pv-explain.js` and `pv-ledger.js` open their windows in.
 
 ### The engine (`engine/`)
 The start of a source-agnostic engine shared with other viewers (ZIP, for zoning). It

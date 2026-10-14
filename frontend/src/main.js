@@ -4,6 +4,7 @@
 // page is parsed and every classic script has run: the window hooks the islands read
 // (src/shared/viewer.js) exist by then. Each island mounts on its own, so one that throws
 // doesn't stop the others.
+import { mountHelpMenu, mountModal } from './admin-menu/index.js';
 import { mountCompare } from './compare/index.js';
 import { mountMapControls } from './map-controls/index.js';
 import { mountParcelPanel } from './parcel-panel/index.js';
@@ -11,6 +12,8 @@ import { mountSearch } from './search/index.js';
 import { mountSelectTools } from './select-tools/index.js';
 
 const ISLANDS = {
+  modal: mountModal,
+  'help-menu': mountHelpMenu,
   compare: mountCompare,
   'select-tools': mountSelectTools,
   'parcel-panel': mountParcelPanel,
