@@ -134,7 +134,7 @@
         if (c) return c.buildAssessmentFacts(p, { labels: countyConfig().labels, pinFallback: parcel && parcel.pin, rollYear: rollOverride });
         // Inline fallback (transitional — mirrors engine/capabilities/explainer.core.js):
         var av = num(p.assessed_value);
-        // DB stores assessed_value_yr0..yr4 newest-first (see map.js showParcelInfo).
+        // DB stores assessed_value_yr0..yr4 newest-first (see frontend/src/parcel-card/formatters.js).
         var histNewestFirst = [p.assessed_value_yr0, p.assessed_value_yr1, p.assessed_value_yr2,
                                p.assessed_value_yr3, p.assessed_value_yr4].map(num);
         // Year-labeled, oldest→newest — clearer for the model and the chart.
