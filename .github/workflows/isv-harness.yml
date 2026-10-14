@@ -216,20 +216,29 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: nginx -t with the dev and the prod snippet
+      - name: nginx -t with the dev and the prod snippet, and each API upstream
         run: |
-          for variant in dev prod; do
-            echo "::group::nginx -t ($variant)"
+          # prod = Django (DIC-2150); FastAPI is still selectable on the dev stack.
+          for combo in dev:fastapi dev:django prod:django; do
+            variant=${combo%%:*}; upstream=${combo##*:}
+            echo "::group::nginx -t ($variant, $upstream)"
             docker run --rm \
-              --add-host api:127.0.0.1 --add-host martin:127.0.0.1 --add-host map-buddy:127.0.0.1 \
+              --add-host api:127.0.0.1 --add-host django-api:127.0.0.1 \
+              --add-host martin:127.0.0.1 --add-host map-buddy:127.0.0.1 \
               -v "$PWD/infra/nginx.viewer.conf:/etc/nginx/conf.d/default.conf:ro" \
               -v "$PWD/infra/nginx/map-buddy-api.$variant.conf:/etc/nginx/pv/map-buddy-api.conf:ro" \
-              -v "$PWD/infra/nginx/api-upstream.fastapi.conf:/etc/nginx/pv/api-upstream.conf:ro" \
+              -v "$PWD/infra/nginx/api-upstream.$upstream.conf:/etc/nginx/pv/api-upstream.conf:ro" \
               nginx:1.27-alpine nginx -t
             echo "::endgroup::"
           done
 
-      - name: Compose files are valid; production has no local Map Buddy
+      - name: Compose files are valid; production runs Django and no local Map Buddy
+        env:
+          # Placeholders for the settings docker-compose.prod.yml requires (it refuses to
+          # start without them); only for validating the file.
+          DJANGO_SECRET_KEY: ci-placeholder
+          DJANGO_DB_PASSWORD: ci-placeholder
+          PV_PUBLIC_HOST: example.org
         run: |
           docker compose -f infra/docker-compose.viewer.yml config --quiet
           docker compose -f infra/docker-compose.viewer.yml -f infra/docker-compose.web-image.yml config --quiet
@@ -241,4 +250,16 @@ jobs:
           fi
           if grep -q "map-buddy-api.dev.conf" infra/docker-compose.prod.yml; then
             echo "::error::docker-compose.prod.yml mounts the dev /map-buddy-api/ proxy (DIC-1871)"; exit 1
+          fi
+          # Django is the deployed backend (DIC-2150): nginx must send /api/ to it, and the
+          # FastAPI service must not come back into production.
+          if ! echo "$services" | grep -qx django-api || echo "$services" | grep -qx api; then
+            echo "::error::docker-compose.prod.yml must run django-api, not the FastAPI api (DIC-2150)"; exit 1
+          fi
+          if ! grep -q "api-upstream.django.conf" infra/docker-compose.prod.yml; then
+            echo "::error::docker-compose.prod.yml must point /api/ at Django (api-upstream.django.conf; DIC-2150)"; exit 1
+          fi
+          # Without the required settings, compose must refuse to start (not run with blanks).
+          if env -u DJANGO_SECRET_KEY docker compose -f infra/docker-compose.prod.yml config --quiet 2>/dev/null; then
+            echo "::error::docker-compose.prod.yml started without DJANGO_SECRET_KEY"; exit 1
           fi

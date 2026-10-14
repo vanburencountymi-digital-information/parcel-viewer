@@ -39,4 +39,4 @@ COPY map-buddy/css/ /usr/share/nginx/html/map-buddy/css/
 # nginx config, with production defaults for the per-environment includes.
 COPY infra/nginx.viewer.conf /etc/nginx/conf.d/default.conf
 COPY infra/nginx/map-buddy-api.prod.conf /etc/nginx/pv/map-buddy-api.conf
-COPY infra/nginx/api-upstream.fastapi.conf /etc/nginx/pv/api-upstream.conf
+COPY infra/nginx/api-upstream.django.conf /etc/nginx/pv/api-upstream.conf
