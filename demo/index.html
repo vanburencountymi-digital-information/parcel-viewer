@@ -7,10 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
-  <!-- Third-party libs are pinned to exact versions with SRI hashes (DIC-1855): a floating
-       "@4" could change the live site on an upstream release. To upgrade: bump the version
-       and recompute the hash (openssl dgst -sha384 -binary | openssl base64 -A). -->
-  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
+  <!-- Third-party libraries come from npm, pinned to exact versions in package.json and
+       checked against package-lock.json's integrity hashes (DIC-2180; before that, CDN URLs
+       with SRI, DIC-1855). The build bundles their prebuilt files, so the site never loads
+       code from a CDN. To upgrade: npm install -D --save-exact <package>@<version>. -->
+  <link rel="stylesheet" href="/node_modules/maplibre-gl/dist/maplibre-gl.css">
   <link rel="stylesheet" href="/frontend/public/css/style.css">
   <link rel="stylesheet" href="/frontend/public/css/viewer.css">
   <!-- Must run before every other script: see the file header (DIC-1873). -->
@@ -739,10 +740,12 @@
   <!-- Local draft preview (DIC-512): merges an Admin Console draft from
        localStorage over window.COUNTY for testing, before map.js reads it. -->
   <script src="/frontend/public/js/style-preview.js"></script>
-  <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7.4.0/turf.min.js" integrity="sha384-G+b+P1TXEQX2nQW+hvnd1dWiV2mysujghcENksJYyeXd0Z1Bp23Ac/6IRftCtdmI" crossorigin="anonymous"></script>
+  <!-- MapLibre, Turf and proj4: the packages' prebuilt files (the same bytes the CDNs
+       served), bundled into one library script that only changes with a version bump. -->
+  <script src="/node_modules/maplibre-gl/dist/maplibre-gl.js"></script>
+  <script src="/node_modules/@turf/turf/turf.min.js"></script>
   <!-- proj4.js — coordinate projection (State Plane etc.) for Measurement tab -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.0/proj4.js" integrity="sha384-U14wzrePlI+UpXk1Jpe45fK/C0yeI7rtwKzi9eM3Lj7LYjXlHNy0YacuWZIk7Hic" crossorigin="anonymous"></script>
+  <script src="/node_modules/proj4/dist/proj4.js"></script>
   <!-- Coordinate formatters shared by the readout, parcel card and right-click menu (DIC-1882). -->
   <script src="/frontend/public/js/pv-coords.js"></script>
   <!-- Drawing tools infrastructure — load before map.js -->

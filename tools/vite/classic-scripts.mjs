@@ -27,8 +27,9 @@
 // bundling a copy (see module-hooks.mjs).
 //
 // Left alone: module/async/defer scripts, scripts with any attribute besides src (e.g.
-// /api/config.js's onerror), remote and /api/ URLs, and a lone local script (so the baked
-// county-config.js stays its own tag just before /api/config.js). Build only; the dev
+// /api/config.js's onerror), remote and /api/ URLs, and a lone local app script (so the
+// baked county-config.js stays its own tag just before /api/config.js). Libraries from
+// /node_modules/ (MapLibre, Turf, proj4) always get bundles of their own. Build only; the dev
 // stack serves this build too (`npm run dev` = `vite build --watch`, on the host).
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -49,6 +50,12 @@ function bundleable(src) {
   return src.startsWith('/') && !src.startsWith('//') && !src.startsWith('/api/');
 }
 
+// Third-party libraries come from node_modules (slice 4) as their packages' prebuilt files.
+// They get runs (so bundles) of their own: a library bundle only changes with a version
+// bump, so it stays cached across app releases. nginx never serves /node_modules/, so even
+// a lone library tag is bundled.
+const isLibrary = (src) => src.startsWith('/node_modules/');
+
 /** Finds runs of bundleable script tags: [{ start, end, srcs }]. */
 export function findRuns(html) {
   const runs = [];
@@ -62,13 +69,14 @@ export function findRuns(html) {
       SCRIPT_TAG.lastIndex = pos;
       const tag = SCRIPT_TAG.exec(html);
       if (!tag || !bundleable(tag[1])) break;
+      if (srcs.length && isLibrary(tag[1]) !== isLibrary(srcs[0])) break;
       srcs.push(tag[1]);
       end = SCRIPT_TAG.lastIndex;
       GAP.lastIndex = end;
       GAP.exec(html);
       pos = GAP.lastIndex;
     }
-    if (srcs.length >= 2) runs.push({ start: m.index, end, srcs });
+    if (srcs.length >= 2 || (srcs.length && isLibrary(srcs[0]))) runs.push({ start: m.index, end, srcs });
     opener.lastIndex = Math.max(end, m.index + 1);
   }
   return runs;
