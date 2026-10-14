@@ -90,7 +90,9 @@ The panels are moving to Vue 3, one at a time (ADR 0017, DIC-2389). Vue componen
 classic scripts. They keep the `window` API their callers use (Compare keeps `PV_COMPARE`) and
 read the rest of the viewer only through `frontend/src/shared/viewer.js`. So far: Compare, and
 the Selection Tools pane, whose map side (the selection, the box and lasso gestures, the buffer
-highlights) stays in `map.js` behind `PS_SELECT_MAP`.
+highlights) stays in `map.js` behind `PS_SELECT_MAP`; and the parcel info panel's card
+(`frontend/src/parcel-card/`), which `map.js` and `pv-feature-info.js` fill through
+`PV_PARCEL_CARD` (the panel around it is still `map.js`'s).
 
 ### The engine (`engine/`)
 The start of a source-agnostic engine shared with other viewers (ZIP, for zoning). It

@@ -79,9 +79,15 @@ const PV_FEATURE_INFO = (function (root) {
     var panel = document.getElementById('parcel-info-panel');
     var body = panel && panel.querySelector('.parcel-info-body');
     if (!panel || !body) return false;
-    body.innerHTML = renderHtml(sourceConfig, feature, opts.labels || countyConfig().labels);
-    var titleEl = panel.querySelector('.parcel-info-title');
-    if (titleEl && opts.title != null) titleEl.textContent = opts.title;
+    var html = renderHtml(sourceConfig, feature, opts.labels || countyConfig().labels);
+    if (root.PV_PARCEL_CARD) {
+      // The panel's body is the parcel card island's (DIC-2389): it shows this instead.
+      root.PV_PARCEL_CARD.showFeature(html, opts.title);
+    } else {
+      body.innerHTML = html;
+      var titleEl = panel.querySelector('.parcel-info-title');
+      if (titleEl && opts.title != null) titleEl.textContent = opts.title;
+    }
     panel.hidden = false;
     return true;
   }

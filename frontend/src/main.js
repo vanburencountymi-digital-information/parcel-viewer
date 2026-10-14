@@ -5,9 +5,10 @@
 // (src/shared/viewer.js) exist by then. Each island mounts on its own, so one that throws
 // doesn't stop the others.
 import { mountCompare } from './compare/index.js';
+import { mountParcelCard } from './parcel-card/index.js';
 import { mountSelectTools } from './select-tools/index.js';
 
-const ISLANDS = { compare: mountCompare, 'select-tools': mountSelectTools };
+const ISLANDS = { compare: mountCompare, 'select-tools': mountSelectTools, 'parcel-card': mountParcelCard };
 
 for (const [name, mount] of Object.entries(ISLANDS)) {
   try {
