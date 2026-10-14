@@ -7,9 +7,16 @@
 import { mountCompare } from './compare/index.js';
 import { mountMapControls } from './map-controls/index.js';
 import { mountParcelPanel } from './parcel-panel/index.js';
+import { mountSearch } from './search/index.js';
 import { mountSelectTools } from './select-tools/index.js';
 
-const ISLANDS = { compare: mountCompare, 'select-tools': mountSelectTools, 'parcel-panel': mountParcelPanel, 'map-controls': mountMapControls };
+const ISLANDS = {
+  compare: mountCompare,
+  'select-tools': mountSelectTools,
+  'parcel-panel': mountParcelPanel,
+  'map-controls': mountMapControls,
+  search: mountSearch,
+};
 
 for (const [name, mount] of Object.entries(ISLANDS)) {
   try {

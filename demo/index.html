@@ -35,11 +35,8 @@
           Search
         </button>
         <div id="parcel-search" class="parcel-search">
-          <input id="parcel-search-input" class="parcel-search-input" type="text" placeholder="Search parcel number, owner, or address…" aria-label="Search parcels by parcel number, owner, or address" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="parcel-search-results" aria-autocomplete="list" aria-haspopup="listbox">
-          <div id="parcel-search-results" class="parcel-search-results" role="listbox" aria-label="Parcel search results" hidden></div>
-          <div id="parcel-search-status" class="pv-sr-only" role="status" aria-live="polite" data-testid="parcel-search-status"></div>
-          <!-- Close button: visible only in mobile overlay mode via CSS -->
-          <button id="pv-search-close" class="pv-search-close" aria-label="Close search">✕</button>
+          <!-- The search box, results and status: rendered by the search Vue island
+               (frontend/src/search/, DIC-2389). -->
         </div>
         <button id="theme-toggle" class="pv-theme-toggle" title="Toggle dark mode" aria-label="Toggle dark mode">
           <!-- icon swapped by JS -->

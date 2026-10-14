@@ -1539,11 +1539,6 @@
   // The card (sections, assessed values, tax description, actions) is a Vue island,
   // frontend/src/parcel-card/ (DIC-2389): showParcelInfo opens the panel and hands it the
   // parcel. Field layout matches the payload returned by GET /parcel/{id}.
-  function _escHtml(s) {
-    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
-    });
-  }
   function _parcelDisplayPin(selectionKey, props) {
     const p = props || {};
     return p.parcel_no || p.pin || p.PIN || selectionKey || p.id || "";
@@ -1911,212 +1906,16 @@
   let parcelIndex = [];
   window.PS_PARCEL_INDEX = parcelIndex;
 
-  const searchInput   = document.getElementById("parcel-search-input");
-  const searchResults = document.getElementById("parcel-search-results");
-  const searchStatus  = document.getElementById("parcel-search-status");
-
-  // ── ARIA combobox state (DIC-381) ──
-  let _options = [];     // [{ el, parcelId }]
-  let _activeIdx = -1;
-
-  function setExpanded(open) { searchInput.setAttribute("aria-expanded", String(open)); }
-
-  function setActive(idx) {
-    if (_activeIdx >= 0 && _options[_activeIdx]) {
-      _options[_activeIdx].el.classList.remove("active");
-      _options[_activeIdx].el.setAttribute("aria-selected", "false");
-    }
-    _activeIdx = idx;
-    if (idx >= 0 && _options[idx]) {
-      const o = _options[idx].el;
-      o.classList.add("active");
-      o.setAttribute("aria-selected", "true");
-      searchInput.setAttribute("aria-activedescendant", o.id);
-      o.scrollIntoView({ block: "nearest" });
-    } else {
-      searchInput.removeAttribute("aria-activedescendant");
-    }
-  }
-
-  function selectOption(idx) {
-    const o = _options[idx];
-    if (!o) return;
-    // Direct focus into the parcel region once it renders (keyboard lifeline).
-    _focusInfoPanelOnShow = true;
-    _lastFocusBeforeInfo = searchInput;
-    window.PS_selectParcelById(o.parcelId, { cinematic: true });
-    hideResults();
-    closeMobileSearch();
-  }
-
-  function hideResults() { searchResults.hidden = true; setExpanded(false); setActive(-1); }
-  function clearResults() {
-    searchResults.hidden = true; searchResults.innerHTML = "";
-    _options = []; setExpanded(false); setActive(-1);
-    if (searchStatus) searchStatus.textContent = "";
-  }
-
-  // Mobile search overlay helpers
-  const _searchContainer = document.getElementById("parcel-search");
-
-  // Close the overlay but KEEP the query + results, so reopening shows them
-  // again (matches desktop: picking the wrong parcel, you can come back and
-  // see the remaining matches without re-searching).
-  function closeMobileSearch() {
-    _searchContainer?.classList.remove("pv-search-open");
-    searchResults.hidden = true;
-    setExpanded(false);
-  }
-  // Full reset — clears the query and results (used by Escape / explicit cancel).
-  function resetMobileSearch() {
-    closeMobileSearch();
-    searchInput.value = "";
-    clearResults();
-  }
-
-  // Search icon button (mobile) → open overlay, re-showing any lingering results.
-  // stopPropagation so this click doesn't reach the document "click-outside"
-  // handler below, which would immediately hide the results we just revealed.
-  document.getElementById("pv-search-btn")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    _searchContainer.classList.add("pv-search-open");
-    if (searchResults.innerHTML) searchResults.hidden = false;
-    setTimeout(() => searchInput.focus(), 60);
-  });
-
-  // Close button inside overlay
-  document.getElementById("pv-search-close")?.addEventListener("click", (e) => {
-    e.stopPropagation();
-    closeMobileSearch();
-  });
-
-  // Tap backdrop (the overlay container itself, not the input or results)
-  _searchContainer?.addEventListener("click", (e) => {
-    if (e.target === _searchContainer) closeMobileSearch();
-  });
-
-  let _searchTimer = null;
-  let _searchController = null;
-
-  searchInput.addEventListener("input", () => {
-    const q = searchInput.value.trim();
-    clearTimeout(_searchTimer);
-    if (q.length < 2) {
-      // Also drop the pending/in-flight search, or its results reappear after clearing.
-      if (_searchController) { _searchController.abort(); _searchController = null; }
-      clearResults();
-      return;
-    }
-    _searchTimer = setTimeout(() => runSearch(q), 250);
-  });
-
-  function runSearch(q) {
-    if (_searchController) _searchController.abort();
-    _searchController = new AbortController();
-
-    fetch(API_BASE + "/search?q=" + encodeURIComponent(q) + "&limit=25",
-          { signal: _searchController.signal })
-      .then(r => {
-        if (!r.ok) { const e = new Error("search HTTP " + r.status); e.status = r.status; throw e; }
-        return r.json();
-      })
-      .then(noteAccess)
-      .then(data => renderSearchResults(data.results || []))
-      .catch(err => {
-        if (err && err.name === "AbortError") return;   // superseded by a newer keystroke
-        renderSearchError(err && err.status === 429
-          ? "Too many searches — please wait a moment and try again."
-          : "Search is unavailable right now. Please try again.");
-      });
-  }
-
-  // A failed search used to be swallowed as if aborted, so the user saw nothing (DIC-1856).
-  function renderSearchError(msg) {
-    searchResults.innerHTML = "";
-    _options = [];
-    setActive(-1);
-    const el = document.createElement("div");
-    el.className = "parcel-search-no-results parcel-search-error";
-    el.setAttribute("role", "alert");
-    el.textContent = msg;
-    searchResults.appendChild(el);
-    searchResults.hidden = false;
-    setExpanded(true);
-    if (searchStatus) searchStatus.textContent = msg;
-  }
-
-  function renderSearchResults(results) {
-    searchResults.innerHTML = "";
-    searchResults.hidden = false;
-    _options = [];
-    setActive(-1);
-
-    if (!results.length) {
-      searchResults.innerHTML = '<div class="parcel-search-no-results" data-testid="parcel-search-no-results">No matches found</div>';
-      setExpanded(true);
-      if (searchStatus) searchStatus.textContent = "No matches found";
-      return;
-    }
-
-    const container = document.createElement("div");
-    container.className = "parcel-search-page";
-
-    results.forEach((r, i) => {
-      const row = document.createElement("div");
-      row.className = "parcel-search-result";
-      row.id = "psr-opt-" + i;
-      row.setAttribute("role", "option");
-      row.setAttribute("aria-selected", "false");
-      row.innerHTML =
-        `<div class="parcel-search-result-pin" data-testid="parcel-search-result-pin">${_escHtml(r.pin)}${r.municipality ? " &middot; " + _escHtml(r.municipality) : ""}</div>` +
-        `<div class="parcel-search-result-owner">${r.owner_name ? _escHtml(r.owner_name) : "—"}</div>` +
-        (r.address ? `<div class="parcel-search-result-address">${_escHtml(r.address)}</div>` : "");
-      const idx = i;
-      row.addEventListener("click", () => selectOption(idx));
-      row.addEventListener("mousemove", () => { if (_activeIdx !== idx) setActive(idx); });
-      container.appendChild(row);
-      _options.push({ el: row, parcelId: r.id });
-    });
-
-    searchResults.appendChild(container);
-    setExpanded(true);
-    if (searchStatus) {
-      searchStatus.textContent = results.length + (results.length === 1 ? " result" : " results") + " found, use up and down arrow keys to navigate";
-    }
-  }
-
-  searchInput.addEventListener("focus", () => {
-    if (searchResults.innerHTML) { searchResults.hidden = false; if (_options.length) setExpanded(true); }
-  });
-
-  searchInput.addEventListener("keydown", (e) => {
-    const open = !searchResults.hidden && _options.length > 0;
-    switch (e.key) {
-      case "ArrowDown":
-        if (open) { e.preventDefault(); setActive((_activeIdx + 1) % _options.length); }
-        break;
-      case "ArrowUp":
-        if (open) { e.preventDefault(); setActive((_activeIdx - 1 + _options.length) % _options.length); }
-        break;
-      case "Home":
-        if (open) { e.preventDefault(); setActive(0); }
-        break;
-      case "End":
-        if (open) { e.preventDefault(); setActive(_options.length - 1); }
-        break;
-      case "Enter":
-        if (open && _activeIdx >= 0) { e.preventDefault(); selectOption(_activeIdx); }
-        break;
-      case "Escape":
-        if (!searchResults.hidden) { e.preventDefault(); hideResults(); }
-        else { resetMobileSearch(); }
-        break;
-    }
-  });
-
-  document.addEventListener("click", (e) => {
-    if (!e.target.closest("#parcel-search")) hideResults();
-  });
+  // The search box is a Vue island, frontend/src/search/ (DIC-2389). Picking a result
+  // selects the parcel here, and moves focus into the parcel region once it renders (the
+  // keyboard lifeline, DIC-385); closing the panel returns focus to the search box.
+  window.PS_SEARCH_MAP = {
+    select(parcelId, returnFocusTo) {
+      _focusInfoPanelOnShow = true;
+      _lastFocusBeforeInfo = returnFocusTo || null;
+      window.PS_selectParcelById(parcelId, { cinematic: true });
+    },
+  };
 
   // Escape clears the parcel selection (and lifts the focus/dim spotlight) when
   // one is active — a universal "deselect" the map was missing. Ignored while
@@ -2133,7 +1932,7 @@
     if (dialogOpen()) return;
     const t = e.target;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    if (searchResults && !searchResults.hidden) return;   // search owns Escape first
+    if (window.PV_SEARCH && window.PV_SEARCH.isOpen()) return;   // search owns Escape first
     clearSelectionAll();
   });
 

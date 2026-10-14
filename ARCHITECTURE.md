@@ -96,7 +96,8 @@ when the panel shows through `PV_PARCEL_PANEL` and what it shows through `PV_PAR
 (`pv-feature-info.js` too, for other layers); the panel's controls call `PS_PARCEL_PANEL`; and the Map Control
 Panel's header, tabs and Advanced toggle (`frontend/src/map-controls/`), which keeps the page's own
 pane elements (classic scripts wire the Layers, Drawing and Measurement panes) and is
-switched through `PS_MAP_PANEL.setTab`.
+switched through `PS_MAP_PANEL.setTab`; and parcel search (`frontend/src/search/`), which
+selects a result through `PS_SEARCH_MAP`.
 
 ### The engine (`engine/`)
 The start of a source-agnostic engine shared with other viewers (ZIP, for zoning). It
