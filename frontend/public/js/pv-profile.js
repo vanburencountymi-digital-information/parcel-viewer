@@ -201,6 +201,12 @@
     }
     var selector = buildSelector();
     renderShell('Loading neighborhood…');
+    // Each open supersedes the last: abort its request and drop its result if it still lands
+    // (out-of-order responses would otherwise paint the previous radius/area's figures). A
+    // counter rather than the narrate/env key string: that key is the same for any two drawn areas.
+    var token = _ctx.profileToken = ++_profileSeq;
+    if (_profileAbort) _profileAbort.abort();
+    _profileAbort = ('AbortController' in root) ? new root.AbortController() : null;
     if (!selector) {
       var msg = _ctx.mode === 'drawn'
         ? 'Click “Draw an area” above, then sketch a neighborhood on the map.'
@@ -210,10 +216,15 @@
     fetch(apiBase() + '/cohort', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ selector: selector }),
+      signal: _profileAbort ? _profileAbort.signal : undefined,
     })
       .then(function (r) { return r.ok ? r.json() : null; })
-      .then(function (data) { return window.PV_ACCESS ? window.PV_ACCESS.note(data) : data; })
       .then(function (data) {
+        if (token !== _ctx.profileToken) return STALE;   // user moved on; drop this result
+        return window.PV_ACCESS ? window.PV_ACCESS.note(data) : data;
+      })
+      .then(function (data) {
+        if (data === STALE || token !== _ctx.profileToken) return;
         if (!data || !data.features || !data.features.length) { renderBody('<p class="pv-prof-empty">No parcels found in this area.</p>', data && data.selector); return; }
         // Parcels past a Protected county's daily detail limit (ADR 0015) come without
         // owner and value fields: the figures then cover only the rest, and say so.
@@ -229,8 +240,12 @@
         // No AI read over partial figures: it would describe a neighborhood it can't see.
         if (!_withheld) maybeNarrate(result.facts);   // additive AI character read; degrades to no-op
       })
-      .catch(function () { renderBody('<p class="pv-prof-empty">Couldn’t reach the server.</p>'); });
+      .catch(function () {
+        if (token !== _ctx.profileToken) return;   // aborted or superseded: not a server failure
+        renderBody('<p class="pv-prof-empty">Couldn’t reach the server.</p>');
+      });
   }
+  var _profileSeq = 0, _profileAbort = null, STALE = {};
 
   // ── Dashboard sections (from the deterministic facts) ───────────────────────
   var _withheld = 0;   // parcels in the current profile whose details were withheld (ADR 0015)
