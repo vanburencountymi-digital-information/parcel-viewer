@@ -99,7 +99,9 @@ pane elements (classic scripts wire the Layers, Drawing and Measurement panes) a
 switched through `PS_MAP_PANEL.setTab`; and parcel search (`frontend/src/search/`), which
 selects a result through `PS_SEARCH_MAP`; and the Help & tools menu
 (`frontend/src/admin-menu/`) with the viewer's modal (`frontend/src/modal/`, `PV_MODAL`), which
-`admin-menu.js`, `pv-explain.js` and `pv-ledger.js` open their windows in.
+`admin-menu.js`, `pv-explain.js` and `pv-ledger.js` open their windows in. Windows moved to Vue
+components live in `frontend/src/windows/` and open through `PV_WINDOWS.open(name)` (so far Help,
+What's New, About, Share and Bookmarks).
 
 ### The engine (`engine/`)
 The start of a source-agnostic engine shared with other viewers (ZIP, for zoning). It

@@ -135,90 +135,13 @@
     },
   };
 
-  function openHelp() {
-    openModal("Help", [
-      '<p class="pv-modal-lead">Quick reference for using the Parcel Viewer. Full documentation is coming soon.</p>',
-      helpItem("Find a parcel", "Use the search box (or the search icon on mobile) to look up a parcel by parcel number, owner name, or address."),
-      helpItem("Inspect a parcel", "Click any parcel on the map to open the Parcel Info panel with assessment and geometry details."),
-      helpItem("Overlays", "Open Map Controls to toggle regulatory overlays (wetlands, soils, flood, zoning). Click the map with an overlay on to query it."),
-      helpItem("Drawing &amp; measure", "Map Controls includes drawing and measurement tools for annotating the map."),
-      helpItem("MapBuddy A.I.", "Ask the assistant questions about the map, parcels, and overlays in plain language."),
-      helpItem("Keyboard navigation",
-        "Everything works without a mouse." +
-        "<ul class=\"pv-kbd-list\">" +
-          "<li><strong>Tab</strong> / <strong>Shift+Tab</strong> &mdash; move forward / back between controls. A &ldquo;Skip to map&rdquo; link is the first stop.</li>" +
-          "<li><strong>Enter</strong> &mdash; activate a button or link, or open the highlighted search result.</li>" +
-          "<li><strong>Space</strong> &mdash; check or uncheck a layer (or any checkbox); also presses a button.</li>" +
-          "<li><strong>&uarr;</strong> / <strong>&darr;</strong> arrows &mdash; move through search results; also adjust sliders and dropdowns.</li>" +
-          "<li><strong>Esc</strong> &mdash; close the search results, a panel, the tools menu, or a dialog.</li>" +
-        "</ul>" +
-        "<div class=\"pv-kbd-sub\">Moving the map</div>" +
-        "Click the map once (or <strong>Tab</strong> to it), then:" +
-        "<ul class=\"pv-kbd-list\">" +
-          "<li><strong>Arrow keys</strong> &mdash; pan (scroll) the map.</li>" +
-          "<li><strong>+</strong> / <strong>&minus;</strong> &mdash; zoom in / out.</li>" +
-          "<li><strong>Shift</strong> + arrow keys &mdash; rotate and tilt the view.</li>" +
-        "</ul>"),
-      '<p class="pv-modal-note">Need more help? Use <strong>Feedback</strong> to reach the team.</p>'
-    ].join(""));
+  // Help, What's New and About are Vue components (frontend/src/windows/, DIC-2389).
+  function openVueWindow(name) {
+    if (window.PV_WINDOWS) window.PV_WINDOWS.open(name);
   }
-
-  // ── Changelog / version (source: frontend/public/changelog.json) ────────────
-  // Single source of truth for the app version + the What's New feed. Interim
-  // hand-curated; intended to be generated from Linear at build time.
-  var _changelog = null;
-  function loadChangelog(cb) {
-    if (_changelog) { cb(_changelog); return; }
-    fetch("/frontend/public/changelog.json", { cache: "no-cache" })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function (d) { _changelog = d; cb(d); })
-      .catch(function () { cb(null); });
-  }
-  function appVersion(cb) { loadChangelog(function (d) { cb(d && d.version ? d.version : null); }); }
-
-  function openWhatsNew() {
-    openModal("What's New",
-      '<p class="pv-modal-lead">Recent updates and new functionality.</p>' +
-      '<div id="pv-changelog" class="pv-changelog">Loading…</div>',
-      function (bodyEl) {
-        loadChangelog(function (d) {
-          var el = bodyEl.querySelector("#pv-changelog");
-          if (!el) return;
-          if (!d || !d.releases || !d.releases.length) {
-            el.innerHTML = '<p class="pv-empty">Release notes are unavailable right now.</p>';
-            return;
-          }
-          el.innerHTML = d.releases.map(function (rel) {
-            var head = "v" + esc(rel.version) + (rel.date ? " &middot; " + esc(rel.date) : "");
-            var items = (rel.items || []).map(function (i) { return "<li>" + esc(i) + "</li>"; }).join("");
-            return '<div class="pv-change"><div class="pv-change-date">' + head + "</div>" +
-              '<ul class="pv-change-list">' + items + "</ul></div>";
-          }).join("");
-        });
-      });
-  }
-
-  function openAbout() {
-    var cc = countyConfig();
-    var countyName = cc.name || "Van Buren County";
-    var place = countyName + (cc.state ? ", " + cc.state : "");
-    openModal("About", [
-      '<p class="pv-modal-lead"><strong>Parcel Viewer</strong> — ' + esc(place) + '</p>',
-      '<div class="pv-about-grid">' +
-        '<div class="pv-about-k">Version</div><div class="pv-about-v" id="pv-app-version">… (preview)</div>' +
-        aboutRow("Maintained by", "DICE Labs") +
-        aboutRow("Basemap", "Esri Light/Dark Gray Canvas (Esri, HERE, Garmin, OpenStreetMap contributors)") +
-        aboutRow("Parcel data", countyName + " GIS") +
-        dataUseRow() +
-      '</div>',
-      '<p class="pv-modal-note">This is a preview build. Data shown is for informational purposes only and is not a legal record of survey.</p>'
-    ].join(""), function (bodyEl) {
-      appVersion(function (v) {
-        var el = bodyEl.querySelector("#pv-app-version");
-        if (el) el.textContent = (v || "0.x") + " (preview)";
-      });
-    });
-  }
+  function openHelp() { openVueWindow("help"); }
+  function openWhatsNew() { openVueWindow("whats-new"); }
+  function openAbout() { openVueWindow("about"); }
 
   // ── Map-action tools (placeholders) ─────────────────────────────────────────
   function openPrint() {
@@ -251,74 +174,9 @@
     });
   }
 
-  function openShare() {
-    // A link to the selected parcel and current map view (map.js PV_VIEW_LINK).
-    var url = window.PV_VIEW_LINK ? window.PV_VIEW_LINK() : window.location.href;
-    openModal("Share", [
-      '<p class="pv-modal-lead">Share a link to this view.</p>',
-      '<div class="pv-copy-row">' +
-        '<input class="pv-input" id="pv-share-url" type="text" readonly aria-label="Share link" value="' + escAttr(url) + '">' +
-        '<button type="button" class="pv-btn-primary" id="pv-share-copy">Copy</button>' +
-      '</div>',
-      placeholderTag("Links that capture the selected parcel, zoom, and active layers are planned. For now this copies the current page URL.")
-    ].join(""), function (bodyEl) {
-      var copyBtn = bodyEl.querySelector("#pv-share-copy");
-      copyBtn.addEventListener("click", function () {
-        var input = bodyEl.querySelector("#pv-share-url");
-        input.select();
-        var done = function () { copyBtn.textContent = "Copied!"; setTimeout(function () { copyBtn.textContent = "Copy"; }, 1500); };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(input.value).then(done, function () { try { document.execCommand("copy"); } catch (_) {} done(); });
-        } else { try { document.execCommand("copy"); } catch (_) {} done(); }
-      });
-    });
-  }
-
-  function bookmarkListHtml() {
-    var list = bmList();
-    if (!list.length) {
-      return '<p class="pv-empty">No bookmarks yet. Open a parcel and use the <strong>★ Bookmark</strong> button on its panel — saved parcels appear here.</p>';
-    }
-    return '<ul class="pv-bm-list">' + list.map(function (b) {
-      var sub = [b.owner, b.address || b.muni].filter(Boolean).join(" · ");
-      return '<li class="pv-bm-item">' +
-        '<button type="button" class="pv-bm-open" data-bm-open="' + escAttr(b.id) + '">' +
-          '<span class="pv-bm-pin">' + esc(b.pin || String(b.id)) + '</span>' +
-          (sub ? '<span class="pv-bm-sub">' + esc(sub) + '</span>' : '') +
-        '</button>' +
-        '<button type="button" class="pv-bm-del" data-bm-del="' + escAttr(b.id) + '" ' +
-          'aria-label="Remove bookmark ' + escAttr(b.pin || String(b.id)) + '" title="Remove">&#10005;</button>' +
-      '</li>';
-    }).join("") + '</ul>';
-  }
-
-  function openBookmark() {
-    var pc = window.PS_STATE && window.PS_STATE.parcel;
-    function render(bodyEl) {
-      var addBtn = "";
-      if (pc && pc.id != null) {
-        addBtn = bmHas(pc.id)
-          ? '<p class="pv-modal-note">Current parcel (' + esc(pc.pin) + ') is bookmarked.</p>'
-          : '<div class="pv-form-actions"><button type="button" class="pv-btn-primary" id="pv-bm-add">★ Bookmark current parcel (' + esc(pc.pin) + ')</button></div>';
-      }
-      bodyEl.innerHTML =
-        '<p class="pv-modal-lead">Saved parcels, stored on this device.</p>' +
-        bookmarkListHtml() + addBtn;
-      var add = bodyEl.querySelector("#pv-bm-add");
-      if (add) add.addEventListener("click", function () { bmAdd(pc); render(bodyEl); });
-      Array.prototype.forEach.call(bodyEl.querySelectorAll("[data-bm-open]"), function (el) {
-        el.addEventListener("click", function () {
-          var id = el.getAttribute("data-bm-open");
-          closeModal();
-          if (window.PS_selectParcelById) window.PS_selectParcelById(id);
-        });
-      });
-      Array.prototype.forEach.call(bodyEl.querySelectorAll("[data-bm-del]"), function (el) {
-        el.addEventListener("click", function () { bmRemove(el.getAttribute("data-bm-del")); render(bodyEl); });
-      });
-    }
-    openModal("Bookmarks", "", function (bodyEl) { render(bodyEl); });
-  }
+  // Share and Bookmarks are Vue components too (frontend/src/windows/).
+  function openShare() { openVueWindow("share"); }
+  function openBookmark() { openVueWindow("bookmark"); }
 
   function openReportError() {
     var pin = currentParcelPin();
@@ -1174,23 +1032,6 @@
   }
   function helpItem(h, p) {
     return '<div class="pv-help-item"><div class="pv-help-h">' + h + '</div><div class="pv-help-p">' + p + '</div></div>';
-  }
-  // Protected counties (ADR 0015): how the data may be used, and where to get all of it.
-  function dataUseRow() {
-    var access = (window.PV_ACCESS && window.PV_ACCESS.countyAccess()) || {};
-    if (access.mode !== "protected") return "";
-    var http = function (u) { return typeof u === "string" && /^https?:\/\//i.test(u) ? u : null; };
-    var a = function (text, url) { return '<a href="' + esc(url) + '" target="_blank" rel="noopener">' + esc(text) + "</a>"; };
-    var links = [];
-    if (http(access.termsUrl)) links.push(a("Terms of use", access.termsUrl));
-    if (http(access.dataUrl)) links.push(a("Get the full dataset", access.dataUrl));
-    return '<div class="pv-about-k">Data use</div><div class="pv-about-v" data-testid="about-data-use">' +
-      "Owner and value details are limited to a daily amount per visitor." +
-      (links.length ? " " + links.join(" · ") : "") + "</div>";
-  }
-
-  function aboutRow(k, v) {
-    return '<div class="pv-about-k">' + esc(k) + '</div><div class="pv-about-v">' + esc(v) + '</div>';
   }
   function placeholderTag(text) {
     return '<p class="pv-modal-note"><span class="pv-badge">Preview</span> ' + text + '</p>';
