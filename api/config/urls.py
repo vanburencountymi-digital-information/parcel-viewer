@@ -17,6 +17,7 @@ urlpatterns = [
     path("", include("wms.urls")),
     path("", include("feedback.urls")),
     path("", include("accounts.urls")),
+    path("", include("environment.urls")),
     path("django-admin/", admin.site.urls),
     # Staff only, and a 404 for everyone else (ADR 0009, common.docs).
     path("schema", StaffSchemaView.as_view(), name="schema"),

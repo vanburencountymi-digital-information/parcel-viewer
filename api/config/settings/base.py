@@ -89,6 +89,7 @@ INSTALLED_APPS = [
     "county_config",
     "wms",
     "feedback",
+    "environment",
 ]
 
 # Request ids outermost (every response, CORS rejections included, gets one), then

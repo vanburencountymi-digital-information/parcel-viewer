@@ -37,6 +37,9 @@
       overlayId: 'overlay-flood',
       label:     'Flood Hazard Zone',
       color:     '#3b82f6',
+      // Answered from our own copy of FEMA's flood zones (/environment, DIC-2412); FEMA's
+      // service is only the fallback while that data isn't loaded.
+      envKey:    'flood',
       restUrl:   'https://hazards.fema.gov/arcgis/rest/services/public/NFHL/MapServer/28/query',
       attrs: [
         {
@@ -262,9 +265,43 @@
       });
   }
 
+  // ── Our own environment data (/environment, DIC-2412) ─────────────────────
+  // The API answers from its copy of the federal layer. Its fields are mapped back to the
+  // federal names the attrs above format, so the popup reads the same. Until the data is
+  // loaded ("not_loaded") or if our API fails, ask the federal service as before.
+
+  var _ENV_TO_FEMA = {
+    flood: function (f) {
+      return {
+        FLD_ZONE: f.zone,
+        ZONE_SUBTY: f.subtype,
+        SFHA_TF: f.in_special_flood_hazard_area === true ? 'T' : f.in_special_flood_hazard_area === false ? 'F' : null,
+        STATIC_BFE: f.base_flood_elevation_ft,
+      };
+    },
+  };
+
+  function _fetchEnv(cfg, map, point) {
+    var lngLat = map.unproject(point);
+    var url = (window.API_BASE || '') + '/environment?lng=' + lngLat.lng + '&lat=' + lngLat.lat;
+    return _fetchWithTimeout(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var ans = data && data[cfg.envKey];
+        if (!ans || ans.status === 'not_loaded') return _fetchRest(cfg, map, point);
+        if (ans.status !== 'mapped') return { cfg: cfg, features: [] };
+        return { cfg: cfg, features: [{ type: 'Feature', properties: _ENV_TO_FEMA[cfg.envKey](ans) }] };
+      })
+      .catch(function () { return _fetchRest(cfg, map, point); });
+  }
+
   // ── Dispatch ─────────────────────────────────────────────────────────────
 
   function _fetchOne(cfg, map, point) {
+    if (cfg.envKey) return _fetchEnv(cfg, map, point);
     return cfg.restUrl ? _fetchRest(cfg, map, point) : _fetchWms(cfg, map, point);
   }
 

@@ -1150,20 +1150,47 @@ def _query_soils(lng: float, lat: float):
 _LOOKUP_UNAVAILABLE = {"error": "service unavailable right now"}
 
 
+def _flood_from_fema(lng: float, lat: float) -> dict:
+    a = _arcgis_point_query(_FEMA_NFHL, lng, lat)
+    if not a:
+        return {"zone": "X", "note": "no FEMA flood hazard mapped at this point"}
+    return {
+        "zone": a.get("FLD_ZONE"),
+        "subtype": a.get("ZONE_SUBTY"),
+        "in_special_flood_hazard_area": a.get("SFHA_TF") == "T",
+        "base_flood_elev_ft": a.get("STATIC_BFE"),
+    }
+
+
+def _flood_at(lng: float, lat: float) -> dict:
+    """
+    The flood zone at a point, from the parcel API's copy of FEMA's zones (/environment,
+    DIC-2412). FEMA's own service answers only while that data isn't loaded there.
+    """
+    try:
+        data = _http_get_json(f"/environment?lng={lng}&lat={lat}")
+        f = (data or {}).get("flood") or {}
+    except Exception:
+        log.warning("environment lookup failed: parcel API flood", exc_info=True)
+        f = {"status": "not_loaded"}
+    if f.get("status") == "mapped":
+        source = ((data or {}).get("sources") or {}).get("flood") or {}
+        return {
+            "zone": f.get("zone"),
+            "subtype": f.get("subtype"),
+            "in_special_flood_hazard_area": f.get("in_special_flood_hazard_area"),
+            "base_flood_elev_ft": f.get("base_flood_elevation_ft"),
+            "source": f"FEMA NFHL, effective {source.get('effective') or 'date unknown'}",
+        }
+    if f.get("status") == "unmapped":
+        return {"zone": None, "note": "no FEMA flood zone mapped at this point"}
+    return _flood_from_fema(lng, lat)
+
+
 def _query_environment(lng: float, lat: float) -> dict:
     out = {}
     try:
-        a = _arcgis_point_query(_FEMA_NFHL, lng, lat)
-        out["flood"] = (
-            {
-                "zone": a.get("FLD_ZONE"),
-                "subtype": a.get("ZONE_SUBTY"),
-                "in_special_flood_hazard_area": a.get("SFHA_TF"),
-                "base_flood_elev_ft": a.get("STATIC_BFE"),
-            }
-            if a
-            else {"zone": "X", "note": "no FEMA flood hazard mapped at this point"}
-        )
+        out["flood"] = _flood_at(lng, lat)
     except Exception:
         log.warning("environment lookup failed: flood", exc_info=True)
         out["flood"] = dict(_LOOKUP_UNAVAILABLE)
