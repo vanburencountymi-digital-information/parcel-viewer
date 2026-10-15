@@ -3,9 +3,9 @@
  *
  * The Help & tools dropdown (a Vue island, frontend/src/admin-menu/) opens these tools
  * through PV_TOOLS; each opens in the viewer's modal (frontend/src/modal/). Help, What's New,
- * About, Share, Bookmarks, Settings and the two forms are Vue components
- * (frontend/src/windows/, DIC-2389); Print, Street View, the parcel packet and the
- * explainers are still built here.
+ * About, Share, Bookmarks, Settings, Print, Street View and the two forms are Vue
+ * components (frontend/src/windows/, DIC-2389); the parcel packet and the explainers are
+ * still built here.
  */
 (function () {
   "use strict";
@@ -128,8 +128,8 @@
     },
   };
 
-  // Help, What's New, About, Settings and the Data Request and Report Error forms are Vue
-  // components (frontend/src/windows/, DIC-2389).
+  // Help, What's New, About, Settings, Print, Street View and the Data Request and Report
+  // Error forms are Vue components (frontend/src/windows/, DIC-2389).
   function openVueWindow(name) {
     if (window.PV_WINDOWS) window.PV_WINDOWS.open(name);
   }
@@ -140,36 +140,7 @@
   function openReportError() { openVueWindow("report-error"); }
   function openDataRequest() { openVueWindow("data-request"); }
 
-  // ── Map-action tools (placeholders) ─────────────────────────────────────────
-  function openPrint() {
-    var parcel = (window.PS_STATE && window.PS_STATE.parcel) || null;
-    var hasDoc = !!(window.PV_DOC && parcel && parcel.pin);
-    var body = ['<p class="pv-modal-lead">Print or export the current map and parcel details.</p>'];
-    if (hasDoc) {
-      body.push('<p>Export a one-page <strong>parcel summary</strong> for <strong>' + esc(parcel.pin) +
-        '</strong> — a snapshot of the current map plus the key facts — as a print/PDF or a standalone HTML file.</p>');
-      body.push('<div class="pv-form-actions">' +
-        '<button type="button" class="pv-btn-ghost" data-close>Close</button>' +
-        '<button type="button" class="pv-btn-ghost" id="pv-dl-summary">Download HTML</button>' +
-        '<button type="button" class="pv-btn-primary" id="pv-print-summary">Print parcel summary</button>' +
-        '</div>');
-      body.push('<p class="pv-modal-note">Tip: frame the parcel on the map first — the current map view is captured into the document.</p>');
-    } else {
-      body.push('<p>Select a parcel to export a formatted parcel summary. For now you can print the current browser view.</p>');
-      body.push('<div class="pv-form-actions">' +
-        '<button type="button" class="pv-btn-ghost" data-close>Close</button>' +
-        '<button type="button" class="pv-btn-primary" id="pv-print-now">Print current view</button>' +
-        '</div>');
-    }
-    openModal("Print", body.join(""), function (bodyEl) {
-      bodyEl.addEventListener("click", function (e) {
-        if (e.target.closest("[data-close]")) return closeModal();
-        if (e.target.closest("#pv-print-now")) { closeModal(); window.print(); }
-        if (e.target.closest("#pv-print-summary")) { closeModal(); window.PV_DOC.printParcelSummary(parcel); }
-        if (e.target.closest("#pv-dl-summary")) { closeModal(); window.PV_DOC.downloadParcelSummary(parcel); }
-      });
-    });
-  }
+  function openPrint() { openVueWindow("print"); }
 
   // Share and Bookmarks are Vue components too (frontend/src/windows/).
   function openShare() { openVueWindow("share"); }
@@ -676,87 +647,7 @@
       placeholderTag("Compare is unavailable right now.")
     ].join(""));
   }
-  function openStreetView() {
-    var pc = window.PS_STATE && window.PS_STATE.parcel;
-    var c  = pc && pc.centroid;
-    if (!pc || !c || c[0] == null || c[1] == null) {
-      openModal("Street View", [
-        '<p class="pv-modal-lead">Select a parcel first.</p>',
-        '<p>Click a parcel on the map (or search for one), then open Street View to jump to street-level imagery at that location.</p>'
-      ].join(""));
-      return;
-    }
-    var base = window.API_BASE || "";
-    var key  = "";
-    try {
-      var integrations = countyConfig().integrations || {};
-      key = integrations.googleMapsEmbedKey || "";
-    } catch (_) {}
-
-    function heading(vp, lookAt) {
-      try {
-        if (typeof turf !== "undefined" && lookAt && (vp[0] !== lookAt[0] || vp[1] !== lookAt[1])) {
-          return Math.round(((turf.bearing([vp[0], vp[1]], [lookAt[0], lookAt[1]]) % 360) + 360) % 360);
-        }
-      } catch (_) {}
-      return null;
-    }
-    function mapsUrl(vp, lookAt) {
-      var h = heading(vp, lookAt);
-      return "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=" +
-        encodeURIComponent(vp[1] + "," + vp[0]) + (h != null ? "&heading=" + h : "");
-    }
-
-    // Resolve vp (where the camera stands) + lookAt (the structure) + address,
-    // preferring the parcel's address point, then centroid → nearest road.
-    function resolve(cb) {
-      function nearestRoad() {
-        fetch(base + "/nearest-road?lng=" + c[0] + "&lat=" + c[1])
-          .then(function (r) { return r.json(); })
-          .then(function (d) { cb(d && d.lng != null ? [d.lng, d.lat] : c, c, null); })
-          .catch(function () { cb(c, c, null); });
-      }
-      if (pc.id != null) {
-        var done = false;
-        fetch(base + "/streetview-target?id=" + pc.id)
-          .then(function (r) { return r.json(); })
-          .then(function (d) {
-            if (done) return; done = true;
-            if (d && d.ok && d.viewpoint) cb(d.viewpoint, d.lookAt || c, d.address);
-            else nearestRoad();
-          })
-          .catch(function () { if (!done) { done = true; nearestRoad(); } });
-      } else { nearestRoad(); }
-    }
-
-    if (key) {
-      // In-panel embed (Maps Embed API — free, key referrer-restricted).
-      resolve(function (vp, lookAt, addr) {
-        var h = heading(vp, lookAt);
-        var embed = "https://www.google.com/maps/embed/v1/streetview?key=" + encodeURIComponent(key) +
-          "&location=" + encodeURIComponent(vp[1] + "," + vp[0]) +
-          (h != null ? "&heading=" + h : "") + "&pitch=0&fov=90";
-        var label = addr || pc.site_address || "this parcel";
-        var html =
-          '<div class="pv-sv-embed"><iframe class="pv-sv-iframe" src="' + escAttr(embed) + '" ' +
-            'loading="lazy" allowfullscreen referrerpolicy="no-referrer-when-downgrade" ' +
-            'title="Street View of ' + escAttr(label) + '"></iframe></div>' +
-          '<div class="pv-sv-foot"><span class="pv-sv-addr">' + esc(label) + '</span>' +
-            '<a class="pv-sv-open" href="' + escAttr(mapsUrl(vp, lookAt)) + '" target="_blank" rel="noopener">' +
-            'Open in Google Maps <span aria-hidden="true">↗</span></a></div>';
-        openModal("Street View", html, null, { wide: true, flush: true });
-      });
-    } else {
-      // No key → full Google Maps in a new tab. Open now (within the click
-      // gesture) so it isn't popup-blocked; navigate once resolved.
-      var win = window.open("about:blank", "_blank");
-      try { if (win) win.opener = null; } catch (_) {}
-      resolve(function (vp, lookAt) {
-        var url = mapsUrl(vp, lookAt);
-        if (win) win.location.href = url; else window.open(url, "_blank", "noopener");
-      });
-    }
-  }
+  function openStreetView() { openVueWindow("streetview"); }
 
   // Tax description info — for now the disclaimer + a teaser for the full
   // explainer (DIC-369). This window becomes the AI-driven explainer later.

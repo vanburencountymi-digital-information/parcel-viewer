@@ -1504,6 +1504,7 @@ input[type="checkbox"]:focus-visible {
 .pv-sv-open { color: var(--ui-interactive-dk, #8B6535); font-weight: 600; text-decoration: none; white-space: nowrap; }
 .pv-sv-open:hover { text-decoration: underline; }
 @media (max-width: 640px) { .pv-sv-embed { aspect-ratio: 4 / 3; } }
+.pv-sv-loading { padding: 16px 18px; margin: 0; }   /* the window body is flush (no padding) for the embed */
 .pv-hints-reset-btn {
   margin-top: 8px; font: inherit; font-size: 12px; padding: 6px 12px;
   border-radius: 6px; cursor: pointer;

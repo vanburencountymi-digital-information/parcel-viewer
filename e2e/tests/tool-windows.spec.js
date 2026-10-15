@@ -3,7 +3,7 @@
 // keyboard focus to a sensible place.
 const { test, expect, gotoViewer, selectParcelViaSearch, ui } = require('./fixtures');
 
-// print opens the browser's print dialog, which blocks the page; covered manually.
+// Print would open the browser's print dialog, which blocks the page: its tests stub window.print.
 // [menu item, the dialog it opens]
 const MENU_TOOLS = [['Share', 'Share'], ['Bookmark', 'Bookmarks'], ['Data Request', 'Data Request'],
   ['Report a data error', 'Report a data error'], ['Help', 'Help'], ['What’s New', "What's New"],
@@ -75,6 +75,37 @@ test.describe('Help & tools menu', () => {
     await expect(modal.getByRole('link', { name: /Open it in a new tab/ })).toHaveAttribute('target', '_blank');
   });
 
+  test('Print with no parcel: prints the browser view, closing the window first', async ({ page }) => {
+    await page.evaluate(() => {
+      window.__printed = [];
+      window.print = () => window.__printed.push(!!document.querySelector('[role="dialog"]'));
+    });
+    await openMenuTool(page, 'Print');
+    const modal = page.getByRole('dialog', { name: 'Print', exact: true });
+    await modal.getByRole('button', { name: 'Print current view' }).click();
+    await expect(modal).toBeHidden();
+    expect(await page.evaluate(() => window.__printed)).toEqual([false]);   // printed once, dialog gone
+  });
+
+  test('Print with a parcel: prints and downloads its summary', async ({ page }) => {
+    await selectParcelViaSearch(page);
+    const pin = await page.evaluate(() => {
+      window.__docs = [];
+      window.PV_DOC.printParcelSummary = (p) => window.__docs.push(['print', p.pin]);
+      window.PV_DOC.downloadParcelSummary = (p) => window.__docs.push(['download', p.pin]);
+      return window.PS_STATE.parcel.pin;
+    });
+    const modal = page.getByRole('dialog', { name: 'Print', exact: true });
+    await openMenuTool(page, 'Print');
+    await expect(modal).toContainText(`parcel summary for ${pin}`);
+    await modal.getByRole('button', { name: 'Print parcel summary' }).click();
+    await expect(modal).toBeHidden();
+    await openMenuTool(page, 'Print');
+    await modal.getByRole('button', { name: 'Download HTML' }).click();
+    await expect(modal).toBeHidden();
+    expect(await page.evaluate(() => window.__docs)).toEqual([['print', pin], ['download', pin]]);
+  });
+
   test('menu closes on Escape and outside click', async ({ page }) => {
     const menu = ui.helpMenu(page);
     await ui.helpMenuButton(page).click();
@@ -107,6 +138,32 @@ test.describe('Parcel panel tools', () => {
       await expect(el).toBeHidden();
     });
   }
+
+  test('Street View without an embed key: Google Maps opens in a new tab at the parcel', async ({ page }) => {
+    await page.context().route('https://www.google.com/maps/**', (route) => route.fulfill({ contentType: 'text/html', body: '<p>maps</p>' }));
+    const popup = page.waitForEvent('popup');
+    await ui.parcelPanel(page).getByRole('button', { name: 'Street View', exact: true }).click();
+    const tab = await popup;
+    await expect.poll(() => tab.url()).toMatch(/^https:\/\/www\.google\.com\/maps\/@\?api=1&map_action=pano&viewpoint=4[12]\.\d+%2C-8[56]\.\d+/);
+    await expect(page.getByRole('dialog', { name: 'Street View' })).toHaveCount(0);
+    await tab.close();
+  });
+
+  test("Street View with the county's embed key: embedded in the window", async ({ page }) => {
+    await page.route('https://www.google.com/maps/embed/**', (route) => route.fulfill({ contentType: 'text/html', body: '<p>pano</p>' }));
+    const key = await page.evaluate(() => {
+      const c = (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY;
+      c.integrations = Object.assign({}, c.integrations, { googleMapsEmbedKey: 'e2e-key' });
+      return ((window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY).integrations.googleMapsEmbedKey;
+    });
+    expect(key).toBe('e2e-key');
+    await ui.parcelPanel(page).getByRole('button', { name: 'Street View', exact: true }).click();
+    const modal = page.getByRole('dialog', { name: 'Street View', exact: true });
+    await expect(modal.getByTitle(/^Street View of /)).toHaveAttribute('src', /^https:\/\/www\.google\.com\/maps\/embed\/v1\/streetview\?key=e2e-key&location=/);
+    await expect(modal.getByRole('link', { name: /Open in Google Maps/ })).toHaveAttribute('href', /map_action=pano/);
+    await page.keyboard.press('Escape');
+    await expect(modal).toBeHidden();
+  });
 
   test('Compare: adding the selected parcel shows it in the tray', async ({ page }) => {
     await ui.parcelPanel(page).getByRole('button', { name: 'Compare Parcels', exact: true }).first().click();
