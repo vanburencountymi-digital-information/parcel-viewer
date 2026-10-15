@@ -6,10 +6,13 @@ import AboutWindow from './AboutWindow.vue';
 import BookmarksWindow from './BookmarksWindow.vue';
 import DataRequestWindow from './DataRequestWindow.vue';
 import HelpWindow from './HelpWindow.vue';
+import PrintWindow from './PrintWindow.vue';
 import ReportErrorWindow from './ReportErrorWindow.vue';
 import SettingsWindow from './SettingsWindow.vue';
 import ShareWindow from './ShareWindow.vue';
+import StreetViewWindow from './StreetViewWindow.vue';
 import WhatsNewWindow from './WhatsNewWindow.vue';
+import { centroidOf, mapsUrl, resolveTarget } from './streetview.js';
 
 const DATA_REQUEST_FORM_URL = 'https://form.jotform.com/261544522974159';
 
@@ -33,6 +36,35 @@ export async function sendReport(data, fetchFn = globalThis.fetch) {
 }
 
 const close = () => globalThis.PV_MODAL.close();
+
+/**
+ * Street View for the selected parcel. With the county's embed key it opens in the modal;
+ * without one, Google Maps opens in a new tab. That tab opens now, inside the click, so it
+ * isn't popup-blocked, and goes to the viewpoint once it's found.
+ */
+export function openStreetView(modal, { win = globalThis } = {}) {
+  const parcel = viewer.selectedParcel();
+  if (!centroidOf(parcel)) {
+    modal.open('Street View', { component: StreetViewWindow, props: { parcel: null } });
+    return;
+  }
+  const integrations = viewer.countyConfig().integrations || {};
+  const key = integrations.googleMapsEmbedKey || '';
+  const resolve = () => resolveTarget(parcel, { base: viewer.apiBase() });
+  if (key) {
+    modal.open('Street View', {
+      component: StreetViewWindow,
+      props: { parcel, apiKey: key, resolve, turf: viewer.turf() },
+    }, null, { wide: true, flush: true });
+    return;
+  }
+  const tab = win.open('about:blank', '_blank');
+  try { if (tab) tab.opener = null; } catch { /* cross-origin already */ }
+  resolve().then(({ vp, lookAt }) => {
+    const url = mapsUrl(vp, lookAt, viewer.turf());
+    if (tab) tab.location.href = url; else win.open(url, '_blank', 'noopener');
+  });
+}
 
 // name → [title, component, props read when the window opens, modal options]
 const WINDOWS = {
@@ -68,15 +100,27 @@ const WINDOWS = {
   }],
   'data-request': ['Data Request', DataRequestWindow,
     () => ({ url: dataRequestUrl(viewer.countyConfig()) }), { wide: true, flush: true }],
+  // The parcel summary is pv-doc.js's PV_DOC.
+  print: ['Print', PrintWindow, () => ({
+    parcel: viewer.selectedParcel(),
+    doc: globalThis.PV_DOC || null,
+    print: () => globalThis.print(),
+    close,
+  })],
 };
+
+// Windows that open some other way than "this component, now".
+const OPENERS = { streetview: openStreetView };
 
 export function mountWindows() {
   globalThis.PV_WINDOWS = {
-    has: (name) => name in WINDOWS,
+    has: (name) => name in WINDOWS || name in OPENERS,
     open(name) {
       const w = WINDOWS[name];
       const modal = globalThis.PV_MODAL;
-      if (!w || !modal) return false;
+      if (!modal) return false;
+      if (OPENERS[name]) { OPENERS[name](modal); return true; }
+      if (!w) return false;
       const [title, component, props, opts] = w;
       modal.open(title, { component, props: props() }, null, opts);
       return true;

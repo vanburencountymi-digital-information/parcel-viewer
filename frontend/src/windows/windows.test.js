@@ -1,17 +1,20 @@
 // The Help & tools windows moved to Vue (DIC-2389 slice 5): Help, What's New, About, Share,
-// Bookmarks, Settings, Report a data error and Data Request. The e2e suite opens them
+// Bookmarks, Settings, Report a data error, Data Request, Print and Street View. The e2e suite opens them
 // through the real menu (tool-windows, data-access, bookmarks-and-share, settings).
 import { flushPromises, mount } from '@vue/test-utils';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import AboutWindow from './AboutWindow.vue';
 import BookmarksWindow from './BookmarksWindow.vue';
 import DataRequestWindow from './DataRequestWindow.vue';
 import HelpWindow from './HelpWindow.vue';
+import PrintWindow from './PrintWindow.vue';
 import ReportErrorWindow from './ReportErrorWindow.vue';
 import SettingsWindow from './SettingsWindow.vue';
 import ShareWindow from './ShareWindow.vue';
+import StreetViewWindow from './StreetViewWindow.vue';
 import WhatsNewWindow from './WhatsNewWindow.vue';
-import { dataRequestUrl, mountWindows, sendReport } from './index.js';
+import { dataRequestUrl, mountWindows, openStreetView, sendReport } from './index.js';
+import { embedUrl, heading, mapsUrl, resolveTarget } from './streetview.js';
 
 const CHANGELOG = {
   version: '1.4.0',
@@ -305,6 +308,131 @@ describe('Data Request', () => {
   });
 });
 
+describe('Print', () => {
+  it('with a parcel: prints or downloads its summary, closing the window first', async () => {
+    const order = [];
+    const doc = { printParcelSummary: vi.fn(() => order.push('print')), downloadParcelSummary: vi.fn(() => order.push('dl')) };
+    const parcel = { id: 1, pin: 'P-1' };
+    const w = mount(PrintWindow, { props: { parcel, doc, print: vi.fn(), close: () => order.push('close') } });
+    expect(w.text()).toContain('parcel summary for P-1');
+    expect(w.find('#pv-print-now').exists()).toBe(false);
+    await w.get('#pv-print-summary').trigger('click');
+    await flushPromises();
+    await w.get('#pv-dl-summary').trigger('click');
+    await flushPromises();
+    expect(order).toEqual(['close', 'print', 'close', 'dl']);
+    expect(doc.printParcelSummary).toHaveBeenCalledWith(parcel);
+    expect(doc.downloadParcelSummary).toHaveBeenCalledWith(parcel);
+  });
+
+  it('with no parcel (or no PV_DOC): prints the browser view', async () => {
+    const print = vi.fn();
+    const close = vi.fn();
+    const doc = { printParcelSummary: vi.fn(), downloadParcelSummary: vi.fn() };
+    for (const props of [{ parcel: null, doc }, { parcel: { pin: 'P-1' }, doc: null }]) {
+      const w = mount(PrintWindow, { props: { ...props, print, close } });
+      expect(w.find('#pv-print-summary').exists()).toBe(false);
+      await w.get('#pv-print-now').trigger('click');
+      await flushPromises();
+    }
+    expect(print).toHaveBeenCalledTimes(2);
+    expect(close).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('Street View', () => {
+  const turf = { bearing: () => -90 };   // due west
+
+  it('builds the Google URLs, facing the target', () => {
+    expect(heading([1, 2], [1, 2], turf)).toBe(null);   // same spot
+    expect(heading([1, 2], [0, 2], turf)).toBe(270);
+    expect(heading([1, 2], [0, 2], null)).toBe(null);
+    expect(mapsUrl([-85.9, 42.2], [-86, 42.2], turf))
+      .toBe('https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=42.2%2C-85.9&heading=270');
+    expect(embedUrl('k&1', [-85.9, 42.2], [-85.9, 42.2], turf))
+      .toBe('https://www.google.com/maps/embed/v1/streetview?key=k%261&location=42.2%2C-85.9&pitch=0&fov=90');
+  });
+
+  describe('resolveTarget', () => {
+    const parcel = { id: 7, centroid: [-85.9, 42.2] };
+    const fetchFrom = (routes) => vi.fn(async (url) => {
+      const hit = Object.keys(routes).find((k) => url.includes(k));
+      if (!hit || routes[hit] instanceof Error) throw routes[hit] || new Error('no route');
+      return { json: async () => routes[hit] };
+    });
+
+    it("uses the parcel's address point first", async () => {
+      const fetchFn = fetchFrom({ 'streetview-target?id=7': { ok: true, viewpoint: [-85.91, 42.2], lookAt: [-85.9, 42.2], address: '1 MAIN' } });
+      await expect(resolveTarget(parcel, { base: '/api', fetchFn }))
+        .resolves.toEqual({ vp: [-85.91, 42.2], lookAt: [-85.9, 42.2], address: '1 MAIN' });
+    });
+
+    it('else the nearest road, else the centroid', async () => {
+      let fetchFn = fetchFrom({ 'streetview-target': { ok: false }, 'nearest-road?lng=-85.9&lat=42.2': { lng: -85.95, lat: 42.21 } });
+      await expect(resolveTarget(parcel, { base: '/api', fetchFn }))
+        .resolves.toEqual({ vp: [-85.95, 42.21], lookAt: [-85.9, 42.2], address: null });
+      fetchFn = fetchFrom({ 'streetview-target': new Error('down'), 'nearest-road': new Error('down') });
+      await expect(resolveTarget(parcel, { base: '/api', fetchFn }))
+        .resolves.toEqual({ vp: [-85.9, 42.2], lookAt: [-85.9, 42.2], address: null });
+    });
+  });
+
+  it('says to pick a parcel when none is selected', () => {
+    const w = mount(StreetViewWindow, { props: { parcel: null } });
+    expect(w.get('.pv-modal-lead').text()).toBe('Select a parcel first.');
+  });
+
+  it('finds the viewpoint, then embeds it with a Google Maps link', async () => {
+    let done;
+    const resolve = () => new Promise((r) => { done = r; });
+    const w = mount(StreetViewWindow, { props: { parcel: { id: 1, site_address: '2 OAK' }, apiKey: 'k', resolve, turf } });
+    expect(w.get('[role="status"]').text()).toBe('Finding the nearest street view…');
+    done({ vp: [-85.9, 42.2], lookAt: [-86, 42.2], address: null });
+    await flushPromises();
+    expect(w.get('iframe').attributes('title')).toBe('Street View of 2 OAK');
+    expect(w.get('iframe').attributes('src'))
+      .toBe('https://www.google.com/maps/embed/v1/streetview?key=k&location=42.2%2C-85.9&heading=270&pitch=0&fov=90');
+    expect(w.get('.pv-sv-open').attributes('href'))
+      .toBe('https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=42.2%2C-85.9&heading=270');
+  });
+
+  describe('openStreetView', () => {
+    const parcel = { id: 1, centroid: [-85.9, 42.2] };
+    afterEach(() => { delete globalThis.PS_STATE; delete globalThis.COUNTY; vi.unstubAllGlobals(); });
+
+    it('with no parcel: the window that says so', () => {
+      const modal = { open: vi.fn() };
+      openStreetView(modal);
+      expect(modal.open).toHaveBeenCalledWith('Street View', { component: StreetViewWindow, props: { parcel: null } });
+    });
+
+    it("with the county's embed key: the wide, flush window", () => {
+      globalThis.PS_STATE = { parcel };
+      globalThis.COUNTY = { integrations: { googleMapsEmbedKey: 'k' } };
+      const modal = { open: vi.fn() };
+      openStreetView(modal);
+      const [title, body, , opts] = modal.open.mock.calls[0];
+      expect([title, body.component, body.props.apiKey, opts]).toEqual(['Street View', StreetViewWindow, 'k', { wide: true, flush: true }]);
+    });
+
+    it('without a key: a new tab, opened at once, then sent to the viewpoint', async () => {
+      globalThis.PS_STATE = { parcel };
+      const fetchFn = vi.fn(async () => ({ json: async () => ({ ok: true, viewpoint: [-85.91, 42.2] }) }));
+      vi.stubGlobal('fetch', fetchFn);
+      const tab = { location: { href: 'about:blank' }, opener: 'me' };
+      const win = { open: vi.fn(() => tab) };
+      const modal = { open: vi.fn() };
+      openStreetView(modal, { win });
+      expect(win.open).toHaveBeenCalledWith('about:blank', '_blank');
+      expect(tab.opener).toBe(null);
+      expect(modal.open).not.toHaveBeenCalled();
+      await flushPromises();
+      expect(fetchFn).toHaveBeenCalledWith('/api/streetview-target?id=1');
+      expect(tab.location.href).toMatch(/^https:\/\/www\.google\.com\/maps\/@\?api=1&map_action=pano&viewpoint=42\.2%2C-85\.91/);
+    });
+  });
+});
+
 describe('PV_WINDOWS', () => {
   it('opens a window in the modal by name, with its options', () => {
     const open = vi.fn();
@@ -316,7 +444,8 @@ describe('PV_WINDOWS', () => {
     expect(open).toHaveBeenLastCalledWith('Data Request',
       { component: DataRequestWindow, props: { url: 'https://form.jotform.com/261544522974159' } },
       null, { wide: true, flush: true });
-    expect(api.open('print')).toBe(false);   // still admin-menu.js's
+    expect(api.has('streetview')).toBe(true);
+    expect(api.open('packet')).toBe(false);   // still admin-menu.js's
     delete globalThis.PV_MODAL;
   });
 });
