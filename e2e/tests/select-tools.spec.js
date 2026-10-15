@@ -57,37 +57,43 @@ test('selection CSV has a header plus one row per selected parcel', async ({ pag
   expect(dl.suggestedFilename()).toMatch(/\.csv$/);
 });
 
-test('selection CSV neutralises spreadsheet formulas and quotes awkward text', async ({ page }) => {
-  // Plant hostile values the way bad upstream data would arrive: in the /parcels response.
-  // (Editing the in-memory index raced the index refresh after the map moved, which
-  // replaced the edited features and made this test flaky.) The response is built from the
-  // features the page already loaded, not fetched again: a live refetch could stall on the
-  // shared dev DB under full-suite load and leave the index unplanted (DIC-2392).
-  const EVIL_OWNER = '=HYPERLINK("http://evil","x")';
-  const features = await page.evaluate(() => window.PS_PARCEL_INDEX);
-  for (const f of features) {
-    f.properties.owner_name = EVIL_OWNER;
-    f.properties.prop_class = 'a,b\r\nc';
-  }
-  const body = { type: 'FeatureCollection', features };
-  await page.route(/\/api\/parcels\?/, (route) => route.fulfill({ json: body }).catch(() => {}));
-  // Pan past the index's 20% padding so it refetches through the route above, then wait for
-  // what the export needs: the index holding the planted values. (Waiting for the
-  // ps:parcel-index-updated event raced: an earlier refresh could fire it, or one aborted
-  // by a newer refresh never did; DIC-2205.)
-  await page.evaluate(() => window.PS_MAP.panBy([window.PS_MAP.getCanvas().clientWidth * 0.6, 0], { duration: 0 }));
-  await page.waitForFunction(
-    (owner) => (window.PS_PARCEL_INDEX || []).some((f) => (f.properties || {}).owner_name === owner),
-    EVIL_OWNER, { timeout: 30_000 },
-  );
-  await openSelectTab(page);
-  await selectOver5Acres(page);
-  const [dl] = await Promise.all([page.waitForEvent('download'), selectTab(page).getByRole('button', { name: /Download CSV/ }).click()]);
-  const text = fs.readFileSync(await dl.path(), 'utf8');
-  expect(text).toContain(`"'=HYPERLINK(""http://evil"",""x"")"`);
-  expect(text).toContain('"a,b\r\nc"');
-  // An index refetch can still be in flight through the route when the page closes.
-  await page.unrouteAll({ behavior: 'ignoreErrors' });
+test.describe(() => {
+  // The beforeEach plus a pan, an index refresh, a filter and a download take ~45 s on a quiet
+  // machine; under full-suite CPU load each map move can block the page for 20-30 s (DIC-2392).
+  // Marked slow here, not in the body, so the tripled timeout covers the beforeEach too.
+  test.slow();
+  test('selection CSV neutralises spreadsheet formulas and quotes awkward text', async ({ page }) => {
+    // Plant hostile values the way bad upstream data would arrive: in the /parcels response.
+    // (Editing the in-memory index raced the index refresh after the map moved, which
+    // replaced the edited features and made this test flaky.) The response is built from the
+    // features the page already loaded, not fetched again: a live refetch could stall on the
+    // shared dev DB under full-suite load and leave the index unplanted (DIC-2392).
+    const EVIL_OWNER = '=HYPERLINK("http://evil","x")';
+    const features = await page.evaluate(() => window.PS_PARCEL_INDEX);
+    for (const f of features) {
+      f.properties.owner_name = EVIL_OWNER;
+      f.properties.prop_class = 'a,b\r\nc';
+    }
+    const body = { type: 'FeatureCollection', features };
+    await page.route(/\/api\/parcels\?/, (route) => route.fulfill({ json: body }).catch(() => {}));
+    // Pan past the index's 20% padding so it refetches through the route above, then wait for
+    // what the export needs: the index holding the planted values. (Waiting for the
+    // ps:parcel-index-updated event raced: an earlier refresh could fire it, or one aborted
+    // by a newer refresh never did; DIC-2205.)
+    await page.evaluate(() => window.PS_MAP.panBy([window.PS_MAP.getCanvas().clientWidth * 0.6, 0], { duration: 0 }));
+    await page.waitForFunction(
+      (owner) => (window.PS_PARCEL_INDEX || []).some((f) => (f.properties || {}).owner_name === owner),
+      EVIL_OWNER, { timeout: 30_000 },
+    );
+    await openSelectTab(page);
+    await selectOver5Acres(page);
+    const [dl] = await Promise.all([page.waitForEvent('download'), selectTab(page).getByRole('button', { name: /Download CSV/ }).click()]);
+    const text = fs.readFileSync(await dl.path(), 'utf8');
+    expect(text).toContain(`"'=HYPERLINK(""http://evil"",""x"")"`);
+    expect(text).toContain('"a,b\r\nc"');
+    // An index refetch can still be in flight through the route when the page closes.
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
+  });
 });
 
 test('multi-selection navigation: next/prev and arrow keys move through parcels', async ({ page }) => {
