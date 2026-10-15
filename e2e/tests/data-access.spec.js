@@ -45,7 +45,7 @@ test('an Open county never shows the notice', async ({ page }) => {
 test('past the limit: one notice with the reset time and the county links, and it can be dismissed', async ({ page }) => {
   await stubWithheld(page, /\/api\/parcels\?/, featureProps, 5);
   await gotoViewer(page);
-  await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }));
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }); });
 
   const notice = page.getByTestId('pv-access-notice');
   await expect(notice).toBeVisible({ timeout: 15_000 });
@@ -83,7 +83,7 @@ test('the tax description explainer says withheld instead of "none on record"', 
 
 test('compare shows "Withheld" for a withheld parcel, never $0 per acre', async ({ page }) => {
   await gotoViewer(page);
-  await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }));
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }); });
   await page.waitForFunction(() => (window.PS_PARCEL_INDEX || []).length > 3, null, { timeout: 15_000 });
   await stubWithheld(page, /\/api\/cohort$/, featureProps, 1);
   const ids = await page.evaluate(() => window.PS_PARCEL_INDEX.slice(0, 2).map((f) => f.id));

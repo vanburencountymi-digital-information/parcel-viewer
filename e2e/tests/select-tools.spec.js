@@ -27,7 +27,7 @@ async function selectOver5Acres(page, acres = '5') {
 
 test.beforeEach(async ({ page }) => {
   await gotoViewer(page);
-  await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }));
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }); });
   await waitForMapIdle(page);
   await page.waitForFunction(() => (window.PS_PARCEL_INDEX || []).length > 20, null, { timeout: 15_000 });
 });
@@ -80,7 +80,7 @@ test.describe(() => {
     // what the export needs: the index holding the planted values. (Waiting for the
     // ps:parcel-index-updated event raced: an earlier refresh could fire it, or one aborted
     // by a newer refresh never did; DIC-2205.)
-    await page.evaluate(() => window.PS_MAP.panBy([window.PS_MAP.getCanvas().clientWidth * 0.6, 0], { duration: 0 }));
+    await page.evaluate(() => { window.PS_MAP.panBy([window.PS_MAP.getCanvas().clientWidth * 0.6, 0], { duration: 0 }); });
     await page.waitForFunction(
       (owner) => (window.PS_PARCEL_INDEX || []).some((f) => (f.properties || {}).owner_name === owner),
       EVIL_OWNER, { timeout: 30_000 },

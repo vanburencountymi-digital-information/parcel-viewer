@@ -143,6 +143,8 @@ function clickGate(page) {
 // internals. A refactor (ES modules, Vue) must keep every one, which test-hooks.spec.js
 // checks; anything else the tests need goes through the page, by role, label or test id.
 // Map state can't be read from the DOM, which is why most of these exist.
+// Camera calls (jumpTo, panBy, ...) return the Map: wrap them in braces inside page.evaluate,
+// or Playwright serializes the whole map back to the test, blocking the page 15-45 s (DIC-2413).
 const VIEWER_HOOKS = {
   PS_MAP: 'the MapLibre map: camera, project/unproject, layers, idle events',
   PS_STATE: 'app state: the selected parcel, the active draw tool',

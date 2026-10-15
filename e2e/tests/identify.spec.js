@@ -13,7 +13,7 @@ function floodResponse(zone, subtype = '') {
 async function setup(page, consoleGuard) {
   consoleGuard.allow(FEDERAL);
   await gotoViewer(page);
-  await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }));
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }); });
   await waitForMapIdle(page);
   const layers = await openMapControlsTab(page, 'Layers');
   await layers.getByLabel('Flood Hazard (FEMA)').check();
