@@ -50,7 +50,9 @@ test('a Share link reopens the same parcel', async ({ page, context }) => {
 
 test('a Share link with no parcel reopens the same map view', async ({ page, context }) => {
   await gotoViewer(page);
-  await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-86.1234, 42.2345], zoom: 14.5 }));
+  // Braces so nothing is returned: jumpTo returns the Map, and serializing that back to
+  // the test blocked the page for ~15 s quiet, past the 60 s budget under load (DIC-2413).
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-86.1234, 42.2345], zoom: 14.5 }); });
   const url = await shareLink(page);
   expect(url).toMatch(/[?&]view=/);
   const other = await context.newPage();
