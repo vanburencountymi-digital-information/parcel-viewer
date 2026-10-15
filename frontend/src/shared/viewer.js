@@ -14,6 +14,9 @@ export const capEnabled = (id) => (w.PV_CAPS ? w.PV_CAPS.isEnabled(id) : true);
 /** The county config view: the manifest's blocks over COUNTY (pv-app-context.js). */
 export const countyConfig = () => (w.PS_CONTEXT && w.PS_CONTEXT.config) || w.COUNTY || {};
 
+/** The visitor's saved display preferences (PV_PREFS, via the app context), or null. */
+export const prefs = () => (w.PS_CONTEXT && w.PS_CONTEXT.prefs) || w.PV_PREFS || null;
+
 /** The parcel shown in the info panel ({ id, pin, … }), or null. */
 export const selectedParcel = () => (w.PS_STATE && w.PS_STATE.parcel) || null;
 

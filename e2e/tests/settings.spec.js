@@ -83,3 +83,48 @@ test('default basemap: aerial applies now and after a reload', async ({ page }) 
   await expect(aerialToggle(page)).not.toBeChecked();
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-theme'))).not.toBe('dark');
 });
+
+test('colour scheme, panel glass and accessibility apply now and after a reload', async ({ page }) => {
+  const html = (fn) => page.evaluate(fn);
+  await openSettings(page);
+  const dlg = settings(page);
+  // A click on the field's own text picks nothing (it used to pick the first swatch).
+  await dlg.getByText('Color scheme', { exact: true }).click();
+  await expect(dlg.getByRole('button', { name: 'Terracotta color scheme' })).toHaveAttribute('aria-pressed', 'true');
+  await dlg.getByRole('button', { name: 'Forest color scheme' }).click();
+  await expect(dlg.getByRole('button', { name: 'Forest color scheme' })).toHaveAttribute('aria-pressed', 'true');
+  await dlg.getByLabel('Panel transparency, lower is more see-through').fill('80');
+  await dlg.getByLabel('High contrast').check();
+  await dlg.getByLabel('Text size').selectOption('1.15');
+  await closeModal(page);
+  const state = () => html(() => ({
+    scheme: document.documentElement.getAttribute('data-scheme'),
+    glass: document.documentElement.style.getPropertyValue('--glass-alpha').trim(),
+    contrast: document.documentElement.classList.contains('pv-a11y-contrast'),
+    large: document.documentElement.classList.contains('pv-a11y-large'),
+  }));
+  const want = { scheme: 'forest', glass: '0.8', contrast: true, large: true };
+  expect(await state()).toEqual(want);
+  await gotoViewer(page);
+  expect(await state()).toEqual(want);
+  // And the window shows what was saved.
+  await openSettings(page);
+  await expect(dlg.getByLabel('High contrast')).toBeChecked();
+  await expect(dlg.getByLabel('Text size')).toHaveValue('1.15');
+  await expect(dlg.getByLabel('Panel transparency, lower is more see-through')).toHaveValue('80');
+});
+
+test('the header button reflects accessibility set in Settings', async ({ page }) => {
+  const btn = page.getByRole('button', { name: 'Toggle maximum accessibility' });
+  await expect(btn).toHaveAttribute('aria-pressed', 'false');
+  await openSettings(page);
+  const dlg = settings(page);
+  for (const name of ['High contrast', 'Reduce transparency', 'Legible font', 'Reduce motion']) await dlg.getByLabel(name).check();
+  await dlg.getByLabel('Text size').selectOption('1.3');
+  await closeModal(page);   // the page behind an open dialog is inert, the button with it
+  await expect(btn).toHaveAttribute('aria-pressed', 'true');
+  await openSettings(page);
+  await dlg.getByLabel('Reduce motion').uncheck();
+  await closeModal(page);
+  await expect(btn).toHaveAttribute('aria-pressed', 'false');
+});

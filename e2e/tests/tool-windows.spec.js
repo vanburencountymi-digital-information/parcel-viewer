@@ -37,6 +37,44 @@ test.describe('Help & tools menu', () => {
     });
   }
 
+  test('Report a data error: sends the report for the selected parcel', async ({ page }) => {
+    await selectParcelViaSearch(page);
+    const sent = [];
+    await page.route('**/api/report-error', async (route) => {
+      sent.push(route.request().postDataJSON());
+      await route.fulfill({ json: { ok: true } });
+    });
+    await openMenuTool(page, 'Report a data error');
+    const modal = page.getByRole('dialog', { name: 'Report a data error', exact: true });
+    const pin = await modal.getByLabel('Parcel number').inputValue();
+    expect(pin).not.toBe('');
+    await modal.getByRole('button', { name: 'Send report' }).click();   // details are required
+    expect(sent).toEqual([]);
+    await modal.getByLabel('What’s incorrect?').fill('The owner name is out of date.');
+    await modal.getByRole('button', { name: 'Send report' }).click();
+    await expect(modal.getByText('Report received!')).toBeVisible();
+    expect(sent).toEqual([{ pin, details: 'The owner name is out of date.', email: '' }]);
+  });
+
+  test('Report a data error: a refused report says why and keeps the form', async ({ page, consoleGuard }) => {
+    consoleGuard.allow(/status of 429 .*\/api\/report-error/);   // the browser logs the refusal
+    await page.route('**/api/report-error', (route) => route.fulfill({ status: 429, json: { detail: 'slow down' } }));
+    await openMenuTool(page, 'Report a data error');
+    const modal = page.getByRole('dialog', { name: 'Report a data error', exact: true });
+    await modal.getByLabel('What’s incorrect?').fill('Wrong boundary.');
+    await modal.getByRole('button', { name: 'Send report' }).click();
+    await expect(modal.getByRole('alert')).toHaveText(/sent several reports recently/);
+    await expect(modal.getByLabel('What’s incorrect?')).toHaveValue('Wrong boundary.');
+  });
+
+  test('Data Request: embeds the request form', async ({ page }) => {
+    await page.route('https://form.jotform.com/**', (route) => route.fulfill({ contentType: 'text/html', body: '<p>form</p>' }));
+    await openMenuTool(page, 'Data Request');
+    const modal = page.getByRole('dialog', { name: 'Data Request', exact: true });
+    await expect(modal.getByTitle('Data Request form')).toHaveAttribute('src', /^https:\/\//);
+    await expect(modal.getByRole('link', { name: /Open it in a new tab/ })).toHaveAttribute('target', '_blank');
+  });
+
   test('menu closes on Escape and outside click', async ({ page }) => {
     const menu = ui.helpMenu(page);
     await ui.helpMenuButton(page).click();
