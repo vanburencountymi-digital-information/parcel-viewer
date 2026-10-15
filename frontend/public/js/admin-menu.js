@@ -1,24 +1,17 @@
-/* Administrative tools menu — Help / Feedback / Data Request / About.
+/* The viewer's tools and windows: PV_TOOLS, bookmarks, the device display preferences
+ * (accessibility, colour scheme, panel glass), and the windows not yet moved to Vue.
  *
  * The Help & tools dropdown (a Vue island, frontend/src/admin-menu/) opens these tools
- * through PV_TOOLS; each opens a lightweight in-app modal (frontend/src/modal/): Help and About are read-only info windows; Feedback
- * and Data Request are forms. Form submission is a PLACEHOLDER for now — it shows
- * a thank-you state but does not POST anywhere yet (no backend endpoint wired).
- *
- * To later route a tool to a real page instead of a modal, give its config a
- * `url` and the handler will window.open() it instead of building a modal.
+ * through PV_TOOLS; each opens in the viewer's modal (frontend/src/modal/). Help, What's New,
+ * About, Share, Bookmarks, Settings and the two forms are Vue components
+ * (frontend/src/windows/, DIC-2389); Print, Street View, the parcel packet and the
+ * explainers are still built here.
  */
 (function () {
   "use strict";
 
   function countyConfig() {
     return (window.PS_CONTEXT && window.PS_CONTEXT.config) || window.COUNTY || {};
-  }
-
-  // A3 (DIC-568): user prefs via the injected context (=== window.PV_PREFS through the
-  // bridge getter), with the global as fallback when the context isn't loaded.
-  function prefs() {
-    return (window.PS_CONTEXT && window.PS_CONTEXT.prefs) || window.PV_PREFS || null;
   }
 
   // ── The menu and the modal ─────────────────────────────────────────────────
@@ -135,13 +128,17 @@
     },
   };
 
-  // Help, What's New and About are Vue components (frontend/src/windows/, DIC-2389).
+  // Help, What's New, About, Settings and the Data Request and Report Error forms are Vue
+  // components (frontend/src/windows/, DIC-2389).
   function openVueWindow(name) {
     if (window.PV_WINDOWS) window.PV_WINDOWS.open(name);
   }
   function openHelp() { openVueWindow("help"); }
   function openWhatsNew() { openVueWindow("whats-new"); }
   function openAbout() { openVueWindow("about"); }
+  function openSettings() { openVueWindow("settings"); }
+  function openReportError() { openVueWindow("report-error"); }
+  function openDataRequest() { openVueWindow("data-request"); }
 
   // ── Map-action tools (placeholders) ─────────────────────────────────────────
   function openPrint() {
@@ -178,122 +175,6 @@
   function openShare() { openVueWindow("share"); }
   function openBookmark() { openVueWindow("bookmark"); }
 
-  function openReportError() {
-    var pin = currentParcelPin();
-    var body =
-      '<p class="pv-modal-lead">Spotted incorrect parcel data? Tell us what looks wrong.</p>' +
-      '<form class="pv-form" novalidate>' +
-        field("Parcel number" + (pin ? "" : ' <span class="pv-field-opt">(if known)</span>'),
-          '<input type="text" name="pin" class="pv-input" placeholder="00-00-000-000-00" value="' + escAttr(pin || "") + '">') +
-        field("What&rsquo;s incorrect?",
-          '<textarea name="details" class="pv-input" rows="4" required placeholder="Describe the error — wrong owner, boundary, address, zoning…"></textarea>') +
-        field("Email <span class=\"pv-field-opt\">(optional, for follow-up)</span>",
-          '<input type="email" name="email" class="pv-input" placeholder="you@example.com">') +
-        '<div class="pv-form-actions">' +
-          '<button type="button" class="pv-btn-ghost" data-close>Cancel</button>' +
-          '<button type="submit" class="pv-btn-primary">Send report</button>' +
-        '</div>' +
-      '</form>';
-    openModal("Report a data error", body,
-      wireFormPost("/report-error", "Report received!", "Thanks for helping keep the data accurate — we&rsquo;ll review it."));
-  }
-
-  function openSettings() {
-    var _p = prefs();
-    var coordFmt  = (window.PV_COORDS && window.PV_COORDS.getFormat && window.PV_COORDS.getFormat()) || "dd";
-    var areaUnits = (_p && _p.getAreaUnits && _p.getAreaUnits()) || "acres";
-    var basemap   = (_p && _p.getBasemap && _p.getBasemap()) || "light";
-    var glassPct  = 62; try { var _ga = parseFloat(localStorage.getItem("pv-glass-alpha")); if (_ga > 0) glassPct = Math.round(_ga * 100); } catch (_) {}
-    var orbitOn   = !(_p && _p.getCinematicOrbit) || _p.getCinematicOrbit();
-    var reactions = (_p && _p.getMapReactions && _p.getMapReactions()) || "subtle";
-    var mood      = (_p && _p.getMapMood && _p.getMapMood()) || "none";
-    var hintsOn   = !(window.PS_HINTS && window.PS_HINTS.isEnabled) || window.PS_HINTS.isEnabled();
-    function opt(v, label, cur) { return '<option value="' + v + '"' + (v === cur ? ' selected' : '') + '>' + label + '</option>'; }
-    var scheme = (window.PV_SCHEME && window.PV_SCHEME.get && window.PV_SCHEME.get()) || "terracotta";
-    var SCHEME_META = [
-      { id: "terracotta", label: "Terracotta", sw: "#A3473B" },
-      { id: "forest",     label: "Forest",     sw: "#2F6B4F" },
-      { id: "ocean",      label: "Ocean",      sw: "#1F5E80" },
-      { id: "slate",      label: "Slate",      sw: "#475569" },
-      { id: "plum",       label: "Plum",       sw: "#7A3B6B" },
-      { id: "crimson",    label: "Crimson",    sw: "#B11E2F" }
-    ];
-    function schemeSwatches() {
-      return '<div class="pv-scheme-row" role="group" aria-label="Color scheme">' + SCHEME_META.map(function (s) {
-        return '<button type="button" class="pv-scheme-swatch" data-scheme="' + s.id + '" style="--sw:' + s.sw + '"'
-          + ' title="' + s.label + '" aria-label="' + s.label + ' color scheme" aria-pressed="' + (s.id === scheme) + '"></button>';
-      }).join("") + '</div>';
-    }
-    openModal("Settings", [
-      '<p class="pv-modal-lead">Display preferences for this device.</p>',
-      '<div class="pv-form">' +
-        field("Area units",
-          '<select class="pv-input" id="pv-set-area">' +
-            opt("acres", "Acres", areaUnits) + opt("sqft", "Square feet", areaUnits) + '</select>') +
-        field("Coordinate format",
-          '<select class="pv-input" id="pv-set-coord">' +
-            opt("dd", "Decimal degrees", coordFmt) + opt("dms", "Degrees / minutes / seconds", coordFmt) +
-            opt("spc", "State Plane (Michigan South)", coordFmt) + '</select>') +
-        field("Default basemap",
-          '<select class="pv-input" id="pv-set-basemap">' +
-            opt("light", "Light", basemap) + opt("dark", "Dark", basemap) + opt("aerial", "Aerial imagery", basemap) + '</select>') +
-        field("Panel glass", '<input type="range" class="pv-range" id="pv-set-glass" min="40" max="100" step="2" value="' + glassPct + '" aria-label="Panel transparency, lower is more see-through"><span class="pv-range-hint">Lower = more see-through</span>') +
-        field("Color scheme", schemeSwatches()) +
-        field("Search arrival",
-          '<label class="pv-a11y-row" style="margin:0"><input type="checkbox" id="pv-set-orbit"' + (orbitOn ? " checked" : "") + '>' +
-          '<span><span class="pv-a11y-lbl">Spin around parcel</span>' +
-          '<span class="pv-a11y-desc">After a search, orbit the parcel once. Turn off for a quick fly-in.</span></span></label>') +
-        field("Map reactions",
-          '<select class="pv-input" id="pv-set-reactions">' +
-            opt("off", "Off", reactions) + opt("subtle", "Subtle", reactions) + opt("full", "Full", reactions) + '</select>' +
-          '<span class="pv-range-hint">Selecting a parcel dims the rest to focus it. Subtle = instant · Full = animated · Off = static.</span>') +
-        field("Map mood",
-          '<select class="pv-input" id="pv-set-mood">' +
-            opt("none", "None", mood) + opt("antique", "Antique", mood) + '</select>' +
-          '<span class="pv-range-hint">A cartographic mood above the color scheme. Antique = parchment ground &amp; hairline strokes (opt-in).</span>') +
-        field("Hints",
-          '<label class="pv-a11y-row" style="margin:0"><input type="checkbox" id="pv-set-hints"' + (hintsOn ? " checked" : "") + '>' +
-          '<span><span class="pv-a11y-lbl">Show hints</span>' +
-          '<span class="pv-a11y-desc">Tips and one-tap shortcuts on the map for getting around.</span></span></label>' +
-          '<button type="button" id="pv-hints-reset" class="pv-hints-reset-btn">Reset hints</button>') +
-      '</div>',
-      '<p class="pv-settings-h">Accessibility</p>',
-      a11yControlsHtml(),
-      '<p class="pv-modal-note">Changes apply immediately and are saved on this device. The header button toggles all of these at once.</p>',
-      // Low-key staff entry point to the admin console (DIC-463). The console
-      // itself requires a DICE sign-in; this is just a discreet launcher.
-      '<div class="pv-staff-row"><a class="pv-staff-link" href="/admin/" target="_blank" rel="noopener">Staff sign-in / Admin <span aria-hidden="true">↗</span></a></div>'
-    ].join(""), function (bodyEl) {
-      var a = bodyEl.querySelector("#pv-set-area");
-      var c = bodyEl.querySelector("#pv-set-coord");
-      var b = bodyEl.querySelector("#pv-set-basemap");
-      if (a) a.addEventListener("change", function () { var p = prefs(); p && p.setAreaUnits(a.value); });
-      if (c) c.addEventListener("change", function () { window.PV_COORDS && window.PV_COORDS.setFormat(c.value); });
-      if (b) b.addEventListener("change", function () { var p = prefs(); p && p.setBasemap(b.value); });
-      var orb = bodyEl.querySelector("#pv-set-orbit");
-      if (orb) orb.addEventListener("change", function () { var p = prefs(); p && p.setCinematicOrbit && p.setCinematicOrbit(orb.checked); });
-      var rx = bodyEl.querySelector("#pv-set-reactions");
-      if (rx) rx.addEventListener("change", function () { var p = prefs(); p && p.setMapReactions && p.setMapReactions(rx.value); });
-      var md = bodyEl.querySelector("#pv-set-mood");
-      if (md) md.addEventListener("change", function () { var p = prefs(); p && p.setMapMood && p.setMapMood(md.value); });
-      var hk = bodyEl.querySelector("#pv-set-hints");
-      if (hk) hk.addEventListener("change", function () { try { window.PS_HINTS && window.PS_HINTS.setEnabled(hk.checked); } catch (_) {} });
-      var hr = bodyEl.querySelector("#pv-hints-reset");
-      if (hr) hr.addEventListener("click", function () { try { window.PS_HINTS && window.PS_HINTS.reset(); } catch (_) {} if (hk) hk.checked = true; });
-      var g = bodyEl.querySelector("#pv-set-glass");
-      if (g) g.addEventListener("input", function () { var a = Math.max(0.4, Math.min(1, g.value / 100)); document.documentElement.style.setProperty("--glass-alpha", a); try { localStorage.setItem("pv-glass-alpha", String(a)); } catch (_) {} });
-      [].forEach.call(bodyEl.querySelectorAll(".pv-scheme-swatch"), function (sw) {
-        sw.addEventListener("click", function () {
-          if (window.PV_SCHEME) window.PV_SCHEME.set(sw.getAttribute("data-scheme"));
-          [].forEach.call(bodyEl.querySelectorAll(".pv-scheme-swatch"), function (x) {
-            x.setAttribute("aria-pressed", x === sw ? "true" : "false");
-          });
-        });
-      });
-      wireA11yControls(bodyEl);
-    });
-  }
-
   // ── Accessibility preferences (DIC-421 / DIC-376) ────────────────────────────
   // Device-local prefs applied as <html> classes; OS-seeded on first run.
   var A11Y = (function () {
@@ -323,7 +204,6 @@
   })();
   A11Y.init();
   applyGlassPref();
-  applyScheme(getScheme());
   // Device-local panel-glass transparency (a design pref, adjustable in Settings).
   function applyGlassPref() {
     try { var v = parseFloat(localStorage.getItem("pv-glass-alpha")); if (v > 0) document.documentElement.style.setProperty("--glass-alpha", v); } catch (_) {}
@@ -362,6 +242,10 @@
   }
   // Programmatic control (Settings UI, and available to MapBuddy AI later).
   window.PV_SCHEME = { get: getScheme, set: setScheme, list: PV_SCHEMES.slice() };
+  // Only now: PV_SCHEMES is a var, undefined until the line above it runs. Applied before
+  // its declaration, getScheme() threw, every load fell back to terracotta, and neither a
+  // saved scheme nor the county's default ever showed after a reload.
+  applyScheme(getScheme());
 
   // Header button = one-tap "maximum accessibility" toggle; fine-tuning lives
   // in Settings. A toast points the user there.
@@ -381,13 +265,19 @@
   function setMaxA11y(on) { ["contrast", "solid", "font", "motion"].forEach(function (n) { A11Y.setFlag(n, on); }); A11Y.setTs(on ? 1.3 : 1); }
   function syncA11yButton() { var b = document.getElementById("pv-a11y-btn"); if (!b) return; var on = maxA11yOn(); b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", String(on)); }
 
-  // Programmatic accessibility + panel-glass control (MapBuddy AI, etc.).
+  // Accessibility + panel-glass control for the Settings window (frontend/src/windows/) and
+  // Map Buddy. Every change re-syncs the header button.
   window.PV_A11Y = {
-    setFlag: A11Y.setFlag, getFlag: A11Y.getFlag,
-    setTextScale: A11Y.setTs, getTextScale: A11Y.getTs,
+    getFlag: A11Y.getFlag, getTextScale: A11Y.getTs,
+    setFlag: function (n, on) { A11Y.setFlag(n, on); syncA11yButton(); },
+    setTextScale: function (v) { A11Y.setTs(v); syncA11yButton(); },
     setMax: function (on) { setMaxA11y(on); syncA11yButton(); },
   };
   window.PV_GLASS = {
+    /** The saved panel opacity (0.4–1), or null for the stylesheet's default. */
+    get: function () {
+      try { var v = parseFloat(localStorage.getItem("pv-glass-alpha")); return v > 0 ? v : null; } catch (_) { return null; }
+    },
     set: function (alpha) {
       var a = Math.max(0.4, Math.min(1, parseFloat(alpha) || 0.62));
       document.documentElement.style.setProperty("--glass-alpha", a);
@@ -402,31 +292,6 @@
     document.body.appendChild(t);
     requestAnimationFrame(function () { t.classList.add("pv-toast--show"); });
     setTimeout(function () { t.classList.remove("pv-toast--show"); setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, 320); }, 3400);
-  }
-
-  // Accessibility controls, surfaced inside the Settings dialog.
-  function a11yControlsHtml() {
-    function chk(name, label, desc) {
-      return '<label class="pv-a11y-row"><input type="checkbox" class="pv-a11y-chk" data-a="' + name + '"' + (A11Y.getFlag(name) ? " checked" : "") + '>' +
-        '<span><span class="pv-a11y-lbl">' + esc(label) + '</span><span class="pv-a11y-desc">' + esc(desc) + '</span></span></label>';
-    }
-    var ts = A11Y.getTs();
-    function tsOpt(v, l) { return '<option value="' + v + '"' + (Math.abs(ts - v) < 0.001 ? " selected" : "") + '>' + l + '</option>'; }
-    return field("Text size", '<select class="pv-input" id="pv-a11y-ts">' + tsOpt(1, "Default") + tsOpt(1.15, "Large") + tsOpt(1.3, "Larger") + '</select>') +
-      '<div class="pv-a11y-list">' +
-        chk("contrast", "High contrast", "Darker text and stronger outlines.") +
-        chk("solid", "Reduce transparency", "Make panels solid instead of glass.") +
-        chk("font", "Legible font", "Switch to a high-legibility typeface (Atkinson Hyperlegible).") +
-        chk("motion", "Reduce motion", "Turn off animations and transitions.") +
-      '</div>' +
-      field("Language", '<select class="pv-input" id="pv-a11y-lang"><option value="en" selected>English</option><option value="es" disabled>Español — coming soon</option></select>');
-  }
-  function wireA11yControls(bodyEl) {
-    [].forEach.call(bodyEl.querySelectorAll(".pv-a11y-chk"), function (c) {
-      c.addEventListener("change", function () { A11Y.setFlag(c.getAttribute("data-a"), c.checked); syncA11yButton(); });
-    });
-    var tsSel = bodyEl.querySelector("#pv-a11y-ts");
-    if (tsSel) tsSel.addEventListener("change", function () { A11Y.setTs(tsSel.value); syncA11yButton(); });
   }
 
   // ── Parcel tools (placeholders, surfaced in the Layers panel) ────────────────
@@ -943,93 +808,7 @@
     ].join(""));
   }
 
-  // Best-effort read of the currently selected parcel's PIN (for Report a data error).
-  function currentParcelPin() {
-    try {
-      if (window.PS_STATE && window.PS_STATE.parcel && window.PS_STATE.parcel.pin) return window.PS_STATE.parcel.pin;
-    } catch (_) {}
-    return "";
-  }
-
-  var DATA_REQUEST_FORM_URL = ((countyConfig().forms || {}).dataRequest) ||
-    "https://form.jotform.com/261544522974159";
-
-  function openDataRequest() {
-    // Embed the JotForm directly in a modal window. If the iframe is blocked
-    // (network/CSP/extension), the footer link opens the form in a new tab.
-    var body =
-      '<div class="pv-embed">' +
-        '<iframe class="pv-embed-frame" src="' + DATA_REQUEST_FORM_URL + '" ' +
-          'title="Data Request form" ' +
-          'allow="geolocation; microphone; camera; fullscreen; payment" ' +
-          'allowtransparency="true"></iframe>' +
-        '<div class="pv-embed-foot">Form not loading? ' +
-          '<a href="' + DATA_REQUEST_FORM_URL + '" target="_blank" rel="noopener">Open it in a new tab &#8599;</a>' +
-        '</div>' +
-      '</div>';
-    openModal("Data Request", body, null, { wide: true, flush: true });
-  }
-
-  // ── Form helpers ────────────────────────────────────────────────────────────
-  function formSuccessHtml(successTitle, successMsg) {
-    return '<div class="pv-form-success">' +
-      '<div class="pv-form-success-icon">&#10003;</div>' +
-      '<div class="pv-form-success-title">' + successTitle + '</div>' +
-      '<p class="pv-form-success-msg">' + successMsg + '</p>' +
-      '<button type="button" class="pv-btn-primary" data-close>Close</button>' +
-    '</div>';
-  }
-
-  // Real form submit — POSTs JSON to the API and shows success / error states.
-  function wireFormPost(endpoint, successTitle, successMsg) {
-    return function (bodyEl) {
-      var form = bodyEl.querySelector("form");
-      if (!form) return;
-      bodyEl.addEventListener("click", function (e) { if (e.target.closest("[data-close]")) closeModal(); });
-      form.addEventListener("submit", function (e) {
-        e.preventDefault();
-        if (!form.checkValidity()) { form.reportValidity(); return; }
-        var data = {};
-        Array.prototype.forEach.call(form.elements, function (el) { if (el.name) data[el.name] = el.value; });
-        var submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) { submitBtn.disabled = true; submitBtn.dataset.label = submitBtn.textContent; submitBtn.textContent = "Sending…"; }
-        var base = window.API_BASE || "/api";
-        fetch(base + endpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        })
-          .then(function (r) {
-            if (r.ok) return r.json();
-            var err = new Error("HTTP " + r.status); err.status = r.status;
-            return Promise.reject(err);
-          })
-          .then(function (res) {
-            if (res && res.ok === false) return Promise.reject(new Error(res.error || "Server error"));
-            bodyEl.innerHTML = formSuccessHtml(successTitle, successMsg);
-            bodyEl.querySelector("[data-close]").addEventListener("click", closeModal);
-          })
-          .catch(function (err) {
-            if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = submitBtn.dataset.label || "Send"; }
-            var errEl = form.querySelector(".pv-form-error");
-            if (!errEl) {
-              errEl = document.createElement("p");
-              errEl.className = "pv-form-error";
-              errEl.setAttribute("role", "alert");
-              form.insertBefore(errEl, form.querySelector(".pv-form-actions"));
-            }
-            errEl.textContent = (err && err.status === 429)
-              ? "You’ve sent several reports recently. Please wait a while and try again."
-              : "Sorry — couldn’t send your report just now. Please try again.";
-          });
-      });
-    };
-  }
-
   // ── Small HTML helpers ────────────────────────────────────────────────────
-  function field(label, control) {
-    return '<label class="pv-field"><span class="pv-field-label">' + label + '</span>' + control + '</label>';
-  }
   function helpItem(h, p) {
     return '<div class="pv-help-item"><div class="pv-help-h">' + h + '</div><div class="pv-help-p">' + p + '</div></div>';
   }
