@@ -105,13 +105,26 @@
         return name;
       }).catch(function () { return null; });
   }
+  // Flood from our own copy of FEMA's zones (/environment, DIC-2412). FEMA's service only
+  // answers while that data isn't loaded, or if our API fails.
+  function _floodAt(lng, lat) {
+    return fetch(apiBase() + '/environment?lng=' + lng + '&lat=' + lat)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var f = d && d.flood;
+        if (!f || f.status === 'not_loaded') return _restPoint(_FEMA_NFHL, lng, lat);
+        if (f.status !== 'mapped') return null;
+        return { FLD_ZONE: f.zone, SFHA_TF: f.in_special_flood_hazard_area === true ? 'T' : 'F' };
+      })
+      .catch(function () { return _restPoint(_FEMA_NFHL, lng, lat); });
+  }
   var _envCache = {};
   function envAtPoint(center) {
     if (!center || center.length < 2) return Promise.resolve(null);
     var key = center[0].toFixed(4) + ',' + center[1].toFixed(4);
     if (_envCache[key]) return _envCache[key];
     var lng = center[0], lat = center[1];
-    _envCache[key] = Promise.all([_restPoint(_FEMA_NFHL, lng, lat), _restPoint(_NWI, lng, lat), _soilAt(lng, lat)])
+    _envCache[key] = Promise.all([_floodAt(lng, lat), _restPoint(_NWI, lng, lat), _soilAt(lng, lat)])
       .then(function (r) {
         var fl = r[0], we = r[1];
         return {

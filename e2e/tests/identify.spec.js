@@ -1,5 +1,6 @@
-// Clicking the map with a federal overlay on shows an identify popup. The proxy response
-// is mocked so these test OUR rendering deterministically, independent of FEMA uptime.
+// Clicking the map with a federal overlay on shows an identify popup. Flood answers come from
+// our own copy of FEMA's zones (/api/environment, DIC-2412), FEMA's service only while that
+// isn't loaded. Both are mocked so these test OUR rendering, independent of FEMA uptime.
 const { test, expect, gotoViewer, waitForMapIdle, ui, openMapControlsTab } = require('./fixtures');
 
 // The overlay's map tiles come straight from the federal WMS; their outages aren't ours.
@@ -9,6 +10,15 @@ const HOSTILE = '<img src=x onerror="window.__xss=1">';
 function floodResponse(zone, subtype = '') {
   return JSON.stringify({ features: [{ attributes: { FLD_ZONE: zone, ZONE_SUBTY: subtype } }] });
 }
+
+// Our API's answer: a mapped zone, or a status ('unmapped', 'not_loaded').
+function envResponse(zone, subtype = null) {
+  const flood = typeof zone === 'object' ? zone
+    : { status: 'mapped', zone, subtype, in_special_flood_hazard_area: zone.startsWith('A'), base_flood_elevation_ft: null };
+  return JSON.stringify({ flood, sources: { flood: null } });
+}
+const ENVIRONMENT = /\/api\/environment\?/;
+const FEMA_VIA_PROXY = /\/api\/wms-proxy\?url=https%3A%2F%2Fhazards\.fema\.gov/;
 
 async function setup(page, consoleGuard) {
   consoleGuard.allow(FEDERAL);
@@ -25,8 +35,10 @@ async function clickMap(page, dx = 150, dy = 0) {
 }
 
 test('flood identify shows the zone, escapes upstream text, and closes', async ({ page, consoleGuard }) => {
-  await page.route(/\/api\/wms-proxy\?url=https%3A%2F%2Fhazards\.fema\.gov/, (r) =>
-    r.fulfill({ status: 200, contentType: 'application/json', body: floodResponse('AE', HOSTILE) }));
+  let federal = 0;
+  await page.route(FEMA_VIA_PROXY, (r) => { federal++; return r.fulfill({ status: 200, contentType: 'application/json', body: floodResponse('X') }); });
+  await page.route(ENVIRONMENT, (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: envResponse('AE', HOSTILE) }));
   await setup(page, consoleGuard);
   await clickMap(page);
   const popup = page.locator('.wfi-mgl-popup');
@@ -37,11 +49,22 @@ test('flood identify shows the zone, escapes upstream text, and closes', async (
   expect(await page.evaluate(() => window.__xss || 0)).toBe(0);
   await popup.getByRole('button', { name: 'Close popup' }).click();   // MapLibre's own label
   await expect(popup).toHaveCount(0);
+  expect(federal, 'flood is answered without asking FEMA').toBe(0);
+});
+
+test("until our flood data is loaded, FEMA's service answers", async ({ page, consoleGuard }) => {
+  await page.route(ENVIRONMENT, (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: envResponse({ status: 'not_loaded' }) }));
+  await page.route(FEMA_VIA_PROXY, (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: floodResponse('AE') }));
+  await setup(page, consoleGuard);
+  await clickMap(page);
+  await expect(page.locator('.wfi-mgl-popup')).toContainText('Zone AE');
 });
 
 test('no flood feature at the point: no popup', async ({ page, consoleGuard }) => {
-  await page.route(/\/api\/wms-proxy\?url=https%3A%2F%2Fhazards\.fema\.gov/, (r) =>
-    r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ features: [] }) }));
+  await page.route(ENVIRONMENT, (r) =>
+    r.fulfill({ status: 200, contentType: 'application/json', body: envResponse({ status: 'unmapped' }) }));
   await setup(page, consoleGuard);
   await clickMap(page);
   await page.waitForTimeout(1500);
@@ -50,10 +73,10 @@ test('no flood feature at the point: no popup', async ({ page, consoleGuard }) =
 
 test('rapid clicks: only the latest result is shown (a slow earlier lookup must not win)', async ({ page, consoleGuard }) => {
   let n = 0;
-  await page.route(/\/api\/wms-proxy\?url=https%3A%2F%2Fhazards\.fema\.gov/, async (r) => {
+  await page.route(ENVIRONMENT, async (r) => {
     const mine = ++n;
     if (mine === 1) await new Promise((res) => setTimeout(res, 2500));   // first lookup is slow
-    await r.fulfill({ status: 200, contentType: 'application/json', body: floodResponse(mine === 1 ? 'A' : 'AO') });   // (Zone X is suppressed by design)
+    await r.fulfill({ status: 200, contentType: 'application/json', body: envResponse(mine === 1 ? 'A' : 'AO') });   // (Zone X is suppressed by design)
   });
   await setup(page, consoleGuard);
   await clickMap(page, 150, 0);
@@ -65,9 +88,11 @@ test('rapid clicks: only the latest result is shown (a slow earlier lookup must 
   await expect(popups).toContainText('Zone AO');
 });
 
-test('proxy failure: no popup, no uncaught errors', async ({ page, consoleGuard }) => {
-  consoleGuard.allow(/Failed to load resource.*wms-proxy/);
-  await page.route(/\/api\/wms-proxy\?url=https%3A%2F%2Fhazards\.fema\.gov/, (r) =>
+test('our API and FEMA both failing: no popup, no uncaught errors', async ({ page, consoleGuard }) => {
+  consoleGuard.allow(/Failed to load resource.*(wms-proxy|environment)/);
+  await page.route(ENVIRONMENT, (r) =>
+    r.fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"unavailable"}' }));
+  await page.route(FEMA_VIA_PROXY, (r) =>
     r.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"upstream map service unavailable"}' }));
   await setup(page, consoleGuard);
   await clickMap(page);

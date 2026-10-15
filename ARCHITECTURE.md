@@ -57,9 +57,12 @@ was retired, DIC-2150). Same URLs and JSON as before (ADR 0011). Apps:
   Django admin as the config editor.
 - `accounts/`: staff sign-in (Knox tokens) and per-county edit access (ADR 0013).
 - `access/`: metered parcel details for counties that sell data (ADR 0015).
+- `environment/`: our own copy of the federal environmental layers (DIC-2412), FEMA flood
+  zones so far, and `GET /environment?lng=&lat=`, which map clicks, the Neighborhood Profile
+  and Map Buddy ask instead of FEMA (FEMA's service is only the fallback until it's loaded).
 - `wms/` (the federal map proxy), `feedback/` (problem reports, the error beacon), and
   `common/` (request ids, logging and Sentry shared with Map Buddy, error answers, limits).
-It talks to three databases: its own (`django-db`: accounts, tokens, counters), the shared
+It talks to three databases: its own (`django-db`: accounts, tokens, counters, flood zones), the shared
 parcel database (read-only), and the config store.
 
 Key properties: a statement timeout on every query; a dead database gives a 503 within

@@ -53,7 +53,12 @@ Owner tags: **[repo]** = in-repo, done/doable here · **[infra]** = Drake / host
      docker compose -f infra/docker-compose.prod.yml --env-file .env exec django-api python manage.py createsuperuser
      ```
      Then, in the Django admin, give each staff user the counties they may edit (County access). Further staff accounts can be made there.
-   - **Back up `django-db`** (staff accounts, sign-in tokens, data-access counters; the parcel data is elsewhere):
+   - **Load the county's FEMA flood zones** (DIC-2412). Map clicks, the Neighborhood Profile and Map Buddy read flood from the API's own copy, and fall back to FEMA's slow service until it's loaded. Van Buren County's FEMA map id is `26159C`. This fetches from FEMA, so it needs outbound HTTPS:
+     ```bash
+     docker compose -f infra/docker-compose.prod.yml --env-file .env exec django-api python manage.py load_flood_zones --dfirm 26159C
+     ```
+     Run it again after a FEMA map revision; checking monthly is enough. Each load replaces the zones in one transaction and records its effective date (`/api/environment` reports it).
+   - **Back up `django-db`** (staff accounts, sign-in tokens, data-access counters and the loaded flood zones; the parcel data is elsewhere):
      ```bash
      docker compose -f infra/docker-compose.prod.yml --env-file .env exec -T django-db pg_dump -U django parcel_viewer_api > django-db-$(date +%F).sql
      ```

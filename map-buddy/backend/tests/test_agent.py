@@ -73,13 +73,16 @@ class EnvironmentLookupErrorTests(TestCase):
     """CodeQL py/stack-trace-exposure (DIC-1880): lookup failures must not put exception
     text (URLs, hostnames, network errors) into what users or the model see."""
 
+    @patch("agent._http_get_json", autospec=True, side_effect=OSError("parcel API down"))
     @patch("agent._query_soils", autospec=True, side_effect=OSError("soil down"))
     @patch(
         "agent._arcgis_point_query",
         autospec=True,
         side_effect=OSError("urlopen error https://internal.example:8443/secret"),
     )
-    def test_failures_are_generic_to_users_and_logged(self, _mock_arcgis, _mock_soils) -> None:
+    def test_failures_are_generic_to_users_and_logged(
+        self, _mock_arcgis, _mock_soils, _mock_api
+    ) -> None:
         with self.assertLogs("map_buddy.agent", level="WARNING") as logs:
             out = agent._query_environment(-85.9, 42.2)
 
@@ -96,3 +99,47 @@ class EnvironmentLookupErrorTests(TestCase):
         )
 
         self.assertNotIn("socket details", note)
+
+
+class FloodFromParcelApiTests(TestCase):
+    """Flood answers come from the parcel API's copy of FEMA's zones (DIC-2412); FEMA's own
+    service is asked only while that data isn't loaded."""
+
+    MAPPED = {
+        "flood": {
+            "status": "mapped",
+            "zone": "AE",
+            "subtype": "FLOODWAY",
+            "in_special_flood_hazard_area": True,
+            "base_flood_elevation_ft": 612.4,
+        },
+        "sources": {"flood": {"effective": "2026-06-10"}},
+    }
+
+    @patch("agent._arcgis_point_query", autospec=True)
+    @patch("agent._http_get_json", autospec=True, return_value=MAPPED)
+    def test_answers_from_the_parcel_api(self, mock_api, mock_fema) -> None:
+        out = agent._flood_at(-85.9, 42.2)
+
+        self.assertEqual(out["zone"], "AE")
+        self.assertIs(out["in_special_flood_hazard_area"], True)
+        self.assertEqual(out["base_flood_elev_ft"], 612.4)
+        self.assertIn("2026-06-10", out["source"])
+        self.assertEqual(mock_api.call_args.args[0], "/environment?lng=-85.9&lat=42.2")
+        mock_fema.assert_not_called()
+
+    @patch("agent._arcgis_point_query", autospec=True)
+    @patch("agent._http_get_json", autospec=True, return_value={"flood": {"status": "unmapped"}})
+    def test_an_unmapped_point_does_not_ask_fema(self, _mock_api, mock_fema) -> None:
+        self.assertIsNone(agent._flood_at(-85.9, 42.2)["zone"])
+        mock_fema.assert_not_called()
+
+    @patch(
+        "agent._arcgis_point_query", autospec=True, return_value={"FLD_ZONE": "A", "SFHA_TF": "T"}
+    )
+    @patch("agent._http_get_json", autospec=True, return_value={"flood": {"status": "not_loaded"}})
+    def test_falls_back_to_fema_until_the_data_is_loaded(self, _mock_api, _mock_fema) -> None:
+        out = agent._flood_at(-85.9, 42.2)
+
+        self.assertEqual(out["zone"], "A")
+        self.assertIs(out["in_special_flood_hazard_area"], True)

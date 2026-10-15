@@ -27,6 +27,7 @@ make test                    # the test suite, against the local database only
 | `county_config/` | Published county config, map style, the config store (`config.config_versions`), layer discovery |
 | `wms/` | The server-side proxy for the federal WMS overlays |
 | `feedback/` | Data-error reports (emailed) and the browser error beacon |
+| `environment/` | Our own copy of the federal environmental layers (DIC-2412): FEMA flood zones so far, loaded by `manage.py load_flood_zones --dfirm 26159C`, and `GET /environment?lng=&lat=` |
 
 It talks to three databases (ADR 0004): Django's own, the shared parcel database (read-only,
 ADR 0007), and the config store table (ADR 0010).
