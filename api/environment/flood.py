@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from django.contrib.gis.geos import GEOSGeometry, MultiPolygon, Point
+from django.contrib.gis.geos import GeometryCollection, GEOSGeometry, MultiPolygon, Point, Polygon
 from django.db import transaction
 from django.db.models import F
 
@@ -42,13 +42,18 @@ def _multipolygon(geometry: dict[str, Any]) -> MultiPolygon:
     geom = GEOSGeometry(json.dumps(geometry), srid=WGS84)
     if not geom.valid:
         geom = geom.make_valid()
-    if geom.geom_type == "Polygon":
+    if isinstance(geom, Polygon):
         return MultiPolygon(geom, srid=WGS84)
-    if geom.geom_type == "MultiPolygon":
+    if isinstance(geom, MultiPolygon):
         return geom
     # make_valid can return a collection; keep its polygon parts.
-    polygons = [g for g in geom if g.geom_type in ("Polygon", "MultiPolygon")]
-    parts = [p for g in polygons for p in (g if g.geom_type == "MultiPolygon" else [g])]
+    parts: list[Polygon] = []
+    if isinstance(geom, GeometryCollection):
+        for g in geom:
+            if isinstance(g, Polygon):
+                parts.append(g)
+            elif isinstance(g, MultiPolygon):
+                parts.extend(p for p in g if isinstance(p, Polygon))
     if not parts:
         raise FloodDataError("a flood zone has no polygon area")
     return MultiPolygon(*parts, srid=WGS84)
