@@ -11,6 +11,7 @@ const channel = process.env.E2E_CHANNEL || 'msedge';
 
 module.exports = defineConfig({
   testDir: './tests',
+  globalSetup: require.resolve('./global-setup'),   // full runs take turns (DIC-2436)
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,          // one shared stack + DB; keep load (and rate limits) modest
