@@ -20,6 +20,12 @@
  *   - Measurement HUD: #msr-hud positioned in #panel-map
  *   - featureType values all prefixed 'measure-'
  *
+ * The tab's controls: a host page with the static markup (ZIP) gets them wired here. A host
+ * that renders the pane itself marks #mcp-pane-measure data-ui="vue" (the Parcel Viewer's
+ * Vue island, frontend/src/measure-tools/, DIC-2389): this then leaves the pane alone, and
+ * the pane drives PS_MEASURE_TOOL (toggleTool, setSetting, setAdvancedExpanded,
+ * clearAllMeasurements) and follows it through subscribe(). The results HUD is still built here.
+ *
  * Depends on: turf.js, annotation-store.js, undo-redo.js, snapping-engine.js, map.js
  * Optional:   proj4.js (for State Plane coordinates; degrades gracefully if absent)
  * Exposed as: window.PS_MEASURE_TOOL
@@ -69,6 +75,18 @@
     bearingFormat:    'quadrant',  // 'quadrant' | 'azimuth'
     units:            'feet',      // 'feet' | 'miles'
   };
+
+  // Who to tell when the tool, the settings or the Advanced section change (a host-rendered pane).
+  var _listeners = [];
+  function notify() {
+    _listeners.slice().forEach(function (fn) { try { fn(); } catch (_) {} });
+  }
+
+  /** Does the host page render the Measure pane itself (data-ui="vue")? Then don't wire it. */
+  function hostRendersPane() {
+    var pane = document.getElementById('mcp-pane-measure');
+    return !!(pane && pane.getAttribute('data-ui') === 'vue');
+  }
 
   // ══ Accessors ══════════════════════════════════════════════════════════════
 
@@ -1680,12 +1698,15 @@
   };
 
   function updateToolButtons() {
-    Object.keys(TOOL_BUTTON_MAP).forEach(function (tool) {
-      var btn = document.getElementById(TOOL_BUTTON_MAP[tool]);
-      if (btn) btn.classList.toggle('active', tool === _activeTool);
-    });
-    // Show / hide the auto-dim options panel alongside the tool state
-    renderAutoDimOptions();
+    if (!hostRendersPane()) {
+      Object.keys(TOOL_BUTTON_MAP).forEach(function (tool) {
+        var btn = document.getElementById(TOOL_BUTTON_MAP[tool]);
+        if (btn) btn.classList.toggle('active', tool === _activeTool);
+      });
+      // Show / hide the auto-dim options panel alongside the tool state
+      renderAutoDimOptions();
+    }
+    notify();
   }
 
   // ══ Settings UI sync ══════════════════════════════════════════════════════
@@ -1730,10 +1751,7 @@
     }
 
     function toolBtn(id, toolName) {
-      wire(id, 'click', function () {
-        if (_activeTool === toolName) deactivateTool();
-        else activateTool(toolName);
-      });
+      wire(id, 'click', function () { toggleTool(toolName); });
     }
 
     // ── Basic tools (Tweak 1: parcel-info removed)
@@ -1762,22 +1780,13 @@
 
     // ── Advanced toggle
     wire('msr-adv-toggle', 'click', function () {
-      _advancedExpanded = !_advancedExpanded;
-      saveAdvancedPref();
+      setAdvancedExpanded(!_advancedExpanded);
       updateAdvancedToggle();
     });
 
     // ── Settings — Annotate With checkboxes
-    wire('msr-ann-dist', 'change', function () {
-      _settings.annotateDistance = this.checked;
-      saveSettings();
-      updateHudSaveState();
-    });
-    wire('msr-ann-bearing', 'change', function () {
-      _settings.annotateBearing = this.checked;
-      saveSettings();
-      updateHudSaveState();
-    });
+    wire('msr-ann-dist', 'change', function () { setSetting('annotateDistance', this.checked); });
+    wire('msr-ann-bearing', 'change', function () { setSetting('annotateBearing', this.checked); });
 
     // ── Settings — toggle groups (bearing format, units)
     document.querySelectorAll('.msr-toggle-group [data-value]').forEach(function (btn) {
@@ -1785,8 +1794,7 @@
         var group   = this.closest('.msr-toggle-group');
         var setting = group ? group.dataset.setting : null;
         if (!setting) return;
-        _settings[setting] = this.dataset.value;
-        saveSettings();
+        setSetting(setting, this.dataset.value);
         group.querySelectorAll('[data-value]').forEach(function (b) {
           b.classList.toggle('active', b === btn);
         });
@@ -1811,16 +1819,7 @@
     // ── Footer: Clear All Measurements
     wire('msr-clear-all-btn', 'click', function () {
       if (!confirm('Clear all measurement annotations? This cannot be undone after confirmation.')) return;
-      var store = getStore();
-      if (!store) return;
-      var fc  = store.getState().annotations;   // Bug 1 fix: store has no getAnnotations(); use getState()
-      var ids = (fc.features || [])
-        .filter(function (f) {
-          var ft = f.properties && f.properties.featureType;
-          return ft && ft.indexOf('measure-') === 0;
-        })
-        .map(function (f) { return f.id; });
-      if (ids.length > 0) store.deleteAnnotations(ids);
+      clearAllMeasurements();
     });
 
     // ── Subscribe to store for undo/redo button updates
@@ -1844,16 +1843,55 @@
     panel.hidden = (_activeTool !== 'auto-dim');
   }
 
+  // ══ Actions shared by the wired panel and a host-rendered pane ═════════════
+
+  /** The tool on, or off if it already is. */
+  function toggleTool(toolName) {
+    if (_activeTool === toolName) deactivateTool();
+    else activateTool(toolName);
+  }
+
+  /** Change one setting (annotateDistance, annotateBearing, bearingFormat, units) and save it. */
+  function setSetting(key, value) {
+    if (!Object.prototype.hasOwnProperty.call(_settings, key)) return;
+    _settings[key] = value;
+    saveSettings();
+    updateHudSaveState();
+    notify();
+  }
+
+  function setAdvancedExpanded(on) {
+    _advancedExpanded = !!on;
+    saveAdvancedPref();
+    notify();
+  }
+
+  /** Delete every measurement annotation (featureType measure-*), leaving drawings (the caller has confirmed). */
+  function clearAllMeasurements() {
+    var store = getStore();
+    if (!store) return;
+    var fc  = store.getState().annotations;   // Bug 1 fix: store has no getAnnotations(); use getState()
+    var ids = (fc.features || [])
+      .filter(function (f) {
+        var ft = f.properties && f.properties.featureType;
+        return ft && ft.indexOf('measure-') === 0;
+      })
+      .map(function (f) { return f.id; });
+    if (ids.length > 0) store.deleteAnnotations(ids);
+  }
+
   // ══ Tab lifecycle ══════════════════════════════════════════════════════════
 
   function onMeasureTabActivated() {
     loadSettings();
     wireMapEvents();
     ensurePreviewLayers();
-    wirePanelEvents();
-    updateSettingsUI();
-    updateAdvancedToggle();
-    updateFooterButtons();
+    if (!hostRendersPane()) {
+      wirePanelEvents();
+      updateSettingsUI();
+      updateAdvancedToggle();
+      updateFooterButtons();
+    }
     updateToolButtons();
     // Keyboard handler active only while this tab is open
     document.addEventListener('keydown', onMsrKeyDown);
@@ -1878,6 +1916,21 @@
     dimensionParcel:         function (parcel) { if (parcel) runAutoDim(parcel); },
     /** Exposed constant so it can be imported by tests or other modules. */
     COLLINEARITY_THRESHOLD_DEG: COLLINEARITY_THRESHOLD_DEG,
+    // For a host-rendered pane:
+    toggleTool:              toggleTool,
+    getSettings:             function () { return Object.assign({}, _settings); },
+    setSetting:              setSetting,
+    isAdvancedExpanded:      function () { return _advancedExpanded; },
+    setAdvancedExpanded:     setAdvancedExpanded,
+    clearAllMeasurements:    clearAllMeasurements,
+    /** Call fn whenever the tool, the settings or the Advanced section change; returns an unsubscribe. */
+    subscribe:               function (fn) {
+      _listeners.push(fn);
+      return function () { _listeners = _listeners.filter(function (f) { return f !== fn; }); };
+    },
   };
+
+  // The saved settings, before the tab first opens (a host-rendered pane shows them).
+  loadSettings();
 
 }());
