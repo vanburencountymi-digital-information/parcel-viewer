@@ -445,7 +445,8 @@ describe('PV_WINDOWS', () => {
       { component: DataRequestWindow, props: { url: 'https://form.jotform.com/261544522974159' } },
       null, { wide: true, flush: true });
     expect(api.has('streetview')).toBe(true);
-    expect(api.open('packet')).toBe(false);   // still admin-menu.js's
+    expect(api.has('packet')).toBe(true);
+    expect(api.open('tax')).toBe(false);   // still admin-menu.js's (with pv-explain.js)
     delete globalThis.PV_MODAL;
   });
 });

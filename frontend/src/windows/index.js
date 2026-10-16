@@ -13,6 +13,7 @@ import ShareWindow from './ShareWindow.vue';
 import StreetViewWindow from './StreetViewWindow.vue';
 import WhatsNewWindow from './WhatsNewWindow.vue';
 import { centroidOf, mapsUrl, resolveTarget } from './streetview.js';
+import PacketWindow from './packet/PacketWindow.vue';
 
 const DATA_REQUEST_FORM_URL = 'https://form.jotform.com/261544522974159';
 
@@ -66,6 +67,18 @@ export function openStreetView(modal, { win = globalThis } = {}) {
   });
 }
 
+/** The Parcel Packet for the selected parcel (wide and flush), or the note to pick one. */
+export function openPacket(modal) {
+  const parcel = viewer.selectedParcel();
+  if (!parcel) {
+    modal.open('Parcel Packet', { component: PacketWindow, props: { parcel: null } });
+    return;
+  }
+  const acc = viewer.access();
+  const withheld = !parcel.owner_name && !!(acc && acc.getState && acc.getState().withheld);
+  modal.open('Parcel Packet', { component: PacketWindow, props: { parcel, withheld } }, null, { wide: true, flush: true });
+}
+
 // name → [title, component, props read when the window opens, modal options]
 const WINDOWS = {
   help: ['Help', HelpWindow, () => ({})],
@@ -110,7 +123,7 @@ const WINDOWS = {
 };
 
 // Windows that open some other way than "this component, now".
-const OPENERS = { streetview: openStreetView };
+const OPENERS = { streetview: openStreetView, packet: openPacket };
 
 export function mountWindows() {
   globalThis.PV_WINDOWS = {
