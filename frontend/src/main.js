@@ -8,6 +8,7 @@ import { mountHelpMenu, mountModal } from './admin-menu/index.js';
 import { mountCompare } from './compare/index.js';
 import { mountDrawTools } from './draw-tools/index.js';
 import { mountMapControls } from './map-controls/index.js';
+import { mountMeasureTools } from './measure-tools/index.js';
 import { mountParcelPanel } from './parcel-panel/index.js';
 import { mountSearch } from './search/index.js';
 import { mountSelectTools } from './select-tools/index.js';
@@ -20,6 +21,7 @@ const ISLANDS = {
   compare: mountCompare,
   'select-tools': mountSelectTools,
   'draw-tools': mountDrawTools,
+  'measure-tools': mountMeasureTools,
   'parcel-panel': mountParcelPanel,
   'map-controls': mountMapControls,
   search: mountSearch,

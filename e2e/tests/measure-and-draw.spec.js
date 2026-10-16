@@ -104,6 +104,80 @@ test.describe('Measure', () => {
     expect(await clickGate(page)).toBeNull();
   });
 
+  test('a tool button turns its tool on, and pressing it again turns it off', async ({ page }) => {
+    const active = () => page.evaluate(() => window.PS_MEASURE_TOOL.getActiveTool());
+    await measureTab(page).getByRole('button', { name: 'Measure Area' }).click();
+    expect(await active()).toBe('measure-area');
+    await measureTab(page).getByRole('button', { name: 'Coordinates' }).click();
+    expect(await active()).toBe('coordinates');
+    await measureTab(page).getByRole('button', { name: 'Coordinates' }).click();
+    expect(await active()).toBe(null);
+  });
+
+  test('settings: Miles shows distances in miles; the choices persist across a reload', async ({ page }) => {
+    const tab = measureTab(page);
+    await tab.getByRole('button', { name: 'Miles', exact: true }).click();
+    await tab.getByRole('button', { name: 'Azimuth', exact: true }).click();
+    await tab.getByLabel('Bearing').check();
+    await tab.getByRole('button', { name: 'Measure Dist.' }).click();
+    for (const p of (await squareOnMap(page)).slice(0, 2)) await page.mouse.click(p.x, p.y);
+    await page.keyboard.press('Enter');
+    await expect(hudValue(page, 'Total Distance')).toHaveText(/^[\d.]+ mi \([\d,.]+ ft\)$/);
+    const stored = () => page.evaluate(() => [localStorage.getItem('ps_measureUnits'), localStorage.getItem('ps_bearingFormat'),
+      JSON.parse(localStorage.getItem('ps_measureAnnotate'))]);
+    expect(await stored()).toEqual(['miles', 'azimuth', { distance: true, bearing: true }]);
+    await gotoViewer(page);
+    await openMapControlsTab(page, 'Measurement Tools');
+    await expect(measureTab(page).getByLabel('Bearing')).toBeChecked();
+    await expect(measureTab(page).getByLabel('Distance')).toBeChecked();
+  });
+
+  test('Advanced Tools opens the advanced tools, and stays open after a reload', async ({ page }) => {
+    const tab = measureTab(page);
+    await expect(tab.getByRole('button', { name: 'Bearing & Dist.' })).toBeHidden();
+    await tab.getByRole('button', { name: /Advanced Tools/ }).click();
+    await expect(tab.getByRole('button', { name: /▼ Advanced Tools/ })).toBeVisible();
+    await expect(tab.getByRole('button', { name: 'Bearing & Dist.' })).toBeVisible();
+    await gotoViewer(page);
+    await openMapControlsTab(page, 'Measurement Tools');
+    await expect(measureTab(page).getByRole('button', { name: 'Bearing & Dist.' })).toBeVisible();
+  });
+
+  test('Dimension Parcel shows its options only while it is the tool', async ({ page }) => {
+    const tab = measureTab(page);
+    await tab.getByRole('button', { name: /Advanced Tools/ }).click();
+    await expect(tab.getByLabel('Label content')).toBeHidden();
+    await tab.getByRole('button', { name: 'Dimension Parcel' }).click();
+    await expect(tab.getByLabel('Label content')).toBeVisible();
+    await expect(tab.getByLabel('Group name')).toHaveValue('{PIN} Dimensions');
+    await tab.getByRole('button', { name: 'Dimension Parcel' }).click();
+    await expect(tab.getByLabel('Label content')).toBeHidden();
+  });
+
+  test('Offset Line says it is coming', async ({ page }) => {
+    await measureTab(page).getByRole('button', { name: /Advanced Tools/ }).click();
+    const said = new Promise((resolve) => page.once('dialog', (d) => { resolve(d.message()); d.dismiss(); }));
+    await measureTab(page).getByRole('button', { name: 'Offset Line' }).click();
+    expect(await said).toBe('Offset Line is coming in a future update.');
+  });
+
+  test('Clear Measurements (confirmed) removes the measurements but not the drawings; undo follows', async ({ page }) => {
+    const tab = measureTab(page);
+    await page.evaluate(() => window.PS_ANNOTATION_STORE.addAnnotation({
+      type: 'Feature', geometry: { type: 'Point', coordinates: [-86, 42.22] }, properties: { featureType: 'point', style: {} },
+    }));
+    await tab.getByRole('button', { name: 'Measure Dist.' }).click();
+    for (const p of (await squareOnMap(page)).slice(0, 2)) await page.mouse.click(p.x, p.y);
+    await page.keyboard.press('Enter');
+    await expect(tab.getByRole('button', { name: 'Undo (Ctrl+Z)' })).toBeEnabled();
+    const kinds = () => page.evaluate(() => window.PS_ANNOTATION_STORE.getState().annotations.features
+      .map((f) => (f.properties.featureType.startsWith('measure-') ? 'measure' : 'drawing')));
+    expect(await kinds()).toContain('measure');
+    page.once('dialog', (d) => d.accept());
+    await tab.getByRole('button', { name: /Clear Measurements/ }).click();
+    await expect.poll(kinds).toEqual(['drawing']);
+  });
+
   test('dimension parcel: perimeter matches the parcel geometry', async ({ page }) => {
     const r = await page.evaluate(async () => {
       const f = (window.PS_PARCEL_INDEX || [])[0];

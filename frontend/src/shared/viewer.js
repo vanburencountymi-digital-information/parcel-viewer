@@ -53,6 +53,9 @@ export const selectMap = () => w.PS_SELECT_MAP || null;
 /** The map side of the Drawing tab (drawing/drawing-tools.js): tools, style, subscribe. */
 export const drawTools = () => w.PS_DRAWING_TOOLS || null;
 
+/** The map side of the Measure tab (drawing/measure-tool.js): tools, settings, subscribe. */
+export const measureTool = () => w.PS_MEASURE_TOOL || null;
+
 /** The drawings and their layer groups (drawing/annotation-store.js). */
 export const annotations = () => w.PS_ANNOTATION_STORE || null;
 
