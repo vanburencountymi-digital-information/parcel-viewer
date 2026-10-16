@@ -147,6 +147,82 @@ test.describe('Draw', () => {
     expect(await count(), 'redo restores it').toBe(after);
   });
 
+  test('a tool button turns its tool on, and pressing it again turns it off', async ({ page }) => {
+    const active = () => page.evaluate(() => window.PS_DRAWING_TOOLS.getActiveDrawTool());
+    await drawTab(page).getByRole('button', { name: 'Line', exact: true }).click();
+    expect(await active()).toBe('polyline');
+    await drawTab(page).getByRole('button', { name: 'Circle', exact: true }).click();
+    expect(await active()).toBe('circle');
+    await drawTab(page).getByRole('button', { name: 'Circle', exact: true }).click();
+    expect(await active()).toBe(null);
+  });
+
+  test('a tool or style picked elsewhere (as Map Buddy does) shows in the pane', async ({ page }) => {
+    const tab = drawTab(page);
+    await page.evaluate(() => {
+      window.PS_DRAWING_TOOLS.setActiveDrawTool('circle');
+      window.PS_DRAWING_TOOLS.setStyle({ strokeWidth: 7 });
+    });
+    await expect(tab.getByRole('button', { name: 'Circle', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await tab.getByRole('button', { name: 'Style', exact: true }).click();
+    await expect(tab.getByRole('slider', { name: 'Stroke width' })).toHaveValue('7');
+  });
+
+  test('the style picker sets the next drawing\'s stroke, width, dash and fill opacity', async ({ page }) => {
+    const tab = drawTab(page);
+    await expect(tab.getByRole('slider', { name: 'Stroke width' })).toBeHidden();
+    await tab.getByRole('button', { name: 'Style', exact: true }).click();
+    await tab.getByRole('button', { name: '#dc2626', exact: true }).click();
+    await tab.getByRole('slider', { name: 'Stroke width' }).fill('4');
+    await expect(tab.getByText('4px', { exact: true })).toBeVisible();
+    await tab.getByRole('combobox', { name: 'Line style' }).selectOption('dashed');
+    await tab.getByRole('slider', { name: 'Fill opacity' }).fill('50');
+    await expect(tab.getByText('50%', { exact: true })).toBeVisible();
+    await tab.getByRole('button', { name: 'Shape', exact: true }).click();
+    for (const p of await squareOnMap(page)) await page.mouse.click(p.x, p.y);
+    await page.keyboard.press('Enter');
+    const style = await page.evaluate(() => window.__added[0].properties.style);
+    expect(style).toMatchObject({ strokeColor: '#dc2626', strokeWidth: 4, strokeDash: 'dashed', fillOpacity: 0.5 });
+    await tab.getByRole('button', { name: 'Style', exact: true }).click();
+    await expect(tab.getByRole('slider', { name: 'Stroke width' })).toBeHidden();
+  });
+
+  test('layer groups: a new group becomes active and takes new drawings; it hides and deletes', async ({ page }) => {
+    const tab = drawTab(page);
+    const store = () => page.evaluate(() => {
+      const s = window.PS_ANNOTATION_STORE.getState();
+      const last = s.annotations.features[s.annotations.features.length - 1];
+      return { groups: s.layerGroups, active: s.activeLayerGroup, visible: s.layerVisibility, lastGroup: last && last.properties.layerGroup };
+    });
+    page.once('dialog', (d) => d.accept('Survey notes'));
+    await tab.getByRole('button', { name: '+ New Group' }).click();
+    await expect(tab.getByText('Survey notes', { exact: true })).toBeVisible();
+    expect(await store()).toMatchObject({ groups: ['Default', 'Survey notes'], active: 'Survey notes' });
+    await tab.getByRole('button', { name: 'Point', exact: true }).click();
+    const [p] = await squareOnMap(page);
+    await page.mouse.click(p.x, p.y);
+    expect((await store()).lastGroup).toBe('Survey notes');
+    await tab.getByTitle('Toggle visibility').nth(1).uncheck();
+    expect((await store()).visible['Survey notes']).toBe(false);
+    await tab.getByText('Default', { exact: true }).click();
+    expect((await store()).active).toBe('Default');
+    await tab.getByTitle('Delete group (annotations move to Default)').click();
+    expect(await store()).toMatchObject({ groups: ['Default'], lastGroup: 'Default' });
+    await expect(tab.getByText('Survey notes', { exact: true })).toHaveCount(0);
+  });
+
+  test('the Snapping and Grid checkboxes configure the snapping engine', async ({ page }) => {
+    const cfg = () => page.evaluate(() => {
+      const c = window.PS_SNAPPING_ENGINE.config;
+      return { enabled: c.enabled, grid: c.targets.gridPoints };
+    });
+    await expect(drawTab(page).getByLabel('Snapping')).toBeChecked();
+    expect(await cfg()).toEqual({ enabled: true, grid: false });
+    await drawTab(page).getByLabel('Snapping').uncheck();
+    await drawTab(page).getByLabel('Grid').check();
+    expect(await cfg()).toEqual({ enabled: false, grid: true });
+  });
+
   test('Clear all (confirmed) removes every drawing', async ({ page }) => {
     await drawTab(page).getByRole('button', { name: 'Point', exact: true }).click();
     for (const p of (await squareOnMap(page)).slice(0, 2)) await page.mouse.click(p.x, p.y);

@@ -50,5 +50,17 @@ export const cohortCore = () => w.ISV_COHORT_ANALYZE_CORE || null;
 /** The map side of the Selection Tools pane (map.js): the selection, gestures, highlights. */
 export const selectMap = () => w.PS_SELECT_MAP || null;
 
+/** The map side of the Drawing tab (drawing/drawing-tools.js): tools, style, subscribe. */
+export const drawTools = () => w.PS_DRAWING_TOOLS || null;
+
+/** The drawings and their layer groups (drawing/annotation-store.js). */
+export const annotations = () => w.PS_ANNOTATION_STORE || null;
+
+/** Undo and redo over the drawings (drawing/undo-redo.js): canUndo, canRedo, undo(), redo(). */
+export const undoRedo = () => w.PS_UNDO_REDO || null;
+
+/** Snapping while drawing (drawing/snapping-engine.js): config, configure(). */
+export const snapping = () => w.PS_SNAPPING_ENGINE || null;
+
 /** Turf, for geometry (bundled from npm as a classic library). */
 export const turf = () => w.turf || null;

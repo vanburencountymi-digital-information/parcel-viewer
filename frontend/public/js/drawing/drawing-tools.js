@@ -1,8 +1,10 @@
 /**
  * drawing-tools.js — DrawingTools (Phase 2)
  *
- * Implements the Drawing tab UI interactions and base drawing primitives:
- * Point, Polyline, Polygon, Circle, Freehand, Text Label, Callout.
+ * The map side of the Drawing tab: the drawing primitives (Point, Polyline, Polygon,
+ * Circle, Freehand, Text Label, Callout) and Select/move/rotate. The tab's controls are a
+ * Vue island (frontend/src/draw-tools/, DIC-2389): it drives this through
+ * PS_DRAWING_TOOLS and follows the active tool and style through subscribe().
  *
  * Architecture:
  *  - All map interaction (click, mousemove, dblclick) is wired after
@@ -61,9 +63,11 @@
     arrowEnd:     false,
   };
 
-  // Preset palettes
-  var STROKE_COLORS = ['#1d4ed8', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#1f2937'];
-  var FILL_COLORS   = ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a78bfa', '#f472b6', '#38bdf8', '#9ca3af'];
+  // Who to tell when the active tool or the style changes (the Drawing tab's controls).
+  var listeners = [];
+  function notify() {
+    listeners.slice().forEach(function (fn) { try { fn(); } catch (_) {} });
+  }
 
   // ── Accessors ─────────────────────────────────────────────────────────────
 
@@ -399,12 +403,7 @@
     cancelCurrentDraw();
     activeDrawTool = toolName;
 
-    // Update button active states (includes 'select')
-    var toolNames = ['select', 'point', 'polyline', 'polygon', 'circle', 'freehand', 'text', 'callout'];
-    toolNames.forEach(function (t) {
-      var btn = document.getElementById('drw-tool-' + t);
-      if (btn) btn.classList.toggle('active', t === toolName);
-    });
+    notify();   // the tool buttons show the active one
 
     var map = getMap();
     if (!map) return;
@@ -1003,271 +1002,23 @@
     }
   });
 
-  // ── Style picker ──────────────────────────────────────────────────────────
+  // ── Actions for the Drawing tab's controls ────────────────────────────────
 
-  function buildSwatches(container, colors, styleKey) {
-    colors.forEach(function (c) {
-      var sw = document.createElement('button');
-      sw.className   = 'drw-swatch' + (c === currentStyle[styleKey] ? ' active' : '');
-      sw.style.background = c;
-      sw.title       = c;
-      sw.type        = 'button';
-      sw.addEventListener('click', function () {
-        currentStyle[styleKey] = c;
-        container.querySelectorAll('.drw-swatch').forEach(function (s) { s.classList.remove('active'); });
-        sw.classList.add('active');
-        syncCustomInput(container, styleKey);
-      });
-      container.appendChild(sw);
-    });
-  }
-
-  function syncCustomInput(grid, styleKey) {
-    var input = grid.parentElement && grid.parentElement.querySelector('.drw-color-input');
-    if (input) input.value = currentStyle[styleKey];
-  }
-
-  function initStylePicker() {
-    // Stroke swatches
-    var strokeGrid = document.getElementById('drw-stroke-swatches');
-    if (strokeGrid) {
-      buildSwatches(strokeGrid, STROKE_COLORS, 'strokeColor');
-      var customStroke = document.getElementById('drw-stroke-custom');
-      if (customStroke) {
-        customStroke.value = currentStyle.strokeColor;
-        customStroke.addEventListener('input', function () {
-          currentStyle.strokeColor = customStroke.value;
-          strokeGrid.querySelectorAll('.drw-swatch').forEach(function (s) { s.classList.remove('active'); });
-        });
-      }
-    }
-
-    // Fill swatches
-    var fillGrid = document.getElementById('drw-fill-swatches');
-    if (fillGrid) {
-      buildSwatches(fillGrid, FILL_COLORS, 'fillColor');
-      var customFill = document.getElementById('drw-fill-custom');
-      if (customFill) {
-        customFill.value = currentStyle.fillColor;
-        customFill.addEventListener('input', function () {
-          currentStyle.fillColor = customFill.value;
-          fillGrid.querySelectorAll('.drw-swatch').forEach(function (s) { s.classList.remove('active'); });
-        });
-      }
-    }
-
-    // Opacity slider
-    var opacitySlider = document.getElementById('drw-fill-opacity');
-    var opacityLabel  = document.getElementById('drw-fill-opacity-label');
-    if (opacitySlider) {
-      opacitySlider.value = Math.round(currentStyle.fillOpacity * 100);
-      if (opacityLabel) opacityLabel.textContent = opacitySlider.value + '%';
-      opacitySlider.addEventListener('input', function () {
-        currentStyle.fillOpacity = parseInt(opacitySlider.value) / 100;
-        if (opacityLabel) opacityLabel.textContent = opacitySlider.value + '%';
-      });
-    }
-
-    // Stroke width slider
-    var strokeWidth      = document.getElementById('drw-stroke-width');
-    var strokeWidthLabel = document.getElementById('drw-stroke-width-label');
-    if (strokeWidth) {
-      strokeWidth.value = currentStyle.strokeWidth;
-      if (strokeWidthLabel) strokeWidthLabel.textContent = strokeWidth.value + 'px';
-      strokeWidth.addEventListener('input', function () {
-        currentStyle.strokeWidth = parseInt(strokeWidth.value);
-        if (strokeWidthLabel) strokeWidthLabel.textContent = strokeWidth.value + 'px';
-      });
-    }
-
-    // Stroke dash
-    var strokeDash = document.getElementById('drw-stroke-dash');
-    if (strokeDash) {
-      strokeDash.value = currentStyle.strokeDash;
-      strokeDash.addEventListener('change', function () { currentStyle.strokeDash = strokeDash.value; });
-    }
-
-    // Font size slider
-    var fontSize      = document.getElementById('drw-font-size');
-    var fontSizeLabel = document.getElementById('drw-font-size-label');
-    if (fontSize) {
-      fontSize.value = currentStyle.fontSize;
-      if (fontSizeLabel) fontSizeLabel.textContent = fontSize.value + 'px';
-      fontSize.addEventListener('input', function () {
-        currentStyle.fontSize = parseInt(fontSize.value);
-        if (fontSizeLabel) fontSizeLabel.textContent = fontSize.value + 'px';
-      });
-    }
-
-    // Arrow toggles
-    var arrowStart = document.getElementById('drw-arrow-start');
-    var arrowEnd   = document.getElementById('drw-arrow-end');
-    if (arrowStart) {
-      arrowStart.checked = currentStyle.arrowStart;
-      arrowStart.addEventListener('change', function () { currentStyle.arrowStart = arrowStart.checked; });
-    }
-    if (arrowEnd) {
-      arrowEnd.checked = currentStyle.arrowEnd;
-      arrowEnd.addEventListener('change', function () { currentStyle.arrowEnd = arrowEnd.checked; });
-    }
-
-    // Collapsible toggle
-    var toggleBtn   = document.getElementById('drw-style-toggle');
-    var pickerPanel = document.getElementById('drw-style-picker');
-    if (toggleBtn && pickerPanel) {
-      toggleBtn.addEventListener('click', function () {
-        pickerPanel.hidden = !pickerPanel.hidden;
-        toggleBtn.classList.toggle('active', !pickerPanel.hidden);
-      });
-    }
-  }
-
-  // ── Layer Groups panel ────────────────────────────────────────────────────
-
-  function initLayerGroups() {
+  /** Clear every annotation and the undo history (the caller has confirmed). */
+  function clearAll() {
     var store = getStore();
     if (!store) return;
-
-    function renderGroups() {
-      var container = document.getElementById('drw-layer-groups-list');
-      if (!container) return;
-      var state = store.getState();
-      container.innerHTML = '';
-
-      state.layerGroups.forEach(function (name) {
-        var row = document.createElement('div');
-        row.className = 'drw-group-row' + (name === state.activeLayerGroup ? ' active' : '');
-
-        // Visibility checkbox
-        var cb = document.createElement('input');
-        cb.type    = 'checkbox';
-        cb.checked = state.layerVisibility[name] !== false;
-        cb.title   = 'Toggle visibility';
-        cb.className = 'drw-group-check';
-        cb.addEventListener('change', function () { store.setLayerVisibility(name, cb.checked); });
-
-        // Name (click = set active)
-        var label = document.createElement('span');
-        label.className   = 'drw-group-name';
-        label.textContent = name;
-        label.title       = 'Set as active layer';
-        label.addEventListener('click', function () {
-          store.setActiveLayerGroup(name);
-          // re-render — store subscription will fire
-        });
-
-        row.append(cb, label);
-
-        // Delete (not for Default)
-        if (name !== 'Default') {
-          var del = document.createElement('button');
-          del.type      = 'button';
-          del.className = 'drw-group-delete';
-          del.textContent = '✕';
-          del.title = 'Delete group (annotations move to Default)';
-          del.addEventListener('click', function () { store.removeLayerGroup(name); });
-          row.appendChild(del);
-        }
-
-        container.appendChild(row);
-      });
-    }
-
-    store.subscribe(renderGroups);
-    renderGroups();
-
-    var addBtn = document.getElementById('drw-add-group-btn');
-    if (addBtn) {
-      addBtn.addEventListener('click', function () {
-        var name = prompt('New layer group name:');
-        if (name && name.trim()) {
-          store.addLayerGroup(name.trim());
-          store.setActiveLayerGroup(name.trim());
-        }
-      });
-    }
+    store.clearAll();
+    if (window.PS_UNDO_REDO) window.PS_UNDO_REDO.clearHistory();
+    cancelCurrentDraw();
   }
 
-  // ── Snap toggles ──────────────────────────────────────────────────────────
-
-  function initSnapToggles() {
+  /** Snapping on or off; off also clears the snap marker. */
+  function setSnapping(on) {
     var engine = getEngine();
-
-    var snapToggle = document.getElementById('drw-snap-toggle');
-    if (snapToggle && engine) {
-      snapToggle.checked = engine.config.enabled;
-      snapToggle.addEventListener('change', function () {
-        engine.configure({ enabled: snapToggle.checked });
-        if (!snapToggle.checked) clearSnapIndicator();
-      });
-    }
-
-    var gridToggle = document.getElementById('drw-grid-toggle');
-    if (gridToggle && engine) {
-      gridToggle.checked = engine.config.targets.gridPoints;
-      gridToggle.addEventListener('change', function () {
-        engine.configure({ targets: { gridPoints: gridToggle.checked } });
-      });
-    }
-  }
-
-  // ── Undo/Redo buttons ─────────────────────────────────────────────────────
-
-  function initUndoRedo() {
-    var undoBtn = document.getElementById('drw-undo-btn');
-    var redoBtn = document.getElementById('drw-redo-btn');
-    var ur      = window.PS_UNDO_REDO;
-    if (!ur) return;
-
-    function refresh() {
-      if (undoBtn) undoBtn.disabled = !ur.canUndo;
-      if (redoBtn) redoBtn.disabled = !ur.canRedo;
-    }
-
-    if (undoBtn) undoBtn.addEventListener('click', function () { ur.undo(); refresh(); });
-    if (redoBtn) redoBtn.addEventListener('click', function () { ur.redo(); refresh(); });
-
-    var store = getStore();
-    if (store) store.subscribe(refresh);
-    refresh();
-  }
-
-  // ── Clear All ─────────────────────────────────────────────────────────────
-
-  function initClearAll() {
-    var btn = document.getElementById('drw-clear-all-btn');
-    if (!btn) return;
-    btn.addEventListener('click', function () {
-      var store = getStore();
-      if (!store) return;
-      if (!store.getState().annotations.features.length) return;
-      if (!confirm('Clear all annotations? This cannot be undone.')) return;
-      store.clearAll();
-      if (window.PS_UNDO_REDO) window.PS_UNDO_REDO.clearHistory();
-      cancelCurrentDraw();
-    });
-  }
-
-  // ── Tool button wiring ────────────────────────────────────────────────────
-
-  function initToolButtons() {
-    ['select', 'point', 'polyline', 'polygon', 'circle', 'freehand', 'text', 'callout'].forEach(function (t) {
-      var btn = document.getElementById('drw-tool-' + t);
-      if (btn) btn.addEventListener('click', function () { setActiveDrawTool(t); });
-    });
-    // COGO tool button — delegates to PS_COGO_TOOL
-    var cogoBtn = document.getElementById('drw-tool-cogo');
-    if (cogoBtn) {
-      cogoBtn.addEventListener('click', function () {
-        if (window.PS_COGO_TOOL) {
-          if (window.PS_COGO_TOOL.isActive()) {
-            window.PS_COGO_TOOL.deactivate();
-          } else {
-            window.PS_COGO_TOOL.activate();
-          }
-        }
-      });
-    }
+    if (!engine) return;
+    engine.configure({ enabled: !!on });
+    if (!on) clearSnapIndicator();
   }
 
   // ── Map event wiring (deferred until PS_MAP is ready) ────────────────────
@@ -1310,13 +1061,6 @@
   // ── Init ──────────────────────────────────────────────────────────────────
 
   function init() {
-    initToolButtons();
-    initStylePicker();
-    initSnapToggles();
-    initUndoRedo();
-    initClearAll();
-    // Layer groups need the store; PS_ANNOTATION_STORE is loaded before this script
-    initLayerGroups();
     // Start polling for map
     wireMapEvents();
   }
@@ -1336,8 +1080,16 @@
     getCurrentStyle:      function () { return currentStyle; },
     setStyle:             function (overrides) {
       for (var k in overrides) if (Object.prototype.hasOwnProperty.call(overrides, k)) currentStyle[k] = overrides[k];
+      notify();
     },
     getActiveDrawTool:    function () { return activeDrawTool; },
+    clearAll:             clearAll,
+    setSnapping:          setSnapping,
+    /** Call fn whenever the active tool or the style changes; returns an unsubscribe. */
+    subscribe:            function (fn) {
+      listeners.push(fn);
+      return function () { listeners = listeners.filter(function (f) { return f !== fn; }); };
+    },
   };
 
 }());
