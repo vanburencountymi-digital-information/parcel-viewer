@@ -40,7 +40,7 @@ const num = (s) => parseFloat(String(s).replace(/,/g, ''));
 test.describe('Measure', () => {
   test.beforeEach(async ({ page }) => {
     await gotoViewer(page);
-    await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-86.0, 42.22], zoom: 16 }));
+    await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-86.0, 42.22], zoom: 16 }); });
     await waitForMapIdle(page);
     await captureAnnotations(page);
     await openMapControlsTab(page, 'Measurement Tools');
@@ -121,7 +121,7 @@ test.describe('Measure', () => {
 test.describe('Draw', () => {
   test.beforeEach(async ({ page }) => {
     await gotoViewer(page);
-    await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-86.0, 42.22], zoom: 16 }));
+    await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-86.0, 42.22], zoom: 16 }); });
     await waitForMapIdle(page);
     await captureAnnotations(page);
     await openMapControlsTab(page, 'Drawing Tools');

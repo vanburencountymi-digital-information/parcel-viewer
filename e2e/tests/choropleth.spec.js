@@ -12,7 +12,7 @@ const viewRadio = (page, id) => views(page).getByRole('radio', { name: VIEW_NAME
 const legendOf = (page) => ui.mapControls(page).getByRole('img', { name: /legend$/ });
 
 async function openViews(page) {
-  await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }));
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15 }); });
   await waitForMapIdle(page);
   const layers = await openMapControlsTab(page, 'Layers');
   const chev = layers.getByRole('button', { name: 'Toggle parcel styling options' });

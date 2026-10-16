@@ -142,7 +142,7 @@ test('a right-drag (rotate) does not open it; a map move or an outside click clo
   await expect(menu(page)).toHaveCount(0);
 
   await rightClick(page, pt);
-  await page.evaluate(() => window.PS_MAP.panBy([60, 0], { duration: 0 }));
+  await page.evaluate(() => { window.PS_MAP.panBy([60, 0], { duration: 0 }); });
   await expect(menu(page)).toHaveCount(0);
 
   await rightClick(page, pt);

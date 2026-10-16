@@ -10,7 +10,7 @@ const FIELD_PROP = {        // label field → the per-feature property shown at
 };
 
 async function openLabels(page) {
-  await page.evaluate(() => window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15.2 }));
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ center: [-85.905, 42.211], zoom: 15.2 }); });
   await waitForMapIdle(page);
   await openMapControlsTab(page, 'Layers');
   await labelsToggle(page).check();

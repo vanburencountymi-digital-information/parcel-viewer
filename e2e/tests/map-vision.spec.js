@@ -166,7 +166,7 @@ test('"Describe this spot" on the right-click menu centers there and looks', asy
 test('a tilted, rotated map is turned straight down and north up before the look', async ({ page }) => {
   const calls = await mockMapBuddy(page, { chatReplies: [['OK.']] });
   await gotoViewer(page);
-  await page.evaluate(() => window.PS_MAP.jumpTo({ pitch: 55, bearing: 140 }));
+  await page.evaluate(() => { window.PS_MAP.jumpTo({ pitch: 55, bearing: 140 }); });
   await openChat(page);
   await lookBtn(page).click();
   await idle(page);

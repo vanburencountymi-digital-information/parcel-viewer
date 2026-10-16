@@ -29,8 +29,8 @@ async function assertMapStillSelectsParcels(page, pin) {
   expect(await clickGate(page), 'no tool left holding the click gate').toBeNull();
   // Deselect, then click the parcel on the canvas: it must select again.
   if (await ui.parcelPanel(page).isVisible()) await ui.parcelPanel(page).getByRole('button', { name: 'Clear selection' }).click();
-  await page.evaluate((pin) => window.PS_MAP.jumpTo({ center: window.turf.pointOnFeature(
-    window.PS_PARCEL_INDEX.find((f) => String(f.properties.pin) === pin)).geometry.coordinates }), pin);
+  await page.evaluate((pin) => { window.PS_MAP.jumpTo({ center: window.turf.pointOnFeature(
+    window.PS_PARCEL_INDEX.find((f) => String(f.properties.pin) === pin)).geometry.coordinates }); }, pin);
   const pt = await page.evaluate((pin) => {
     const f = window.PS_PARCEL_INDEX.find((x) => String(x.properties.pin) === pin);
     const p = window.PS_MAP.project(window.turf.pointOnFeature(f).geometry.coordinates);
