@@ -20,6 +20,12 @@ async function openViews(page) {
   await expect(views(page)).toBeVisible();
 }
 const pick = (page, id) => viewRadio(page, id).check();
+// The viewport index refills from /api/parcels 350 ms after the map moves, which can be
+// after the map goes idle: under full-suite load it was still empty (DIC-2459).
+const waitForIndex = (page, minLength) => expect.poll(
+  () => page.evaluate(() => (window.PS_PARCEL_INDEX || []).length),
+  { message: 'parcels in the viewport index', timeout: 30_000 },
+).toBeGreaterThanOrEqual(minLength);
 const fill = (page) => page.evaluate(() => JSON.stringify(window.PS_MAP.getPaintProperty('parcels-fill', 'fill-color')));
 
 test.beforeEach(async ({ page }) => { await gotoViewer(page); });
@@ -73,9 +79,12 @@ test('school district legend lists the districts present, and the choice persist
   await openViews(page);
   await pick(page, 'school');
   await waitForMapIdle(page);
-  const expected = await page.evaluate(() => [...new Set(window.PS_PARCEL_INDEX
-    .map((f) => f.properties.school_dist).filter((v) => v != null && v !== '').map(String))]);
-  expect(expected.length).toBeGreaterThan(0);
+  // Wait for the index to carry districts before taking them as the legend's expected rows.
+  const districtsInIndex = () => page.evaluate(() => [...new Set((window.PS_PARCEL_INDEX || [])
+    .map((f) => (f.properties || {}).school_dist).filter((v) => v != null && v !== '').map(String))]);
+  await expect.poll(async () => (await districtsInIndex()).length,
+    { message: 'school districts in the parcel index', timeout: 30_000 }).toBeGreaterThan(0);
+  const expected = await districtsInIndex();
   await expect.poll(async () => {
     const legend = await legendOf(page).innerText();
     return expected.filter((d) => !legend.includes(d));
@@ -89,6 +98,7 @@ test('school district legend lists the districts present, and the choice persist
 test('Plain view: selecting a parcel keeps the other parcels visible', async ({ page }) => {
   await openViews(page);
   await pick(page, 'none');
+  await waitForIndex(page, 6);
   await page.evaluate(async () => {
     await window.PS_selectParcelById(window.PS_PARCEL_INDEX[5].properties.id, { keepView: true });
   });
