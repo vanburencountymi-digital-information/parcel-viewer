@@ -42,12 +42,12 @@
   function ftLabel(ft) { return ft >= 5280 ? (ft / 5280) + ' mi' : (ft === 1320 ? '¼ mi' : (ft === 2640 ? '½ mi' : ft + ' ft')); }
 
   // ── AI character narration (DIC-588 / cohort-analyze narrate seam) ───────────
-  // Resolve the Map Buddy base the same way pv-explain does (one service, one key).
+  // Resolve the Map Buddy base the same way the explainers do (one service, one key).
   // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function mapBuddyBase() {
     return root.PV_ENDPOINTS ? root.PV_ENDPOINTS.mapBuddyBase() : (root.MAP_BUDDY_API || '/map-buddy-api');
   }
-  // AI on AND reachable (mirrors pv-explain.aiEnabled): the controller short-circuits a
+  // AI on AND reachable (as the explainers' aiState): the controller short-circuits a
   // known-down service so we degrade to the dashboard immediately rather than per-request.
   function aiEnabled() {
     if (root.PV_AI_MODE && typeof root.PV_AI_MODE.isEffective === 'function') return root.PV_AI_MODE.isEffective();

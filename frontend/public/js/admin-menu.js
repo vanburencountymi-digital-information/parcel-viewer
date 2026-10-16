@@ -3,9 +3,8 @@
  *
  * The Help & tools dropdown (a Vue island, frontend/src/admin-menu/) opens these tools
  * through PV_TOOLS; each opens in the viewer's modal (frontend/src/modal/). Help, What's New,
- * About, Share, Bookmarks, Settings, Print, Street View, the two forms and the Parcel
- * Packet are Vue components (frontend/src/windows/, DIC-2389); the tax and assessment
- * info windows are still built here (with pv-explain.js).
+ * About, Share, Bookmarks, Settings, Print, Street View, the two forms, the Parcel Packet,
+ * and the tax and assessment explainers are Vue components (frontend/src/windows/, DIC-2389).
  */
 (function () {
   "use strict";
@@ -281,60 +280,12 @@
   }
   function openStreetView() { openVueWindow("streetview"); }
 
-  // Tax description info — for now the disclaimer + a teaser for the full
-  // explainer (DIC-369). This window becomes the AI-driven explainer later.
-  // Tax Description info (DIC-369). Live per-parcel explainer when a parcel is
-  // selected and the module is loaded; static overview otherwise.
-  function openTaxInfo() {
-    var parcel = window.PS_STATE && window.PS_STATE.parcel;
-    if (window.PV_EXPLAIN && parcel && parcel.id != null) {
-      return window.PV_EXPLAIN.openTaxDescription(parcel, { openModal: openModal, closeModal: closeModal });
-    }
-    return openTaxInfoStatic();
-  }
-
-  function openTaxInfoStatic() {
-    openModal("About the Tax Description", [
-      '<p class="pv-modal-lead">What the Tax Description is — and isn&rsquo;t.</p>',
-      '<p>The Tax Description is an <strong>abbreviated</strong> version of the deeded legal description, used for <strong>taxation purposes only</strong>. It should never be used on deeds, titles, mortgages, or other legal documents. Always refer to the recorded deed for the full legal description.</p>',
-      '<div class="pv-teaser">' +
-        '<div class="pv-teaser-title"><span class="pv-badge">Coming soon</span> Tax Description Explainer</div>' +
-        '<p class="pv-teaser-body">Soon this window will break down every part of this parcel&rsquo;s tax description in plain language — defining each term, explaining how it differs from a legal description, and (where the description supports it) highlighting each call on the map.</p>' +
-      '</div>'
-    ].join(""));
-  }
-
-  // Assessment info (DIC-370). When a parcel is selected and the explainer module
-  // is loaded, open the live per-parcel AI Assessment Explainer; otherwise fall
-  // back to the generic educational overview below.
-  function openAssessInfo() {
-    var parcel = window.PS_STATE && window.PS_STATE.parcel;
-    if (window.PV_EXPLAIN && parcel && parcel.id != null) {
-      return window.PV_EXPLAIN.openAssessment(parcel, { openModal: openModal, closeModal: closeModal });
-    }
-    return openAssessInfoStatic();
-  }
-
-  function openAssessInfoStatic() {
-    openModal("About Property Assessment", [
-      '<p class="pv-modal-lead">How your assessment works — and what your taxes pay for.</p>',
-      helpItem("Assessed Value (AV)", "Set by the local assessor at 50% of a property&rsquo;s estimated True Cash Value (market value)."),
-      helpItem("State Equalized Value (SEV)", "AV after county and state equalization confirm assessments sit at the 50% level uniformly across jurisdictions."),
-      helpItem("Taxable Value (TV)", "The value you&rsquo;re actually taxed on. Under Michigan&rsquo;s Proposal A it rises each year by the lesser of inflation or 5% — until the property transfers, when it &ldquo;uncaps&rdquo; to the SEV."),
-      helpItem("Assessing vs. equalization vs. appraisal", "Assessing values every parcel for taxation; equalization checks those values are uniform across units; an appraisal is an independent market-value opinion for a specific purpose (sale, financing)."),
-      helpItem("Where taxes go", "Millage funds schools, county and township services, libraries, roads, and special assessments."),
-      helpItem("Appeals", "Disagree with your assessment? Appeal to the March Board of Review, then the Michigan Tax Tribunal."),
-      '<div class="pv-teaser">' +
-        '<div class="pv-teaser-title"><span class="pv-badge">Coming soon</span> Assessment Explainer</div>' +
-        '<p class="pv-teaser-body">Soon this window will pull this parcel&rsquo;s full assessment history and tax detail, cite the relevant Michigan statutes, and use AI to walk through exactly how these numbers were derived and what they fund.</p>' +
-      '</div>'
-    ].join(""));
-  }
+  // The tax description and assessment info windows: the parcel's explainer, or with no
+  // parcel the general overview. Vue components (frontend/src/windows/explain/, DIC-2389).
+  function openTaxInfo() { openVueWindow("tax"); }
+  function openAssessInfo() { openVueWindow("assess"); }
 
   // ── Small HTML helpers ────────────────────────────────────────────────────
-  function helpItem(h, p) {
-    return '<div class="pv-help-item"><div class="pv-help-h">' + h + '</div><div class="pv-help-p">' + p + '</div></div>';
-  }
   function placeholderTag(text) {
     return '<p class="pv-modal-note"><span class="pv-badge">Preview</span> ' + text + '</p>';
   }
