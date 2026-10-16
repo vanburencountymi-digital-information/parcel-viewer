@@ -23,7 +23,7 @@
   var _retryTimer = null;
   var _fails = 0;
 
-  // Same resolution pv-explain uses, so we health-check the service the explainer/
+  // Same resolution the explainers use, so we health-check the service the explainer/
   // Map Buddy actually call.
   // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function mapBuddyBase() {

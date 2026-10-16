@@ -131,8 +131,8 @@ function resizeStart(e) {
         <div v-if="state.component" ref="body" class="pv-modal-body" :class="{ 'pv-modal-body--flush': state.flush }">
           <component :is="state.component" v-bind="state.props" />
         </div>
-        <!-- An HTML-string body (the windows not yet moved to components): admin-menu.js,
-             pv-explain.js and pv-ledger.js build it and escape what they put in it. -->
+        <!-- An HTML-string body (admin-menu.js's "unavailable" fallbacks): its caller builds
+             it and escapes what it puts in it. -->
         <div v-else ref="body" class="pv-modal-body" :class="{ 'pv-modal-body--flush': state.flush }" v-html="state.html"></div>
         <div v-if="desktop()" class="pv-modal-resize" aria-hidden="true" @pointerdown="resizeStart"></div>
       </div>

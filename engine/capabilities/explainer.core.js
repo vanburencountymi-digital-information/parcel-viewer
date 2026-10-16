@@ -7,8 +7,9 @@
  * NO globals (§4.3, §6.1). The AI half (narration) lives in map-buddy `run_explain`
  * and may reference ONLY what these functions emit (§4.6 facts-parity).
  *
- * Extracted verbatim-in-behavior from frontend/public/js/pv-explain.js so the viewer
- * and the harness run the SAME code. pv-explain.js now consumes this module.
+ * Extracted verbatim-in-behavior from the viewer's old pv-explain.js so the viewer and
+ * the harness run the SAME code. The viewer's explainers (frontend/src/windows/explain/)
+ * consume this module.
  *
  * core(typedInput) -> { facts, provenance }
  *   typedInput = { topic, record, labels?, parcelNumber?, statutes? }
@@ -38,7 +39,7 @@ const mod = (function () {
   }
 
   // ── Deterministic classifier (NO AI): which kind of legal/tax description? ────
-  // Never parses geometry; only inspects token shape. (Mirrors pv-explain.js.)
+  // Never parses geometry; only inspects token shape.
   function classifyDescription(text) {
     var t = (text || '').toUpperCase();
     if (!t.trim()) return { type: 'unknown', label: null, note: '' };

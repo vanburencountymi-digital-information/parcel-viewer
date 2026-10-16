@@ -591,7 +591,7 @@
        and assembly (C2 / DIC-583, B2), the capability catalog and per-tenant feature flags
        (C4 / DIC-585), and puts their window.ISV_* hooks (engine/window-hooks.js) on window.
        The build bundles it into a classic script right here, so the hooks exist before the
-       consumers below run (pv-doc, pv-explain, pv-ledger, pv-manifest, pv-capabilities…):
+       consumers below run (pv-doc, pv-manifest, pv-capabilities, the Vue windows…):
        the SAME modules the CI harness tests. -->
   <script src="/engine/browser.js"></script>
   <!-- Manifest bridge + boot (C2 + Phase 1): assembles a complete theme manifest from
@@ -608,10 +608,9 @@
        lazy getters. Strangler-fig — old global reads keep working unchanged. -->
   <script src="/frontend/public/js/pv-app-context.js"></script>
   <script src="/frontend/public/js/pv-doc.js"></script>
-  <script src="/frontend/public/js/pv-explain.js"></script>
-  <script src="/frontend/public/js/pv-ledger.js"></script>
   <!-- Citation Renderer surface (DIC-522): the in-app synchronized Sources doc panel,
-       bus-driven, capability-gated. Loads after pv-explain (emits citation-activated). -->
+       bus-driven, capability-gated. A click on any [data-cite-source] (the explainers'
+       statute links, Map Buddy's sources) opens it. -->
   <script src="/frontend/public/js/pv-citations.js"></script>
   <!-- Overlay dialogs' Esc, focus and Tab handling (DIC-1873); Compare (a Vue island,
        below) and the Neighborhood Profile use it. -->

@@ -1,8 +1,8 @@
 // The Help & tools menu and the viewer's modal as Vue islands (DIC-2389 slice 5):
 //   - the menu mounts inside #pv-admin; its items open windows through PV_TOOLS;
 //   - the modal mounts on <body> and publishes window.PV_MODAL { open, close, isOpen },
-//     which admin-menu.js's openModal/closeModal (and through them pv-explain.js and
-//     pv-ledger.js) use. The windows' content is still admin-menu.js's for now.
+//     which the Vue windows (frontend/src/windows/, through PV_WINDOWS) and admin-menu.js's
+//     openModal/closeModal use.
 import { createApp } from 'vue';
 import ModalHost from '../modal/ModalHost.vue';
 import { createModalStore } from '../modal/store.js';
