@@ -282,8 +282,9 @@
             <!-- Rendered by the Selection Tools Vue island (frontend/src/select-tools/, DIC-2389). -->
           </div>
 
-          <div class="mcp-pane" id="mcp-pane-draw" role="tabpanel" aria-label="Drawing Tools" hidden>
-            <!-- Rendered by the Drawing Tools Vue island (frontend/src/draw-tools/, DIC-2389). -->
+          <div class="mcp-pane" id="mcp-pane-draw" role="tabpanel" aria-label="Drawing Tools" data-ui="vue" hidden>
+            <!-- Rendered by the Drawing Tools Vue island (frontend/src/draw-tools/, DIC-2389);
+                 data-ui="vue" tells the shared drawing-tools.js not to wire it (ZIP still does). -->
           </div>
 
           <!-- Measurement Tools pane -->

@@ -4,6 +4,11 @@
  * Implements the Drawing tab UI interactions and base drawing primitives:
  * Point, Polyline, Polygon, Circle, Freehand, Text Label, Callout.
  *
+ * The tab's controls: a host page with the static markup (ZIP) gets them wired here. A host
+ * that renders the pane itself marks it data-ui="vue" (the Parcel Viewer's Vue island,
+ * frontend/src/draw-tools/, DIC-2389): this then wires only the map, and the pane drives
+ * PS_DRAWING_TOOLS and follows the active tool and style through subscribe().
+ *
  * Architecture:
  *  - All map interaction (click, mousemove, dblclick) is wired after
  *    window.PS_MAP is available (polled on startup).
@@ -60,6 +65,18 @@
     arrowStart:   false,
     arrowEnd:     false,
   };
+
+  // Who to tell when the active tool or the style changes (a host-rendered pane).
+  var listeners = [];
+  function notify() {
+    listeners.slice().forEach(function (fn) { try { fn(); } catch (_) {} });
+  }
+
+  /** Does the host page render the Drawing pane itself (data-ui="vue")? Then don't wire it. */
+  function hostRendersPane() {
+    var pane = document.getElementById('mcp-pane-draw');
+    return !!(pane && pane.getAttribute('data-ui') === 'vue');
+  }
 
   // Preset palettes
   var STROKE_COLORS = ['#1d4ed8', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#1f2937'];
@@ -399,12 +416,15 @@
     cancelCurrentDraw();
     activeDrawTool = toolName;
 
-    // Update button active states (includes 'select')
-    var toolNames = ['select', 'point', 'polyline', 'polygon', 'circle', 'freehand', 'text', 'callout'];
-    toolNames.forEach(function (t) {
-      var btn = document.getElementById('drw-tool-' + t);
-      if (btn) btn.classList.toggle('active', t === toolName);
-    });
+    // Update button active states (includes 'select'); a host-rendered pane follows notify().
+    if (!hostRendersPane()) {
+      var toolNames = ['select', 'point', 'polyline', 'polygon', 'circle', 'freehand', 'text', 'callout'];
+      toolNames.forEach(function (t) {
+        var btn = document.getElementById('drw-tool-' + t);
+        if (btn) btn.classList.toggle('active', t === toolName);
+      });
+    }
+    notify();
 
     var map = getMap();
     if (!map) return;
@@ -1196,10 +1216,7 @@
     var snapToggle = document.getElementById('drw-snap-toggle');
     if (snapToggle && engine) {
       snapToggle.checked = engine.config.enabled;
-      snapToggle.addEventListener('change', function () {
-        engine.configure({ enabled: snapToggle.checked });
-        if (!snapToggle.checked) clearSnapIndicator();
-      });
+      snapToggle.addEventListener('change', function () { setSnapping(snapToggle.checked); });
     }
 
     var gridToggle = document.getElementById('drw-grid-toggle');
@@ -1242,9 +1259,7 @@
       if (!store) return;
       if (!store.getState().annotations.features.length) return;
       if (!confirm('Clear all annotations? This cannot be undone.')) return;
-      store.clearAll();
-      if (window.PS_UNDO_REDO) window.PS_UNDO_REDO.clearHistory();
-      cancelCurrentDraw();
+      clearAll();
     });
   }
 
@@ -1268,6 +1283,25 @@
         }
       });
     }
+  }
+
+  // ── Actions shared by the wired controls and a host-rendered pane ─────────
+
+  /** Clear every annotation and the undo history (the caller has confirmed). */
+  function clearAll() {
+    var store = getStore();
+    if (!store) return;
+    store.clearAll();
+    if (window.PS_UNDO_REDO) window.PS_UNDO_REDO.clearHistory();
+    cancelCurrentDraw();
+  }
+
+  /** Snapping on or off; off also clears the snap marker. */
+  function setSnapping(on) {
+    var engine = getEngine();
+    if (!engine) return;
+    engine.configure({ enabled: !!on });
+    if (!on) clearSnapIndicator();
   }
 
   // ── Map event wiring (deferred until PS_MAP is ready) ────────────────────
@@ -1310,13 +1344,15 @@
   // ── Init ──────────────────────────────────────────────────────────────────
 
   function init() {
-    initToolButtons();
-    initStylePicker();
-    initSnapToggles();
-    initUndoRedo();
-    initClearAll();
-    // Layer groups need the store; PS_ANNOTATION_STORE is loaded before this script
-    initLayerGroups();
+    if (!hostRendersPane()) {
+      initToolButtons();
+      initStylePicker();
+      initSnapToggles();
+      initUndoRedo();
+      initClearAll();
+      // Layer groups need the store; PS_ANNOTATION_STORE is loaded before this script
+      initLayerGroups();
+    }
     // Start polling for map
     wireMapEvents();
   }
@@ -1336,8 +1372,16 @@
     getCurrentStyle:      function () { return currentStyle; },
     setStyle:             function (overrides) {
       for (var k in overrides) if (Object.prototype.hasOwnProperty.call(overrides, k)) currentStyle[k] = overrides[k];
+      notify();
     },
     getActiveDrawTool:    function () { return activeDrawTool; },
+    clearAll:             clearAll,
+    setSnapping:          setSnapping,
+    /** Call fn whenever the active tool or the style changes; returns an unsubscribe. */
+    subscribe:            function (fn) {
+      listeners.push(fn);
+      return function () { listeners = listeners.filter(function (f) { return f !== fn; }); };
+    },
   };
 
 }());
