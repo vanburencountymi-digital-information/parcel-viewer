@@ -24,6 +24,20 @@ npx playwright show-report          # HTML report with traces/screenshots of fai
 | `E2E_AI` | unset | `1` runs the AI chat tests, which call the real model (costs a little) |
 | `E2E_MAP_BUDDY_API` | unset | A Map Buddy on its own origin (as in production), e.g. `http://127.0.0.1:8095`. Needed when `E2E_BASE_URL` is a production-configured stack, whose nginx has no `/map-buddy-api/` proxy (see `infra/DEPLOY-CHECKLIST.md` → "Rehearse locally") |
 
+### Full runs take turns
+
+Several sessions can share one machine, and two full suites at once starve each other's
+browsers into bogus timeouts. So a full run first takes a lock file
+(`%TEMP%\parcel-viewer-e2e.lock`, set up in `global-setup.js` / `lock.js`). A second full
+run waits and says which run holds the lock (pid, branch, folder, base URL, how long it has
+been running). A lock left by a crashed or killed run clears itself: its process is gone,
+or its 30-second heartbeat has stopped for 5 minutes.
+
+Targeted runs (spec files, `--grep`, `--last-failed`) don't take the lock, and neither does
+CI. `E2E_LOCK=1` forces the lock on, `E2E_LOCK=0` turns it off, and
+`E2E_LOCK_TIMEOUT_MIN` (default 120) is how long a run waits before giving up. The lock's
+own tests: `npm run test:lock`.
+
 ## What every test checks, beyond its own assertions
 
 A **console guard** (`tests/fixtures.js`) fails any test that logs a console error or throws
