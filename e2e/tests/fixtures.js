@@ -169,6 +169,9 @@ const VIEWER_HOOKS = {
 const CONDITIONAL_HOOKS = {
   PV_CONFIG_SOURCE: "'fallback' when the viewer runs on the baked county manifest",
 };
-const ADMIN_HOOKS = { PV_ADMIN: 'the admin console state (getState)' };
+const ADMIN_HOOKS = {
+  PV_ADMIN: 'the admin console state (getState)',
+  PV_ADMIN_AUTH: 'the staff sign-in island, which admin.js reads for every API call (DIC-2389)',
+};
 
 module.exports = { VIEWER_HOOKS, CONDITIONAL_HOOKS, ADMIN_HOOKS, ui, openMapControlsTab, test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };

@@ -21,7 +21,7 @@
         <span class="ac-brand-text">Parcel Viewer<small>Admin Console</small></span>
       </div>
       <nav id="ac-nav" class="ac-nav"></nav>
-      <!-- Staff sign-in (DIC-2151): filled in by admin.js. -->
+      <!-- Staff sign-in (DIC-2151): a Vue island (frontend/src/admin-console, DIC-2389). -->
       <div id="ac-auth" class="ac-side-foot ac-auth" data-testid="ac-auth"></div>
     </aside>
 
@@ -52,5 +52,9 @@
        puts the console's window.ISV_* hooks on window; the build bundles it in place. -->
   <script src="/engine/browser-admin.js"></script>
   <script src="/admin/js/admin.js"></script>
+  <!-- The console's Vue islands (DIC-2389, ADR 0017), starting with the staff sign-in. A
+       module runs after the page is parsed, so after the classic scripts above but before
+       admin.js's init (DOMContentLoaded): its PV_ADMIN_AUTH hook is there for the first render. -->
+  <script type="module" src="/frontend/src/admin-main.js"></script>
 </body>
 </html>
