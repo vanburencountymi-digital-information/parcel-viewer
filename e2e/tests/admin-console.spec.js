@@ -160,6 +160,65 @@ test.describe('Admin console', () => {
       await expect(authBox(page).getByRole('button', { name: 'Sign in' })).toBeVisible();
       expect(await page.evaluate(() => sessionStorage.getItem('pv-admin-auth'))).toBeNull();
     });
+
+    test('a stored sign-in is kept when the API cannot be reached to check it', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/net::ERR_FAILED/);
+      await page.route('**/api/auth/me', (route) => route.abort());
+      await page.addInitScript(() => sessionStorage.setItem('pv-admin-auth', JSON.stringify({ token: 'kept', username: 'offline' })));
+      await gotoAdmin(page, 'county');
+
+      await expect(authBox(page)).toContainText('Signed in as offline');
+    });
+
+    test('while signing in the button is disabled, and other refusals say why', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 429|net::ERR_FAILED/);
+      let release;
+      const held = new Promise((r) => { release = r; });
+      const replies = [
+        async (route) => { await held; await route.fulfill({ status: 429, json: { detail: 'Slow down.' } }); },
+        (route) => route.abort(),
+      ];
+      await page.route('**/api/auth/login', (route) => replies.shift()(route));
+      await gotoAdmin(page, 'county');
+      const auth = authBox(page);
+      await auth.getByLabel('Username').fill('tester');
+      await auth.getByLabel('Password').fill('a-password');
+      await auth.getByRole('button', { name: 'Sign in' }).click();
+
+      await expect(auth.getByRole('button', { name: 'Sign in' })).toBeDisabled();
+      await expect(auth.getByRole('status')).toHaveText('Signing in…');
+      release();
+      await expect(auth.getByRole('status')).toContainText(/Too many attempts/);
+      await expect(auth.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+
+      await auth.getByLabel('Password').fill('a-password');
+      await auth.getByRole('button', { name: 'Sign in' }).click();
+      await expect(auth.getByRole('status')).toContainText(/Couldn.t sign in \(no response\)/);
+    });
+
+    test('signed in, saves send the token; a refused token signs out and says it expired', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of (401|404)/);
+      const seen = {};
+      await stubSignIn(page, seen);
+      await page.route('**/api/config/*/draft', async (route) => {
+        if (route.request().method() === 'GET') return route.fulfill({ status: 404, json: { detail: 'No draft.' } });
+        seen.saveAuth = route.request().headers().authorization;
+        await route.fulfill({ status: 401, json: { detail: 'Invalid token.' } });
+      });
+      await gotoAdmin(page, 'county');
+      await signIn(page);
+
+      const content = main(page);
+      await content.getByRole('button', { name: 'Edit configuration' }).click();
+      await content.getByRole('button', { name: 'Save draft' }).click();
+
+      await expect(page.getByTestId('ac-flash')).toContainText('Your staff sign-in has expired');
+      expect(seen.saveAuth).toBe('Token ' + TOKEN);
+      await expect(authBox(page).getByRole('button', { name: 'Sign in' })).toBeVisible();
+      // The editor stays open, so the draft isn't lost while signing in again.
+      await expect(content.getByRole('button', { name: 'Save draft' })).toBeVisible();
+      expect(await page.evaluate(() => sessionStorage.getItem('pv-admin-auth'))).toBeNull();
+    });
   });
 
   test('manifest: Validate reports a result', async ({ page }) => {
