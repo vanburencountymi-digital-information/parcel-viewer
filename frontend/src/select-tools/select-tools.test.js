@@ -108,6 +108,18 @@ describe('the store', () => {
     expect(map.selected.size).toBe(3);
   });
 
+  it('filter: Remove drops the selected matches even after the viewport index moved on', () => {
+    const { store, map } = makeStore();
+    Object.assign(store.state.filter, { field: 'gis_acres', op: 'gt', value: '2' });
+    store.addFilterMatches();
+    expect(map.selected.size).toBe(4);
+    // Add panned to its first parcel; the index now holds only the parcels around it.
+    map.parcels = () => PARCELS.slice(0, 3);
+    store.removeFilterMatches();
+    expect(store.state.filter.note).toBe('Removed 4 parcels');
+    expect(map.selected.size).toBe(0);
+  });
+
   it('buffer: seeds from the parcel on screen, previews, and adds within the distance', async () => {
     const { store, map } = makeStore({ active: PARCELS[0] });
     store.setTool('buffer');

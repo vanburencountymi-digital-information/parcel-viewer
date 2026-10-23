@@ -86,8 +86,12 @@ export function createSelectToolsStore({ map, turf, isWithheld = () => false, do
     f.note = `Added ${plural(map.add(filterMatches()), 'parcel')}`;
   }
 
+  // Matched against the selection itself, not the viewport index: Add shows the first new
+  // parcel, which pans the map when it's off screen and reloads the index around it, so
+  // the index's matches were no longer the ones Add selected (DIC-2553).
   function removeFilterMatches() {
-    const removed = map.remove(filterMatches().map(pinOf));
+    const selected = map.selectedRecords().map((properties) => ({ properties }));
+    const removed = map.remove(matchParcels(selected, f).map(pinOf));
     f.note = removed > 0 ? `Removed ${plural(removed, 'parcel')}` : 'None in selection';
   }
 
