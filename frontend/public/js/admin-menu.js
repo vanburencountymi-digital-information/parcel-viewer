@@ -16,14 +16,11 @@
   // ── The menu and the modal ─────────────────────────────────────────────────
   // The Help & tools dropdown and the modal dialog are Vue islands (frontend/src/admin-menu/,
   // frontend/src/modal/, DIC-2389): the dropdown opens windows through PV_TOOLS below, and
-  // openModal/closeModal hand the windows built here to the modal (PV_MODAL). Same contract
+  // openModal hands the windows built here to the modal (PV_MODAL). Same contract
   // as before: openModal(title, bodyHtml, onMount(bodyEl), { wide, flush }), with onMount
   // running once the body is on the page.
   function openModal(title, bodyHtml, onMount, opts) {
     if (window.PV_MODAL) window.PV_MODAL.open(title, bodyHtml, onMount, opts);
-  }
-  function closeModal() {
-    if (window.PV_MODAL) window.PV_MODAL.close();
   }
 
   // Parcel/map-tool buttons and the tax-description info icon live outside the
