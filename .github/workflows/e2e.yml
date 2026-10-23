@@ -1,0 +1,85 @@
+# Browser end-to-end tests (DIC-2553): the Playwright suite in e2e/ against the whole stack
+# (built web image, Django API, Martin, Map Buddy), with the parcel database replaced by the
+# seeded fixture in e2e/fixture. No secrets: the AI tests stay skipped (no E2E_AI), and Map
+# Buddy starts without a model key.
+#
+# Runs on every pull request and every push to main, with no path filters, for the same
+# reason as the ISV harness: a required check that only runs for some paths leaves other
+# PRs waiting for it forever.
+name: E2E
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same PR makes the older run moot.
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  COMPOSE: >-
+    docker compose -p pv-e2e -f infra/docker-compose.viewer.yml
+    -f infra/docker-compose.web-image.yml -f infra/docker-compose.e2e.yml
+
+jobs:
+  playwright:
+    name: playwright (shard ${{ matrix.shard }}/4)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The suite takes ~40 min on one runner (two workers on one stack, kept modest so the
+    # rate limits behave as in use); four shards, each with its own stack, keep it short.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      PV_HTTP_PORT: 8080
+      E2E_BASE_URL: http://127.0.0.1:8080
+      # Playwright's own Chromium (the runner has no Edge, the local default).
+      E2E_CHANNEL: chromium
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      # Builds the web, API and Map Buddy images and waits until every service is healthy
+      # (the fixture loads in a few seconds, before Martin and the API start).
+      - name: Start the stack on the fixture database
+        run: $COMPOSE up -d --build --wait --wait-timeout 300
+
+      - name: Install Playwright and Chromium
+        working-directory: e2e
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Playwright
+        working-directory: e2e
+        run: npx playwright test --shard=${{ matrix.shard }}/4
+
+      - name: Stack logs
+        if: failure()
+        run: $COMPOSE logs --no-color --timestamps > e2e/stack-logs.txt 2>&1
+
+      # The HTML report carries a trace, screenshot and the failed requests of each failure.
+      - name: Upload the report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.shard }}
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            e2e/stack-logs.txt
+          retention-days: 14

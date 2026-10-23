@@ -4,10 +4,12 @@
 //   cd e2e && npm install && npx playwright test
 // Point it elsewhere with E2E_BASE_URL. AI chat tests call the real model, so they only
 // run with E2E_AI=1. Uses the machine's installed Edge (no browser download); set
-// E2E_CHANNEL=chrome to use Chrome instead.
+// E2E_CHANNEL=chrome to use Chrome instead, or E2E_CHANNEL=chromium for Playwright's own
+// Chromium (`npx playwright install chromium`), as CI does (.github/workflows/e2e.yml).
 const { defineConfig, devices } = require('@playwright/test');
 
 const channel = process.env.E2E_CHANNEL || 'msedge';
+const ci = !!process.env.CI;
 
 module.exports = defineConfig({
   testDir: './tests',
@@ -16,7 +18,8 @@ module.exports = defineConfig({
   fullyParallel: false,          // one shared stack + DB; keep load (and rate limits) modest
   workers: 2,
   retries: 0,                    // a flaky test is a finding, not something to retry away
-  reporter: [['list'], ['html', { open: 'never' }]],
+  forbidOnly: ci,                // a stray test.only must not shrink the CI run to one test
+  reporter: [['list'], ['html', { open: 'never' }], ...(ci ? [['github']] : [])],
   use: {
     baseURL: process.env.E2E_BASE_URL || 'http://127.0.0.1:8080',
     trace: 'retain-on-failure',

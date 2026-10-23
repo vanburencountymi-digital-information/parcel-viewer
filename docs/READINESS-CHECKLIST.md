@@ -90,7 +90,7 @@ What still blocks a deploy:
 | nginx config and compose files valid; production has no local Map Buddy | pass | yes (`infra-config`) | see the workflow |
 | Lint, format, types, secrets (pre-commit) | pass | yes (`Lint`) | `pre-commit run --all-files` |
 | CodeQL (Python, JS/TS, Actions) | 1 open alert | yes (`CodeQL`, + weekly) | Security → Code scanning |
-| Browser end-to-end (Playwright, Edge) | 30 spec files | **no** (see 8) | `cd e2e && npm install && npx playwright test` |
+| Browser end-to-end (Playwright; Edge locally, Chromium in CI) | 30 spec files | yes (`E2E`, 4 shards, on the seeded fixture database `e2e/fixture`; DIC-2553) | `cd e2e && npm install && npx playwright test` |
 | Accessibility (axe-core, WCAG 2.1 A/AA) | 0 violations on the scanned screens | with e2e | `npx playwright test tests/a11y-scan.spec.js` |
 
 **Latest full e2e run (2026-10-16, #100):** 237 passed, 2 failed. Both failures were the choropleth parcel-index race, which passed 6/6 on rerun and is fixed in #99 (DIC-2459). The paid AI tests are skipped unless `E2E_AI=1`.
@@ -151,7 +151,7 @@ What still blocks a deploy:
 
 | Issue | Impact | Tracking |
 |---|---|---|
-| **E2E suite isn't in CI** | Browser-level regressions are caught only when someone runs it. The `django-api` CI job already starts a PostGIS service, so seeding a small fixture there is the shortest path | suggest a ticket |
+| ~~**E2E suite isn't in CI**~~ **Fixed:** the `E2E` workflow runs the whole suite on every PR against a seeded fixture database (1,773 parcels around Paw Paw, owners replaced by stand-ins) | CI covers the fixture area only; runs against staging or the real data stay a manual check | DIC-2553 |
 | **CSP is report-only** | No script-injection enforcement yet | enforce after a clean report period |
 | **mypy exemption list** for pre-existing modules | Type-checked but not fully annotated | ADR 0003 |
 | **Google Fonts loaded at runtime** | Minor outage and privacy exposure | self-host the font |

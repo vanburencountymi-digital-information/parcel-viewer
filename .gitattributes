@@ -1,2 +1,5 @@
 # Shell scripts must keep LF endings or bash fails on Windows checkouts (core.autocrlf).
 *.sh text eol=lf
+# The e2e fixture's COPY data is tab-separated, one row per line: a CR would end up in the
+# last column of every row on a Windows checkout (DIC-2553).
+e2e/fixture/*.sql text eol=lf

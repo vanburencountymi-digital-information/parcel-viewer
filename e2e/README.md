@@ -20,9 +20,38 @@ npx playwright show-report          # HTML report with traces/screenshots of fai
 | Variable | Default | Purpose |
 |---|---|---|
 | `E2E_BASE_URL` | `http://127.0.0.1:8080` | Stack under test (e.g. a staging URL) |
-| `E2E_CHANNEL` | `msedge` | `chrome` to use Google Chrome instead |
+| `E2E_CHANNEL` | `msedge` | `chrome` to use Google Chrome instead; `chromium` for Playwright's own (`npx playwright install chromium`), as CI does |
 | `E2E_AI` | unset | `1` runs the AI chat tests, which call the real model (costs a little) |
 | `E2E_MAP_BUDDY_API` | unset | A Map Buddy on its own origin (as in production), e.g. `http://127.0.0.1:8095`. Needed when `E2E_BASE_URL` is a production-configured stack, whose nginx has no `/map-buddy-api/` proxy (see `infra/DEPLOY-CHECKLIST.md` → "Rehearse locally") |
+
+## On the fixture database (as CI runs it)
+
+`fixture/` is a small copy of the parcel database, so the suite runs without the shared
+database or any credentials: the real schema and Martin tile functions (`10-schema.sql`),
+and the rows around Paw Paw and the measure tests' rural spot (`20-data.sql`: 1,773
+parcels, their roll records, address points, roads, subdivisions, sections), plus FEMA's
+flood zones there (`flood-zones.geojson`, loaded into the API's own copy). Owner names are
+numbered stand-ins ("FIXTURE OWNER 0001") and mailing addresses the site address; staff
+names and notes are emptied. `infra/docker-compose.e2e.yml` swaps it in for the database:
+
+```bash
+docker compose -p pv-e2e -f infra/docker-compose.viewer.yml -f infra/docker-compose.web-image.yml -f infra/docker-compose.e2e.yml up -d --build --wait
+```
+
+Set `PV_HTTP_PORT` (e.g. 8097) and `E2E_BASE_URL` to match when a dev stack already has
+8080. The fixture loads when its volume is new: after rebuilding it, recreate with
+`up -d --force-recreate --renew-anon-volumes parcels-db martin django-api`.
+
+**CI** (`.github/workflows/e2e.yml`, check `E2E`) does exactly this on every PR and push to
+main, with Playwright's Chromium, in four shards (each its own stack). A failing shard
+uploads `playwright-report-N`: the HTML report (trace, screenshot and failed requests per
+failure), `test-results/` and the stack's logs. The AI tests stay skipped (no `E2E_AI`).
+
+**A test that needs data outside the fixture:** widen `BOXES` in `fixture/build_fixture.py`
+and rebuild (`pip install "psycopg[binary]" shapely`, then
+`PV_DATABASE_URL=... python e2e/fixture/build_fixture.py`; it only reads). Re-dump
+`10-schema.sql` when the pipeline changes a table the API or a tile function reads (its
+header has the command).
 
 ## What every test checks, beyond its own assertions
 
@@ -77,4 +106,5 @@ holds the gate), and it passes again with the fix.
 
 - **Print** — opens the browser's print dialog, which blocks automation. Check by hand.
 - **Street View** — opens Google Maps in a new tab (no embed key configured).
-- **CI** — the suite needs the database, so it runs locally today; CI needs a fixture DB.
+- **The real data in CI** — CI covers the fixture's area only. Run against the real
+  database (or staging, with `E2E_BASE_URL`) before a release.
