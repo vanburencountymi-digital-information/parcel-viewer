@@ -221,6 +221,190 @@ test.describe('Admin console', () => {
     });
   });
 
+  // The console shell: navigation, the top bar, and the shared draft → save → publish →
+  // history flow every editable module uses. The local stack has no writable store, so the
+  // store's routes are stubbed: these check what the console sends and shows.
+  test.describe('shell and edit flow', () => {
+    const draftField = (page, path) => main(page).locator(`[data-path="${path}"]`);
+
+    // Stubs the config store's write routes; `seen` records what the console sent. With no
+    // saved draft, opening the editor gets a 404 (as from the real store).
+    async function stubStore(page, consoleGuard, seen, { draft = null, versions = [] } = {}) {
+      consoleGuard.allow(/status of 404/);
+      await page.route('**/api/config/*/draft', async (route) => {
+        const req = route.request();
+        if (req.method() === 'GET') {
+          return route.fulfill(draft ? { json: draft } : { status: 404, json: { detail: 'No draft.' } });
+        }
+        seen.saved = req.postDataJSON();
+        await route.fulfill({ json: { ok: true } });
+      });
+      await page.route('**/api/config/*/publish', async (route) => {
+        seen.published = route.request().postDataJSON();
+        await route.fulfill({ json: { version: 7 } });
+      });
+      await page.route('**/api/config/*/versions', (route) => route.fulfill({ json: { versions } }));
+      await page.route('**/api/config/*/rollback', async (route) => {
+        seen.rollback = route.request().postDataJSON();
+        await route.fulfill({ json: { version: 8 } });
+      });
+    }
+
+    test('the nav opens each module, marks it current and keeps it in the address', async ({ page }) => {
+      await gotoAdmin(page, 'county');
+      for (const mod of ['styling', 'access', 'county']) {
+        await navItem(page, mod).click();
+        await expect(navItem(page, mod)).toHaveAttribute('aria-current', 'page');
+        await expect(page).toHaveURL(new RegExp('#' + mod + '$'));
+        await expect(main(page).getByRole('heading', { level: 1 })).toHaveText(NAV[mod]);
+      }
+      await expect(page.getByRole('navigation', { name: 'Admin sections' }).locator('[aria-current]')).toHaveCount(1);
+      await expect(main(page)).toBeFocused();
+    });
+
+    test('an unknown address opens County Configuration', async ({ page }) => {
+      await page.goto('/admin/#nope');
+      await expect(navItem(page, 'county')).toHaveAttribute('aria-current', 'page');
+      await expect(page).toHaveURL(/#county$/);
+    });
+
+    test('the top bar shows the live county and status; without the API, the baked fallback', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 503/);
+      await gotoAdmin(page, 'county');
+      await expect(status(page)).toHaveText('Live config · read-only');
+      await expect(page.getByRole('combobox', { name: 'Active county' })).toHaveText('Van Buren County');
+
+      await page.route('**/api/config', (route) => route.fulfill({ status: 503, json: { error: 'down' } }));
+      await page.reload();
+      await expect(navItem(page, 'county')).toHaveAttribute('aria-current', 'page');
+      await page.waitForTimeout(1000);
+      await expect(status(page)).toHaveText('Read-only preview');
+      await expect(main(page)).toContainText(/not reachable — showing the baked/);
+      await expect(page.getByRole('combobox', { name: 'Active county' })).toHaveText('Van Buren County');
+    });
+
+    test('switching module drops an edit in progress', async ({ page, consoleGuard }) => {
+      await stubStore(page, consoleGuard, {});
+      await gotoAdmin(page, 'county');
+      await main(page).getByRole('button', { name: 'Edit configuration' }).click();
+      await draftField(page, 'name').fill('Changed');
+      await navItem(page, 'access').click();
+      await navItem(page, 'county').click();
+      await expect(main(page).getByRole('button', { name: 'Edit configuration' })).toBeVisible();
+      await expect(main(page).getByRole('definition').first()).toHaveText('Van Buren County');
+    });
+
+    test('Edit continues a saved server draft', async ({ page, consoleGuard }) => {
+      await stubStore(page, consoleGuard, {}, { draft: { name: 'Drafted County', state: 'MI' } });
+      await gotoAdmin(page, 'county');
+      await main(page).getByRole('button', { name: 'Edit configuration' }).click();
+      await expect(draftField(page, 'name')).toHaveValue('Drafted County');
+    });
+
+    test('Save draft sends the edited config; typed fields keep their types', async ({ page, consoleGuard }) => {
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'county');
+      await main(page).getByRole('button', { name: 'Edit configuration' }).click();
+      await draftField(page, 'name').fill('Renamed County');
+      await draftField(page, 'map.zoom').fill('11');
+      await draftField(page, 'map.center').fill('[-86, 42.3]');
+      await draftField(page, 'map.extent').fill('[not json');   // ignored, and marked
+      await expect(draftField(page, 'map.extent')).toHaveClass(/ac-input-err/);
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      expect(seen.saved.author).toBe('console');
+      expect(seen.saved.payload).toMatchObject({ name: 'Renamed County', map: { zoom: 11, center: [-86, 42.3] } });
+      expect(Array.isArray(seen.saved.payload.map.extent)).toBe(true);
+    });
+
+    test('rows can be added to and removed from a list', async ({ page, consoleGuard }) => {
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'county');
+      const content = main(page);
+      await content.getByRole('button', { name: 'Edit configuration' }).click();
+      const rows = content.locator('[data-path$=".description"][data-path^="parcelNumber.segments."]');
+      const before = await rows.count();
+      await content.getByRole('button', { name: '+ Add segment' }).click();
+      await expect(rows).toHaveCount(before + 1);
+      await draftField(page, `parcelNumber.segments.${before}.name`).fill('Check digit');
+      await content.locator('[data-remove="parcelNumber.segments"][data-index="0"]').click();
+      await expect(rows).toHaveCount(before);
+      await content.getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      const segs = seen.saved.payload.parcelNumber.segments;
+      expect(segs).toHaveLength(before);
+      expect(segs[before - 1]).toEqual({ name: 'Check digit', description: '' });
+    });
+
+    test('Publish saves the draft, publishes it, and returns to the live view', async ({ page, consoleGuard }) => {
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'access');
+      const content = main(page);
+      await content.getByRole('button', { name: 'Edit access' }).click();
+      await draftField(page, 'access.reportTo').fill('gis@example.test');
+      await content.getByRole('button', { name: 'Publish' }).click();
+
+      await expect(page.getByTestId('ac-flash')).toHaveText('Published version 7.');
+      expect(seen.saved.payload.access.reportTo).toBe('gis@example.test');
+      expect(seen.published).toEqual({ author: 'console', note: 'Published from console' });
+      await expect(content.getByRole('button', { name: 'Edit access' })).toBeVisible();
+    });
+
+    test('refused writes say why: not provisioned, not allowed', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of (403|404|503)/);
+      const replies = [{ status: 503, json: {} }, { status: 403, json: { detail: 'no access to vanburen' } }];
+      await page.route('**/api/config/*/draft', (route) => (route.request().method() === 'GET'
+        ? route.fulfill({ status: 404, json: {} }) : route.fulfill(replies.shift())));
+      await gotoAdmin(page, 'county');
+      await main(page).getByRole('button', { name: 'Edit configuration' }).click();
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toContainText('not yet provisioned');
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Not allowed: no access to vanburen');
+    });
+
+    test('Version history lists versions, and Restore rolls back', async ({ page, consoleGuard }) => {
+      const seen = {};
+      await stubStore(page, consoleGuard, seen, { versions: [
+        { version: 3, note: 'Spring roll', created_by: 'jerry', created_at: '2026-04-01T09:30:00Z' },
+        { version: 2, note: '', created_by: 'console', created_at: '2026-03-01T08:00:00Z' },
+      ] });
+      await gotoAdmin(page, 'county');
+      await main(page).getByRole('button', { name: 'Version history' }).click();
+      const table = main(page).getByRole('table').last();
+      await expect(table).toContainText('Spring roll');
+      await expect(table).toContainText('2026-04-01 09:30:00');
+      await expect(main(page)).toContainText('2 published version(s)');
+
+      await table.getByRole('button', { name: 'Restore' }).first().click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Restored v3 as version 8.');
+      expect(seen.rollback).toEqual({ version: 3, author: 'console' });
+    });
+
+    test('Preview hands the draft to the viewer; Cancel clears it', async ({ page, consoleGuard }) => {
+      await stubStore(page, consoleGuard, {});
+      await gotoAdmin(page, 'county');
+      const content = main(page);
+      await content.getByRole('button', { name: 'Edit configuration' }).click();
+      await draftField(page, 'name').fill('Preview County');
+      const popup = page.waitForEvent('popup');
+      await content.getByRole('button', { name: 'Preview in viewer' }).click();
+      const viewer = await popup;
+      expect(new URL(viewer.url()).pathname).toBe('/demo/');
+      await viewer.close();
+      await expect(page.getByTestId('ac-flash')).toContainText('Draft sent to the viewer preview');
+      const sent = await page.evaluate(() => JSON.parse(localStorage.getItem('pv-config-preview')));
+      expect(sent.name).toBe('Preview County');
+
+      await content.getByRole('button', { name: 'Cancel' }).click();
+      expect(await page.evaluate(() => localStorage.getItem('pv-config-preview'))).toBeNull();
+    });
+  });
+
   test('manifest: Validate reports a result', async ({ page }) => {
     await gotoAdmin(page, 'manifest');
     await main(page).getByRole('button', { name: 'Validate' }).click();

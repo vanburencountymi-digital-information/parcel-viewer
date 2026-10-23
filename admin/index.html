@@ -13,34 +13,9 @@
   <script src="/frontend/public/js/pv-storage-guard.js"></script>
 </head>
 <body>
-  <div id="ac-app" class="ac-app">
-    <!-- Sidebar -->
-    <aside class="ac-side" role="navigation" aria-label="Admin sections">
-      <div class="ac-brand">
-        <span class="ac-brand-mark">◆</span>
-        <span class="ac-brand-text">Parcel Viewer<small>Admin Console</small></span>
-      </div>
-      <nav id="ac-nav" class="ac-nav"></nav>
-      <!-- Staff sign-in (DIC-2151): a Vue island (frontend/src/admin-console, DIC-2389). -->
-      <div id="ac-auth" class="ac-side-foot ac-auth" data-testid="ac-auth"></div>
-    </aside>
-
-    <!-- Main -->
-    <div class="ac-main">
-      <header class="ac-topbar">
-        <div class="ac-county">
-          <label for="ac-county-select" class="ac-county-label">County</label>
-          <select id="ac-county-select" class="ac-county-select" aria-label="Active county">
-            <option>Van Buren County</option>
-          </select>
-        </div>
-        <div class="ac-top-actions">
-          <span id="ac-status" class="ac-pill" role="status" aria-label="Config status">Read-only preview</span>
-        </div>
-      </header>
-      <main id="ac-content" class="ac-content" tabindex="-1"></main>
-    </div>
-  </div>
+  <!-- The console's shell (sidebar nav, staff sign-in, top bar, content area) is a Vue
+       island (frontend/src/admin-console, DIC-2389); the modules inside it are admin.js's. -->
+  <div id="ac-app" class="ac-app"></div>
 
   <!-- The live county manifest (current source of truth). The console reads it
        today; a runtime /config API (DIC-465) replaces this bake later. -->
@@ -52,9 +27,8 @@
        puts the console's window.ISV_* hooks on window; the build bundles it in place. -->
   <script src="/engine/browser-admin.js"></script>
   <script src="/admin/js/admin.js"></script>
-  <!-- The console's Vue islands (DIC-2389, ADR 0017), starting with the staff sign-in. A
-       module runs after the page is parsed, so after the classic scripts above but before
-       admin.js's init (DOMContentLoaded): its PV_ADMIN_AUTH hook is there for the first render. -->
+  <!-- The console's Vue islands (DIC-2389, ADR 0017). A module runs after the page is
+       parsed, so after the classic scripts above: admin.js has registered its modules. -->
   <script type="module" src="/frontend/src/admin-main.js"></script>
 </body>
 </html>
