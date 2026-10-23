@@ -52,7 +52,7 @@ the specs that touch them — never as a blanket rule.
 | `error-states` | Style/config/search/parcel/Map Buddy failures (simulated with request interception) show the right message or fallback; a page JS error reaches the server via the error beacon; extension errors are ignored |
 | `theme-a11y` | Dark mode persists, accessibility + AI toggles, text-size clamp, blocked browser storage |
 | `mobile` | Phone viewport: tab bar, search overlay, selection, no horizontal overflow |
-| `admin-console` | Every admin module renders from live config; Edit/Cancel; saving, history and publish without a token fail with a message; layer discovery; manifest validation |
+| `admin-console` | Every admin module renders from live config; Edit/Cancel; saving, history and publish without a token fail with a message; layer discovery; manifest validation; staff sign-in (stubbed auth routes); the shell (nav and address, top bar, fallback config) and the shared edit flow against a stubbed config store: continue a server draft, typed fields, add/remove rows, save, publish, refusals, history and restore, preview |
 | `measure-and-draw` | Area/distance results match Turf on the drawn shape (and the clicked points, within snapping); dimension perimeter matches the parcel; draw, undo/redo, clear all |
 | `bookmarks-and-share` | Bookmarks survive a reload and reopen the parcel; Share links reopen the same parcel or map view; malformed links are ignored |
 | `profile-areas` | Neighborhood Profile for every area type (radius, subdivision, section, township, school, drawn area); larger radius never gives fewer parcels; rapid changes settle correctly; labelled by parcel number |
