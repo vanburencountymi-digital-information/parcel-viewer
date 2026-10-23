@@ -17,9 +17,9 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from common.throttles import ClientScopedThrottle
 from common.validation import HttpError, ParamSource, json_body, query_params, validate
 from county_config.auth import author, require_county, require_staff, require_writer
 from county_config.baked import load_baked
@@ -42,7 +42,7 @@ class OpenView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientScopedThrottle]
     throttle_scope = "parcel_read"
 
 
@@ -106,7 +106,7 @@ class DiscoverLayersView(AdminView):
             return Response({"layers": cached[1]})
         try:
             layers = discover_layers(county)
-        except Exception:  # noqa: BLE001 — answered as a 500 with an empty list, as before
+        except Exception:
             log.exception("layer discovery failed")
             return Response(
                 {"error": DISCOVERY_FAILED, "layers": []},

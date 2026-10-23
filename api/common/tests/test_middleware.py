@@ -3,7 +3,7 @@
 import logging
 from unittest.mock import patch
 
-from django.test import SimpleTestCase
+from django.test import SimpleTestCase, override_settings
 from parameterized import parameterized
 from rest_framework.test import APIClient
 
@@ -95,3 +95,37 @@ class CorsTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 405)
         self.assertEqual(response.json(), {"detail": "Method Not Allowed"})
+
+
+class LivenessTests(SimpleTestCase):
+    """GET /health/live: the Cloud Run probe (ADR 0018). No database, any Host, no redirect."""
+
+    def setUp(self) -> None:
+        self.client = APIClient()
+
+    @patch("common.views.HealthService.check", autospec=True)
+    def test_answers_without_the_database(self, check) -> None:
+        response = self.client.get("/health/live")
+
+        self.assertEqual((response.status_code, response.json()), (200, {"status": "ok"}))
+        self.assertEqual(response["Cache-Control"], "no-store")
+        self.assertRegex(response["X-Request-ID"], r"^[0-9a-f]{32}$")
+        check.assert_not_called()
+
+    @override_settings(ALLOWED_HOSTS=["gis.dicemi.org"], SECURE_SSL_REDIRECT=True)
+    def test_any_host_over_plain_http(self) -> None:
+        # The probe calls the container directly: its Host isn't the public one.
+        for method in ("get", "head"):
+            with self.subTest(method):
+                response = getattr(self.client, method)("/health/live", HTTP_HOST="10.1.2.3:8080")
+                self.assertEqual(response.status_code, 200)
+
+    @override_settings(ALLOWED_HOSTS=["gis.dicemi.org"])
+    def test_other_paths_still_check_the_host(self) -> None:
+        self.assertEqual(self.client.get("/health", HTTP_HOST="10.1.2.3:8080").status_code, 400)
+
+    def test_it_is_logged_quietly(self) -> None:
+        with self.assertLogs("access", level="DEBUG") as logs:
+            self.client.get("/health/live")
+
+        self.assertEqual(logs.records[-1].levelno, logging.DEBUG)

@@ -22,6 +22,7 @@ from rest_framework.response import Response
 from access.models import DetailUsage
 from access.policy import AccessPolicy, policy_for
 from common.enums import DatabaseAlias
+from common.throttles import client_ip
 
 log = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ def _service_name(request: Request) -> str | None:
 def client_for(request: Request) -> Client:
     """
     Takes the request. Returns who is charged: signed-in staff and our own services are
-    unmetered; anyone else is their address (nginx's X-Real-IP, else the socket address).
+    unmetered; anyone else is their address (`common.throttles.client_ip`).
     """
     user = getattr(request, "user", None)
     if user is not None and user.is_authenticated and user.is_active and user.is_staff:
@@ -104,7 +105,7 @@ def client_for(request: Request) -> Client:
     service = _service_name(request)
     if service:
         return Client(key=_hash(f"service:{service}"), label=f"service:{service}", unmetered=True)
-    address = request.headers.get("X-Real-IP") or request.META.get("REMOTE_ADDR", "") or "unknown"
+    address = client_ip(request) or "unknown"
     return Client(key=_hash(f"ip:{address}"), label=address)
 
 
