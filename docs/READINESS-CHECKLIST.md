@@ -72,8 +72,8 @@ What still blocks a deploy:
 - [x] MapLibre, Turf and proj4 are bundled from npm, so the CSP lists no CDN (DIC-2180). MapLibre 6.14 fixes the critical `DOM.sanitize` XSS advisory (DIC-2379).
 
 **Open:**
-- [ ] One open CodeQL alert (checked 2026-10-23). Triage before the deploy.
-- [ ] `.github/dependabot.yml` still lists `/backend`, which was deleted with FastAPI; that update job fails. Remove the entry.
+- [x] The one open CodeQL alert (`js/unused-local-variable`, `admin-menu.js`) is fixed; it closes when DIC-2552 merges and CodeQL re-scans `main`.
+- [x] `.github/dependabot.yml` pointed at `/backend`, deleted with FastAPI, so that update job failed weekly. It now covers `/api` (pip and docker) like the other services (DIC-2552).
 
 ## 4. What has been verified (and how to re-run it)
 
@@ -125,7 +125,7 @@ What still blocks a deploy:
 | Lint / format / type checks in CI; pre-commit | **Done:** ruff, mypy, gitleaks, conventional commits (ADR 0003) |
 | Semantic versioning (python-semantic-release, VBCD app) | **Done in repo** (ADR 0002); **admin:** install the app + secrets. No release published yet |
 | CodeQL; review critical/high | **Done;** 1 open alert to triage |
-| Dependabot (grouped, through CI) | **Done:** config; **admin:** enable security updates. Drop the stale `/backend` entry |
+| Dependabot (grouped, through CI) | **Done:** config; **admin:** enable security updates. Stale `/backend` entry replaced by `/api` (DIC-2552) |
 | Secret scanning + push protection | **Admin:** off (checked 2026-10-23) |
 | Semgrep | **Admin:** add the repo to the SemGrep - vbcd app |
 | Gitleaks (history + pre-commit) | **Done** |
@@ -154,7 +154,6 @@ What still blocks a deploy:
 | **E2E suite isn't in CI** | Browser-level regressions are caught only when someone runs it. The `django-api` CI job already starts a PostGIS service, so seeding a small fixture there is the shortest path | suggest a ticket |
 | **CSP is report-only** | No script-injection enforcement yet | enforce after a clean report period |
 | **mypy exemption list** for pre-existing modules | Type-checked but not fully annotated | ADR 0003 |
-| **Google Fonts loaded at runtime** | Minor outage and privacy exposure | self-host the font |
 | **Annotation store has no persistence** | Drawings are per-session | product decision |
 | **Parcel Packet is sample content** | Testers may think it's real | brief testers |
 | **Assessed-value roll year is inferred** from the data's load date | Overridable with `assessing.rollYear` | DIC-1878 |

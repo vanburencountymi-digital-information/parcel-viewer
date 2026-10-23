@@ -119,7 +119,8 @@ Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
   `X-Frame-Options: SAMEORIGIN` and a Content-Security-Policy on the pages.
 - **CSP is report-only for now.** It allows `'unsafe-inline'` because `demo/index.html` has
   inline scripts. No CDN hosts: MapLibre, Turf and proj4 are pinned npm packages
-  (package-lock integrity) bundled into the site (DIC-2180); fonts come from Google. Plan:
+  (package-lock integrity) bundled into the site (DIC-2180); the font is self-hosted (DIC-2552), so
+  no third-party host is listed. Plan:
   move the inline scripts out, run a clean report period with testers, then enforce.
 - **Third-party libraries:** `npm audit` covers them. MapLibre is on 6.14 (DIC-2379),
   which fixes the critical sanitizer bypass in ≤ 6.4.0 (GHSA-jrc7-96c5-q579). Its worker
@@ -156,4 +157,3 @@ Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
 | `/judge` and `/autoconfigure` (developer tools) are reachable on Map Buddy | Rate-limited and within the quota; to be locked down | DIC-1854 |
 | CSP report-only; `'unsafe-inline'` | Planned | readiness checklist 8 |
 | GitHub secret scanning, push protection, Dependabot security alerts, Semgrep | Need a repo admin | B3 |
-| Google Fonts loaded at runtime (a third-party request per visit) | Accepted for testing | readiness checklist 8 |
