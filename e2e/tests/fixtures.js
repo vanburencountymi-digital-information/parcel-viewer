@@ -78,8 +78,12 @@ async function openMapControlsTab(page, tabName) {
   return page.getByRole('tabpanel', { name: tabName });
 }
 
-/** Search for `query` through the real search box and pick result `index`. Returns the result's pin. */
-async function selectParcelViaSearch(page, query = 'paw paw', index = 0) {
+/**
+ * Search for `query` through the real search box and pick result `index`. Returns the
+ * result's pin once the camera has arrived, or at once with `{ settle: false }` (for a
+ * test of what happens during the arrival).
+ */
+async function selectParcelViaSearch(page, query = 'paw paw', index = 0, { settle = true } = {}) {
   const input = ui.searchInput(page);
   if (!(await input.isVisible())) await page.getByRole('button', { name: 'Search parcels', exact: true }).click();
   await input.fill(query);
@@ -89,8 +93,28 @@ async function selectParcelViaSearch(page, query = 'paw paw', index = 0) {
   await rows.nth(index).click();
   await expect(ui.parcelPanel(page)).toBeVisible();
   await expect(page.getByTestId('parcel-info-pin')).toHaveText(pin);
+  if (!settle) return pin;
+  await waitForSearchArrival(page);
   await waitForMapIdle(page);
   return pin;
+}
+
+/**
+ * A search arrives cinematically: a tilted fly-in, a 9 s orbit, then a 2.6 s ease back to
+ * flat, north-up. The orbit is driven frame by frame, so the map can report idle in the
+ * middle of it, and the parcels loaded then are the tilted view's, not the settled one's
+ * (DIC-2553: on a slow runner a test read both and their counts disagreed). Waits until
+ * the camera has tilted and come back flat; with reduced motion or the orbit off it never
+ * tilts, so a short wait for the tilt to start is enough.
+ */
+async function waitForSearchArrival(page) {
+  const tilted = await page.waitForFunction(() => window.PS_MAP.getPitch() > 1, null, { timeout: 3000 })
+    .then(() => true, () => false);
+  if (!tilted) return;
+  await page.waitForFunction(() => {
+    const m = window.PS_MAP;
+    return m.getPitch() < 0.5 && Math.abs(m.getBearing()) < 0.5 && !m.isMoving();
+  }, null, { timeout: 45_000 });
 }
 
 /**

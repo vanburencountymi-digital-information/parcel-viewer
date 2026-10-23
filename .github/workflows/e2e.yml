@@ -59,11 +59,15 @@ jobs:
       - name: Start the stack on the fixture database
         run: $COMPOSE up -d --build --wait --wait-timeout 300
 
+      # No --with-deps: the runner image ships Google Chrome, so Chromium's libraries are
+      # already there, and the apt step it adds once took 8.5 min on a slow mirror. No
+      # headless shell either: channel "chromium" runs the full browser headless.
       - name: Install Playwright and Chromium
         working-directory: e2e
+        timeout-minutes: 5
         run: |
           npm ci --no-audit --no-fund
-          npx playwright install --with-deps chromium
+          npx playwright install --no-shell chromium
 
       - name: Playwright
         working-directory: e2e
