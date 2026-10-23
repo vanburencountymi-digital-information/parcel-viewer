@@ -90,7 +90,7 @@ What still blocks a deploy:
 | nginx config and compose files valid; production has no local Map Buddy | pass | yes (`infra-config`) | see the workflow |
 | Lint, format, types, secrets (pre-commit) | pass | yes (`Lint`) | `pre-commit run --all-files` |
 | CodeQL (Python, JS/TS, Actions) | 1 open alert | yes (`CodeQL`, + weekly) | Security → Code scanning |
-| Browser end-to-end (Playwright; Edge locally, Chromium in CI) | 30 spec files | yes (`E2E`, 4 shards, on the seeded fixture database `e2e/fixture`; DIC-2553) | `cd e2e && npm install && npx playwright test` |
+| Browser end-to-end (Playwright; Edge locally, Chromium in CI) | 30 spec files | yes (`E2E`, 8 shards, on the seeded fixture database `e2e/fixture`; DIC-2553) | `cd e2e && npm install && npx playwright test` |
 | Accessibility (axe-core, WCAG 2.1 A/AA) | 0 violations on the scanned screens | with e2e | `npx playwright test tests/a11y-scan.spec.js` |
 
 **Latest full e2e run (2026-10-16, #100):** 237 passed, 2 failed. Both failures were the choropleth parcel-index race, which passed 6/6 on rerun and is fixed in #99 (DIC-2459). The paid AI tests are skipped unless `E2E_AI=1`.

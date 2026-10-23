@@ -13,10 +13,14 @@ const ci = !!process.env.CI;
 
 module.exports = defineConfig({
   testDir: './tests',
-  timeout: 60_000,
+  // A CI runner renders the map in software, about a third slower than a laptop: the tests
+  // that load the viewer twice need the extra time there.
+  timeout: ci ? 90_000 : 60_000,
   expect: { timeout: 10_000 },
-  fullyParallel: false,          // one shared stack + DB; keep load (and rate limits) modest
-  workers: 2,
+  // Tests, not files, are the unit: CI's shards then split by test and come out even.
+  // Each test has its own browser context, and no spec shares state between tests.
+  fullyParallel: true,
+  workers: 2,                    // one shared stack + DB; keep load (and rate limits) modest
   retries: 0,                    // a flaky test is a finding, not something to retry away
   forbidOnly: ci,                // a stray test.only must not shrink the CI run to one test
   reporter: [['list'], ['html', { open: 'never' }], ...(ci ? [['github']] : [])],

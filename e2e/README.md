@@ -43,7 +43,7 @@ Set `PV_HTTP_PORT` (e.g. 8097) and `E2E_BASE_URL` to match when a dev stack alre
 `up -d --force-recreate --renew-anon-volumes parcels-db martin django-api`.
 
 **CI** (`.github/workflows/e2e.yml`, check `E2E`) does exactly this on every PR and push to
-main, with Playwright's Chromium, in four shards (each its own stack). A failing shard
+main, with Playwright's Chromium, in eight shards (each its own stack). A failing shard
 uploads `playwright-report-N`: the HTML report (trace, screenshot and failed requests per
 failure), `test-results/` and the stack's logs. The AI tests stay skipped (no `E2E_AI`).
 

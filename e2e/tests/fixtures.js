@@ -93,8 +93,12 @@ async function selectParcelViaSearch(page, query = 'paw paw', index = 0) {
   return pin;
 }
 
-/** Resolve after the map finishes moving/loading (or after `ms`, whichever first). */
-async function waitForMapIdle(page, ms = 8000) {
+/**
+ * Resolve after the map finishes moving/loading (or after `ms`, whichever first). The cap
+ * is only a backstop: on a CI runner a fly-to plus its tiles can take over 8 s, and a test
+ * that went on early read the parcels of the view it was leaving (DIC-2553).
+ */
+async function waitForMapIdle(page, ms = 20_000) {
   await page.evaluate((ms) => new Promise((resolve) => {
     const m = window.PS_MAP;
     if (!m || (m.loaded() && !m.isMoving())) return resolve();

@@ -29,15 +29,16 @@ env:
 
 jobs:
   playwright:
-    name: playwright (shard ${{ matrix.shard }}/4)
+    name: playwright (shard ${{ matrix.shard }}/8)
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # The suite takes ~40 min on one runner (two workers on one stack, kept modest so the
-    # rate limits behave as in use); four shards, each with its own stack, keep it short.
+    # The suite is ~100 worker-minutes on a runner (two workers on one stack, kept modest so
+    # the rate limits behave as in use), ~50 min on one; eight shards split by test
+    # (fullyParallel), each with its own stack (~2 min to start), keep it near 10.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
     env:
       PV_HTTP_PORT: 8080
       E2E_BASE_URL: http://127.0.0.1:8080
@@ -66,7 +67,7 @@ jobs:
 
       - name: Playwright
         working-directory: e2e
-        run: npx playwright test --shard=${{ matrix.shard }}/4
+        run: npx playwright test --shard=${{ matrix.shard }}/8
 
       - name: Stack logs
         if: failure()
