@@ -44,6 +44,71 @@ test.describe('Admin console', () => {
     await expect(main(page)).toContainText(/assessment/i);
   });
 
+  // Intelligence (DIC-459): the explainer plugins, from a stubbed Map Buddy /explainers so
+  // the content is fixed (the test above reads the real service).
+  test.describe('intelligence (stubbed explainers)', () => {
+    const EXPLAINERS = [
+      { id: 'assessment', label: 'Assessment Explainer', model: 'claude-test-1', audience: 'Residents',
+        callable_via: 'POST /explain (topic: assessment)', system_prompt: 'Explain <b>plainly</b>.',
+        context_blocks: [{ title: 'Statutes', body: 'MCL 211.27a', chars: 11 }, { title: 'Glossary', body: 'SEV = state equalized value', chars: 27 }] },
+      { id: 'tax', label: 'Tax Description', model: '', system_prompt: '' },
+    ];
+    const stub = (page, reply) => page.route('**/explainers', (route) => route.fulfill(reply));
+
+    test('a card per plugin: its id, audience, model and how to call it', async ({ page }) => {
+      await stub(page, { json: { explainers: EXPLAINERS } });
+      await gotoAdmin(page, 'intelligence');
+      const cards = main(page).locator('.ac-xp-card');
+      await expect(cards).toHaveCount(2);
+      const a = cards.first();
+      await expect(a.getByRole('heading', { level: 2 })).toHaveText('Assessment Explainer');
+      await expect(a).toContainText('claude-test-1');
+      await expect(a.locator('dd')).toHaveText(['assessment', 'Residents', 'POST /explain (topic: assessment)']);
+      await expect(a).toContainText('Injected context (2)');
+      // A plugin with nothing set shows dashes and no context section.
+      const t = cards.nth(1);
+      await expect(t.locator('dd')).toHaveText(['tax', '—', '—']);
+      await expect(t.locator('.ac-xp-model')).toHaveText('—');
+      await expect(t).not.toContainText('Injected context');
+    });
+
+    test('the system prompt and each context block open and close; text shows as text', async ({ page }) => {
+      await stub(page, { json: { explainers: EXPLAINERS } });
+      await gotoAdmin(page, 'intelligence');
+      const a = main(page).locator('.ac-xp-card').first();
+      const prompt = a.getByRole('button', { name: /System prompt/ });
+      await expect(prompt).toHaveAttribute('aria-expanded', 'false');
+      await expect(prompt).toContainText('▸');
+      await expect(prompt).toContainText('23 chars');
+      await expect(a.getByText('Explain <b>plainly</b>.')).toBeHidden();
+      await prompt.click();
+      await expect(prompt).toHaveAttribute('aria-expanded', 'true');
+      await expect(prompt).toContainText('▾');
+      await expect(a.getByText('Explain <b>plainly</b>.')).toBeVisible();
+      await prompt.click();
+      await expect(a.getByText('Explain <b>plainly</b>.')).toBeHidden();
+
+      const glossary = a.getByRole('button', { name: /Glossary/ });
+      await expect(glossary).toContainText('27 chars');
+      await glossary.click();
+      await expect(a.getByText('SEV = state equalized value')).toBeVisible();
+      await expect(a.getByText('MCL 211.27a')).toBeHidden();   // the other block stays closed
+    });
+
+    test('no plugins, or no Map Buddy, says so', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 502/);
+      await stub(page, { json: { explainers: [] } });
+      await gotoAdmin(page, 'intelligence');
+      await expect(main(page)).toContainText('No explainer plugins registered.');
+
+      await page.unroute('**/explainers');
+      await stub(page, { status: 502, body: 'bad gateway' });
+      await navItem(page, 'county').click();
+      await navItem(page, 'intelligence').click();
+      await expect(main(page)).toContainText('Couldn’t reach the Map Buddy service (HTTP 502)');
+    });
+  });
+
   for (const [mod, edit] of [['county', 'Edit configuration'], ['styling', 'Edit styling'], ['data', 'Edit layers'], ['access', 'Edit access']]) {
     test(`${mod}: Edit opens a form and Cancel discards it`, async ({ page, consoleGuard }) => {
       consoleGuard.allow(EXPECTED_HTTP);   // opening the editor asks for the server draft (no writer store here)
