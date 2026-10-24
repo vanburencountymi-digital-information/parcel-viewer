@@ -11,6 +11,7 @@ from typing import Any
 
 import anthropic
 
+import measure  # server-side copies of the browser's Turf measurements (DIC-2434)
 from citations import extract_citations  # §6.4 envelope extraction (DIC-522)
 from common.logging_setup import safe_for_log
 
@@ -103,7 +104,7 @@ After acting, ALWAYS call `suggest_actions` with 2-4 tailored next steps. Favor 
 - Selection: select_parcel, highlight_parcel.
 - Layers: set_layer_visibility (flood, wetlands, soils, hillshade, contours), pulse_layer (bloom a layer you're discussing — see Reactive cartography).
 - Drawing: draw_point, draw_line, draw_polygon, draw_circle, label_point, label_parcel_centroid, draw_parcel_buffer (inward = setback), place_structure_in_parcel, clear_annotations.
-- Measurement: measure_parcel, measure_area, measure_distance (results are shown to the user automatically).
+- Measurement: measure_parcel, measure_area, measure_distance. The user sees the result in a bubble, and the numbers come back to you (acres, ft², perimeter, estimated dimensions, distances): use them in your answer and in follow-up reasoning (does a footprint fit, which parcel is bigger), and don't recompute them yourself.
 - Built-in viewer tools: set_parcel_labels (label every parcel by owner/PIN/address/value), dimension_parcel (surveyor-style side dimensions), activate_draw_tool (hand the user a draw tool), undo, redo.
 - Open viewer windows: open_tool — the Parcel Packet report ('packet'), Compare, Street View, the tax/assessment explainers, print/share/bookmark/settings, etc. "Show me the parcel packet" → select the parcel if needed, then open_tool 'packet'.
 - Compare parcels: compare_parcels — a side-by-side table of 2-5 specific parcels by `pins`/`ids` (differing rows highlighted). Use it for "compare this to <other>", "why is my assessment higher than my neighbor's", side-by-side questions. (open_tool 'compare' only adds the selected parcel to the compare tray; compare_parcels is how you compare named parcels directly.)
@@ -587,15 +588,15 @@ TOOLS = [
         "description": "Remove all drawings (buffers, circles, labels, lines) from the map.",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
-    # ── Measurement (results are shown to the user automatically) ──────────────
+    # ── Measurement (shown to the user, and the numbers come back to you) ──────
     {
         "name": "measure_parcel",
-        "description": "Report a parcel's area, perimeter, and estimated dimensions.",
+        "description": "Measure a parcel: area, perimeter, and estimated dimensions. Shown to the user; the numbers come back to you.",
         "input_schema": {"type": "object", "properties": {"pin": _PIN}, "required": []},
     },
     {
         "name": "measure_area",
-        "description": "Measure the area and perimeter of a polygon.",
+        "description": "Measure the area and perimeter of a polygon. Shown to the user; the numbers come back to you.",
         "input_schema": {
             "type": "object",
             "properties": {"coordinates": _COORDS},
@@ -604,7 +605,7 @@ TOOLS = [
     },
     {
         "name": "measure_distance",
-        "description": "Measure the total distance along a path.",
+        "description": "Measure the total distance along a path. Shown to the user; the numbers come back to you.",
         "input_schema": {
             "type": "object",
             "properties": {"coordinates": _COORDS},
@@ -1077,6 +1078,8 @@ PARCEL_API_BASE = os.getenv("PARCEL_API_BASE", "http://django-api:8000").rstrip(
 DATA_TOOLS = {"search_parcels", "get_parcel_info", "get_environmental_info"}
 # Browser commands with cost rules enforced here before they're forwarded (DIC-2135).
 VISION_TOOLS = {"look_at_map", "offer_map_look"}
+# Browser commands whose numbers are also computed here and returned (DIC-2434).
+MEASURE_TOOLS = {"measure_parcel", "measure_area", "measure_distance"}
 # Tools whose calls are forwarded to the browser as map commands: every declared tool
 # except the server-side ones. Anything else the model names is dropped (DIC-1870).
 _FRONTEND_COMMANDS = {t["name"] for t in TOOLS} - DATA_TOOLS - {"run_workflow"}
@@ -1333,13 +1336,59 @@ def _expand_workflow(name: str, inp: dict, ctx: dict | None):
     note = f"Ran workflow '{name}' ({len(cmds)} map actions)."
     if env is not None:
         note += " Environmental data: " + json.dumps(env)
+    for c in cmds:
+        if c["type"] in MEASURE_TOOLS:
+            note += f" {c['type']}: " + _measure_tool(c["type"], c["payload"], ctx)
     note += " Now give the user a short, clean summary."
     return (note, cmds)
 
 
+_MEASURE_UNREAD = "Measurement shown to the user, but the numbers couldn't be read back here."
+
+
+def _pin_key(pin) -> str:
+    return "".join(ch for ch in str(pin or "").lower() if ch.isalnum())
+
+
+def _parcel_geometry(pin: str) -> dict | None:
+    """Takes a PIN. Returns that parcel's GeoJSON geometry from the parcel API, or None."""
+    data = _http_get_json("/search?q=" + urllib.parse.quote(pin) + "&limit=5")
+    want = _pin_key(pin)
+    match = next((r for r in data.get("results", []) if _pin_key(r.get("pin")) == want), None)
+    if not match:
+        return None
+    pid = int(match["id"])  # the API's own id, but still never a path fragment
+    return _http_get_json(f"/parcel/{pid}").get("geometry")
+
+
+def _measure_tool(name: str, inp: dict, ctx: dict | None) -> str:
+    """Measure on the server so the model gets the numbers the user sees (DIC-2434).
+
+    The browser still draws the result; this mirrors its Turf math (see measure.py).
+    """
+    try:
+        if name == "measure_parcel":
+            pin = str(inp.get("pin") or (ctx or {}).get("pin") or "").strip()[:40]
+            if not pin:
+                return "No parcel to measure: none is selected and no PIN was given."
+            out = measure.measure_geometry(_parcel_geometry(pin))
+            if out is None:
+                return _MEASURE_UNREAD
+            return json.dumps({"pin": pin, **out})
+        coords = measure.clean_points(inp.get("coordinates"))
+        if name == "measure_area":
+            if not coords or len(coords) < 3:
+                return "Not measured: a polygon needs at least 3 valid [lng, lat] points."
+            return json.dumps(measure.measure_area(coords))
+        if not coords or len(coords) < 2:
+            return "Not measured: a path needs at least 2 valid [lng, lat] points."
+        return json.dumps(measure.measure_distance(coords))
+    except Exception:
+        log.warning("measurement %s failed", safe_for_log(name, 80), exc_info=True)
+        return _MEASURE_UNREAD
+
+
 def _tool_ack(name: str) -> str:
-    if name in ("measure_parcel", "measure_area", "measure_distance"):
-        return "Measurement computed and shown to the user."
     if name == "search_parcels":
         return "Search ran; results are shown to the user, and a single match is auto-selected and centered."
     if name == "suggest_actions":
@@ -1449,7 +1498,11 @@ def run_chat_stream(
                         # Tool name maps 1:1 to a frontend command type; forward
                         # the input verbatim as the command payload.
                         commands.append({"type": block.name, "payload": inp})
-                        result = _tool_ack(block.name)
+                        result = (
+                            _measure_tool(block.name, inp, ctx)
+                            if block.name in MEASURE_TOOLS
+                            else _tool_ack(block.name)
+                        )
                     else:
                         # Only declared tools reach the browser (DIC-1870).
                         result = "Unknown tool."
