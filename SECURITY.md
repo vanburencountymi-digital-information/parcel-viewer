@@ -126,7 +126,7 @@ Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
   JotForm), not `https:`. `style-src` keeps `'unsafe-inline'`: MapLibre and Vue set
   element styles.
 - **Violations are reported and tested.** Browsers post them to `/api/csp-report`
-  (`report-uri`, and `report-to` via `Reporting-Endpoints`), which logs one warning per
+  (`report-uri`; `report-to` waits for a check on HTTPS staging), which logs one warning per
   violation without query strings or samples. Every e2e test fails on a violation it
   doesn't name (`cspGuard` in `e2e/tests/fixtures.js`), against the real nginx header.
 - **Enforcing** is renaming `Content-Security-Policy-Report-Only` to

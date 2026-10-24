@@ -98,8 +98,6 @@ for path in /demo/ /admin/; do
     esac
     case "$CSP" in *"report-uri /api/csp-report"*) pass "$path CSP reports to /api/csp-report" ;;
       *) fail "$path CSP has no report-uri /api/csp-report: violations go unseen" ;; esac
-    [ -n "$(hdr Reporting-Endpoints)" ] && pass "$path Reporting-Endpoints (report-to)" \
-      || warn "$path no Reporting-Endpoints header (Chromium falls back to report-uri)"
   fi
   case "$(hdr Cache-Control)" in *no-store*) pass "$path Cache-Control no-store" ;; *) warn "$path not no-store (no content-hash build; stale JS risk)" ;; esac
 done

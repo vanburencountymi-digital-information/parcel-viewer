@@ -78,10 +78,11 @@ What still blocks a deploy:
 - [x] Atkinson Hyperlegible is self-hosted; `fonts.googleapis.com` and `fonts.gstatic.com` are out of the CSP.
 
 **CSP enforcement** (DIC-2556, under DIC-1851):
-- [x] Report sink: `report-uri /api/csp-report` + `report-to` (`Reporting-Endpoints`); a rate-limited Django view logs one warning per violation, without query strings or samples.
+- [x] Report sink: `report-uri /api/csp-report`; a rate-limited Django view logs one warning per violation, without query strings or samples.
 - [x] `script-src 'self'`: the inline scripts and the `onerror` handler in `demo/index.html` moved to files; `img-src` / `connect-src` / `frame-src` list the hosts in use instead of `https:`.
 - [x] Every e2e test fails on a `securitypolicyviolation` it doesn't name, so the suite in CI keeps the policy honest.
 - [ ] Staff HTML under `/api/` (Swagger at `/api/docs` loads from `cdn.jsdelivr.net`; Django admin) gets the same header: self-host Swagger UI or give it its own policy before enforcing.
+- [ ] Add `report-to` (Reporting API) once it is seen delivering on HTTPS staging; over plain HTTP Chromium queued its reports but never sent them.
 - [ ] After a clean report window with testers, switch the header to enforcing (only the header name changes; one-line rollback).
 
 ## 4. What has been verified (and how to re-run it)

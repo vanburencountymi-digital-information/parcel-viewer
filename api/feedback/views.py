@@ -133,8 +133,8 @@ class ClientErrorView(PublicPostView):
 class CspReportView(PublicPostView):
     """
     The CSP's report sink (DIC-2556): nginx sends the policy with `report-uri /api/csp-report`
-    and `report-to csp` (Reporting-Endpoints), so a violation in a tester's browser shows up
-    in the server logs, one warning each, before the policy is enforced. Nothing is stored.
+    (report-to later, see infra/nginx.viewer.conf), so a violation in a tester's browser shows
+    up in the server logs, one warning each, before the policy is enforced. Nothing is stored.
     Takes both report formats (feedback.csp), at most CSP_REPORT_MAX_BYTES. Capped per client
     and overall, like /client-errors (CSP_REPORT_RATE_LIMIT, CSP_REPORT_GLOBAL_LIMIT).
     """

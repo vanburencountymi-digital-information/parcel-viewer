@@ -26,7 +26,6 @@ test('script-src allows no inline script or eval', () => {
 
 test('the policy reports to the API sink', () => {
   assert.deepEqual(directive('report-uri'), ['/api/csp-report']);
-  assert.deepEqual(directive('report-to'), ['csp']);
 });
 
 for (const page of PAGES) {

@@ -4,7 +4,8 @@ Browsers send reports two ways, both to POST /csp-report (nginx: /api/csp-report
 
 - the legacy `report-uri` format: Content-Type application/csp-report, one report as
   {"csp-report": {"document-uri": ..., "effective-directive": ..., "blocked-uri": ...}};
-- the Reporting API (`report-to` + Reporting-Endpoints): Content-Type
+- the Reporting API (`report-to` + Reporting-Endpoints; not in the policy yet, see
+  infra/nginx.viewer.conf): Content-Type
   application/reports+json, a list of {"type": "csp-violation", "body": {"documentURL":
   ..., "effectiveDirective": ..., "blockedURL": ...}}, possibly batched with other types.
 

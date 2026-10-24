@@ -16,7 +16,6 @@ test("the pages carry nginx's CSP, so the suite's violation check tests the real
     const csp = headers['content-security-policy'] || headers['content-security-policy-report-only'];
     expect(csp, path).toContain("script-src 'self';");
     expect(csp, path).toContain('report-uri /api/csp-report');
-    expect(headers['reporting-endpoints'], path).toBe('csp="/api/csp-report"');
   }
 });
 
