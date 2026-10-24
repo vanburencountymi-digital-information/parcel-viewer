@@ -60,6 +60,32 @@ describe('the modal', () => {
     cleanup();
   });
 
+  it('close({ returnFocus }) sends focus there instead of the opener', async () => {
+    // The Sources panel uses this when an explainer's citation opens it (DIC-2182).
+    const { store, app, opener, cleanup } = modal();
+    const panel = document.createElement('div');
+    panel.tabIndex = -1;
+    app.appendChild(panel);
+    store.open('Assessment', '<p>x</p>');
+    await flush();
+    store.close({ returnFocus: panel });
+    await flush();
+    expect(app.hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(panel);
+    expect(document.activeElement).not.toBe(opener);
+    cleanup();
+  });
+
+  it('a click event passed to close is ignored, so focus still goes back to the opener', async () => {
+    const { store, opener, cleanup } = modal();
+    store.open('Help', '<p>x</p>');
+    await flush();
+    store.close(new MouseEvent('click'));
+    await flush();
+    expect(document.activeElement).toBe(opener);
+    cleanup();
+  });
+
   it('closes on a backdrop click, not on a click inside', async () => {
     const { store, cleanup } = modal();
     store.open('Help', '<p>x</p>');
