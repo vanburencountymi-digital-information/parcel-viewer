@@ -7,6 +7,7 @@
 import { mountHelpMenu, mountModal } from './admin-menu/index.js';
 import { mountCompare } from './compare/index.js';
 import { mountDrawTools } from './draw-tools/index.js';
+import { mountMapBuddyIsland } from './map-buddy/index.js';
 import { mountMapControls } from './map-controls/index.js';
 import { mountMeasureTools } from './measure-tools/index.js';
 import { mountParcelPanel } from './parcel-panel/index.js';
@@ -25,6 +26,7 @@ const ISLANDS = {
   'parcel-panel': mountParcelPanel,
   'map-controls': mountMapControls,
   search: mountSearch,
+  'map-buddy': mountMapBuddyIsland,
 };
 
 for (const [name, mount] of Object.entries(ISLANDS)) {
