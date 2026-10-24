@@ -1,13 +1,14 @@
 <!-- The frame of an editable Admin Console module (DIC-2389; the markup admin.js's modules
-     each built): the page head with the Edit / Save / Publish toolbar, the flash message,
-     the module's banner and cards (slots), and the version history. -->
+     each built): the page head with the Edit / Save / Publish toolbar (or the module's own,
+     slot "toolbar"), the flash message, the module's banner and cards (slots), and the
+     version history. -->
 <script setup>
 const props = defineProps({
   store: { type: Object, required: true },
   flow: { type: Object, required: true },   // useEditFlow(store)
   title: { type: String, required: true },
   sub: { type: String, required: true },
-  editLabel: { type: String, required: true },
+  editLabel: { type: String, default: 'Edit' },
 });
 const state = props.store.state;
 const when = (v) => (v.created_at || '').slice(0, 19).replace('T', ' ');
@@ -20,16 +21,18 @@ const when = (v) => (v.created_at || '').slice(0, 19).replace('T', ' ');
       <p class="ac-page-sub">{{ sub }}</p>
     </div>
     <div class="ac-toolbar">
-      <template v-if="state.editing">
-        <button type="button" class="ac-btn ac-btn-primary" data-act="save" @click="flow.save()">Save draft</button>
-        <button type="button" class="ac-btn ac-btn-primary" data-act="publish" @click="flow.publish()">Publish</button>
-        <button type="button" class="ac-btn" data-act="preview" @click="flow.preview()">Preview in viewer</button>
-        <button type="button" class="ac-btn" data-act="cancel" @click="flow.cancel()">Cancel</button>
-      </template>
-      <template v-else>
-        <button type="button" class="ac-btn ac-btn-primary" data-act="edit" @click="flow.edit()">{{ editLabel }}</button>
-        <button type="button" class="ac-btn" data-act="history" @click="flow.loadHistory()">Version history</button>
-      </template>
+      <slot name="toolbar">
+        <template v-if="state.editing">
+          <button type="button" class="ac-btn ac-btn-primary" data-act="save" @click="flow.save()">Save draft</button>
+          <button type="button" class="ac-btn ac-btn-primary" data-act="publish" @click="flow.publish()">Publish</button>
+          <button type="button" class="ac-btn" data-act="preview" @click="flow.preview()">Preview in viewer</button>
+          <button type="button" class="ac-btn" data-act="cancel" @click="flow.cancel()">Cancel</button>
+        </template>
+        <template v-else>
+          <button type="button" class="ac-btn ac-btn-primary" data-act="edit" @click="flow.edit()">{{ editLabel }}</button>
+          <button type="button" class="ac-btn" data-act="history" @click="flow.loadHistory()">Version history</button>
+        </template>
+      </slot>
     </div>
   </div>
   <div id="ac-flash" role="status" data-testid="ac-flash">

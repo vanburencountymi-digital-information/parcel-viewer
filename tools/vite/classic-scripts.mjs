@@ -40,7 +40,7 @@ import { engineHooks, hookFor } from './module-hooks.mjs';
 
 // The folders the pages load scripts from, watched in `vite build --watch`: this plugin
 // reads those files itself, so Vite wouldn't otherwise know a change needs a rebuild.
-const SCRIPT_DIRS = ['frontend/public/js', 'engine', 'admin/js', 'map-buddy/js', 'vendor'];
+const SCRIPT_DIRS = ['frontend/public/js', 'engine', 'map-buddy/js', 'vendor'];
 
 // A run of <script src="/local.js"></script> tags separated only by whitespace and comments.
 const SCRIPT_TAG = /<script\s+src="(\/[^"]*)"\s*><\/script>/y;

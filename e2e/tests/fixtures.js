@@ -222,7 +222,7 @@ const CONDITIONAL_HOOKS = {
 };
 const ADMIN_HOOKS = {
   PV_ADMIN: 'the admin console state (getState)',
-  PV_ADMIN_AUTH: 'the staff sign-in island, which admin.js reads for every API call (DIC-2389)',
+  PV_ADMIN_AUTH: 'the staff sign-in, published by the console island (DIC-2389)',
 };
 
 module.exports = { VIEWER_HOOKS, CONDITIONAL_HOOKS, ADMIN_HOOKS, ui, openMapControlsTab, test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };
