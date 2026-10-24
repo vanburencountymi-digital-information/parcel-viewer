@@ -152,7 +152,7 @@ What still blocks a deploy:
 | Issue | Impact | Tracking |
 |---|---|---|
 | ~~**E2E suite isn't in CI**~~ **Fixed:** the `E2E` workflow runs the whole suite on every PR against a seeded fixture database (1,773 parcels around Paw Paw, owners replaced by stand-ins) | CI covers the fixture area only; runs against staging or the real data stay a manual check | DIC-2553 |
-| **CSP is report-only** | No script-injection enforcement yet | enforce after a clean report period |
+| **CSP is report-only** | No script-injection enforcement yet; the policy is tight (`script-src 'self'`, listed hosts) and violations reach `/api/csp-report` and fail e2e | enforce after a clean report period with testers (DIC-2556) |
 | **mypy exemption list** for pre-existing modules | Type-checked but not fully annotated | ADR 0003 |
 | **Annotation store has no persistence** | Drawings are per-session | product decision |
 | **Parcel Packet is sample content** | Testers may think it's real | brief testers |

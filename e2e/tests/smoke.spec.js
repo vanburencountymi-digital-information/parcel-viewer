@@ -9,6 +9,17 @@ test('viewer loads, map renders, and the console stays clean for 10s', async ({ 
   await page.waitForTimeout(10_000);
 });
 
+test("the pages carry nginx's CSP, so the suite's violation check tests the real policy", async ({ request }) => {
+  // DIC-2556: report-only until the testing window; either header name passes.
+  for (const path of ['/demo/', '/admin/']) {
+    const headers = (await request.get(path)).headers();
+    const csp = headers['content-security-policy'] || headers['content-security-policy-report-only'];
+    expect(csp, path).toContain("script-src 'self';");
+    expect(csp, path).toContain('report-uri /api/csp-report');
+    expect(headers['reporting-endpoints'], path).toBe('csp="/api/csp-report"');
+  }
+});
+
 test('basemap is Esri Canvas (no CARTO watermark tiles)', async ({ page }) => {
   const hosts = new Set();
   page.on('request', (r) => { try { hosts.add(new URL(r.url()).host); } catch (_) {} });

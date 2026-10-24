@@ -42,6 +42,29 @@ const test = base.test.extend({
         (failed.length ? '\nFailed requests:\n  ' + failed.slice(0, 10).join('\n  ') : ''));
     }
   }, { auto: true }],
+  // Every test also fails on a Content-Security-Policy violation (DIC-2556), unless it
+  // names it with cspGuard.allow(/regex/). The policy is report-only, so a violation blocks
+  // nothing and logs nothing a test would see; this listener is what keeps the policy in
+  // infra/nginx.viewer.conf (which the e2e stack serves) honest before it is enforced.
+  // Each violation reads "<directive> blocked <url or inline/eval> at <file>:<line> on <page path>".
+  cspGuard: [async ({ page }, use, testInfo) => {
+    const violations = [];
+    const allowed = [];
+    await page.exposeBinding('__pvE2eCspViolation', (_source, v) => { violations.push(v); });
+    await page.addInitScript(() => {
+      document.addEventListener('securitypolicyviolation', (e) => {
+        window.__pvE2eCspViolation(e.effectiveDirective + ' blocked ' + (e.blockedURI || '(none)') +
+          ' at ' + (e.sourceFile || '?') + ':' + (e.lineNumber || 0) + ' on ' + location.pathname);
+      });
+    });
+    await use({ allow: (re) => allowed.push(re), violations });
+    const unexpected = violations.filter((v) => !allowed.some((re) => re.test(v)));
+    if (unexpected.length) {
+      testInfo.annotations.push({ type: 'csp', description: unexpected.join('\n') });
+      throw new Error('Content-Security-Policy violations (fix the page, or the policy in ' +
+        'infra/nginx.viewer.conf):\n  ' + [...new Set(unexpected)].slice(0, 10).join('\n  '));
+    }
+  }, { auto: true }],
 });
 
 const { expect } = base;

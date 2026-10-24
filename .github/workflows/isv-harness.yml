@@ -196,6 +196,8 @@ jobs:
           grep -q '/assets/demo-.*\.css' dist/demo/index.html
           grep -q '/assets/scripts-.*\.js' dist/demo/index.html
           ! grep -q '/frontend/public/js/map.js' dist/demo/index.html   # bundled (slice 2b)
+          # CSP script-src 'self' (DIC-2556): the built pages have no inline script either.
+          ! grep -P '<script(?![^>]*\ssrc=)[^>]*>' dist/demo/index.html dist/admin/index.html
           # The baked county config stays its own tag, just before the served one.
           grep -A1 '/frontend/public/js/county-config.js' dist/demo/index.html | grep -q '/api/config.js'
           # No code from a CDN: MapLibre, Turf and proj4 are bundled from npm (slice 4).
