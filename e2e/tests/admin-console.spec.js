@@ -657,6 +657,128 @@ test.describe('Admin console', () => {
       expect(L.dataSources[0]).toEqual(cfg.layers.dataSources[1]);
     });
 
+    // Styling (DIC-460 / DIC-503), against a stubbed /config with known styling: a polygon
+    // layer with a choropleth, a line layer and a point layer.
+    const STYLED = {
+      name: 'Styled County',
+      layers: { overlays: [
+        { id: 'roads', label: 'Roads', type: 'vector', source: 'roads_tiles', geomType: 'line', fields: ['name', 'feature_type'] },
+        { id: 'wells', label: 'Wells', type: 'vector', source: 'wells_tiles', geomType: 'point' },
+      ] },
+      styling: {
+        colorScheme: 'harvest', theme: 'light', basemap: 'parcels',
+        schemes: [{ id: 'harvest', label: 'Harvest', accent: '#a3473b', interactive: '#2f6b4f' }, { id: 'lake', label: 'Lake', accent: '#1f5e80', interactive: '#7fb6d8' }],
+        labels: { defaultField: 'owner', defaultSize: 'medium', fields: ['owner', 'pin'], zoom: { largeParcels: 13, smallParcels: 15 } },
+        layers: {
+          parcels: { label: 'Parcels', paint: { light: { fill: '#f5f0e8', stroke: '#6b5d4f' }, dark: { fill: '#2a2420', stroke: '#9a8b7c' } },
+            choropleth: { enabled: true, attribute: 'prop_class', mode: 'categorical', transform: 'classGroup', fallback: '#cccccc', opacity: 0.2,
+              fields: ['prop_class', 'gis_acres'], categories: [{ value: '4', label: 'Residential', color: '#e8c07d' }], stops: [] } },
+          roads: { label: 'Roads', line: { width: 2, opacity: 0.9, dash: 'dashed', casingWidth: 1, light: { color: '#333333' }, dark: {} },
+            labels: { enabled: true, field: 'name', size: 11, minZoom: 14 } },
+          wells: { label: 'Wells', point: { radius: 4, strokeWidth: 1, light: { color: '#b58d4a' }, dark: {} } },
+        },
+      },
+    };
+    async function gotoStyled(page, cfg = STYLED) {
+      await page.route('**/api/config', (route) => route.fulfill({ json: cfg }));
+      await gotoAdmin(page, 'styling');
+      await expect(status(page)).toHaveText('Live config · read-only');
+    }
+    const stylePick = (page) => card(page, 'Layer styling').getByRole('combobox').first();
+
+    test('styling: shows the schemes, theme, the picked layer by its geometry, and parcel labels', async ({ page }) => {
+      await gotoStyled(page);
+      const schemes = card(page, 'Color scheme');
+      await expect(schemes).toContainText('default: harvest');
+      await expect(schemes.locator('.ac-scheme')).toHaveText(['Harvest default', 'Lake']);
+      await expect(schemes.locator('.is-active')).toHaveText('Harvest default');
+      await expect(dd(card(page, 'Theme & basemap'), 'Default theme')).toHaveText('light');
+      await expect(dd(card(page, 'Theme & basemap'), 'Base layer')).toHaveText('parcels');
+
+      // Parcels: polygon paint, the choropleth with its categories, and no label fields.
+      const ls = card(page, 'Layer styling');
+      await expect(stylePick(page).locator('option')).toHaveText(['Parcels', 'Roads', 'Wells']);
+      await expect(ls).toContainText('fill, stroke & choropleth');
+      await expect(dd(ls, 'Light — fill')).toHaveText('#f5f0e8');
+      await expect(dd(card(page, 'Choropleth'), 'Mode')).toHaveText('categorical · classGroup');
+      await expect(dd(card(page, 'Choropleth'), 'Opacity')).toHaveText('0.2');
+      await expect(card(page, 'Categories').locator('tbody tr')).toHaveText(['#e8c07d4Residential']);
+      await expect(card(page, 'Labels')).toContainText('text at each feature');
+      await expect(dd(card(page, 'Labels'), 'Labels')).toHaveText('Off');
+
+      // A line layer: width, dash, casing; its labels along the line; no choropleth.
+      await stylePick(page).selectOption('roads');
+      await expect(ls).toContainText('line — casing, dash & glow');
+      await expect(dd(ls, 'Width')).toHaveText('2 px');
+      await expect(dd(ls, 'Dash')).toHaveText('dashed');
+      await expect(dd(ls, 'Glow width')).toHaveText('— blurred halo (0 = none)');
+      await expect(ls).toContainText('Width-by-type needs');
+      await expect(card(page, 'Choropleth')).toHaveCount(0);
+      await expect(card(page, 'Labels')).toContainText('text along the line');
+      await expect(dd(card(page, 'Labels'), 'Size · min zoom')).toHaveText('11px · z14+');
+
+      // A point layer whose tiles have no attributes.
+      await stylePick(page).selectOption('wells');
+      await expect(ls).toContainText('point — radius & stroke');
+      await expect(dd(ls, 'Radius')).toHaveText('4 px');
+      await expect(card(page, 'Labels')).toContainText('This layer’s tiles expose no label-able attributes.');
+
+      const pl = card(page, 'Parcel labels');
+      await expect(dd(pl, 'Default field')).toHaveText('owner');
+      await expect(dd(pl, 'Zoom — large / small')).toHaveText('large 13+, small 15+');
+      await expect(formField(main(page)).filter({ hasNot: page.locator('[data-style-layer]') })).toHaveCount(1);   // only the picker
+    });
+
+    test('styling: edits the scheme, the paint, the choropleth ramp and labels, and saves them', async ({ page, consoleGuard }) => {
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoStyled(page);
+      await main(page).getByRole('button', { name: 'Edit styling' }).click();
+      await expect(main(page)).toContainText('Editing a draft.');
+      await card(page, 'Color scheme').getByRole('button', { name: /Lake/ }).click();
+      await expect(card(page, 'Color scheme').locator('.is-active')).toHaveText('Lake default');
+      await draftField(page, 'styling.theme').selectOption('dark');
+      await draftField(page, 'styling.layers.parcels.paint.light.fill').fill('#112233');
+      await draftField(page, 'styling.layers.parcels.choropleth.opacity').fill('0.35');
+
+      // Switching the mode swaps the ramp; rows add and remove.
+      await draftField(page, 'styling.layers.parcels.choropleth.mode').selectOption('graduated');
+      await expect(card(page, 'Color stops').locator('tbody')).toHaveText('No stops yet — add one below.');
+      await expect(card(page, 'Categories')).toHaveCount(0);
+      await main(page).getByRole('button', { name: '+ Add stop' }).click();
+      await main(page).getByRole('button', { name: '+ Add stop' }).click();
+      await draftField(page, 'styling.layers.parcels.choropleth.stops.1.min').fill('100000');
+      await card(page, 'Color stops').getByRole('button', { name: 'Remove' }).first().click();
+      await expect(card(page, 'Color stops').locator('tbody tr')).toHaveCount(1);
+
+      // The picker keeps the edits while it moves between layers.
+      await stylePick(page).selectOption('roads');
+      await draftField(page, 'styling.layers.roads.line.dash').selectOption('dotted');
+      await draftField(page, 'styling.layers.roads.labels.enabled').uncheck();
+      await stylePick(page).selectOption('parcels');
+      await expect(draftField(page, 'styling.layers.parcels.paint.light.fill')).toHaveValue('#112233');
+      await draftField(page, 'styling.labels.zoom.largeParcels').fill('12');
+
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      const S = seen.saved.payload.styling;
+      expect(S).toMatchObject({ colorScheme: 'lake', theme: 'dark', labels: { zoom: { largeParcels: 12 } } });
+      expect(S.layers.parcels.paint.light.fill).toBe('#112233');
+      expect(S.layers.parcels.choropleth).toMatchObject({ mode: 'graduated', opacity: 0.35, stops: [{ min: 100000, label: '', color: '#888888' }] });
+      expect(S.layers.roads.line.dash).toBe('dotted');
+      expect(S.layers.roads.labels.enabled).toBe(false);
+    });
+
+    test('styling: a config without styling says so; one without layers says that', async ({ page }) => {
+      await gotoStyled(page, { name: 'Plain County' });
+      await expect(main(page)).toContainText('No styling config in the manifest yet.');
+      await page.unroute('**/api/config');
+      await page.route('**/api/config', (route) => route.fulfill({ json: { name: 'Plain County', styling: { schemes: [], labels: {} } } }));
+      await page.reload();
+      await expect(card(page, 'Layer styling')).toContainText('No stylable layers in the manifest yet.');
+      await expect(card(page, 'Choropleth')).toHaveCount(0);
+    });
+
     test('access: shows the live access settings and the services, read-only', async ({ page }) => {
       const cfg = await (await page.request.get('/api/config')).json();
       const A = cfg.access || {};
