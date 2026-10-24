@@ -1350,9 +1350,24 @@ def _pin_key(pin) -> str:
     return "".join(ch for ch in str(pin or "").lower() if ch.isalnum())
 
 
+# The characters a PIN can hold. A PIN from the request's map state is rebuilt from this
+# table, so only these constant characters reach the URL (CodeQL py/partial-ssrf, DIC-2434).
+_PIN_CHARS = {c: c for c in "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz- "}
+
+
+def _safe_pin(pin: str) -> str | None:
+    """Takes a PIN. Returns it if it's 1-40 PIN characters, else None."""
+    if not 0 < len(pin) <= 40 or any(c not in _PIN_CHARS for c in pin):
+        return None
+    return "".join(_PIN_CHARS[c] for c in pin)
+
+
 def _parcel_geometry(pin: str) -> dict | None:
     """Takes a PIN. Returns that parcel's GeoJSON geometry from the parcel API, or None."""
-    data = _http_get_json("/search?q=" + urllib.parse.quote(pin) + "&limit=5")
+    safe = _safe_pin(pin)
+    if safe is None:
+        return None
+    data = _http_get_json("/search?" + urllib.parse.urlencode({"q": safe, "limit": 5}))
     want = _pin_key(pin)
     match = next((r for r in data.get("results", []) if _pin_key(r.get("pin")) == want), None)
     if not match:
