@@ -15,6 +15,9 @@ const authBox = (page) => page.getByTestId('ac-auth');
 // Any editable form field (text, number, select, checkbox…).
 const formField = (scope) => ['textbox', 'spinbutton', 'combobox', 'listbox', 'checkbox', 'radio', 'slider']
   .map((role) => scope.getByRole(role)).reduce((a, b) => a.or(b));
+// The value next to a row's label (a <dt> / <dd> pair), and a module's card by its title.
+const dd = (scope, label) => scope.locator('dt', { hasText: new RegExp('^' + label + '$') }).locator('xpath=following-sibling::dd[1]');
+const card = (page, title) => main(page).locator('.ac-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 
 async function gotoAdmin(page, mod = 'county') {
   await page.goto('/admin/#' + mod);
@@ -201,6 +204,68 @@ test.describe('Admin console', () => {
       await expect(authBox(page).getByRole('button', { name: 'Sign in' })).toBeVisible();
       await expect.poll(() => seen.logoutAuth).toBe('Token ' + TOKEN);
       expect(await page.evaluate(() => sessionStorage.getItem('pv-admin-auth'))).toBeNull();
+    });
+
+    // Layer discovery (DIC-502), signed in: pick a serveable layer, see what it is, add it.
+    const DISCOVERED = [
+      { id: 'drain_lines', source: 'drain_lines_tiles', sourceLayer: 'drain_lines', geomType: 'line', rowCount: 1234,
+        dbSource: 'geo.drain_lines', fields: ['name', 'kind'] },
+      { id: 'parks', source: 'parks_tiles', sourceLayer: 'parks', geomType: 'polygon', registered: true },
+      { id: 'subdivisions', source: 'subdivisions_tiles', geomType: 'polygon' },   // already in the config
+      { id: 'wells', source: 'wells_tiles', geomType: 'point' },
+    ];
+    const pick = (page) => main(page).getByRole('combobox', { name: 'PostGIS layer' });
+
+    test('discovery lists the layers not yet added; picking one shows what it is; Add puts it in the draft', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 404/);
+      const seen = {};
+      await stubSignIn(page, seen);
+      await page.route('**/api/admin/discover/layers*', (route) => route.fulfill({ json: { layers: DISCOVERED } }));
+      await page.route('**/api/config/*/draft', async (route) => {
+        if (route.request().method() === 'GET') return route.fulfill({ status: 404, json: {} });
+        seen.saved = route.request().postDataJSON();
+        await route.fulfill({ json: { ok: true } });
+      });
+      await gotoAdmin(page, 'data');
+      await signIn(page);
+
+      await expect(pick(page)).toBeEnabled();
+      await expect(pick(page).locator('option')).toHaveText(['Select a layer to add…', 'Drain Lines — line, 1,234 features', 'Wells — point']);
+      await main(page).getByRole('button', { name: 'Add layer' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Pick a layer to add first.');
+
+      await pick(page).selectOption('drain_lines_tiles');
+      const meta = main(page).locator('#ac-pg-pick-meta');
+      await expect(meta.locator('dd')).toHaveText(['line', '1,234', 'geo.drain_lines', 'drain_lines_tiles']);
+
+      await main(page).getByRole('button', { name: 'Add layer' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Added “Drain Lines”. Publish to make it live in the viewer.');
+      await expect(main(page).getByRole('button', { name: 'Save draft' })).toBeVisible();   // now editing
+      await expect(card(page, 'PostGIS layers').locator('[data-path$=".label"]').last()).toHaveValue('Drain Lines');
+      await expect(pick(page).locator('option')).toHaveText(['Select a layer to add…', 'Wells — point']);
+
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      const p = seen.saved.payload;
+      expect(p.layers.overlays.at(-1)).toEqual({ id: 'drain_lines', label: 'Drain Lines', type: 'vector', source: 'drain_lines_tiles',
+        sourceLayer: 'drain_lines', geomType: 'line', minZoom: 12, default: false, dbSource: 'geo.drain_lines', fields: ['name', 'kind'] });
+      expect(p.styling.layers.drain_lines).toEqual({ label: 'Drain Lines',
+        paint: { light: { fill: '#1F5E80', stroke: '#1F5E80' }, dark: { fill: '#2E76A6', stroke: '#7fb6d8' } } });
+    });
+
+    test('discovery says why when there is nothing to add, it is not allowed, or the DB is down', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of (403|500)/);
+      await stubSignIn(page, {});
+      const replies = [{ json: { layers: [DISCOVERED[1]] } }, { status: 403, json: {} }, { status: 500, json: {} }];
+      await page.route('**/api/admin/discover/layers*', (route) => route.fulfill(replies.shift()));
+      await gotoAdmin(page, 'county');
+      await signIn(page);
+      for (const text of [/All available layers added/, /isn’t allowed for this account/, /Couldn’t reach the tile server \/ DB \(HTTP 500\)/]) {
+        await navItem(page, 'data').click();
+        await expect(main(page)).toContainText(text);
+        await expect(pick(page)).toBeDisabled();
+        await navItem(page, 'county').click();
+      }
     });
 
     test('a refused sign-in says why and keeps the form', async ({ page, consoleGuard }) => {
@@ -451,9 +516,7 @@ test.describe('Admin console', () => {
     });
 
     // Access & Ops (DIC-462): what each row shows, and that its editor sends each field
-    // with its type. `dd` is the value next to a row's label.
-    const dd = (scope, label) => scope.locator('dt', { hasText: new RegExp('^' + label + '$') }).locator('xpath=following-sibling::dd[1]');
-    const card = (page, title) => main(page).locator('.ac-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+    // with its type.
 
     // County Configuration (DIC-458): what each row shows from the live config, and the
     // reference lookups.
@@ -529,6 +592,69 @@ test.describe('Admin console', () => {
       await main(page).getByRole('button', { name: 'Save draft' }).click();
       await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
       expect(seen.saved.payload.map.zoom).toBeNull();
+    });
+
+    // Data & Layers (DIC-461): the tile server, the PostGIS layers (editable), the WMS /
+    // raster overlays (read-only), and the data sources.
+    const isPg = (o) => ['vector', 'postgis', 'mvt'].includes(String(o.type || '').toLowerCase());
+    const zoomText = (o) => (o.minZoom ? `z${o.minZoom}+` : 'all');
+
+    test('data: shows the tile server, layers, overlays and sources as the live config has them', async ({ page }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const L = cfg.layers || {};
+      const overlays = L.overlays || [];
+      await gotoAdmin(page, 'data');
+      await expect(main(page)).toContainText('Loaded live from /config.');
+      const ts = card(page, 'Tile server');
+      await expect(dd(ts, 'Provider')).toHaveText((L.tileServer && L.tileServer.provider) || '—');
+      await expect(dd(ts, 'URL')).toHaveText((L.tileServer && L.tileServer.url) || '—');
+      const pg = overlays.filter(isPg);
+      const pgCard = card(page, 'PostGIS layers');
+      await expect(pgCard).toContainText(`${pg.length} vector layer(s)`);
+      await expect(pgCard.locator('tbody tr')).toHaveText(pg.map((o) => o.label + (o.source || '—') + zoomText(o) + (o.default ? 'on' : '')));
+      const ext = overlays.filter((o) => !isPg(o));
+      await expect(card(page, 'External overlays').locator('tbody tr')).toHaveText(ext.map((o) => o.label + o.type + o.source + zoomText(o)));
+      const ds = L.dataSources || [];
+      await expect(card(page, 'Data sources').locator('tbody tr')).toHaveText(ds.map((d) => d.label + d.source));
+      await expect(card(page, 'Data sources')).toContainText('Self-serve ingestion');
+      await expect(main(page).getByRole('combobox', { name: 'PostGIS layer' })).toBeDisabled();
+    });
+
+    test('data: the editor edits the PostGIS layers and data sources; overlays stay read-only', async ({ page, consoleGuard }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const overlays = cfg.layers.overlays;
+      const firstPg = overlays.findIndex(isPg);
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'data');
+      await main(page).getByRole('button', { name: 'Edit layers' }).click();
+      await expect(main(page)).toContainText('Editing a draft.');
+      await expect(draftField(page, `layers.overlays.${firstPg}.label`)).toHaveValue(overlays[firstPg].label);
+      await expect(formField(card(page, 'External overlays'))).toHaveCount(0);
+
+      await draftField(page, 'layers.tileServer.url').fill('/tiles-2');
+      await draftField(page, `layers.overlays.${firstPg}.minZoom`).fill('9');
+      await draftField(page, `layers.overlays.${firstPg}.default`).check();
+      const pgRows = card(page, 'PostGIS layers').locator('tbody tr');
+      const before = await pgRows.count();
+      await main(page).getByRole('button', { name: '+ Add PostGIS layer' }).click();
+      await expect(pgRows).toHaveCount(before + 1);
+      await draftField(page, `layers.overlays.${overlays.length}.source`).fill('new_tiles');
+      const dsRows = card(page, 'Data sources').locator('tbody tr');
+      const dsBefore = await dsRows.count();
+      await main(page).getByRole('button', { name: '+ Add data source' }).click();
+      await expect(dsRows).toHaveCount(dsBefore + 1);
+      await card(page, 'Data sources').getByRole('button', { name: 'Remove' }).first().click();
+      await expect(dsRows).toHaveCount(dsBefore);
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+
+      const L = seen.saved.payload.layers;
+      expect(L.tileServer.url).toBe('/tiles-2');
+      expect(L.overlays[firstPg]).toMatchObject({ minZoom: 9, default: true });
+      expect(L.overlays.at(-1)).toEqual({ id: '', label: 'New PostGIS layer', type: 'vector', source: 'new_tiles', minZoom: 0, default: false });
+      expect(L.dataSources).toHaveLength(cfg.layers.dataSources.length);
+      expect(L.dataSources[0]).toEqual(cfg.layers.dataSources[1]);
     });
 
     test('access: shows the live access settings and the services, read-only', async ({ page }) => {

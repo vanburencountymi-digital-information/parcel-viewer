@@ -288,8 +288,8 @@ describe('modules', () => {
   it('keeps the nav order; legacy modules take their renderer from admin.js, and one without is left out', () => {
     const render = () => {};
     const ids = resolveModules({ county: render, intelligence: render, styling: render, manifest: render }).map((m) => m.id);
-    expect(ids).toEqual(['county', 'intelligence', 'styling', 'access', 'manifest']);
+    expect(ids).toEqual(['county', 'intelligence', 'styling', 'data', 'access', 'manifest']);
     expect(MODULES.find((m) => m.id === 'access').component).toBeTruthy();
-    expect(resolveModules().map((m) => m.id)).toEqual(['county', 'intelligence', 'access']);
+    expect(resolveModules().map((m) => m.id)).toEqual(['county', 'intelligence', 'data', 'access']);
   });
 });
