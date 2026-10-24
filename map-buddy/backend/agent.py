@@ -250,10 +250,11 @@ WORKFLOWS: dict[str, dict[str, Any]] = {
             },
             # Branching: only add the flood overlay when the parcel is actually in a
             # special flood hazard area (evaluated server-side against the env lookup).
+            # Both flood lookups return a bool here, not FEMA's "T"/"F" (DIC-2433).
             {
                 "type": "set_layer_visibility",
                 "payload": {"layer_id": "flood", "visible": True},
-                "when": {"field": "flood.in_special_flood_hazard_area", "op": "==", "value": "T"},
+                "when": {"field": "flood.in_special_flood_hazard_area", "op": "==", "value": True},
             },
         ],
         "env_lookup": True,
