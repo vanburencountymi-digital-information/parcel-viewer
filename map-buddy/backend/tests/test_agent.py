@@ -132,6 +132,35 @@ class ServiceKeyTests(TestCase):
         self.assertIsNone(mock_open.call_args.args[0].get_header("X-pv-service-key"))
 
 
+FLOOD_OVERLAY = {"type": "set_layer_visibility", "payload": {"layer_id": "flood", "visible": True}}
+
+
+class BuildabilityFloodBranchTests(TestCase):
+    """check_buildability adds the flood overlay only inside a special flood hazard area.
+    The lookups return a bool for that field, not FEMA's "T" (DIC-2433)."""
+
+    def _buildability_commands(self, flood: dict) -> list:
+        with patch("agent._query_environment", autospec=True, return_value={"flood": flood}):
+            _note, cmds = agent._expand_workflow(
+                "check_buildability", {"pin": "1"}, {"centroid": [-85.9, 42.2]}
+            )
+        return cmds
+
+    def test_parcel_in_a_flood_hazard_area_gets_the_overlay(self) -> None:
+        cmds = self._buildability_commands({"zone": "AE", "in_special_flood_hazard_area": True})
+
+        self.assertIn(FLOOD_OVERLAY, cmds)
+
+    def test_parcel_outside_gets_no_overlay(self) -> None:
+        for flood in (
+            {"zone": "X", "in_special_flood_hazard_area": False},
+            {"zone": None, "note": "no FEMA flood zone mapped at this point"},
+            {"error": "service unavailable right now"},
+        ):
+            with self.subTest(flood=flood):
+                self.assertNotIn(FLOOD_OVERLAY, self._buildability_commands(flood))
+
+
 class FloodFromParcelApiTests(TestCase):
     """Flood answers come from the parcel API's copy of FEMA's zones (DIC-2412); FEMA's own
     service is asked only while that data isn't loaded."""

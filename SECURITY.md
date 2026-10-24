@@ -144,7 +144,7 @@ Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
 **The AI boundary**
 - Facts come from the database and deterministic code, never from the model. The model
   only narrates facts it is given, and its tools can only drive the map (the browser runs
-  only commands in a fixed table, `_CMDS` in `map-buddy/js/map-buddy.js`) or read the same
+  only commands in a fixed table, `_CMDS` in `map-buddy/js/map-buddy-commands.js`) or read the same
   public API everyone can. It has no write access and
   no credentials. See `ARCHITECTURE.md` → "The AI boundary".
 - **What reaches Anthropic:** the user's chat text and the parcel facts in play (PIN,

@@ -4,7 +4,8 @@
 //   open(title, body, onMount?, opts?)   body: an HTML string, or { component, props } for
 //                                        a Vue component; onMount(bodyEl) runs once it's on
 //                                        the page; opts: { wide, flush }
-//   close()
+//   close(opts?)                         opts: { returnFocus } sends focus there instead of
+//                                        back to the opener
 //
 // Opening while one is open replaces it. Focus goes back where it was on close.
 import { markRaw, reactive } from 'vue';
@@ -39,8 +40,11 @@ export function createModalStore() {
     onMount = typeof mountFn === 'function' ? mountFn : null;
   }
 
-  function close() {
+  function close(opts) {
     if (!state.open) return;
+    // An element, not a click event: close is also wired straight to buttons.
+    const target = opts && opts.returnFocus;
+    if (target && typeof target.focus === 'function') returnFocus = target;
     state.open = false;
     state.html = null;
     state.component = null;
