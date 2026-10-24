@@ -73,7 +73,8 @@ CI runs the same checks on every pull request (`.github/workflows/lint.yml`). Ru
 | `frontend/public/css/` | Shared map styles |
 | `api/` | The parcel API (GeoDjango): parcels, county config and its store, staff accounts, data access (see `api/README.md`) |
 | `map-buddy/backend/` | Map Buddy FastAPI microservice |
-| `map-buddy/js/map-buddy.js` | Browser client — SSE stream consumer, command dispatcher |
+| `map-buddy/js/map-buddy.js` | Browser client — the chat panel and its SSE stream consumer |
+| `map-buddy/js/map-buddy-commands.js` | The map commands the AI's replies run (plain JS, behind the panel's adapter) |
 | `map-buddy/css/map-buddy.css` | Map Buddy panel styles |
 | `map-buddy/deploy.sh` | Cloud Run build + deploy script |
 | `engine/` | ISV source-agnostic capability engine + eval harness (see below) |
@@ -187,7 +188,7 @@ The viewer is configured to reach Map Buddy via `COUNTY.endpoints.mapBuddy` in `
 | `done` | `{response_text, commands, citations}` | Final turn; `commands` are forwarded to `_runCommands` in the browser |
 | `error` | `{message}` | Model or network failure |
 
-**`commands`** are `{type, payload}` objects where `type` maps 1:1 to a handler in `map-buddy/js/map-buddy.js`. The model calls tools server-side; this file executes them in the browser.
+**`commands`** are `{type, payload}` objects where `type` maps 1:1 to a handler in `map-buddy/js/map-buddy-commands.js`. The model calls tools server-side; this file executes them in the browser.
 
 ### Chat tool categories
 

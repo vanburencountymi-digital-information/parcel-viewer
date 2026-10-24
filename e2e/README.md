@@ -88,6 +88,7 @@ the specs that touch them — never as a blanket rule.
 | `map-click` | A real mouse click on the canvas selects the parcel |
 | `assessment-years` | AV history labels (panel chart, explainer chart, facts sent to the AI) follow the data's roll year, not the calendar; a county-config `assessing.rollYear` overrides it (DIC-1878) |
 | `context-menu` | Right-click menu: opens at the pointer; every copy row puts exactly its shown text on the clipboard, at the clicked point; select-here keeps the camera; Shift+F10 / arrows / Esc (selection kept, stops a search orbit); a right-drag doesn't open it; map move / outside click close it; Google Maps + Street View links |
+| `map-buddy-chat` | Map Buddy's chat panel with `/chat` stubbed (no model call): open / collapse / resize and what's remembered, welcome ideas by parcel, the composer (Enter, Shift+Enter, locked while a turn runs), Markdown rendered safely, action chips and sources, suggestion chips, info and result bubbles, the history sent back, every failure message, and the panel API |
 | `map-buddy-commands` | Every command that opens a window/tool/mode: it closes, releases the map-click gate, and a real click still selects a parcel (regression guard for DIC-1875) |
 | `tool-windows` | Every Help & tools menu window and parcel tool: open, close by button, close by Esc, focus not lost |
 | `map-controls` | Every Select / Measure / Draw tool arms and exits, releasing the gate and restoring panning |

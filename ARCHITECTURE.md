@@ -79,7 +79,7 @@ means adding a `geo.<name>_tiles` function in county-data-services and restartin
   `/kb/resolve` and the workflow routes narrate or look up facts. `/status` and `/health`
   report availability. Quota, caching and cost logging live in `usage.py` and `cache.py`.
 - `map-buddy/js/`: the browser client. It streams `/chat` and runs each command only if
-  it's in its fixed command table (`_CMDS` in `map-buddy.js`); anything else is ignored.
+  it's in its fixed command table (`_CMDS` in `map-buddy-commands.js`); anything else is ignored.
 
 ### The front end (`demo/index.html`, `frontend/public/js/`)
 Plain JavaScript modules (IIFEs) on MapLibre GL, loaded in a fixed order by
@@ -209,7 +209,7 @@ See ADR 0001 and `docs/RUNBOOK.md`.
 | Add a map layer | A `geo.<name>_tiles` function (county-data-services), then the county config (admin console) |
 | Add an API route | A view and URL in the right `api/` app, with a test in its `tests/` |
 | Change a limit or timeout | Its environment variable (`infra/DEPLOY-CHECKLIST.md`); nginx limits in `infra/nginx.viewer.conf` |
-| Add a Map Buddy command | The tool in `map-buddy/backend/agent.py` **and** its handler in `_CMDS` (`map-buddy/js/map-buddy.js`) |
+| Add a Map Buddy command | The tool in `map-buddy/backend/agent.py` **and** its handler in `_CMDS` (`map-buddy/js/map-buddy-commands.js`) |
 | Add an explainer or other capability | A core in `engine/capabilities/`, registered in `register.js` |
 | Change a panel that's a Vue island | Its folder in `frontend/src/` (component, store, tests); ADR 0017 |
 | Change the look | Theme tokens in `frontend/public/css/style.css`; the theme manifest |
