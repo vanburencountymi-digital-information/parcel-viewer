@@ -4,7 +4,7 @@
  * Config-as-data. The console's shell (nav, top bar, staff sign-in) and its config and
  * draft (the /config API, DIC-465, over the baked window.COUNTY; save, publish, history)
  * are Vue since DIC-2389: frontend/src/admin-console, and so are some modules
- * (Intelligence, Access & Ops). The modules here are still drawn as HTML strings,
+ * (County Configuration, Intelligence, Access & Ops). The modules here are still drawn as HTML strings,
  * moving to Vue one at a time.
  * Each registers its render(host) in window.PV_ADMIN_LEGACY.renderers; the shell calls
  * attach(store) with its store before the first render.
@@ -51,150 +51,13 @@
   // A store result ({ok, message}) as the module's flash.
   function flashResult(host, res) { flash(host, res.ok ? 'ok' : 'err', res.message); }
 
-  // ── County Configuration module (DIC-458 view · DIC-464/466 editing) ────────
-  function renderCounty(host) {
-    var editing = STATE.editing;
-    var C = editing ? (STATE.draft || {}) : (STATE.config || {});
-    var m = C.map || {}, ep = C.endpoints || {}, forms = C.forms || {}, integ = C.integrations || {};
-    var propClass = (C.labels && C.labels.propClass) || {};
-    var schoolDist = (C.labels && C.labels.schoolDist) || {};
-
-    var srcNote = STATE.source === 'api'
-      ? 'Loaded live from the runtime <code>/config</code> API (<b>DIC-465</b>).'
-      : 'Runtime <code>/config</code> API (<b>DIC-465</b>) not reachable — showing the baked <code>county-config.js</code> fallback.';
-
-    function code(v) { return '<code>' + esc(v) + '</code>'; }
-    function display(val, type) {
-      if (val == null || val === '') return '—';
-      return type === 'json' ? code(JSON.stringify(val)) : esc(val);
-    }
-    // A field renders as static text (view) or a bound input (edit).
-    function field(label, path, val, type) {
-      var cell;
-      if (editing) {
-        var iv = type === 'json' ? JSON.stringify(val) : (val == null ? '' : val);
-        cell = '<input class="ac-input" data-path="' + path + '" data-type="' + (type || 'str') + '" value="' + esc(iv) + '">';
-      } else {
-        cell = display(val, type);
-      }
-      return '<dt>' + esc(label) + '</dt><dd>' + cell + '</dd>';
-    }
-
-    var toolbar = editing
-      ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
-        '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
-        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
-        '<button class="ac-btn" data-act="cancel">Cancel</button>'
-      : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit configuration</button>' +
-        '<button class="ac-btn" data-act="history">Version history</button>';
-
-    var banner = editing
-      ? '<div class="ac-banner ac-banner-edit"><span>✎</span><div><b>Editing a draft.</b> ' +
-        '<b>Save draft</b> stores your changes; <b>Publish</b> makes the draft the live config as a new version. ' + srcNote + '</div></div>'
-      : '<div class="ac-banner"><span>ⓘ</span><div>' + srcNote +
-        ' Editing writes to the config store (<b>DIC-464</b>); real auth is <b>DIC-463</b>.</div></div>';
-
-    // Parcel number format (DIC-501) — per-county PIN segments, read by the Tax
-    // Description explainer. Separator/intro are simple fields; segments are an
-    // editable, ordered list (add/remove via the shared array handlers).
-    var pn = C.parcelNumber || {};
-    var pnSegs = pn.segments || [];
-    var pnSegRows = pnSegs.map(function (s, i) {
-      var p = 'parcelNumber.segments.' + i;
-      if (editing) {
-        return '<tr><td class="ac-pn-ord">' + (i + 1) + '</td>' +
-          '<td><input class="ac-input ac-input-sm" data-path="' + p + '.name" data-type="str" value="' + esc(s.name || '') + '"></td>' +
-          '<td><input class="ac-input" data-path="' + p + '.description" data-type="str" value="' + esc(s.description || '') + '"></td>' +
-          '<td><button class="ac-btn ac-btn-sm" data-remove="parcelNumber.segments" data-index="' + i + '">Remove</button></td></tr>';
-      }
-      return '<tr><td class="ac-pn-ord">' + (i + 1) + '</td><td>' + esc(s.name || '—') + '</td><td>' + esc(s.description || '—') + '</td></tr>';
-    }).join('');
-    if (!pnSegRows) pnSegRows = '<tr><td colspan="' + (editing ? 4 : 3) + '" class="ac-readonly">No segments defined' + (editing ? ' — add one below.' : '.') + '</td></tr>';
-    var pnCard =
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Parcel number format</h2>' +
-        '<span class="ac-card-note">how this county’s PIN breaks down · used by the Tax Description explainer (DIC-501)</span></div>' +
-        '<dl class="ac-grid">' +
-          field('Separator', 'parcelNumber.separator', pn.separator, 'str') +
-          field('Example PIN', 'parcelNumber.example', pn.example, 'str') +
-          field('Intro line', 'parcelNumber.intro', pn.intro, 'str') +
-        '</dl>' +
-        '<table class="ac-table"><thead><tr><th style="width:32px">#</th><th>Segment</th><th>Meaning</th>' +
-          (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + pnSegRows + '</tbody></table>' +
-        (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="parcelNumber.segments">+ Add segment</button></div>' : '') +
-      '</div>';
-
-    var html =
-      '<div class="ac-page-head ac-page-head-row"><div>' +
-        '<h1 class="ac-page-title">County Configuration</h1>' +
-        '<p class="ac-page-sub">Identity, map defaults, endpoints, and reference lookups for this county.</p></div>' +
-        '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
-
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Identity</h2></div>' +
-        '<dl class="ac-grid">' +
-          field('Name', 'name', C.name, 'str') +
-          field('State', 'state', C.state, 'str') +
-          field('Data request form', 'forms.dataRequest', forms.dataRequest, 'str') +
-        '</dl></div>' +
-
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Map defaults</h2></div>' +
-        '<dl class="ac-grid">' +
-          field('Center [lng, lat]', 'map.center', m.center, 'json') +
-          field('Default zoom', 'map.zoom', m.zoom, 'num') +
-          field('Extent', 'map.extent', m.extent, 'json') +
-        '</dl></div>' +
-
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Endpoints</h2></div>' +
-        '<dl class="ac-grid">' +
-          field('Map Buddy AI', 'endpoints.mapBuddy', ep.mapBuddy, 'str') +
-        '</dl></div>' +
-
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Integrations</h2>' +
-        '<span class="ac-card-note">Google Maps Embed key powers in-panel Street View. Restrict it by HTTP referrer to this domain. Empty &rarr; Street View opens in a new tab.</span></div>' +
-        '<dl class="ac-grid">' +
-          field('Google Maps Embed key', 'integrations.googleMapsEmbedKey', integ.googleMapsEmbedKey, 'str') +
-        '</dl></div>' +
-
-      pnCard +
-
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Reference lookups</h2>' +
-        '<span class="ac-card-note">code → name maps' + (editing ? ' · edit via API for now' : ' shared by the popup &amp; explainers') + '</span></div>' +
-        '<dl class="ac-grid">' +
-          '<dt>Property classes</dt><dd>' + Object.keys(propClass).length + ' codes ' +
-            '<button class="ac-lookup-toggle" data-lookup="propClass">View</button></dd>' +
-          '<dt>School districts</dt><dd>' + Object.keys(schoolDist).length + ' codes ' +
-            '<button class="ac-lookup-toggle" data-lookup="schoolDist">View</button></dd>' +
-        '</dl><div id="ac-lookup-out"></div></div>' +
-      '<div id="ac-history"></div>';
-
-    host.innerHTML = html;
-    wireCounty(host, { propClass: propClass, schoolDist: schoolDist });
-  }
-
-  function toggleLookup(host, btn) {
-    var maps = host._maps || {};
-    var out = host.querySelector('#ac-lookup-out');
-    var key = btn.getAttribute('data-lookup');
-    if (host._lookupShown === key) {
-      out.innerHTML = ''; host._lookupShown = null;
-      host.querySelectorAll('[data-lookup]').forEach(function (b) { b.textContent = 'View'; });
-      return;
-    }
-    host._lookupShown = key;
-    host.querySelectorAll('[data-lookup]').forEach(function (b) { b.textContent = b === btn ? 'Hide' : 'View'; });
-    var rows = Object.keys(maps[key] || {}).sort().map(function (k) {
-      return '<tr><td>' + esc(k) + '</td><td>' + esc(maps[key][k]) + '</td></tr>';
-    }).join('');
-    out.innerHTML = '<table class="ac-table"><thead><tr><th>Code</th><th>Name</th></tr></thead><tbody>' + rows + '</tbody></table>';
-  }
-
   // Delegated handlers attach ONCE to the persistent #ac-content host (re-rendering
   // replaces its innerHTML, so per-render addEventListener would stack and fire N×).
   // Which styling layer the Styling module is focused on (view preference, not a
   // draft edit). Resolved to a valid id at render time.
   var _styleLayer = null;
   function activeRenderer() {
-    return RENDERERS[STATE.active] || renderCounty;
+    return RENDERERS[STATE.active];
   }
 
   // Delegated edit wiring, attached ONCE to the persistent #ac-content host. It
@@ -232,19 +95,14 @@
       if (add && STATE.editing) { CONSOLE.addRow(add.getAttribute('data-add')); return activeRenderer()(host); }
       var rem = e.target.closest('[data-remove]');
       if (rem && STATE.editing) { CONSOLE.removeRow(rem.getAttribute('data-remove'), parseInt(rem.getAttribute('data-index'), 10)); return activeRenderer()(host); }
-      var lk = e.target.closest('[data-lookup]');
-      if (lk) return toggleLookup(host, lk);
       var addpick = e.target.closest('[data-add-pick]');
       if (addpick) return addPickedLayer(host);
     });
   }
-  function wireCounty(host, maps) { host._maps = maps; wireEditHost(host); }
 
   // Generic edit/save/publish/history actions, shared by any editable module; the
-  // console store does the work. `rerender(host)` re-draws the active module; defaults
-  // to County.
+  // console store does the work. `rerender(host)` re-draws the active module.
   function onAction(host, act, rerender) {
-    rerender = rerender || renderCounty;
     if (act === 'edit') {
       // Redraw at once, and again if the server has a saved draft to continue.
       CONSOLE.edit().then(function (continued) { if (continued) rerender(host); });
@@ -283,7 +141,6 @@
   }
 
   function doRollback(host, version, rerender) {
-    rerender = rerender || renderCounty;
     CONSOLE.rollback(version).then(function (res) {
       if (!res.ok) { flashResult(host, res); return; }
       rerender(host); loadHistory(host); flashResult(host, res);
@@ -1096,10 +953,9 @@
 
   // ── Module registry ─────────────────────────────────────────────────────────
   // The modules still drawn here, by id. The shell (frontend/src/admin-console/modules.js)
-  // has the nav and the ones that are Vue already (Intelligence, Access & Ops); it calls
-  // attach() with its store first.
+  // has the nav and the ones that are Vue already (County Configuration, Intelligence,
+  // Access & Ops); it calls attach() with its store first.
   var RENDERERS = {
-    county: renderCounty,
     styling: renderStyling,
     data: renderData,
     manifest: renderManifest,

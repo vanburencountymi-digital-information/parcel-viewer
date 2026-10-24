@@ -2,10 +2,11 @@
 // DIC-2389). A module is either a Vue component, or (until it moves) drawn by admin.js:
 // the shell takes its render(host) from window.PV_ADMIN_LEGACY.renderers.
 import AccessOps from './modules/AccessOps.vue';
+import CountyConfig from './modules/CountyConfig.vue';
 import Intelligence from './modules/Intelligence.vue';
 
 export const MODULES = [
-  { id: 'county', label: 'County Configuration', icon: '◆' },
+  { id: 'county', label: 'County Configuration', icon: '◆', component: CountyConfig },
   { id: 'intelligence', label: 'Intelligence', icon: '✦', component: Intelligence },
   { id: 'styling', label: 'Styling', icon: '◑' },
   { id: 'data', label: 'Data & Layers', icon: '▤' },
