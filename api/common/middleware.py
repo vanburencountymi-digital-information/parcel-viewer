@@ -11,11 +11,14 @@ import uuid
 from collections.abc import Callable
 
 from django.conf import settings
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse
 
 from common.request_context import _SAFE_ID, _level_for, _request_id, access_log
+from common.throttles import client_ip
 
-QUIET_PATHS = ("/health",)
+# The platform's liveness and startup probe (ADR 0018), answered by LivenessMiddleware.
+LIVENESS_PATH = "/health/live"
+QUIET_PATHS = ("/health", LIVENESS_PATH)
 
 # Starlette's CORS-safelisted request headers, always allowed in a preflight.
 SAFELISTED_HEADERS = {"Accept", "Accept-Language", "Content-Language", "Content-Type"}
@@ -49,7 +52,6 @@ class RequestIdMiddleware:
             return response
         finally:
             duration_ms = round((time.perf_counter() - started) * 1000, 1)
-            client_ip = request.headers.get("X-Real-IP") or request.META.get("REMOTE_ADDR", "")
             # path_info: the path without the /api mount (PV_SCRIPT_NAME), as FastAPI logs it.
             path = request.path_info
             access_log.log(
@@ -64,10 +66,31 @@ class RequestIdMiddleware:
                     "path": path,
                     "status": status,
                     "duration_ms": duration_ms,
-                    "client_ip": client_ip,
+                    "client_ip": client_ip(request),
                 },
             )
             _request_id.reset(token)
+
+
+class LivenessMiddleware:
+    """
+    Answers GET /health/live with 200 before host validation, the HTTPS redirect and the
+    database (ADR 0018). Cloud Run probes call the container directly over plain HTTP with
+    a Host header that isn't the public one, and a database outage mustn't get healthy
+    instances restarted. /health, with its database check, is for uptime checks through
+    the front end. Not rate limited: it does no work and says nothing.
+    """
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        if request.path_info == LIVENESS_PATH and request.method in ("GET", "HEAD"):
+            response = JsonResponse({"status": "ok"})
+            response["X-Content-Type-Options"] = "nosniff"
+            response["Cache-Control"] = "no-store"
+            return response
+        return self.get_response(request)
 
 
 class CorsMiddleware:

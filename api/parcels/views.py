@@ -15,9 +15,9 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from common.throttles import ClientScopedThrottle
 from common.validation import HttpError, ParamSource, json_body, query_params, validate
 from parcels import presenters
 from parcels.cohort_query import GEOGRAPHY_SOURCES, CohortSelectorError, build_predicate
@@ -54,7 +54,7 @@ class PublicParcelView(APIView):
 
     authentication_classes = [OptionalTokenAuthentication]
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientScopedThrottle]
     throttle_scope = "parcel_read"
 
     def __init__(self, repository: ParcelRepository | None = None, **kwargs: Any) -> None:

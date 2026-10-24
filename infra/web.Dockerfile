@@ -42,3 +42,6 @@ COPY map-buddy/css/ /usr/share/nginx/html/map-buddy/css/
 COPY infra/nginx.viewer.conf /etc/nginx/conf.d/default.conf
 COPY infra/nginx/map-buddy-api.prod.conf /etc/nginx/pv/map-buddy-api.conf
 COPY infra/nginx/api-upstream.django.conf /etc/nginx/pv/api-upstream.conf
+# Cloud Run (ADR 0018): PORT, PV_TRUSTED_PROXY_HOPS and PV_AERIAL_CACHE_MAX, applied by the
+# nginx entrypoint before nginx starts. Without them the image runs as compose runs it.
+COPY --chmod=0755 infra/nginx/cloud-run-env.sh /docker-entrypoint.d/40-pv-cloud-run-env.sh
