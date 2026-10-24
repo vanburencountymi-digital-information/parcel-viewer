@@ -46,6 +46,8 @@ services:
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-${MAP_BUDDY_ANTHROPIC_API_KEY:-}}
       - ALLOWED_ORIGINS=http://localhost:8080,http://localhost:8091,http://127.0.0.1:8080
       - PARCEL_API_BASE=http://django-api:8000
+      # Sent as X-PV-Service-Key; django-api's PV_SERVICE_KEYS must list it (DIC-2202).
+      - PV_SERVICE_KEY
       - MAP_BUDDY_TENANT
       - MAP_BUDDY_MODEL
       - MAP_BUDDY_MAX_TOKENS
