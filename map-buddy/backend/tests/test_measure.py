@@ -109,6 +109,26 @@ class MeasureToolTests(TestCase):
             agent._measure_tool("measure_parcel", {"pin": "nope"}, None), agent._MEASURE_UNREAD
         )
 
+    @patch("agent._http_get_json", autospec=True, side_effect=_api)
+    def test_the_search_url_carries_the_pin_encoded(self, mock_api) -> None:
+        agent._measure_tool("measure_parcel", {}, {"pin": "8001001001 00"})
+
+        self.assertEqual(mock_api.call_args_list[0].args[0], "/search?q=8001001001+00&limit=5")
+
+    @patch("agent._http_get_json", autospec=True, side_effect=_api)
+    def test_a_pin_with_other_characters_never_reaches_the_api(self, mock_api) -> None:
+        for pin in ("80-01/../admin", "1?x=2", "1#frag", "80%2F01", "1\n2"):
+            with self.subTest(pin=pin):
+                out = agent._measure_tool("measure_parcel", {}, {"pin": pin})
+
+                self.assertEqual(out, agent._MEASURE_UNREAD)
+        mock_api.assert_not_called()
+
+    def test_safe_pin_bounds(self) -> None:
+        self.assertEqual(agent._safe_pin("80-01-001-001-00"), "80-01-001-001-00")
+        self.assertIsNone(agent._safe_pin(""))
+        self.assertIsNone(agent._safe_pin("9" * 41))
+
     def test_no_pin_and_no_selection(self) -> None:
         self.assertIn("none is selected", agent._measure_tool("measure_parcel", {}, None))
 
