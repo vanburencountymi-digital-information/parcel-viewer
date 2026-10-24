@@ -101,6 +101,37 @@ class EnvironmentLookupErrorTests(TestCase):
         self.assertNotIn("socket details", note)
 
 
+class _FakeResponse:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_exc) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return b"{}"
+
+
+class ServiceKeyTests(TestCase):
+    """Parcel API calls carry Map Buddy's service key when one is set (DIC-2202)."""
+
+    @patch("agent.urllib.request.urlopen", autospec=True, return_value=_FakeResponse())
+    def test_the_key_is_sent_to_the_parcel_api(self, mock_open) -> None:
+        with patch("agent.PV_SERVICE_KEY", "k-123"):
+            agent._http_get_json("/search?q=x")
+
+        req = mock_open.call_args.args[0]
+        self.assertEqual(req.full_url, agent.PARCEL_API_BASE + "/search?q=x")
+        self.assertEqual(req.get_header("X-pv-service-key"), "k-123")
+
+    @patch("agent.urllib.request.urlopen", autospec=True, return_value=_FakeResponse())
+    def test_no_key_no_header(self, mock_open) -> None:
+        with patch("agent.PV_SERVICE_KEY", ""):
+            agent._http_get_json("/search?q=x")
+
+        self.assertIsNone(mock_open.call_args.args[0].get_header("X-pv-service-key"))
+
+
 FLOOD_OVERLAY = {"type": "set_layer_visibility", "payload": {"layer_id": "flood", "visible": True}}
 
 

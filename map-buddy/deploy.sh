@@ -68,12 +68,19 @@ echo "==> Pushing to Artifact Registry..."
 docker push "${IMAGE}"
 
 echo "==> Deploying to Cloud Run..."
+# Map Buddy's parcel API service key (ADR 0015, DIC-2202) is opt-in until its secret
+# exists: PV_SERVICE_KEY_SECRET=<secret name> bash map-buddy/deploy.sh. The API's
+# PV_SERVICE_KEYS must list the same key ("mapbuddy:<key>").
+SECRETS="ANTHROPIC_API_KEY=MAP_BUDDY_ANTHROPIC_API_KEY:latest"
+if [ -n "${PV_SERVICE_KEY_SECRET:-}" ]; then
+  SECRETS="${SECRETS},PV_SERVICE_KEY=${PV_SERVICE_KEY_SECRET}:latest"
+fi
 # "^|^" switches the list separator to | so ALLOWED_ORIGINS can contain commas.
 gcloud run deploy "${SERVICE}" \
   --image "${IMAGE}" \
   --region "${REGION}" \
   --project "${PROJECT_ID}" \
-  --set-secrets ANTHROPIC_API_KEY=MAP_BUDDY_ANTHROPIC_API_KEY:latest \
+  --set-secrets "${SECRETS}" \
   --update-env-vars "^|^ALLOWED_ORIGINS=${VIEWER_ORIGINS}|PARCEL_API_BASE=${PARCEL_API_BASE}|MAP_BUDDY_TENANT=${MAP_BUDDY_TENANT}|AI_QUOTA_DEFAULT=${AI_QUOTA_DEFAULT}|AI_QUOTA_WINDOW=${AI_QUOTA_WINDOW}" \
   --allow-unauthenticated \
   --port 8000 \
