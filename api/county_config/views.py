@@ -75,14 +75,19 @@ class CountyConfigScriptView(OpenView):
         """
         Returns the manifest as a script that sets window.COUNTY. The viewer loads it after
         its baked county-config.js, so it overrides when reachable and the baked copy stands
-        in when it isn't.
+        in when it isn't. It also sets PV_CONFIG_SOURCE to "api" (pv-runtime-config.js sets
+        "fallback" first), which an onerror attribute used to do until the CSP (DIC-2556).
         """
         data = published_config(_county(request))
         if data is None:
             return HttpResponse(
                 UNKNOWN_COUNTY_SCRIPT, content_type=JAVASCRIPT, status=status.HTTP_404_NOT_FOUND
             )
-        body = "window.COUNTY = " + json.dumps(data, ensure_ascii=False) + ";"
+        body = (
+            "window.COUNTY = "
+            + json.dumps(data, ensure_ascii=False)
+            + ';\nwindow.PV_CONFIG_SOURCE = "api";\n'
+        )
         response = HttpResponse(body, content_type=JAVASCRIPT)
         response["Cache-Control"] = "no-cache"
         return response

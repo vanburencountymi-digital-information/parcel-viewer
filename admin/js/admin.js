@@ -3,10 +3,11 @@
  *
  * Config-as-data. The console's shell (nav, top bar, staff sign-in) and its config and
  * draft (the /config API, DIC-465, over the baked window.COUNTY; save, publish, history)
- * are Vue since DIC-2389: frontend/src/admin-console. The modules here are still drawn
- * as HTML strings, one at a time moving to Vue. Each registers a {id, label, icon,
- * render(host)} entry in window.PV_ADMIN_LEGACY; the shell calls attach(console) with its
- * store before the first render.
+ * are Vue since DIC-2389: frontend/src/admin-console, and so are some modules
+ * (Intelligence, Access & Ops). The modules here are still drawn as HTML strings,
+ * moving to Vue one at a time.
+ * Each registers its render(host) in window.PV_ADMIN_LEGACY.renderers; the shell calls
+ * attach(store) with its store before the first render.
  */
 (function () {
   'use strict';
@@ -20,8 +21,8 @@
       '<p class="ac-page-sub">' + esc(sub) + '</p></div>';
   }
 
-  // The explainer plugins live in the Map Buddy service; resolve its base the same
-  // way the viewer does (window override first, for testing).
+  // The Map Buddy service (the Theme Manifest's AI health and autoconfigure); resolve its
+  // base the same way the viewer does (window override first, for testing).
   // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function explainBase() {
     return window.PV_ENDPOINTS ? window.PV_ENDPOINTS.mapBuddyBase() : (window.MAP_BUDDY_API || '/map-buddy-api');
@@ -193,8 +194,7 @@
   // draft edit). Resolved to a valid id at render time.
   var _styleLayer = null;
   function activeRenderer() {
-    for (var i = 0; i < MODULES.length; i++) { if (MODULES[i].id === STATE.active) return MODULES[i].render; }
-    return renderCounty;
+    return RENDERERS[STATE.active] || renderCounty;
   }
 
   // Delegated edit wiring, attached ONCE to the persistent #ac-content host. It
@@ -287,61 +287,6 @@
     CONSOLE.rollback(version).then(function (res) {
       if (!res.ok) { flashResult(host, res); return; }
       rerender(host); loadHistory(host); flashResult(host, res);
-    });
-  }
-
-  // ── Intelligence module: explainer-plugin admin backend (DIC-459, read-only) ─
-  function renderIntelligence(host) {
-    host.innerHTML = pageHead('Intelligence — Explainer Plugins',
-      'Each explainer is a callable plugin with its own LLM context — system prompt, injected reference material, and model. Read-only for now; editing lands with the writable store.') +
-      '<div class="ac-banner"><span>ⓘ</span><div>Live config from the Map Buddy service. Editing &amp; publish need the writable store (<b>DIC-464</b>) + auth (<b>DIC-463</b>).</div></div>' +
-      '<div id="ac-xp-list"><p class="ac-readonly">Loading explainer plugins…</p></div>';
-    var out = host.querySelector('#ac-xp-list');
-    fetch(explainBase() + '/explainers', { cache: 'no-cache' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
-      .then(function (res) {
-        var xs = (res && res.explainers) || [];
-        out.innerHTML = xs.length ? xs.map(xpCard).join('') : '<p class="ac-readonly">No explainer plugins registered.</p>';
-        wireCollapsibles(out);
-      })
-      .catch(function (e) {
-        out.innerHTML = '<div class="ac-card"><p class="ac-readonly">Couldn’t reach the Map Buddy service (' + esc(e.message) +
-          '). The explainer plugins live there; this view needs that service running (it goes live with the next Map Buddy redeploy, DIC-452).</p></div>';
-      });
-  }
-  function _collapse(id, label, body, chars) {
-    return '<button class="ac-collapse" data-collapse="' + esc(id) + '" aria-expanded="false">' +
-      '<span class="ac-arrow">▸</span> ' + esc(label) +
-      (chars != null ? ' <span class="ac-xp-chars">' + chars + ' chars</span>' : '') + '</button>' +
-      '<pre class="ac-xp-pre" id="' + esc(id) + '" hidden>' + esc(body || '') + '</pre>';
-  }
-  function xpCard(x) {
-    var blocks = (x.context_blocks || []).map(function (b, i) {
-      return '<div class="ac-xp-block">' + _collapse('blk-' + x.id + '-' + i, b.title, b.body, b.chars) + '</div>';
-    }).join('');
-    return '<div class="ac-card ac-xp-card" data-xp-id="' + esc(x.id) + '">' +
-      '<div class="ac-card-head"><h2 class="ac-card-title">' + esc(x.label) + '</h2>' +
-        '<span class="ac-xp-model">' + esc(x.model || '—') + '</span></div>' +
-      '<dl class="ac-grid">' +
-        '<dt>Plugin id</dt><dd><code>' + esc(x.id) + '</code></dd>' +
-        '<dt>Audience</dt><dd>' + esc(x.audience || '—') + '</dd>' +
-        '<dt>Callable</dt><dd><code>' + esc(x.callable_via || '—') + '</code></dd>' +
-      '</dl>' +
-      '<div class="ac-xp-section">' + _collapse('sp-' + x.id, 'System prompt', x.system_prompt, (x.system_prompt || '').length) + '</div>' +
-      (blocks ? '<div class="ac-xp-section"><div class="ac-xp-blocks-title">Injected context (' + (x.context_blocks || []).length + ')</div>' + blocks + '</div>' : '') +
-      '</div>';
-  }
-  // Toggle the <pre> next to each collapse button.
-  function wireCollapsibles(root) {
-    root.querySelectorAll('[data-collapse]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var el = document.getElementById(btn.getAttribute('data-collapse'));
-        if (!el) return;
-        var show = el.hasAttribute('hidden');
-        if (show) el.removeAttribute('hidden'); else el.setAttribute('hidden', '');
-        var arrow = btn.querySelector('.ac-arrow'); if (arrow) arrow.textContent = show ? '▾' : '▸';
-        btn.setAttribute('aria-expanded', show ? 'true' : 'false');
-      });
     });
   }
 
@@ -643,9 +588,6 @@
   function _srcNote() {
     return STATE.source === 'api' ? 'Loaded live from <code>/config</code>.' : 'Showing the baked manifest fallback.';
   }
-  function _plan(items) {
-    return '<ul class="ac-plan">' + items.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>';
-  }
 
   // ── Data & Layers module (DIC-461 — read + edit) ────────────────────────────
   // PostGIS (vector) layers are the editable focus; the legacy WMS/raster
@@ -897,71 +839,6 @@
     CONSOLE.setDraft('styling.layers.' + d.id, { label: _titleize(d.id), paint: _defaultStyle(d.geomType || 'polygon') });
     renderData(host);                       // re-render: layer now appears under PostGIS layers; pulldown reloads without it
     flash(host, 'ok', 'Added “' + _titleize(d.id) + '”. Publish to make it live in the viewer.');
-  }
-
-  // ── Access & Ops module (DIC-462 — read + edit) ─────────────────────────────
-  // The `access` block (model, assessment visibility, report inbox, rate-limit)
-  // and the data-request form URL are editable via the shared draft→publish flow.
-  // The Services card stays read-only here: those endpoints are owned by other
-  // modules (tile server → Data & Layers, Map Buddy → County) or are runtime.
-  function renderAccess(host) {
-    var editing = STATE.editing;
-    var C = editing ? (STATE.draft || {}) : (STATE.config || {});
-    var A = C.access || {};
-    var forms = C.forms || {};
-    var ep = C.endpoints || {};
-    var ts = (C.layers || {}).tileServer || {};
-
-    function txt(path, val, ph) {
-      return '<input class="ac-input" data-path="' + path + '" data-type="str" value="' +
-        esc(val == null ? '' : val) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>';
-    }
-    function bool(path, val) {
-      return '<input type="checkbox" data-path="' + path + '" data-type="bool"' + (val ? ' checked' : '') + '>';
-    }
-
-    var toolbar = editing
-      ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
-        '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
-        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
-        '<button class="ac-btn" data-act="cancel">Cancel</button>'
-      : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit access</button>' +
-        '<button class="ac-btn" data-act="history">Version history</button>';
-    var banner = editing
-      ? '<div class="ac-banner ac-banner-edit"><span>✎</span><div><b>Editing a draft.</b> ' +
-        'Set the access model, assessment-data visibility, report inbox, and rate-limit flag, then <b>Publish</b>. ' +
-        'Service endpoints below are owned by their own modules and stay read-only here.</div></div>'
-      : '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() +
-        ' Embeds, usage dashboards, and a deploy trigger are the planned DIC-462 build.</div></div>';
-
-    host.innerHTML =
-      '<div class="ac-page-head ac-page-head-row"><div>' +
-        '<h1 class="ac-page-title">Access &amp; Ops</h1>' +
-        '<p class="ac-page-sub">Who can see what, how it’s shared, and how staff watch it.</p></div>' +
-        '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Access</h2></div><dl class="ac-grid">' +
-        '<dt>Access model</dt><dd>' + (editing ? txt('access.model', A.model, 'e.g. Public — no sign-in') : esc(A.model || '—')) + '</dd>' +
-        '<dt>Assessment data</dt><dd>' + (editing
-          ? bool('access.assessmentDataPublic', A.assessmentDataPublic) + ' <span class="ac-card-note">public</span>'
-          : (A.assessmentDataPublic ? 'Public' : 'Gated')) + '</dd>' +
-        '<dt>Data request form</dt><dd>' + (editing ? txt('forms.dataRequest', forms.dataRequest, 'https://…')
-          : (forms.dataRequest ? '<code>' + esc(forms.dataRequest) + '</code>' : '—')) + '</dd>' +
-        '<dt>Error reports go to</dt><dd>' + (editing ? txt('access.reportTo', A.reportTo, 'gis@county.gov')
-          : '<code>' + esc(A.reportTo || '—') + '</code>') + '</dd>' +
-        '<dt>Rate limited</dt><dd>' + (editing
-          ? bool('access.rateLimited', A.rateLimited) + ' <span class="ac-card-note">throttle public endpoints</span>'
-          : (A.rateLimited ? 'Yes' : 'No')) + '</dd></dl></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Services</h2>' +
-        '<span class="ac-card-note">read-only · owned by other modules</span></div><dl class="ac-grid">' +
-        '<dt>Parcel API</dt><dd><code>' + esc(CONSOLE.apiBase()) + '</code></dd>' +
-        '<dt>Tile server</dt><dd><code>' + esc(ts.url || '/tiles') + '</code></dd>' +
-        '<dt>Map Buddy AI</dt><dd><code>' + esc(ep.mapBuddy || '—') + '</code></dd></dl></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Planned (DIC-462)</h2></div>' +
-        _plan(['Public-vs-staff gating toggles per county', 'Embeds + shareable links (DIC-399 / DIC-340)', 'Data-error report triage dashboard (DIC-391)', 'Usage / analytics + change audit log', 'One-click redeploy trigger (e.g. Map Buddy, DIC-452)']) + '</div>' +
-      '<div id="ac-history"></div>';
-
-    wireEditHost(host);
   }
 
   // ── Theme Manifest module (B2 manual builder · DIC-578) ─────────────────────
@@ -1218,19 +1095,17 @@
   }
 
   // ── Module registry ─────────────────────────────────────────────────────────
-  var MODULES = [
-    { id: 'county', label: 'County Configuration', icon: '◆', render: renderCounty },
-    { id: 'intelligence', label: 'Intelligence', icon: '✦', render: renderIntelligence },
-    { id: 'styling', label: 'Styling', icon: '◑', render: renderStyling },
-    { id: 'data', label: 'Data & Layers', icon: '▤', render: renderData },
-    { id: 'access', label: 'Access & Ops', icon: '◈', render: renderAccess },
-    { id: 'manifest', label: 'Theme Manifest', icon: '❖', render: renderManifest },
-  ];
-
-  // The shell (frontend/src/admin-console) draws the nav from MODULES and calls attach()
-  // with its store first.
+  // The modules still drawn here, by id. The shell (frontend/src/admin-console/modules.js)
+  // has the nav and the ones that are Vue already (Intelligence, Access & Ops); it calls
+  // attach() with its store first.
+  var RENDERERS = {
+    county: renderCounty,
+    styling: renderStyling,
+    data: renderData,
+    manifest: renderManifest,
+  };
   window.PV_ADMIN_LEGACY = {
-    modules: MODULES,
+    renderers: RENDERERS,
     attach: function (store) { CONSOLE = store; STATE = store.state; },
   };
 }());

@@ -3,7 +3,9 @@
 // with the config store's routes stubbed (admin-console.spec.js, "shell and edit flow").
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
+import { defineComponent, h } from 'vue';
 import AdminConsole from './AdminConsole.vue';
+import { MODULES, resolveModules } from './modules.js';
 import { arrayAdd, arrayAt, arrayRemove, getPath, setPath, templateFor } from './draft.js';
 import { createConsoleStore } from './store.js';
 
@@ -215,10 +217,10 @@ describe('AdminConsole', () => {
     return { ...s, w, modules, win, signedInOrOut: () => listeners.forEach((fn) => fn()) };
   }
 
-  it('opens the module in the address (else County), draws it into <main>, and keeps the address', async () => {
+  it('opens the module in the address (else County), draws it in <main>, and keeps the address', async () => {
     const { w, modules, win } = shell({ hash: '#styling' });
     await flushPromises();
-    expect(modules[1].render).toHaveBeenCalledWith(w.get('main').element);
+    expect(modules[1].render).toHaveBeenCalledWith(w.get('main > div').element);
     expect(w.get('main').text()).toBe('styling');
     expect(w.get('[data-mod="styling"]').attributes('aria-current')).toBe('page');
     expect(w.get('[data-mod="styling"]').classes()).toContain('is-active');
@@ -249,6 +251,27 @@ describe('AdminConsole', () => {
     w.unmount();
   });
 
+  it('a Vue module renders in <main> with the store; switching to it clears what a legacy module drew', async () => {
+    const s = setup({ 'GET /config': reply(200, {}) });
+    const Vue = defineComponent({ props: ['store'], setup: (p) => () => h('h1', { id: 'vue-mod' }, 'vue ' + p.store.state.active) });
+    const legacy = { id: 'county', label: 'C', icon: '·', render: (host) => { host.innerHTML = '<div id="ac-flash">legacy</div>'; } };
+    const auth = { state: { user: null }, onChange: () => {} };
+    const win = { location: { hash: '' }, history: { replaceState: (a, b, hsh) => { win.location.hash = hsh; } } };
+    const w = mount(AdminConsole, { props: { store: s.store, auth, modules: [legacy, { id: 'vue', label: 'V', icon: '·', component: Vue }], win } });
+    await flushPromises();
+    expect(w.find('#ac-flash').exists()).toBe(true);
+
+    await w.get('[data-mod="vue"]').trigger('click');
+    expect(w.get('#vue-mod').text()).toBe('vue vue');
+    expect(w.find('#ac-flash').exists()).toBe(false);
+    expect(w.get('main > div').attributes('style')).toMatch(/display: none/);
+
+    await w.get('[data-mod="county"]').trigger('click');
+    expect(w.find('#vue-mod').exists()).toBe(false);
+    expect(w.get('#ac-flash').text()).toBe('legacy');
+    w.unmount();
+  });
+
   it('keeps the landmarks, labels and ids the CSS and the e2e suite use', () => {
     const { w } = shell();
     expect(w.get('aside').attributes()).toMatchObject({ role: 'navigation', 'aria-label': 'Admin sections', class: 'ac-side' });
@@ -258,5 +281,15 @@ describe('AdminConsole', () => {
     expect(w.get('#ac-status').attributes()).toMatchObject({ role: 'status', 'aria-label': 'Config status' });
     expect(w.get('main').attributes()).toMatchObject({ id: 'ac-content', tabindex: '-1' });
     w.unmount();
+  });
+});
+
+describe('modules', () => {
+  it('keeps the nav order; legacy modules take their renderer from admin.js, and one without is left out', () => {
+    const render = () => {};
+    const ids = resolveModules({ county: render, intelligence: render, styling: render, manifest: render }).map((m) => m.id);
+    expect(ids).toEqual(['county', 'intelligence', 'styling', 'access', 'manifest']);
+    expect(MODULES.find((m) => m.id === 'access').component).toBeTruthy();
+    expect(resolveModules().map((m) => m.id)).toEqual(['intelligence', 'access']);
   });
 });

@@ -2,21 +2,23 @@
      module nav and the staff sign-in, the top bar, and the content area. Mounted inside
      #ac-app, with the same markup admin/index.html had.
 
-     The modules still come from admin.js (window.PV_ADMIN_LEGACY): each draws itself into
-     <main> with render(host), so <main> has no children of its own here and Vue never
-     touches what a module drew. -->
+     A module is a Vue component, or (until it moves) drawn by admin.js with render(host).
+     Those draw into their own <div> inside <main>, which Vue gives no children, so Vue
+     never touches what they drew. -->
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, shallowRef } from 'vue';
 import StaffSignIn from './StaffSignIn.vue';
 
 const props = defineProps({
   store: { type: Object, required: true },
   auth: { type: Object, required: true },
-  modules: { type: Array, required: true },   // [{ id, label, icon, render(host) }]
+  modules: { type: Array, required: true },   // [{ id, label, icon, component | render(host) }]
   win: { type: Object, default: () => globalThis },
 });
 const state = props.store.state;
-const content = ref(null);
+const content = ref(null);       // <main>
+const legacyHost = ref(null);    // where admin.js's modules draw
+const view = shallowRef(null);   // the open Vue module's component, if it is one
 
 const countyName = computed(() => (state.config && state.config.name) || 'Van Buren County');
 const statusText = computed(() => (state.source === 'api' ? 'Live config · read-only' : 'Read-only preview'));
@@ -28,7 +30,11 @@ function show(id) {
   const mod = moduleFor(id);
   if (!mod || !content.value) return;   // no modules, or unmounted before /config answered
   props.store.show(mod.id);
-  mod.render(content.value);
+  view.value = mod.component || null;
+  // A legacy module redraws itself; a Vue one follows the store. Clear what a legacy one
+  // drew, so its ids (#ac-flash, #ac-history) aren't on the page twice.
+  if (mod.render) mod.render(legacyHost.value);
+  else legacyHost.value.innerHTML = '';
   content.value.focus();
   const { location, history } = props.win;
   if (location.hash !== '#' + mod.id) history.replaceState(null, '', '#' + mod.id);
@@ -82,6 +88,9 @@ onMounted(() => {
         <span id="ac-status" class="ac-pill" role="status" aria-label="Config status">{{ statusText }}</span>
       </div>
     </header>
-    <main id="ac-content" ref="content" class="ac-content" tabindex="-1"></main>
+    <main id="ac-content" ref="content" class="ac-content" tabindex="-1">
+      <component :is="view" v-if="view" :store="store" />
+      <div v-show="!view" ref="legacyHost"></div>
+    </main>
   </div>
 </template>

@@ -115,7 +115,7 @@ The rest are below ("Shared API settings"). Staff sign in with accounts (DIC-215
 - **`/map-buddy-api/`** comes from an include: 404 in production (`infra/nginx/map-buddy-api.prod.conf`), a proxy to the local container in dev (`…dev.conf`).
 - `/` redirects to `/demo/` with a relative `Location` (correct behind any proxy or port). `*.md` files and `/engine/test/` are a 404.
   ⚠ Keys on `$pv_client_ip`: the socket peer on the VM. Behind Cloud Run or a load balancer, set `PV_TRUSTED_PROXY_HOPS` on the web image (ADR 0018), or every user shares one bucket.
-- **Security headers:** `X-Content-Type-Options: nosniff` everywhere; `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN` and a **report-only** `Content-Security-Policy` on the viewer and admin pages. The CSP string is defined once in the `map $host $pv_csp` block. Switch it to enforced once testers report a clean console. **HSTS** goes wherever TLS terminates (DIC-1863 Q3).
+- **Security headers:** `X-Content-Type-Options: nosniff` everywhere; `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN` and a **report-only** `Content-Security-Policy` on the viewer and admin pages. The CSP string is defined once in the `map $host $pv_csp` block; violations post to `/api/csp-report` and show in the API's logs (`parcel_viewer.routers.csp_reports`). Switch it to enforced (the header name in the three `add_header` lines) once the testing window's logs are clean. **HSTS** goes wherever TLS terminates (DIC-1863 Q3).
   ⚠ nginx drops server-level `add_header`s in any location that sets its own — if you add a location with `add_header`, repeat the security headers there.
 - **Private files:** only `/map-buddy/js/` and `/map-buddy/css/` are served (everything else under `/map-buddy/` is a 404), and dotfiles (`.env`, `.git`) are a 404 from every static root.
 - **Admin console:** `/admin/` is publicly reachable until real auth ([DIC-463](https://linear.app/dicelabs/issue/DIC-463)). Gate it with basic auth or an IP allowlist (DIC-1863 Q4). Writes already require a staff sign-in with access to the county.
@@ -189,7 +189,7 @@ It checks routes + DB reachability, security headers, private files and API docs
 - Load the URL → a parcel selects, popup renders (Parcel / Owner / Assessed Values + AV chart), labels follow pan.
 - Open an explainer (Assessment) → AI narration arrives (proves Cloud Run + key + viewer → Map Buddy URL).
 - Open Neighborhood Profile → dashboard + environmental + AI "character" read (proves `/cohort` + `/describe-cohort`).
-- Toggle dark mode; the browser console is clean — in particular **no `[Report Only]` CSP messages** (if there are, fix the CSP before enforcing it).
+- Toggle dark mode; the browser console is clean — in particular **no `[Report Only]` CSP messages** and no `csp_reports` warnings in the API logs (if there are, fix the page or the CSP before enforcing it).
 
 ## Known gotchas (already handled in-repo)
 - **Assessed-value year labels** follow the roll year the API infers from `assessing.vbc_parcels.loaded_at` (loaded April onward = that year's roll; January–March = the previous roll), so they change when the data is refreshed, not on January 1. If a load doesn't fit that rule, set `assessing.rollYear` in the county config (DIC-1878).

@@ -58,8 +58,11 @@ test('Map Buddy down: the AI notice appears and the viewer keeps working', async
   await selectParcelViaSearch(page);
 });
 
-test('a JavaScript error in the page is reported to the server (error beacon)', async ({ page, consoleGuard }) => {
+test('a JavaScript error in the page is reported to the server (error beacon)', async ({ page, consoleGuard, cspGuard }) => {
   consoleGuard.allow(/beacon-e2e-probe/);
+  // The probe below is the test's own inline script, which script-src 'self' reports
+  // (DIC-2556). Once the CSP is enforced it would be blocked: then throw from a served file.
+  cspGuard.allow(/^script-src-elem blocked inline at .* on \/demo\/$/);
   await gotoViewer(page);
   // Capture the beacon's body on its way through (sendBeacon bodies aren't exposed on
   // the plain request object), then let it reach the real server.

@@ -1,7 +1,8 @@
 // The Admin Console as a Vue island (DIC-2389): the shell (nav, top bar, staff sign-in)
-// mounts inside #ac-app. The modules are still admin.js's: it registers them as
-// window.PV_ADMIN_LEGACY ({ modules, attach }), and attach() hands it the console store,
-// so its editors read and write the same config and draft.
+// mounts inside #ac-app. The modules are in modules.js: Vue components, or still drawn by
+// admin.js, which registers them as window.PV_ADMIN_LEGACY ({ renderers, attach });
+// attach() hands it the console store, so its editors read and write the same config
+// and draft.
 //
 // Publishes window.PV_ADMIN_AUTH (the staff sign-in: has, headers, noteRefused, onChange)
 // and window.PV_ADMIN (getState: the console state, for automated checks).
@@ -9,6 +10,7 @@ import { createApp } from 'vue';
 import * as admin from '../shared/admin.js';
 import AdminConsole from './AdminConsole.vue';
 import { createAuthStore } from './auth.js';
+import { resolveModules } from './modules.js';
 import { createConsoleStore } from './store.js';
 
 export function mountAdminConsole(doc = document) {
@@ -36,6 +38,7 @@ export function mountAdminConsole(doc = document) {
 
   const legacy = admin.legacyModules();
   if (legacy) legacy.attach(store);
-  createApp(AdminConsole, { store, auth, modules: legacy ? legacy.modules : [] }).mount(host);
+  const modules = resolveModules(legacy ? legacy.renderers : {});
+  createApp(AdminConsole, { store, auth, modules }).mount(host);
   return store;
 }
