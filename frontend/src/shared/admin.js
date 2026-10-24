@@ -11,10 +11,13 @@ export const countyKey = () => w.PV_COUNTY_KEY || 'vanburen';
 /** Who saves and publishes, as the config store records it. */
 export const author = () => w.PV_ADMIN_USER || 'console';
 
+/** The Map Buddy service's base URL (pv-endpoints.js), where the explainer plugins live. */
+export const mapBuddyBase = () => (w.PV_ENDPOINTS ? w.PV_ENDPOINTS.mapBuddyBase() : (w.MAP_BUDDY_API || '/map-buddy-api'));
+
 /** The baked county manifest (county-config.js), shown until /config answers. */
 export const bakedConfig = () => w.COUNTY || {};
 
-/** The modules admin.js still draws ({ modules, attach }), or null if it didn't load. */
+/** The modules admin.js still draws ({ renderers, attach }), or null if it didn't load. */
 export const legacyModules = () => w.PV_ADMIN_LEGACY || null;
 
 /** sessionStorage, read at call time (pv-storage-guard.js may stand in for a blocked one). */

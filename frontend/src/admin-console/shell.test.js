@@ -290,6 +290,6 @@ describe('modules', () => {
     const ids = resolveModules({ county: render, intelligence: render, styling: render, manifest: render }).map((m) => m.id);
     expect(ids).toEqual(['county', 'intelligence', 'styling', 'access', 'manifest']);
     expect(MODULES.find((m) => m.id === 'access').component).toBeTruthy();
-    expect(resolveModules().map((m) => m.id)).toEqual(['access']);
+    expect(resolveModules().map((m) => m.id)).toEqual(['intelligence', 'access']);
   });
 });

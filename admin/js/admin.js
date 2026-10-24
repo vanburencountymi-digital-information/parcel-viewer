@@ -3,8 +3,9 @@
  *
  * Config-as-data. The console's shell (nav, top bar, staff sign-in) and its config and
  * draft (the /config API, DIC-465, over the baked window.COUNTY; save, publish, history)
- * are Vue since DIC-2389: frontend/src/admin-console, and so are some modules (Access &
- * Ops). The modules here are still drawn as HTML strings, moving to Vue one at a time.
+ * are Vue since DIC-2389: frontend/src/admin-console, and so are some modules
+ * (Intelligence, Access & Ops). The modules here are still drawn as HTML strings,
+ * moving to Vue one at a time.
  * Each registers its render(host) in window.PV_ADMIN_LEGACY.renderers; the shell calls
  * attach(store) with its store before the first render.
  */
@@ -20,8 +21,8 @@
       '<p class="ac-page-sub">' + esc(sub) + '</p></div>';
   }
 
-  // The explainer plugins live in the Map Buddy service; resolve its base the same
-  // way the viewer does (window override first, for testing).
+  // The Map Buddy service (the Theme Manifest's AI health and autoconfigure); resolve its
+  // base the same way the viewer does (window override first, for testing).
   // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function explainBase() {
     return window.PV_ENDPOINTS ? window.PV_ENDPOINTS.mapBuddyBase() : (window.MAP_BUDDY_API || '/map-buddy-api');
@@ -286,61 +287,6 @@
     CONSOLE.rollback(version).then(function (res) {
       if (!res.ok) { flashResult(host, res); return; }
       rerender(host); loadHistory(host); flashResult(host, res);
-    });
-  }
-
-  // ── Intelligence module: explainer-plugin admin backend (DIC-459, read-only) ─
-  function renderIntelligence(host) {
-    host.innerHTML = pageHead('Intelligence — Explainer Plugins',
-      'Each explainer is a callable plugin with its own LLM context — system prompt, injected reference material, and model. Read-only for now; editing lands with the writable store.') +
-      '<div class="ac-banner"><span>ⓘ</span><div>Live config from the Map Buddy service. Editing &amp; publish need the writable store (<b>DIC-464</b>) + auth (<b>DIC-463</b>).</div></div>' +
-      '<div id="ac-xp-list"><p class="ac-readonly">Loading explainer plugins…</p></div>';
-    var out = host.querySelector('#ac-xp-list');
-    fetch(explainBase() + '/explainers', { cache: 'no-cache' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
-      .then(function (res) {
-        var xs = (res && res.explainers) || [];
-        out.innerHTML = xs.length ? xs.map(xpCard).join('') : '<p class="ac-readonly">No explainer plugins registered.</p>';
-        wireCollapsibles(out);
-      })
-      .catch(function (e) {
-        out.innerHTML = '<div class="ac-card"><p class="ac-readonly">Couldn’t reach the Map Buddy service (' + esc(e.message) +
-          '). The explainer plugins live there; this view needs that service running (it goes live with the next Map Buddy redeploy, DIC-452).</p></div>';
-      });
-  }
-  function _collapse(id, label, body, chars) {
-    return '<button class="ac-collapse" data-collapse="' + esc(id) + '" aria-expanded="false">' +
-      '<span class="ac-arrow">▸</span> ' + esc(label) +
-      (chars != null ? ' <span class="ac-xp-chars">' + chars + ' chars</span>' : '') + '</button>' +
-      '<pre class="ac-xp-pre" id="' + esc(id) + '" hidden>' + esc(body || '') + '</pre>';
-  }
-  function xpCard(x) {
-    var blocks = (x.context_blocks || []).map(function (b, i) {
-      return '<div class="ac-xp-block">' + _collapse('blk-' + x.id + '-' + i, b.title, b.body, b.chars) + '</div>';
-    }).join('');
-    return '<div class="ac-card ac-xp-card" data-xp-id="' + esc(x.id) + '">' +
-      '<div class="ac-card-head"><h2 class="ac-card-title">' + esc(x.label) + '</h2>' +
-        '<span class="ac-xp-model">' + esc(x.model || '—') + '</span></div>' +
-      '<dl class="ac-grid">' +
-        '<dt>Plugin id</dt><dd><code>' + esc(x.id) + '</code></dd>' +
-        '<dt>Audience</dt><dd>' + esc(x.audience || '—') + '</dd>' +
-        '<dt>Callable</dt><dd><code>' + esc(x.callable_via || '—') + '</code></dd>' +
-      '</dl>' +
-      '<div class="ac-xp-section">' + _collapse('sp-' + x.id, 'System prompt', x.system_prompt, (x.system_prompt || '').length) + '</div>' +
-      (blocks ? '<div class="ac-xp-section"><div class="ac-xp-blocks-title">Injected context (' + (x.context_blocks || []).length + ')</div>' + blocks + '</div>' : '') +
-      '</div>';
-  }
-  // Toggle the <pre> next to each collapse button.
-  function wireCollapsibles(root) {
-    root.querySelectorAll('[data-collapse]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var el = document.getElementById(btn.getAttribute('data-collapse'));
-        if (!el) return;
-        var show = el.hasAttribute('hidden');
-        if (show) el.removeAttribute('hidden'); else el.setAttribute('hidden', '');
-        var arrow = btn.querySelector('.ac-arrow'); if (arrow) arrow.textContent = show ? '▾' : '▸';
-        btn.setAttribute('aria-expanded', show ? 'true' : 'false');
-      });
     });
   }
 
@@ -1150,11 +1096,10 @@
 
   // ── Module registry ─────────────────────────────────────────────────────────
   // The modules still drawn here, by id. The shell (frontend/src/admin-console/modules.js)
-  // has the nav and the ones that are Vue already (Access & Ops); it calls attach() with
-  // its store first.
+  // has the nav and the ones that are Vue already (Intelligence, Access & Ops); it calls
+  // attach() with its store first.
   var RENDERERS = {
     county: renderCounty,
-    intelligence: renderIntelligence,
     styling: renderStyling,
     data: renderData,
     manifest: renderManifest,
