@@ -3,10 +3,10 @@
  *
  * Config-as-data. The console's shell (nav, top bar, staff sign-in) and its config and
  * draft (the /config API, DIC-465, over the baked window.COUNTY; save, publish, history)
- * are Vue since DIC-2389: frontend/src/admin-console. The modules here are still drawn
- * as HTML strings, one at a time moving to Vue. Each registers a {id, label, icon,
- * render(host)} entry in window.PV_ADMIN_LEGACY; the shell calls attach(console) with its
- * store before the first render.
+ * are Vue since DIC-2389: frontend/src/admin-console, and so are some modules (Access &
+ * Ops). The modules here are still drawn as HTML strings, moving to Vue one at a time.
+ * Each registers its render(host) in window.PV_ADMIN_LEGACY.renderers; the shell calls
+ * attach(store) with its store before the first render.
  */
 (function () {
   'use strict';
@@ -193,8 +193,7 @@
   // draft edit). Resolved to a valid id at render time.
   var _styleLayer = null;
   function activeRenderer() {
-    for (var i = 0; i < MODULES.length; i++) { if (MODULES[i].id === STATE.active) return MODULES[i].render; }
-    return renderCounty;
+    return RENDERERS[STATE.active] || renderCounty;
   }
 
   // Delegated edit wiring, attached ONCE to the persistent #ac-content host. It
@@ -643,9 +642,6 @@
   function _srcNote() {
     return STATE.source === 'api' ? 'Loaded live from <code>/config</code>.' : 'Showing the baked manifest fallback.';
   }
-  function _plan(items) {
-    return '<ul class="ac-plan">' + items.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>';
-  }
 
   // ── Data & Layers module (DIC-461 — read + edit) ────────────────────────────
   // PostGIS (vector) layers are the editable focus; the legacy WMS/raster
@@ -897,71 +893,6 @@
     CONSOLE.setDraft('styling.layers.' + d.id, { label: _titleize(d.id), paint: _defaultStyle(d.geomType || 'polygon') });
     renderData(host);                       // re-render: layer now appears under PostGIS layers; pulldown reloads without it
     flash(host, 'ok', 'Added “' + _titleize(d.id) + '”. Publish to make it live in the viewer.');
-  }
-
-  // ── Access & Ops module (DIC-462 — read + edit) ─────────────────────────────
-  // The `access` block (model, assessment visibility, report inbox, rate-limit)
-  // and the data-request form URL are editable via the shared draft→publish flow.
-  // The Services card stays read-only here: those endpoints are owned by other
-  // modules (tile server → Data & Layers, Map Buddy → County) or are runtime.
-  function renderAccess(host) {
-    var editing = STATE.editing;
-    var C = editing ? (STATE.draft || {}) : (STATE.config || {});
-    var A = C.access || {};
-    var forms = C.forms || {};
-    var ep = C.endpoints || {};
-    var ts = (C.layers || {}).tileServer || {};
-
-    function txt(path, val, ph) {
-      return '<input class="ac-input" data-path="' + path + '" data-type="str" value="' +
-        esc(val == null ? '' : val) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>';
-    }
-    function bool(path, val) {
-      return '<input type="checkbox" data-path="' + path + '" data-type="bool"' + (val ? ' checked' : '') + '>';
-    }
-
-    var toolbar = editing
-      ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
-        '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
-        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
-        '<button class="ac-btn" data-act="cancel">Cancel</button>'
-      : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit access</button>' +
-        '<button class="ac-btn" data-act="history">Version history</button>';
-    var banner = editing
-      ? '<div class="ac-banner ac-banner-edit"><span>✎</span><div><b>Editing a draft.</b> ' +
-        'Set the access model, assessment-data visibility, report inbox, and rate-limit flag, then <b>Publish</b>. ' +
-        'Service endpoints below are owned by their own modules and stay read-only here.</div></div>'
-      : '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() +
-        ' Embeds, usage dashboards, and a deploy trigger are the planned DIC-462 build.</div></div>';
-
-    host.innerHTML =
-      '<div class="ac-page-head ac-page-head-row"><div>' +
-        '<h1 class="ac-page-title">Access &amp; Ops</h1>' +
-        '<p class="ac-page-sub">Who can see what, how it’s shared, and how staff watch it.</p></div>' +
-        '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Access</h2></div><dl class="ac-grid">' +
-        '<dt>Access model</dt><dd>' + (editing ? txt('access.model', A.model, 'e.g. Public — no sign-in') : esc(A.model || '—')) + '</dd>' +
-        '<dt>Assessment data</dt><dd>' + (editing
-          ? bool('access.assessmentDataPublic', A.assessmentDataPublic) + ' <span class="ac-card-note">public</span>'
-          : (A.assessmentDataPublic ? 'Public' : 'Gated')) + '</dd>' +
-        '<dt>Data request form</dt><dd>' + (editing ? txt('forms.dataRequest', forms.dataRequest, 'https://…')
-          : (forms.dataRequest ? '<code>' + esc(forms.dataRequest) + '</code>' : '—')) + '</dd>' +
-        '<dt>Error reports go to</dt><dd>' + (editing ? txt('access.reportTo', A.reportTo, 'gis@county.gov')
-          : '<code>' + esc(A.reportTo || '—') + '</code>') + '</dd>' +
-        '<dt>Rate limited</dt><dd>' + (editing
-          ? bool('access.rateLimited', A.rateLimited) + ' <span class="ac-card-note">throttle public endpoints</span>'
-          : (A.rateLimited ? 'Yes' : 'No')) + '</dd></dl></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Services</h2>' +
-        '<span class="ac-card-note">read-only · owned by other modules</span></div><dl class="ac-grid">' +
-        '<dt>Parcel API</dt><dd><code>' + esc(CONSOLE.apiBase()) + '</code></dd>' +
-        '<dt>Tile server</dt><dd><code>' + esc(ts.url || '/tiles') + '</code></dd>' +
-        '<dt>Map Buddy AI</dt><dd><code>' + esc(ep.mapBuddy || '—') + '</code></dd></dl></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Planned (DIC-462)</h2></div>' +
-        _plan(['Public-vs-staff gating toggles per county', 'Embeds + shareable links (DIC-399 / DIC-340)', 'Data-error report triage dashboard (DIC-391)', 'Usage / analytics + change audit log', 'One-click redeploy trigger (e.g. Map Buddy, DIC-452)']) + '</div>' +
-      '<div id="ac-history"></div>';
-
-    wireEditHost(host);
   }
 
   // ── Theme Manifest module (B2 manual builder · DIC-578) ─────────────────────
@@ -1218,19 +1149,18 @@
   }
 
   // ── Module registry ─────────────────────────────────────────────────────────
-  var MODULES = [
-    { id: 'county', label: 'County Configuration', icon: '◆', render: renderCounty },
-    { id: 'intelligence', label: 'Intelligence', icon: '✦', render: renderIntelligence },
-    { id: 'styling', label: 'Styling', icon: '◑', render: renderStyling },
-    { id: 'data', label: 'Data & Layers', icon: '▤', render: renderData },
-    { id: 'access', label: 'Access & Ops', icon: '◈', render: renderAccess },
-    { id: 'manifest', label: 'Theme Manifest', icon: '❖', render: renderManifest },
-  ];
-
-  // The shell (frontend/src/admin-console) draws the nav from MODULES and calls attach()
-  // with its store first.
+  // The modules still drawn here, by id. The shell (frontend/src/admin-console/modules.js)
+  // has the nav and the ones that are Vue already (Access & Ops); it calls attach() with
+  // its store first.
+  var RENDERERS = {
+    county: renderCounty,
+    intelligence: renderIntelligence,
+    styling: renderStyling,
+    data: renderData,
+    manifest: renderManifest,
+  };
   window.PV_ADMIN_LEGACY = {
-    modules: MODULES,
+    renderers: RENDERERS,
     attach: function (store) { CONSOLE = store; STATE = store.state; },
   };
 }());

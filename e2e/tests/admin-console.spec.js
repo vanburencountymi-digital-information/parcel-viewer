@@ -385,6 +385,72 @@ test.describe('Admin console', () => {
       expect(seen.rollback).toEqual({ version: 3, author: 'console' });
     });
 
+    // Access & Ops (DIC-462): what each row shows, and that its editor sends each field
+    // with its type. `dd` is the value next to a row's label.
+    const dd = (scope, label) => scope.locator('dt', { hasText: new RegExp('^' + label + '$') }).locator('xpath=following-sibling::dd[1]');
+    const card = (page, title) => main(page).locator('.ac-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+
+    test('access: shows the live access settings and the services, read-only', async ({ page }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const A = cfg.access || {};
+      await gotoAdmin(page, 'access');
+      await expect(main(page)).toContainText('Loaded live from /config.');
+      const access = card(page, 'Access');
+      await expect(dd(access, 'Access model')).toHaveText(A.model || '—');
+      await expect(dd(access, 'Assessment data')).toHaveText(A.assessmentDataPublic ? 'Public' : 'Gated');
+      await expect(dd(access, 'Data request form')).toHaveText((cfg.forms && cfg.forms.dataRequest) || '—');
+      await expect(dd(access, 'Error reports go to')).toHaveText(A.reportTo || '—');
+      await expect(dd(access, 'Rate limited')).toHaveText(A.rateLimited ? 'Yes' : 'No');
+      const services = card(page, 'Services');
+      await expect(dd(services, 'Parcel API')).toHaveText('/api');
+      await expect(dd(services, 'Tile server')).toHaveText((cfg.layers && cfg.layers.tileServer && cfg.layers.tileServer.url) || '/tiles');
+      await expect(dd(services, 'Map Buddy AI')).toHaveText((cfg.endpoints && cfg.endpoints.mapBuddy) || '—');
+      await expect(card(page, 'Planned (DIC-462)').getByRole('listitem')).toHaveCount(5);
+      await expect(formField(main(page))).toHaveCount(0);
+    });
+
+    test('access: the editor starts from the live values and saves each field with its type', async ({ page, consoleGuard }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const A = cfg.access || {};
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'access');
+      await main(page).getByRole('button', { name: 'Edit access' }).click();
+      await expect(main(page)).toContainText('Editing a draft.');
+      await expect(draftField(page, 'access.model')).toHaveValue(A.model || '');
+      await expect(draftField(page, 'access.reportTo')).toHaveValue(A.reportTo || '');
+      await expect(draftField(page, 'forms.dataRequest')).toHaveValue((cfg.forms && cfg.forms.dataRequest) || '');
+      await expect(draftField(page, 'access.assessmentDataPublic')).toBeChecked({ checked: !!A.assessmentDataPublic });
+      // The services stay read-only while editing.
+      await expect(formField(card(page, 'Services'))).toHaveCount(0);
+
+      await draftField(page, 'access.model').fill('Staff only');
+      await draftField(page, 'forms.dataRequest').fill('https://forms.example.test/req');
+      await draftField(page, 'access.assessmentDataPublic').setChecked(!A.assessmentDataPublic);
+      await draftField(page, 'access.rateLimited').setChecked(!A.rateLimited);
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      expect(seen.saved.payload.access).toMatchObject({
+        model: 'Staff only', assessmentDataPublic: !A.assessmentDataPublic, rateLimited: !A.rateLimited,
+      });
+      expect(seen.saved.payload.forms.dataRequest).toBe('https://forms.example.test/req');
+
+      await main(page).getByRole('button', { name: 'Cancel' }).click();
+      await expect(dd(card(page, 'Access'), 'Access model')).toHaveText(A.model || '—');
+    });
+
+    test('access: history and Restore stay on Access & Ops', async ({ page, consoleGuard }) => {
+      const seen = {};
+      await stubStore(page, consoleGuard, seen, { versions: [{ version: 4, note: 'Inbox', created_by: 'jerry', created_at: '2026-05-01T10:00:00Z' }] });
+      await gotoAdmin(page, 'access');
+      await main(page).getByRole('button', { name: 'Version history' }).click();
+      await expect(main(page)).toContainText('1 published version(s)');
+      await main(page).getByRole('button', { name: 'Restore' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Restored v4 as version 8.');
+      await expect(main(page).getByRole('heading', { level: 1 })).toHaveText('Access & Ops');
+      await expect(main(page).getByRole('button', { name: 'Restore' })).toBeVisible();   // history redrawn
+    });
+
     test('Preview hands the draft to the viewer; Cancel clears it', async ({ page, consoleGuard }) => {
       await stubStore(page, consoleGuard, {});
       await gotoAdmin(page, 'county');
