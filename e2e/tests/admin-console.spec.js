@@ -779,6 +779,155 @@ test.describe('Admin console', () => {
       await expect(card(page, 'Choropleth')).toHaveCount(0);
     });
 
+    // Theme Manifest (DIC-578/579/580): assembled from the modules and validated by the
+    // engine, the raw editor, save / publish into the draft, export, and autoconfigure.
+    // Map Buddy's /health and /autoconfigure are always stubbed here: autoconfigure would
+    // call the live model.
+    const raw = (page) => main(page).locator('#ac-mf-raw');
+    const mfResult = (page) => main(page).locator('#ac-mf-result');
+    async function stubAi(page, { healthy = true, refinement = null } = {}) {
+      const seen = { autoconfigure: [] };
+      await page.route('**/health', (route) => route.fulfill(healthy ? { json: { ok: true } } : { status: 503, json: {} }));
+      await page.route('**/autoconfigure', async (route) => {
+        seen.autoconfigure.push(route.request().postDataJSON());
+        await route.fulfill({ json: refinement ? { ok: true, refinement } : { ok: false } });
+      });
+      return seen;
+    }
+
+    test('manifest: assembled from the modules, schema-valid, with its capabilities and the full JSON', async ({ page }) => {
+      await stubAi(page);
+      await gotoAdmin(page, 'manifest');
+      await expect(main(page)).toContainText('Assembled from the current module values (not yet saved).');
+      await expect(main(page)).toContainText(/Schema-valid theme manifest \(v[\d.]+, tenant vanburen\)/);
+      const manifest = JSON.parse(await raw(page).inputValue());
+      expect(manifest.tenant).toBe('vanburen');
+      const caps = Object.keys(manifest.capabilities || {});
+      const rows = card(page, 'Capabilities & AI mode').locator('tbody tr');
+      await expect(rows).toHaveCount(Math.max(caps.length, 1));
+      if (caps.length) await expect(rows.first().locator('td').first()).toHaveText(caps[0]);
+    });
+
+    test('manifest: Validate says what is wrong with the edited JSON', async ({ page }) => {
+      await stubAi(page);
+      await gotoAdmin(page, 'manifest');
+      const good = await raw(page).inputValue();
+      await raw(page).fill('{ not json');
+      await main(page).getByRole('button', { name: 'Validate' }).click();
+      await expect(mfResult(page)).toContainText('✗ Invalid JSON:');
+      const broken = JSON.parse(good);
+      broken.manifestVersion = '99.0';   // newer than the engine supports
+      await raw(page).fill(JSON.stringify(broken));
+      await main(page).getByRole('button', { name: 'Validate' }).click();
+      await expect(mfResult(page)).toContainText('✗');
+      await expect(mfResult(page)).not.toContainText('Invalid JSON');
+      await raw(page).fill(good);
+      await main(page).getByRole('button', { name: 'Validate' }).click();
+      await expect(mfResult(page)).toHaveText(/^✓ Schema-valid/);
+    });
+
+    test('manifest: Save puts the edited manifest in the draft and shows it as saved; Re-assemble starts over', async ({ page, consoleGuard }) => {
+      await stubAi(page);
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'manifest');
+      const edited = JSON.parse(await raw(page).inputValue());
+      edited.branding = { ...(edited.branding || {}), name: 'Edited Name' };
+      await raw(page).fill(JSON.stringify(edited));
+      await main(page).getByRole('button', { name: 'Save to draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Manifest saved to draft. Reopen to confirm it round-trips.');
+      expect(seen.saved.author).toBe('console');
+      expect(seen.saved.payload.manifest.branding.name).toBe('Edited Name');
+      expect(seen.saved.payload.name).toBeTruthy();   // the rest of the config rides along
+      await expect(main(page)).toContainText('Showing the saved manifest from the config store.');
+      expect(JSON.parse(await raw(page).inputValue()).branding.name).toBe('Edited Name');
+
+      await main(page).getByRole('button', { name: 'Re-assemble from modules' }).click();
+      await expect(main(page)).toContainText('Assembled from the current module values');
+      expect(JSON.parse(await raw(page).inputValue()).branding.name).not.toBe('Edited Name');
+    });
+
+    test('manifest: an invalid manifest is never saved; Publish publishes a valid one', async ({ page, consoleGuard }) => {
+      await stubAi(page);
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'manifest');
+      const good = await raw(page).inputValue();
+      const broken = JSON.parse(good);
+      broken.manifestVersion = '99.0';   // newer than the engine supports
+      await raw(page).fill(JSON.stringify(broken));
+      await main(page).getByRole('button', { name: 'Save to draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toContainText('Manifest is not schema-valid — fix it before saving:');
+      expect(seen.saved).toBeUndefined();
+
+      await raw(page).fill(good);
+      await main(page).getByRole('button', { name: 'Publish' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Published version 7.');
+      expect(seen.published).toEqual({ author: 'console', note: 'Published theme manifest from console' });
+      expect(seen.saved.payload.manifest).toEqual(JSON.parse(good));
+    });
+
+    test('manifest: Export downloads the manifest; Export edited downloads the editor’s JSON', async ({ page }) => {
+      await stubAi(page);
+      await gotoAdmin(page, 'manifest');
+      const current = JSON.parse(await raw(page).inputValue());
+      let download = page.waitForEvent('download');
+      await main(page).getByRole('button', { name: 'Export', exact: true }).click();
+      let file = await download;
+      expect(file.suggestedFilename()).toBe((current.id || 'theme') + '.manifest.json');
+      expect(JSON.parse(await (await file.createReadStream()).toArray().then((c) => Buffer.concat(c).toString()))).toEqual(current);
+
+      await raw(page).fill(JSON.stringify({ id: 'edited-theme', x: 1 }));
+      download = page.waitForEvent('download');
+      await main(page).getByRole('button', { name: 'Export edited' }).click();
+      file = await download;
+      expect(file.suggestedFilename()).toBe('edited-theme.manifest.json');
+    });
+
+    test('manifest: autoconfigure drops a draft in the editor and shows the AI review (stubbed)', async ({ page }) => {
+      const ai = await stubAi(page, { refinement: { rationale: 'Looks <b>fine</b>.', suggestions: [{ field: 'map.zoom', change: 'zoom in', why: 'small county' }] } });
+      await gotoAdmin(page, 'manifest');
+      const ac = card(page, 'AI autoconfigure (draft)');
+      await ac.locator('#ac-ac-topic').fill('zoning');
+      await ac.locator('#ac-ac-intent').selectOption('staff');
+      await raw(page).fill('{}');
+      await ac.getByRole('button', { name: 'Generate draft' }).click();
+      await expect(ac.locator('#ac-ac-result')).toContainText('✓ schema-valid draft · ');
+      await expect(ac.locator('#ac-ac-refine')).toContainText('AI review: Looks <b>fine</b>.');
+      await expect(ac.locator('#ac-ac-refine li')).toHaveText('map.zoom — zoom in (small county)');
+      const draft = JSON.parse(await raw(page).inputValue());
+      expect(draft.tenant).toBe('vanburen');
+      expect(ai.autoconfigure).toHaveLength(1);
+      expect(ai.autoconfigure[0].brief).toMatchObject({ topic: 'zoning', intent: 'staff', ai: true, tenant: 'vanburen' });
+      expect(ai.autoconfigure[0].draft).toEqual(draft);
+    });
+
+    test('manifest: with the AI service down, autoconfigure says so and stays deterministic', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 503/);
+      const ai = await stubAi(page, { healthy: false });
+      await gotoAdmin(page, 'manifest');
+      const ac = card(page, 'AI autoconfigure (draft)');
+      await expect(ac.locator('#ac-ac-health')).toHaveText(/AI service unreachable — autoconfigure runs in deterministic baseline mode/);
+      await ac.getByRole('button', { name: 'Generate draft' }).click();
+      await expect(ac.locator('#ac-ac-result')).toContainText('✓ schema-valid draft (AI refinement skipped — service unreachable) · ');
+      await expect(ac.locator('#ac-ac-refine')).toBeEmpty();
+      // Unticking the assistant: no AI asked either.
+      await ac.locator('#ac-ac-ai').uncheck();
+      await ac.getByRole('button', { name: 'Generate draft' }).click();
+      expect(ai.autoconfigure).toHaveLength(0);
+    });
+
+    test('manifest: history and Restore stay on the Theme Manifest', async ({ page, consoleGuard }) => {
+      await stubAi(page);
+      await stubStore(page, consoleGuard, {}, { versions: [{ version: 5, note: 'Theme', created_by: 'jerry', created_at: '2026-06-01T08:00:00Z' }] });
+      await gotoAdmin(page, 'manifest');
+      await main(page).getByRole('button', { name: 'Version history' }).click();
+      await expect(main(page)).toContainText('1 published version(s)');
+      await main(page).getByRole('button', { name: 'Restore' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Restored v5 as version 8.');
+      await expect(main(page).getByRole('heading', { level: 1 })).toHaveText('Theme Manifest');
+    });
+
     test('access: shows the live access settings and the services, read-only', async ({ page }) => {
       const cfg = await (await page.request.get('/api/config')).json();
       const A = cfg.access || {};

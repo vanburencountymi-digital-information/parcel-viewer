@@ -34,7 +34,6 @@ COPY --from=build /src/dist/admin/ /usr/share/nginx/html/admin/
 COPY --from=build /src/dist/assets/ /usr/share/nginx/html/assets/
 # What the pages still load or fetch by path, laid out as the dev stack mounts it.
 COPY frontend/public/ /usr/share/nginx/html/parcel-viewer/
-COPY admin/js/ /usr/share/nginx/html/admin/js/
 COPY engine/ /usr/share/nginx/html/engine/
 COPY map-buddy/js/ /usr/share/nginx/html/map-buddy/js/
 COPY map-buddy/css/ /usr/share/nginx/html/map-buddy/css/

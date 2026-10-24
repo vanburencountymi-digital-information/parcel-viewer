@@ -13,8 +13,8 @@
   <script src="/frontend/public/js/pv-storage-guard.js"></script>
 </head>
 <body>
-  <!-- The console's shell (sidebar nav, staff sign-in, top bar, content area) is a Vue
-       island (frontend/src/admin-console, DIC-2389); the modules inside it are admin.js's. -->
+  <!-- The console is a Vue island (frontend/src/admin-console, DIC-2389): the shell (sidebar
+       nav, staff sign-in, top bar) and its six modules. -->
   <div id="ac-app" class="ac-app"></div>
 
   <!-- The live county manifest (current source of truth). The console reads it
@@ -26,9 +26,8 @@
        loadManifest() gate CI uses; plus the B3 theme-composer core (DIC-579). The entry
        puts the console's window.ISV_* hooks on window; the build bundles it in place. -->
   <script src="/engine/browser-admin.js"></script>
-  <script src="/admin/js/admin.js"></script>
-  <!-- The console's Vue islands (DIC-2389, ADR 0017). A module runs after the page is
-       parsed, so after the classic scripts above: admin.js has registered its modules. -->
+  <!-- The console's Vue entry (DIC-2389, ADR 0017). A module runs after the page is parsed,
+       so after the classic scripts above: COUNTY, PV_ENDPOINTS and the ISV_* hooks exist. -->
   <script type="module" src="/frontend/src/admin-main.js"></script>
 </body>
 </html>

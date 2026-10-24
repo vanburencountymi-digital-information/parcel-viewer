@@ -1,11 +1,11 @@
 // The Admin Console's shell, config store and draft helpers (DIC-2389; were admin.js).
-// The API and the legacy modules are faked here; the e2e suite drives the real console
+// The API and the modules are faked here; the e2e suite drives the real console
 // with the config store's routes stubbed (admin-console.spec.js, "shell and edit flow").
 import { flushPromises, mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 import { defineComponent, h } from 'vue';
 import AdminConsole from './AdminConsole.vue';
-import { MODULES, resolveModules } from './modules.js';
+import { MODULES } from './modules.js';
 import { arrayAdd, arrayAt, arrayRemove, getPath, setPath, templateFor } from './draft.js';
 import { createConsoleStore } from './store.js';
 
@@ -204,12 +204,15 @@ describe('console store', () => {
 });
 
 describe('AdminConsole', () => {
+  // A module that shows its id and how many times it was created.
+  let created = 0;
+  const fake = (id) => defineComponent({
+    props: ['store'],
+    setup: (p) => { created++; return () => h('h1', { 'data-store': String(!!p.store) }, id); },
+  });
   function shell({ hash = '', routes } = {}) {
     const s = setup(routes || { 'GET /config': reply(200, { name: 'Live County' }) });
-    const modules = ['county', 'styling', 'access'].map((id) => ({
-      id, label: id.toUpperCase(), icon: '·',
-      render: vi.fn((host) => { host.innerHTML = `<h1>${id}</h1>`; }),
-    }));
+    const modules = ['county', 'styling', 'access'].map((id) => ({ id, label: id.toUpperCase(), icon: '·', component: fake(id) }));
     const listeners = [];
     const auth = { state: { user: null, busy: false, message: '' }, onChange: (fn) => listeners.push(fn), signIn: vi.fn(), signOut: vi.fn() };
     const win = { location: { hash }, history: { replaceState: vi.fn((a, b, h) => { win.location.hash = h; }) } };
@@ -217,11 +220,11 @@ describe('AdminConsole', () => {
     return { ...s, w, modules, win, signedInOrOut: () => listeners.forEach((fn) => fn()) };
   }
 
-  it('opens the module in the address (else County), draws it in <main>, and keeps the address', async () => {
-    const { w, modules, win } = shell({ hash: '#styling' });
+  it('opens the module in the address (else County) in <main> with the store, and keeps the address', async () => {
+    const { w, win } = shell({ hash: '#styling' });
     await flushPromises();
-    expect(modules[1].render).toHaveBeenCalledWith(w.get('main > div').element);
     expect(w.get('main').text()).toBe('styling');
+    expect(w.get('main h1').attributes('data-store')).toBe('true');
     expect(w.get('[data-mod="styling"]').attributes('aria-current')).toBe('page');
     expect(w.get('[data-mod="styling"]').classes()).toContain('is-active');
     expect(document.activeElement).toBe(w.get('main').element);
@@ -239,36 +242,20 @@ describe('AdminConsole', () => {
     other.w.unmount();
   });
 
-  it('the top bar follows the config; the module redraws once /config answers and on sign-in or out', async () => {
-    const { w, modules, signedInOrOut } = shell();
+  it('the top bar follows the config; /config answering or a sign-in keeps the open module and its edit', async () => {
+    const { w, store, signedInOrOut } = shell();
     expect(w.get('#ac-status').text()).toBe('Read-only preview');
     expect(w.get('#ac-county-select').text()).toBe('Baked County');
+    await flushPromises();
+    const before = created;
+    await store.edit();
     await vi.waitFor(() => expect(w.get('#ac-status').text()).toBe('Live config · read-only'));
     expect(w.get('#ac-county-select').text()).toBe('Live County');
-    expect(modules[0].render).toHaveBeenCalledTimes(2);
     signedInOrOut();
-    expect(modules[0].render).toHaveBeenCalledTimes(3);
-    w.unmount();
-  });
-
-  it('a Vue module renders in <main> with the store; switching to it clears what a legacy module drew', async () => {
-    const s = setup({ 'GET /config': reply(200, {}) });
-    const Vue = defineComponent({ props: ['store'], setup: (p) => () => h('h1', { id: 'vue-mod' }, 'vue ' + p.store.state.active) });
-    const legacy = { id: 'county', label: 'C', icon: '·', render: (host) => { host.innerHTML = '<div id="ac-flash">legacy</div>'; } };
-    const auth = { state: { user: null }, onChange: () => {} };
-    const win = { location: { hash: '' }, history: { replaceState: (a, b, hsh) => { win.location.hash = hsh; } } };
-    const w = mount(AdminConsole, { props: { store: s.store, auth, modules: [legacy, { id: 'vue', label: 'V', icon: '·', component: Vue }], win } });
     await flushPromises();
-    expect(w.find('#ac-flash').exists()).toBe(true);
-
-    await w.get('[data-mod="vue"]').trigger('click');
-    expect(w.get('#vue-mod').text()).toBe('vue vue');
-    expect(w.find('#ac-flash').exists()).toBe(false);
-    expect(w.get('main > div').attributes('style')).toMatch(/display: none/);
-
-    await w.get('[data-mod="county"]').trigger('click');
-    expect(w.find('#vue-mod').exists()).toBe(false);
-    expect(w.get('#ac-flash').text()).toBe('legacy');
+    expect(store.state.editing).toBe(true);
+    expect(w.get('main').text()).toBe('county');
+    expect(created).toBe(before);   // not re-created
     w.unmount();
   });
 
@@ -285,11 +272,8 @@ describe('AdminConsole', () => {
 });
 
 describe('modules', () => {
-  it('keeps the nav order; legacy modules take their renderer from admin.js, and one without is left out', () => {
-    const render = () => {};
-    const ids = resolveModules({ county: render, intelligence: render, styling: render, manifest: render }).map((m) => m.id);
-    expect(ids).toEqual(['county', 'intelligence', 'styling', 'data', 'access', 'manifest']);
-    expect(MODULES.find((m) => m.id === 'access').component).toBeTruthy();
-    expect(resolveModules().map((m) => m.id)).toEqual(['county', 'intelligence', 'styling', 'data', 'access']);
+  it('are the six, in nav order, each a component', () => {
+    expect(MODULES.map((m) => m.id)).toEqual(['county', 'intelligence', 'styling', 'data', 'access', 'manifest']);
+    expect(MODULES.every((m) => m.component && m.label && m.icon)).toBe(true);
   });
 });
