@@ -78,8 +78,9 @@ means adding a `geo.<name>_tiles` function in county-data-services and restartin
   server-sent-event stream of map **commands** and text. `/explain`, `/describe-cohort`,
   `/kb/resolve` and the workflow routes narrate or look up facts. `/status` and `/health`
   report availability. Quota, caching and cost logging live in `usage.py` and `cache.py`.
-- `map-buddy/js/`: the browser client. It streams `/chat` and runs each command only if
-  it's in its fixed command table (`_CMDS` in `map-buddy-commands.js`); anything else is ignored.
+- The browser client: the panel (`frontend/src/map-buddy/`, a Vue island) streams `/chat`, and
+  `map-buddy/js/map-buddy-commands.js` runs each command only if it's in its fixed
+  command table (`_CMDS`); anything else is ignored.
 
 ### The front end (`demo/index.html`, `frontend/public/js/`)
 Plain JavaScript modules (IIFEs) on MapLibre GL, loaded in a fixed order by

@@ -73,7 +73,8 @@ CI runs the same checks on every pull request (`.github/workflows/lint.yml`). Ru
 | `frontend/public/css/` | Shared map styles |
 | `api/` | The parcel API (GeoDjango): parcels, county config and its store, staff accounts, data access (see `api/README.md`) |
 | `map-buddy/backend/` | Map Buddy FastAPI microservice |
-| `map-buddy/js/map-buddy.js` | Browser client — the chat panel and its SSE stream consumer |
+| `map-buddy/js/map-buddy.js` | `MapBuddy.mount` / `unmount`, the page's contract for attaching Map Buddy |
+| `frontend/src/map-buddy/` | The chat panel (a Vue island, DIC-2389): the conversation, its SSE stream consumer, map looks, automations |
 | `map-buddy/js/map-buddy-commands.js` | The map commands the AI's replies run (plain JS, behind the panel's adapter) |
 | `map-buddy/css/map-buddy.css` | Map Buddy panel styles |
 | `map-buddy/deploy.sh` | Cloud Run build + deploy script |
