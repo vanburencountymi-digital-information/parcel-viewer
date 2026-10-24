@@ -1,11 +1,13 @@
 /**
- * admin.js — Parcel Viewer Admin Console shell (DIC-467).
+ * admin.js — the Parcel Viewer Admin Console's modules (DIC-467).
  *
- * Config-as-data, read side. Today it reads the live county manifest
- * (window.COUNTY from county-config.js); a runtime /config API (DIC-465) will
- * replace that source, and the writable store (DIC-464, blocked by DIC-400)
- * makes the modules editable. The module registry below is the extension point:
- * each settings area registers a {id, label, icon, render} entry.
+ * Config-as-data. The console's shell (nav, top bar, staff sign-in) and its config and
+ * draft (the /config API, DIC-465, over the baked window.COUNTY; save, publish, history)
+ * are Vue since DIC-2389: frontend/src/admin-console, and so are some modules
+ * (Intelligence, Access & Ops). The modules here are still drawn as HTML strings,
+ * moving to Vue one at a time.
+ * Each registers its render(host) in window.PV_ADMIN_LEGACY.renderers; the shell calls
+ * attach(store) with its store before the first render.
  */
 (function () {
   'use strict';
@@ -14,240 +16,40 @@
     return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;')
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
-  function el(html) { var d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
   function pageHead(title, sub) {
     return '<div class="ac-page-head"><h1 class="ac-page-title">' + esc(title) + '</h1>' +
       '<p class="ac-page-sub">' + esc(sub) + '</p></div>';
   }
 
-  // Config source: the runtime /config API (DIC-465) when reachable, else the
-  // baked window.COUNTY fallback (county-config.js).
-  var API_BASE = window.ADMIN_API || '/api';
-  // The explainer plugins live in the Map Buddy service; resolve its base the same
-  // way the viewer does (window override first, for testing).
+  // The Map Buddy service (the Theme Manifest's AI health and autoconfigure); resolve its
+  // base the same way the viewer does (window override first, for testing).
   // Resolved in pv-endpoints.js (DIC-1856) — no service URL lives in this file.
   function explainBase() {
     return window.PV_ENDPOINTS ? window.PV_ENDPOINTS.mapBuddyBase() : (window.MAP_BUDDY_API || '/map-buddy-api');
   }
-  var COUNTY_KEY = window.PV_COUNTY_KEY || 'vanburen';
-  var STATE = {
-    config: window.COUNTY || {}, source: 'fallback',
-    editing: false, draft: null,
-    auth: null,                           // {token, username, expiry} while a staff user is signed in
-  };
-  // Debug/test hook (mirrors the viewer's window handles like PS_MAP / PV_MAP_BUDDY):
-  // exposes the live console state so automated checks can drive round-trip flows the
-  // unprovisioned local store can't (e.g. seed a saved manifest). Not used by the UI.
-  window.PV_ADMIN = { getState: function () { return STATE; } };
+  // The console store (frontend/src/admin-console/store.js) and its state ({active,
+  // config, source, editing, draft}), set by attach() before any module renders.
+  var CONSOLE = null;
+  var STATE = null;
+  function clone(o) { return CONSOLE.clone(o); }
 
   // ── Staff sign-in (DIC-2151, ADR 0013) ─────────────────────────────────────
-  // The Django API trades a staff password for a token (POST /auth/login), sent as
-  // "Authorization: Token …". It's kept in sessionStorage: a reload stays signed in,
-  // closing the tab signs out. (The shared admin key went with the FastAPI backend.)
-  var AUTH_KEY = 'pv-admin-auth';
-  var onAuthChange = function () {};   // set by init(): re-renders the open module
-
-  function readAuth() {
-    try {
-      var a = JSON.parse(sessionStorage.getItem(AUTH_KEY) || 'null');
-      return a && typeof a.token === 'string' && a.token ? a : null;
-    } catch (_) { return null; }
-  }
-  // Takes the new sign-in (or null to sign out). Updates the sidebar, not the module.
-  function setAuth(a) {
-    STATE.auth = a;
-    try {
-      if (a) sessionStorage.setItem(AUTH_KEY, JSON.stringify(a));
-      else sessionStorage.removeItem(AUTH_KEY);
-    } catch (_) { /* storage blocked: signed in for this page only */ }
-    renderAuth();
-  }
-  function hasAuth() { return !!STATE.auth; }
+  // The sidebar's sign-in is Vue (frontend/src/admin-console, DIC-2389). It publishes
+  // window.PV_ADMIN_AUTH; read it at call time. Without it the console behaves as
+  // signed out.
+  function auth() { return window.PV_ADMIN_AUTH || null; }
+  function hasAuth() { var a = auth(); return !!(a && a.has()); }
   var DISCOVERY_NEEDS_AUTH = 'Layer discovery needs a staff sign-in.';
-  function authHeaders() {
-    return STATE.auth ? { 'Authorization': 'Token ' + STATE.auth.token } : {};
-  }
-  // A 401 while signed in means the token expired or was revoked: forget it.
-  function noteRefused(status) {
-    if (status === 401 && STATE.auth) { setAuth(null); return true; }
-    return false;
-  }
-
-  function signInError(status) {
-    if (status === 401) return 'Wrong username or password, or the account isn’t staff.';
-    if (status === 422) return 'Enter a username and a password.';
-    if (status === 429) return 'Too many attempts. Wait a minute and try again.';
-    if (status === 404) return 'This API has no staff sign-in yet (it still uses the shared admin key).';
-    return 'Couldn’t sign in (' + (status ? 'HTTP ' + status : 'no response') + ').';
-  }
-  function signIn(username, password) {
-    return fetch(API_BASE + '/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: username, password: password }),
-    }).then(function (r) {
-      if (!r.ok) return { error: signInError(r.status) };
-      return r.json().then(function (j) {
-        setAuth({ token: j.token, username: j.user && j.user.username, expiry: j.expiry });
-        onAuthChange();
-        return {};
-      });
-    }).catch(function () { return { error: signInError(0) }; });
-  }
-  function signOut() {
-    var headers = authHeaders();
-    setAuth(null);
-    onAuthChange();
-    // Revoke the token on the server too; signed out locally either way.
-    return fetch(API_BASE + '/auth/logout', { method: 'POST', headers: headers }).catch(function () {});
-  }
-  // On load: keep a stored sign-in only if the API still accepts its token.
-  function checkAuth() {
-    var stored = readAuth();
-    if (!stored) { renderAuth(); return Promise.resolve(); }
-    STATE.auth = stored;
-    renderAuth();
-    return fetch(API_BASE + '/auth/me', { headers: authHeaders(), cache: 'no-cache' })
-      .then(function (r) {
-        if (r.status === 401 || r.status === 404) { setAuth(null); onAuthChange(); return; }
-        if (r.ok) return r.json().then(function (j) {
-          setAuth({ token: stored.token, username: j.user && j.user.username, expiry: j.expiry });
-        });
-      })
-      .catch(function () { /* API unreachable: keep the sign-in; writes will say so */ });
-  }
-
-  function renderAuth() {
-    var box = document.getElementById('ac-auth');
-    if (!box) return;
-    if (STATE.auth) {
-      box.innerHTML = '<p class="ac-auth-who">Signed in as <strong>' + esc(STATE.auth.username || 'staff') + '</strong></p>' +
-        '<button type="button" class="ac-btn ac-btn-sm" id="ac-signout">Sign out</button>';
-      box.querySelector('#ac-signout').addEventListener('click', signOut);
-      return;
-    }
-    box.innerHTML =
-      '<form id="ac-signin" class="ac-signin" novalidate>' +
-        '<p class="ac-auth-title">Staff sign-in</p>' +
-
-        '<label class="ac-auth-label" for="ac-signin-user">Username</label>' +
-        '<input class="ac-input ac-auth-input" id="ac-signin-user" name="username" autocomplete="username" required>' +
-        '<label class="ac-auth-label" for="ac-signin-pass">Password</label>' +
-        '<input class="ac-input ac-auth-input" id="ac-signin-pass" name="password" type="password" autocomplete="current-password" required>' +
-        '<button type="submit" class="ac-btn ac-btn-primary ac-btn-sm">Sign in</button>' +
-        '<p class="ac-auth-msg" id="ac-signin-msg" role="status" aria-live="polite"></p>' +
-      '</form>';
-    var form = box.querySelector('#ac-signin');
-    form.addEventListener('submit', function (ev) {
-      ev.preventDefault();
-      var msg = form.querySelector('#ac-signin-msg');
-      var btn = form.querySelector('button[type="submit"]');
-      btn.disabled = true;
-      msg.textContent = 'Signing in…';
-      signIn(form.username.value.trim(), form.password.value).then(function (res) {
-        if (!res.error) return;   // signed in: the sidebar has been redrawn
-        btn.disabled = false;
-        form.password.value = '';
-        msg.textContent = res.error;
-      });
-    });
-  }
-  function loadConfig() {
-    return fetch(API_BASE + '/config', { cache: 'no-cache' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
-      .then(function (cfg) { if (cfg && typeof cfg === 'object' && !cfg.error) { STATE.config = cfg; STATE.source = 'api'; } })
-      .catch(function () { /* keep the baked fallback */ });
-  }
-
-  function clone(o) { return JSON.parse(JSON.stringify(o || {})); }
-
-  // Admin call with the staff token (or the shared key). Resolves {ok, status, body,
-  // expired} and never rejects, so the UI can show a clean message (incl. 503 "not
-  // provisioned").
-  function apiWrite(method, path, body) {
-    var headers = authHeaders();
-    headers['Content-Type'] = 'application/json';
-    return fetch(API_BASE + path, {
-      method: method,
-      headers: headers,
-      body: body ? JSON.stringify(body) : undefined,
-    }).then(function (r) {
-      var expired = noteRefused(r.status);
-      return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j, expired: expired }; });
-    }).catch(function (e) { return { ok: false, status: 0, body: { detail: String(e && e.message || e) } }; });
-  }
+  function authHeaders() { var a = auth(); return a ? a.headers() : {}; }
+  // A 401 while signed in means the token expired or was revoked: the sign-in forgets it.
+  function noteRefused(status) { var a = auth(); return a ? a.noteRefused(status) : false; }
 
   function flash(host, kind, msg) {
     var box = host.querySelector('#ac-flash');
     if (box) box.innerHTML = '<div class="ac-flash ac-flash-' + kind + '">' + esc(msg) + '</div>';
   }
-  function writeErr(res) {
-    if (res.status === 503) return 'Editing is built but not yet provisioned in this environment (writable store — DIC-464 / DIC-400). Save will work once the store is live.';
-    if (res.status === 401) {
-      return res.expired
-        ? 'Your staff sign-in has expired. Sign in again to save.'
-        : 'Sign in as staff to save: admin auth required.';
-    }
-    // 403: not staff, or no access to this county (the API says which).
-    if (res.status === 403) return 'Not allowed: ' + ((res.body && res.body.detail) || 'this account can’t change this county’s config.');
-    return (res.body && res.body.detail) || ('Request failed (HTTP ' + res.status + ').');
-  }
-
-  // Config paths come from the manifest being edited; refuse the keys that reach
-  // JavaScript's shared object prototype (CodeQL js/prototype-pollution-utility, DIC-1880).
-  // A list, not an object: in a literal, '__proto__': … sets the prototype rather than
-  // adding a key.
-  var UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
-  function safePath(path) {
-    var parts = String(path).split('.');
-    for (var i = 0; i < parts.length; i++) {
-      if (UNSAFE_KEYS.indexOf(parts[i]) !== -1) throw new Error('Unsafe config path: ' + path);
-    }
-    return parts;
-  }
-
-  function setPath(obj, path, value) {
-    var parts = safePath(path), o = obj;
-    for (var i = 0; i < parts.length - 1; i++) {
-      if (o[parts[i]] == null || typeof o[parts[i]] !== 'object') o[parts[i]] = {};
-      o = o[parts[i]];
-    }
-    o[parts[parts.length - 1]] = value;
-  }
-  function getPath(obj, path) {
-    var parts = safePath(path), o = obj;
-    for (var i = 0; i < parts.length; i++) { if (o == null) return undefined; o = o[parts[i]]; }
-    return o;
-  }
-
-  // Templates for "Add row" on editable arrays, keyed by their config path.
-  var ADD_TEMPLATES = {
-    'layers.overlays': { id: '', label: 'New PostGIS layer', type: 'vector', source: '', minZoom: 0, default: false },
-    'layers.dataSources': { id: '', label: '', source: '' },
-    'choropleth.categories': { value: '', label: '', color: '#888888' },
-    'choropleth.stops': { min: 0, label: '', color: '#888888' },
-    'parcelNumber.segments': { name: '', description: '' },
-  };
-  function arrayAt(path) {
-    var arr = getPath(STATE.draft, path);
-    if (!Array.isArray(arr)) { setPath(STATE.draft, path, []); arr = getPath(STATE.draft, path); }
-    return arr;
-  }
-  // Find an "add row" template by exact path or by trailing-segment match, so
-  // per-layer paths (styling.layers.<id>.choropleth.categories) reuse one template.
-  function templateFor(path) {
-    if (ADD_TEMPLATES[path]) return ADD_TEMPLATES[path];
-    var keys = Object.keys(ADD_TEMPLATES);
-    for (var i = 0; i < keys.length; i++) {
-      if (path.slice(-(keys[i].length + 1)) === '.' + keys[i]) return ADD_TEMPLATES[keys[i]];
-    }
-    return {};
-  }
-  function arrayAdd(path) { arrayAt(path).push(clone(templateFor(path))); }
-  function arrayRemove(path, idx) {
-    var arr = getPath(STATE.draft, path);
-    if (Array.isArray(arr) && idx >= 0 && idx < arr.length) arr.splice(idx, 1);
-  }
+  // A store result ({ok, message}) as the module's flash.
+  function flashResult(host, res) { flash(host, res.ok ? 'ok' : 'err', res.message); }
 
   // ── County Configuration module (DIC-458 view · DIC-464/466 editing) ────────
   function renderCounty(host) {
@@ -388,15 +190,11 @@
 
   // Delegated handlers attach ONCE to the persistent #ac-content host (re-rendering
   // replaces its innerHTML, so per-render addEventListener would stack and fire N×).
-  // The currently-shown module id (module scope so the shared edit wiring can
-  // re-render the right module after an action).
-  var _active = null;
   // Which styling layer the Styling module is focused on (view preference, not a
   // draft edit). Resolved to a valid id at render time.
   var _styleLayer = null;
   function activeRenderer() {
-    for (var i = 0; i < MODULES.length; i++) { if (MODULES[i].id === _active) return MODULES[i].render; }
-    return renderCounty;
+    return RENDERERS[STATE.active] || renderCounty;
   }
 
   // Delegated edit wiring, attached ONCE to the persistent #ac-content host. It
@@ -418,7 +216,7 @@
       else if (type === 'bool') { val = inp.checked; }
       else if (type === 'json') { try { val = JSON.parse(raw); inp.classList.remove('ac-input-err'); } catch (_) { inp.classList.add('ac-input-err'); return; } }
       else { val = raw; }
-      setPath(STATE.draft, path, val);
+      CONSOLE.setDraft(path, val);
       // Some controls (e.g. a mode <select>) change which fields are shown;
       // re-render the active module so the form reflects the new value.
       if (inp.hasAttribute('data-rerender')) activeRenderer()(host);
@@ -429,11 +227,11 @@
       var rb = e.target.closest('[data-rollback]');
       if (rb) return doRollback(host, parseInt(rb.getAttribute('data-rollback'), 10), activeRenderer());
       var pick = e.target.closest('[data-scheme-pick]');
-      if (pick && STATE.editing) { setPath(STATE.draft, 'styling.colorScheme', pick.getAttribute('data-scheme-pick')); return activeRenderer()(host); }
+      if (pick && STATE.editing) { CONSOLE.setDraft('styling.colorScheme', pick.getAttribute('data-scheme-pick')); return activeRenderer()(host); }
       var add = e.target.closest('[data-add]');
-      if (add && STATE.editing) { arrayAdd(add.getAttribute('data-add')); return activeRenderer()(host); }
+      if (add && STATE.editing) { CONSOLE.addRow(add.getAttribute('data-add')); return activeRenderer()(host); }
       var rem = e.target.closest('[data-remove]');
-      if (rem && STATE.editing) { arrayRemove(rem.getAttribute('data-remove'), parseInt(rem.getAttribute('data-index'), 10)); return activeRenderer()(host); }
+      if (rem && STATE.editing) { CONSOLE.removeRow(rem.getAttribute('data-remove'), parseInt(rem.getAttribute('data-index'), 10)); return activeRenderer()(host); }
       var lk = e.target.closest('[data-lookup]');
       if (lk) return toggleLookup(host, lk);
       var addpick = e.target.closest('[data-add-pick]');
@@ -442,52 +240,24 @@
   }
   function wireCounty(host, maps) { host._maps = maps; wireEditHost(host); }
 
-  var AUTHOR = window.PV_ADMIN_USER || 'console';
-
-  // Generic edit/save/publish/history actions, shared by any editable module.
-  // `rerender(host)` re-draws the active module; defaults to County.
+  // Generic edit/save/publish/history actions, shared by any editable module; the
+  // console store does the work. `rerender(host)` re-draws the active module; defaults
+  // to County.
   function onAction(host, act, rerender) {
     rerender = rerender || renderCounty;
     if (act === 'edit') {
-      STATE.editing = true; STATE.draft = clone(STATE.config); rerender(host);
-      // Continue an existing server-side draft if there is one.
-      apiWrite('GET', '/config/' + COUNTY_KEY + '/draft').then(function (res) {
-        if (res.ok && res.body && !res.body.error) { STATE.draft = res.body; if (STATE.editing) rerender(host); }
-      });
+      // Redraw at once, and again if the server has a saved draft to continue.
+      CONSOLE.edit().then(function (continued) { if (continued) rerender(host); });
+      rerender(host);
       return;
     }
-    if (act === 'cancel') {
-      STATE.editing = false; STATE.draft = null;
-      try { localStorage.removeItem('pv-config-preview'); } catch (_) {}  // drop any stale preview
-      rerender(host); return;
-    }
-    // Local draft preview (DIC-512): push the in-memory draft to the viewer via
-    // localStorage — no server write. The viewer (style-preview.js) merges it
-    // over window.COUNTY and shows a banner. Opens/focuses a named viewer tab; if
-    // it's already open, its storage listener reloads it with the new draft.
-    if (act === 'preview') {
-      try {
-        localStorage.setItem('pv-config-preview', JSON.stringify(STATE.draft || STATE.config));
-        window.open('/demo/', 'pvPreview');
-        flash(host, 'ok', 'Draft sent to the viewer preview (opened /demo/). Edit & Preview again to refresh it.');
-      } catch (e) {
-        flash(host, 'err', 'Could not open preview: ' + (e && e.message || e));
-      }
-      return;
-    }
-    if (act === 'save') {
-      apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (res) {
-        flash(host, res.ok ? 'ok' : 'err', res.ok ? 'Draft saved.' : writeErr(res));
-      });
-      return;
-    }
+    if (act === 'cancel') { CONSOLE.cancel(); rerender(host); return; }
+    if (act === 'preview') { flashResult(host, CONSOLE.preview()); return; }
+    if (act === 'save') { CONSOLE.save().then(function (res) { flashResult(host, res); }); return; }
     if (act === 'publish') {
-      apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (r1) {
-        if (!r1.ok) { flash(host, 'err', writeErr(r1)); return; }
-        apiWrite('POST', '/config/' + COUNTY_KEY + '/publish', { author: AUTHOR, note: 'Published from console' }).then(function (res) {
-          if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
-          loadConfig().then(function () { STATE.editing = false; STATE.draft = null; rerender(host); flash(host, 'ok', 'Published version ' + res.body.version + '.'); });
-        });
+      CONSOLE.publish().then(function (res) {
+        if (res.ok) rerender(host);
+        flashResult(host, res);
       });
       return;
     }
@@ -497,9 +267,9 @@
   function loadHistory(host) {
     var box = host.querySelector('#ac-history');
     box.innerHTML = '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Version history</h2></div><p class="ac-readonly">Loading…</p></div>';
-    apiWrite('GET', '/config/' + COUNTY_KEY + '/versions').then(function (res) {
-      if (!res.ok) { box.innerHTML = '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Version history</h2></div><p class="ac-readonly">' + esc(writeErr(res)) + '</p></div>'; return; }
-      var vs = (res.body && res.body.versions) || [];
+    CONSOLE.versions().then(function (res) {
+      if (!res.ok) { box.innerHTML = '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Version history</h2></div><p class="ac-readonly">' + esc(res.message) + '</p></div>'; return; }
+      var vs = res.versions;
       var rows = vs.map(function (v) {
         return '<tr><td>v' + esc(v.version) + '</td><td>' + esc(v.note || '') + '</td><td>' + esc(v.created_by || '') + '</td>' +
           '<td>' + esc((v.created_at || '').slice(0, 19).replace('T', ' ')) + '</td>' +
@@ -514,64 +284,9 @@
 
   function doRollback(host, version, rerender) {
     rerender = rerender || renderCounty;
-    apiWrite('POST', '/config/' + COUNTY_KEY + '/rollback', { version: version, author: AUTHOR }).then(function (res) {
-      if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
-      loadConfig().then(function () { rerender(host); loadHistory(host); flash(host, 'ok', 'Restored v' + version + ' as version ' + res.body.version + '.'); });
-    });
-  }
-
-  // ── Intelligence module: explainer-plugin admin backend (DIC-459, read-only) ─
-  function renderIntelligence(host) {
-    host.innerHTML = pageHead('Intelligence — Explainer Plugins',
-      'Each explainer is a callable plugin with its own LLM context — system prompt, injected reference material, and model. Read-only for now; editing lands with the writable store.') +
-      '<div class="ac-banner"><span>ⓘ</span><div>Live config from the Map Buddy service. Editing &amp; publish need the writable store (<b>DIC-464</b>) + auth (<b>DIC-463</b>).</div></div>' +
-      '<div id="ac-xp-list"><p class="ac-readonly">Loading explainer plugins…</p></div>';
-    var out = host.querySelector('#ac-xp-list');
-    fetch(explainBase() + '/explainers', { cache: 'no-cache' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
-      .then(function (res) {
-        var xs = (res && res.explainers) || [];
-        out.innerHTML = xs.length ? xs.map(xpCard).join('') : '<p class="ac-readonly">No explainer plugins registered.</p>';
-        wireCollapsibles(out);
-      })
-      .catch(function (e) {
-        out.innerHTML = '<div class="ac-card"><p class="ac-readonly">Couldn’t reach the Map Buddy service (' + esc(e.message) +
-          '). The explainer plugins live there; this view needs that service running (it goes live with the next Map Buddy redeploy, DIC-452).</p></div>';
-      });
-  }
-  function _collapse(id, label, body, chars) {
-    return '<button class="ac-collapse" data-collapse="' + esc(id) + '" aria-expanded="false">' +
-      '<span class="ac-arrow">▸</span> ' + esc(label) +
-      (chars != null ? ' <span class="ac-xp-chars">' + chars + ' chars</span>' : '') + '</button>' +
-      '<pre class="ac-xp-pre" id="' + esc(id) + '" hidden>' + esc(body || '') + '</pre>';
-  }
-  function xpCard(x) {
-    var blocks = (x.context_blocks || []).map(function (b, i) {
-      return '<div class="ac-xp-block">' + _collapse('blk-' + x.id + '-' + i, b.title, b.body, b.chars) + '</div>';
-    }).join('');
-    return '<div class="ac-card ac-xp-card" data-xp-id="' + esc(x.id) + '">' +
-      '<div class="ac-card-head"><h2 class="ac-card-title">' + esc(x.label) + '</h2>' +
-        '<span class="ac-xp-model">' + esc(x.model || '—') + '</span></div>' +
-      '<dl class="ac-grid">' +
-        '<dt>Plugin id</dt><dd><code>' + esc(x.id) + '</code></dd>' +
-        '<dt>Audience</dt><dd>' + esc(x.audience || '—') + '</dd>' +
-        '<dt>Callable</dt><dd><code>' + esc(x.callable_via || '—') + '</code></dd>' +
-      '</dl>' +
-      '<div class="ac-xp-section">' + _collapse('sp-' + x.id, 'System prompt', x.system_prompt, (x.system_prompt || '').length) + '</div>' +
-      (blocks ? '<div class="ac-xp-section"><div class="ac-xp-blocks-title">Injected context (' + (x.context_blocks || []).length + ')</div>' + blocks + '</div>' : '') +
-      '</div>';
-  }
-  // Toggle the <pre> next to each collapse button.
-  function wireCollapsibles(root) {
-    root.querySelectorAll('[data-collapse]').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var el = document.getElementById(btn.getAttribute('data-collapse'));
-        if (!el) return;
-        var show = el.hasAttribute('hidden');
-        if (show) el.removeAttribute('hidden'); else el.setAttribute('hidden', '');
-        var arrow = btn.querySelector('.ac-arrow'); if (arrow) arrow.textContent = show ? '▾' : '▸';
-        btn.setAttribute('aria-expanded', show ? 'true' : 'false');
-      });
+    CONSOLE.rollback(version).then(function (res) {
+      if (!res.ok) { flashResult(host, res); return; }
+      rerender(host); loadHistory(host); flashResult(host, res);
     });
   }
 
@@ -873,9 +588,6 @@
   function _srcNote() {
     return STATE.source === 'api' ? 'Loaded live from <code>/config</code>.' : 'Showing the baked manifest fallback.';
   }
-  function _plan(items) {
-    return '<ul class="ac-plan">' + items.map(function (i) { return '<li>' + i + '</li>'; }).join('') + '</ul>';
-  }
 
   // ── Data & Layers module (DIC-461 — read + edit) ────────────────────────────
   // PostGIS (vector) layers are the editable focus; the legacy WMS/raster
@@ -1052,7 +764,7 @@
     }
     sel.innerHTML = '<option value="">Loading available layers…</option>';
     // Admin-only since DIC-1872 (it scans every geo table): send the staff token.
-    fetch(API_BASE + '/admin/discover/layers', { cache: 'no-cache', headers: authHeaders() })
+    fetch(CONSOLE.apiBase() + '/admin/discover/layers', { cache: 'no-cache', headers: authHeaders() })
       .then(function (r) {
         if (r.status === 401) { noteRefused(401); return Promise.reject(new Error('admin token required')); }
         if (r.status === 403) return Promise.reject(new Error('staff only'));
@@ -1113,85 +825,20 @@
   function addPickedLayer(host) {
     var sel = host.querySelector('#ac-pg-pick');
     if (!sel || !sel.value) { flash(host, 'err', 'Pick a layer to add first.'); return; }
-    if (!STATE.editing) { STATE.editing = true; STATE.draft = clone(STATE.config); }
+    if (!STATE.editing) CONSOLE.ensureDraft();
     addDiscoveredLayer(host, sel.value);
   }
 
   function addDiscoveredLayer(host, source) {
     var d = host._discovered && host._discovered[source];
     if (!d || !STATE.editing) return;
-    var overlays = arrayAt('layers.overlays');
+    var overlays = CONSOLE.rowsAt('layers.overlays');
     if (overlays.some(function (o) { return o.source === source; })) return;  // already there
     overlays.push(_overlayFromDiscovered(d));
     // Seed a default per-layer style (DIC-460) so the viewer can paint it.
-    setPath(STATE.draft, 'styling.layers.' + d.id, { label: _titleize(d.id), paint: _defaultStyle(d.geomType || 'polygon') });
+    CONSOLE.setDraft('styling.layers.' + d.id, { label: _titleize(d.id), paint: _defaultStyle(d.geomType || 'polygon') });
     renderData(host);                       // re-render: layer now appears under PostGIS layers; pulldown reloads without it
     flash(host, 'ok', 'Added “' + _titleize(d.id) + '”. Publish to make it live in the viewer.');
-  }
-
-  // ── Access & Ops module (DIC-462 — read + edit) ─────────────────────────────
-  // The `access` block (model, assessment visibility, report inbox, rate-limit)
-  // and the data-request form URL are editable via the shared draft→publish flow.
-  // The Services card stays read-only here: those endpoints are owned by other
-  // modules (tile server → Data & Layers, Map Buddy → County) or are runtime.
-  function renderAccess(host) {
-    var editing = STATE.editing;
-    var C = editing ? (STATE.draft || {}) : (STATE.config || {});
-    var A = C.access || {};
-    var forms = C.forms || {};
-    var ep = C.endpoints || {};
-    var ts = (C.layers || {}).tileServer || {};
-
-    function txt(path, val, ph) {
-      return '<input class="ac-input" data-path="' + path + '" data-type="str" value="' +
-        esc(val == null ? '' : val) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>';
-    }
-    function bool(path, val) {
-      return '<input type="checkbox" data-path="' + path + '" data-type="bool"' + (val ? ' checked' : '') + '>';
-    }
-
-    var toolbar = editing
-      ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
-        '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
-        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
-        '<button class="ac-btn" data-act="cancel">Cancel</button>'
-      : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit access</button>' +
-        '<button class="ac-btn" data-act="history">Version history</button>';
-    var banner = editing
-      ? '<div class="ac-banner ac-banner-edit"><span>✎</span><div><b>Editing a draft.</b> ' +
-        'Set the access model, assessment-data visibility, report inbox, and rate-limit flag, then <b>Publish</b>. ' +
-        'Service endpoints below are owned by their own modules and stay read-only here.</div></div>'
-      : '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() +
-        ' Embeds, usage dashboards, and a deploy trigger are the planned DIC-462 build.</div></div>';
-
-    host.innerHTML =
-      '<div class="ac-page-head ac-page-head-row"><div>' +
-        '<h1 class="ac-page-title">Access &amp; Ops</h1>' +
-        '<p class="ac-page-sub">Who can see what, how it’s shared, and how staff watch it.</p></div>' +
-        '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Access</h2></div><dl class="ac-grid">' +
-        '<dt>Access model</dt><dd>' + (editing ? txt('access.model', A.model, 'e.g. Public — no sign-in') : esc(A.model || '—')) + '</dd>' +
-        '<dt>Assessment data</dt><dd>' + (editing
-          ? bool('access.assessmentDataPublic', A.assessmentDataPublic) + ' <span class="ac-card-note">public</span>'
-          : (A.assessmentDataPublic ? 'Public' : 'Gated')) + '</dd>' +
-        '<dt>Data request form</dt><dd>' + (editing ? txt('forms.dataRequest', forms.dataRequest, 'https://…')
-          : (forms.dataRequest ? '<code>' + esc(forms.dataRequest) + '</code>' : '—')) + '</dd>' +
-        '<dt>Error reports go to</dt><dd>' + (editing ? txt('access.reportTo', A.reportTo, 'gis@county.gov')
-          : '<code>' + esc(A.reportTo || '—') + '</code>') + '</dd>' +
-        '<dt>Rate limited</dt><dd>' + (editing
-          ? bool('access.rateLimited', A.rateLimited) + ' <span class="ac-card-note">throttle public endpoints</span>'
-          : (A.rateLimited ? 'Yes' : 'No')) + '</dd></dl></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Services</h2>' +
-        '<span class="ac-card-note">read-only · owned by other modules</span></div><dl class="ac-grid">' +
-        '<dt>Parcel API</dt><dd><code>' + esc(API_BASE) + '</code></dd>' +
-        '<dt>Tile server</dt><dd><code>' + esc(ts.url || '/tiles') + '</code></dd>' +
-        '<dt>Map Buddy AI</dt><dd><code>' + esc(ep.mapBuddy || '—') + '</code></dd></dl></div>' +
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Planned (DIC-462)</h2></div>' +
-        _plan(['Public-vs-staff gating toggles per county', 'Embeds + shareable links (DIC-399 / DIC-340)', 'Data-error report triage dashboard (DIC-391)', 'Usage / analytics + change audit log', 'One-click redeploy trigger (e.g. Map Buddy, DIC-452)']) + '</div>' +
-      '<div id="ac-history"></div>';
-
-    wireEditHost(host);
   }
 
   // ── Theme Manifest module (B2 manual builder · DIC-578) ─────────────────────
@@ -1245,7 +892,7 @@
   function assembleCurrentManifest() {
     var asm = window.ISV_MANIFEST_ASSEMBLE;
     if (!asm) return null;
-    return asm.assembleManifest(STATE.config || {}, { tenant: COUNTY_KEY, idFields: COUNTY_IDFIELDS });
+    return asm.assembleManifest(STATE.config || {}, { tenant: CONSOLE.countyKey, idFields: COUNTY_IDFIELDS });
   }
   // The manifest persisted in the store (draft wins over published) — the canonical
   // artifact. Null until one has been saved.
@@ -1271,16 +918,17 @@
   // reusing the exact draft/publish store plumbing the other modules use. The
   // manifest lives under config.manifest so it round-trips through the same store.
   function persistManifest(host, manifest, publish) {
-    if (!STATE.draft) STATE.draft = clone(STATE.config);
-    STATE.editing = true;
-    STATE.draft.manifest = manifest;
-    apiWrite('PUT', '/config/' + COUNTY_KEY + '/draft', { payload: STATE.draft, author: AUTHOR }).then(function (r1) {
-      if (!r1.ok) { flash(host, 'err', writeErr(r1)); return; }
-      if (!publish) { flash(host, 'ok', 'Manifest saved to draft. Reopen to confirm it round-trips.'); renderManifest(host); return; }
-      apiWrite('POST', '/config/' + COUNTY_KEY + '/publish', { author: AUTHOR, note: 'Published theme manifest from console' }).then(function (res) {
-        if (!res.ok) { flash(host, 'err', writeErr(res)); return; }
-        loadConfig().then(function () { STATE.editing = false; STATE.draft = null; renderManifest(host); flash(host, 'ok', 'Published version ' + res.body.version + '.'); });
+    CONSOLE.ensureDraft().manifest = manifest;
+    if (!publish) {
+      CONSOLE.save().then(function (res) {
+        if (!res.ok) { flashResult(host, res); return; }
+        flash(host, 'ok', 'Manifest saved to draft. Reopen to confirm it round-trips.'); renderManifest(host);
       });
+      return;
+    }
+    CONSOLE.publish('Published theme manifest from console').then(function (res) {
+      if (res.ok) renderManifest(host);
+      flashResult(host, res);
     });
   }
 
@@ -1447,61 +1095,17 @@
   }
 
   // ── Module registry ─────────────────────────────────────────────────────────
-  var MODULES = [
-    { id: 'county', label: 'County Configuration', icon: '◆', render: renderCounty },
-    { id: 'intelligence', label: 'Intelligence', icon: '✦', render: renderIntelligence },
-    { id: 'styling', label: 'Styling', icon: '◑', render: renderStyling },
-    { id: 'data', label: 'Data & Layers', icon: '▤', render: renderData },
-    { id: 'access', label: 'Access & Ops', icon: '◈', render: renderAccess },
-    { id: 'manifest', label: 'Theme Manifest', icon: '❖', render: renderManifest },
-  ];
-
-  // ── Shell wiring ────────────────────────────────────────────────────────────
-  function init() {
-    var nav = document.getElementById('ac-nav');
-    var content = document.getElementById('ac-content');
-
-    function show(id) {
-      var mod = MODULES.filter(function (m) { return m.id === id; })[0] || MODULES[0];
-      if (mod.id !== _active) { STATE.editing = false; STATE.draft = null; }  // drop any in-progress edit on switch
-      _active = mod.id;
-      nav.querySelectorAll('.ac-nav-item').forEach(function (b) {
-        var current = b.getAttribute('data-mod') === mod.id;
-        b.classList.toggle('is-active', current);
-        if (current) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
-      });
-      mod.render(content);
-      content.focus();
-      if (location.hash !== '#' + mod.id) history.replaceState(null, '', '#' + mod.id);
-    }
-
-    MODULES.forEach(function (m) {
-      var btn = el('<button class="ac-nav-item" data-mod="' + m.id + '">' +
-        '<span class="ac-nav-ico">' + m.icon + '</span><span>' + esc(m.label) + '</span>' +
-        (m.soon ? '<span class="ac-nav-soon">soon</span>' : '') + '</button>');
-      btn.addEventListener('click', function () { show(m.id); });
-      nav.appendChild(btn);
-    });
-
-    var sel = document.getElementById('ac-county-select');
-    var pill = document.getElementById('ac-status');
-    function reflect() {
-      if (sel && STATE.config && STATE.config.name) sel.options[0].textContent = STATE.config.name;
-      if (pill) pill.textContent = STATE.source === 'api' ? 'Live config · read-only' : 'Read-only preview';
-    }
-
-    var initial = (location.hash || '').replace('#', '');
-    show(MODULES.some(function (m) { return m.id === initial; }) ? initial : 'county');
-    reflect();
-
-    // Signing in or out redraws the open module (its buttons and messages depend on it).
-    onAuthChange = function () { show(_active || 'county'); };
-    checkAuth();
-
-    // Pull the authoritative manifest from the runtime API, then refresh.
-    loadConfig().then(function () { reflect(); show(_active || 'county'); });
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-  else init();
+  // The modules still drawn here, by id. The shell (frontend/src/admin-console/modules.js)
+  // has the nav and the ones that are Vue already (Intelligence, Access & Ops); it calls
+  // attach() with its store first.
+  var RENDERERS = {
+    county: renderCounty,
+    styling: renderStyling,
+    data: renderData,
+    manifest: renderManifest,
+  };
+  window.PV_ADMIN_LEGACY = {
+    renderers: RENDERERS,
+    attach: function (store) { CONSOLE = store; STATE = store.state; },
+  };
 }());

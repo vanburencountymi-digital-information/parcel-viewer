@@ -172,7 +172,7 @@ jobs:
 
   # The web image (DIC-2180): Vite builds the pages, the image serves them, and its nginx
   # config (with the image's own production defaults) passes nginx -t. The e2e suite runs
-  # against this image locally before merge (it needs the parcel database).
+  # against this image on the fixture database in e2e.yml (DIC-2553).
   web-image:
     runs-on: ubuntu-latest
     steps:
@@ -196,6 +196,8 @@ jobs:
           grep -q '/assets/demo-.*\.css' dist/demo/index.html
           grep -q '/assets/scripts-.*\.js' dist/demo/index.html
           ! grep -q '/frontend/public/js/map.js' dist/demo/index.html   # bundled (slice 2b)
+          # CSP script-src 'self' (DIC-2556): the built pages have no inline script either.
+          ! grep -P '<script(?![^>]*\ssrc=)[^>]*>' dist/demo/index.html dist/admin/index.html
           # The baked county config stays its own tag, just before the served one.
           grep -A1 '/frontend/public/js/county-config.js' dist/demo/index.html | grep -q '/api/config.js'
           # No code from a CDN: MapLibre, Turf and proj4 are bundled from npm (slice 4).
@@ -243,6 +245,7 @@ jobs:
         run: |
           docker compose -f infra/docker-compose.viewer.yml config --quiet
           docker compose -f infra/docker-compose.viewer.yml -f infra/docker-compose.web-image.yml config --quiet
+          docker compose -f infra/docker-compose.viewer.yml -f infra/docker-compose.web-image.yml -f infra/docker-compose.e2e.yml config --quiet
           docker compose -f infra/docker-compose.prod.yml config --quiet
           services=$(docker compose -f infra/docker-compose.prod.yml config --services)
           echo "production services: $services"

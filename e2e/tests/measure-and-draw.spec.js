@@ -104,6 +104,80 @@ test.describe('Measure', () => {
     expect(await clickGate(page)).toBeNull();
   });
 
+  test('a tool button turns its tool on, and pressing it again turns it off', async ({ page }) => {
+    const active = () => page.evaluate(() => window.PS_MEASURE_TOOL.getActiveTool());
+    await measureTab(page).getByRole('button', { name: 'Measure Area' }).click();
+    expect(await active()).toBe('measure-area');
+    await measureTab(page).getByRole('button', { name: 'Coordinates' }).click();
+    expect(await active()).toBe('coordinates');
+    await measureTab(page).getByRole('button', { name: 'Coordinates' }).click();
+    expect(await active()).toBe(null);
+  });
+
+  test('settings: Miles shows distances in miles; the choices persist across a reload', async ({ page }) => {
+    const tab = measureTab(page);
+    await tab.getByRole('button', { name: 'Miles', exact: true }).click();
+    await tab.getByRole('button', { name: 'Azimuth', exact: true }).click();
+    await tab.getByLabel('Bearing').check();
+    await tab.getByRole('button', { name: 'Measure Dist.' }).click();
+    for (const p of (await squareOnMap(page)).slice(0, 2)) await page.mouse.click(p.x, p.y);
+    await page.keyboard.press('Enter');
+    await expect(hudValue(page, 'Total Distance')).toHaveText(/^[\d.]+ mi \([\d,.]+ ft\)$/);
+    const stored = () => page.evaluate(() => [localStorage.getItem('ps_measureUnits'), localStorage.getItem('ps_bearingFormat'),
+      JSON.parse(localStorage.getItem('ps_measureAnnotate'))]);
+    expect(await stored()).toEqual(['miles', 'azimuth', { distance: true, bearing: true }]);
+    await gotoViewer(page);
+    await openMapControlsTab(page, 'Measurement Tools');
+    await expect(measureTab(page).getByLabel('Bearing')).toBeChecked();
+    await expect(measureTab(page).getByLabel('Distance')).toBeChecked();
+  });
+
+  test('Advanced Tools opens the advanced tools, and stays open after a reload', async ({ page }) => {
+    const tab = measureTab(page);
+    await expect(tab.getByRole('button', { name: 'Bearing & Dist.' })).toBeHidden();
+    await tab.getByRole('button', { name: /Advanced Tools/ }).click();
+    await expect(tab.getByRole('button', { name: /▼ Advanced Tools/ })).toBeVisible();
+    await expect(tab.getByRole('button', { name: 'Bearing & Dist.' })).toBeVisible();
+    await gotoViewer(page);
+    await openMapControlsTab(page, 'Measurement Tools');
+    await expect(measureTab(page).getByRole('button', { name: 'Bearing & Dist.' })).toBeVisible();
+  });
+
+  test('Dimension Parcel shows its options only while it is the tool', async ({ page }) => {
+    const tab = measureTab(page);
+    await tab.getByRole('button', { name: /Advanced Tools/ }).click();
+    await expect(tab.getByLabel('Label content')).toBeHidden();
+    await tab.getByRole('button', { name: 'Dimension Parcel' }).click();
+    await expect(tab.getByLabel('Label content')).toBeVisible();
+    await expect(tab.getByLabel('Group name')).toHaveValue('{PIN} Dimensions');
+    await tab.getByRole('button', { name: 'Dimension Parcel' }).click();
+    await expect(tab.getByLabel('Label content')).toBeHidden();
+  });
+
+  test('Offset Line says it is coming', async ({ page }) => {
+    await measureTab(page).getByRole('button', { name: /Advanced Tools/ }).click();
+    const said = new Promise((resolve) => page.once('dialog', (d) => { resolve(d.message()); d.dismiss(); }));
+    await measureTab(page).getByRole('button', { name: 'Offset Line' }).click();
+    expect(await said).toBe('Offset Line is coming in a future update.');
+  });
+
+  test('Clear Measurements (confirmed) removes the measurements but not the drawings; undo follows', async ({ page }) => {
+    const tab = measureTab(page);
+    await page.evaluate(() => window.PS_ANNOTATION_STORE.addAnnotation({
+      type: 'Feature', geometry: { type: 'Point', coordinates: [-86, 42.22] }, properties: { featureType: 'point', style: {} },
+    }));
+    await tab.getByRole('button', { name: 'Measure Dist.' }).click();
+    for (const p of (await squareOnMap(page)).slice(0, 2)) await page.mouse.click(p.x, p.y);
+    await page.keyboard.press('Enter');
+    await expect(tab.getByRole('button', { name: 'Undo (Ctrl+Z)' })).toBeEnabled();
+    const kinds = () => page.evaluate(() => window.PS_ANNOTATION_STORE.getState().annotations.features
+      .map((f) => (f.properties.featureType.startsWith('measure-') ? 'measure' : 'drawing')));
+    expect(await kinds()).toContain('measure');
+    page.once('dialog', (d) => d.accept());
+    await tab.getByRole('button', { name: /Clear Measurements/ }).click();
+    await expect.poll(kinds).toEqual(['drawing']);
+  });
+
   test('dimension parcel: perimeter matches the parcel geometry', async ({ page }) => {
     const r = await page.evaluate(async () => {
       const f = (window.PS_PARCEL_INDEX || [])[0];
@@ -145,6 +219,82 @@ test.describe('Draw', () => {
     expect(await count(), 'undo removes it').toBe(after - 1);
     await drawTab(page).getByRole('button', { name: 'Redo (Ctrl+Shift+Z)' }).click();
     expect(await count(), 'redo restores it').toBe(after);
+  });
+
+  test('a tool button turns its tool on, and pressing it again turns it off', async ({ page }) => {
+    const active = () => page.evaluate(() => window.PS_DRAWING_TOOLS.getActiveDrawTool());
+    await drawTab(page).getByRole('button', { name: 'Line', exact: true }).click();
+    expect(await active()).toBe('polyline');
+    await drawTab(page).getByRole('button', { name: 'Circle', exact: true }).click();
+    expect(await active()).toBe('circle');
+    await drawTab(page).getByRole('button', { name: 'Circle', exact: true }).click();
+    expect(await active()).toBe(null);
+  });
+
+  test('a tool or style picked elsewhere (as Map Buddy does) shows in the pane', async ({ page }) => {
+    const tab = drawTab(page);
+    await page.evaluate(() => {
+      window.PS_DRAWING_TOOLS.setActiveDrawTool('circle');
+      window.PS_DRAWING_TOOLS.setStyle({ strokeWidth: 7 });
+    });
+    await expect(tab.getByRole('button', { name: 'Circle', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await tab.getByRole('button', { name: 'Style', exact: true }).click();
+    await expect(tab.getByRole('slider', { name: 'Stroke width' })).toHaveValue('7');
+  });
+
+  test('the style picker sets the next drawing\'s stroke, width, dash and fill opacity', async ({ page }) => {
+    const tab = drawTab(page);
+    await expect(tab.getByRole('slider', { name: 'Stroke width' })).toBeHidden();
+    await tab.getByRole('button', { name: 'Style', exact: true }).click();
+    await tab.getByRole('button', { name: '#dc2626', exact: true }).click();
+    await tab.getByRole('slider', { name: 'Stroke width' }).fill('4');
+    await expect(tab.getByText('4px', { exact: true })).toBeVisible();
+    await tab.getByRole('combobox', { name: 'Line style' }).selectOption('dashed');
+    await tab.getByRole('slider', { name: 'Fill opacity' }).fill('50');
+    await expect(tab.getByText('50%', { exact: true })).toBeVisible();
+    await tab.getByRole('button', { name: 'Shape', exact: true }).click();
+    for (const p of await squareOnMap(page)) await page.mouse.click(p.x, p.y);
+    await page.keyboard.press('Enter');
+    const style = await page.evaluate(() => window.__added[0].properties.style);
+    expect(style).toMatchObject({ strokeColor: '#dc2626', strokeWidth: 4, strokeDash: 'dashed', fillOpacity: 0.5 });
+    await tab.getByRole('button', { name: 'Style', exact: true }).click();
+    await expect(tab.getByRole('slider', { name: 'Stroke width' })).toBeHidden();
+  });
+
+  test('layer groups: a new group becomes active and takes new drawings; it hides and deletes', async ({ page }) => {
+    const tab = drawTab(page);
+    const store = () => page.evaluate(() => {
+      const s = window.PS_ANNOTATION_STORE.getState();
+      const last = s.annotations.features[s.annotations.features.length - 1];
+      return { groups: s.layerGroups, active: s.activeLayerGroup, visible: s.layerVisibility, lastGroup: last && last.properties.layerGroup };
+    });
+    page.once('dialog', (d) => d.accept('Survey notes'));
+    await tab.getByRole('button', { name: '+ New Group' }).click();
+    await expect(tab.getByText('Survey notes', { exact: true })).toBeVisible();
+    expect(await store()).toMatchObject({ groups: ['Default', 'Survey notes'], active: 'Survey notes' });
+    await tab.getByRole('button', { name: 'Point', exact: true }).click();
+    const [p] = await squareOnMap(page);
+    await page.mouse.click(p.x, p.y);
+    expect((await store()).lastGroup).toBe('Survey notes');
+    await tab.getByTitle('Toggle visibility').nth(1).uncheck();
+    expect((await store()).visible['Survey notes']).toBe(false);
+    await tab.getByText('Default', { exact: true }).click();
+    expect((await store()).active).toBe('Default');
+    await tab.getByTitle('Delete group (annotations move to Default)').click();
+    expect(await store()).toMatchObject({ groups: ['Default'], lastGroup: 'Default' });
+    await expect(tab.getByText('Survey notes', { exact: true })).toHaveCount(0);
+  });
+
+  test('the Snapping and Grid checkboxes configure the snapping engine', async ({ page }) => {
+    const cfg = () => page.evaluate(() => {
+      const c = window.PS_SNAPPING_ENGINE.config;
+      return { enabled: c.enabled, grid: c.targets.gridPoints };
+    });
+    await expect(drawTab(page).getByLabel('Snapping')).toBeChecked();
+    expect(await cfg()).toEqual({ enabled: true, grid: false });
+    await drawTab(page).getByLabel('Snapping').uncheck();
+    await drawTab(page).getByLabel('Grid').check();
+    expect(await cfg()).toEqual({ enabled: false, grid: true });
   });
 
   test('Clear all (confirmed) removes every drawing', async ({ page }) => {

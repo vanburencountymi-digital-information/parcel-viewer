@@ -26,11 +26,44 @@ export const access = () => w.PV_ACCESS || null;
 /** Esc, focus and Tab handling for overlay dialogs (pv-dialog.js). */
 export const dialog = () => w.PV_DIALOG || null;
 
+/** The engine's capability registry (ISV.invoke), with the capabilities registered at boot. */
+export const isv = () => w.ISV || null;
+
+/** The engine's explainer core: fact assembly, description classifier, PIN breakdown. */
+export const explainerCore = () => w.ISV_EXPLAINER_CORE || null;
+
+/** The engine's ledger core: categories and the display model. */
+export const ledgerCore = () => w.ISV_LEDGER_CORE || null;
+
+/** The Map Buddy service's base URL (pv-endpoints.js; the same service the explainers narrate from). */
+export const mapBuddyBase = () => (w.PV_ENDPOINTS ? w.PV_ENDPOINTS.mapBuddyBase() : (w.MAP_BUDDY_API || '/map-buddy-api'));
+
+/** The AI-mode controller (pv-ai-mode.js): isOn() is the visitor's choice, isEffective() adds "reachable". */
+export const aiMode = () => w.PV_AI_MODE || null;
+
+/** Print and download of standalone documents (pv-doc.js). */
+export const doc = () => w.PV_DOC || null;
+
 /** The engine's cohort-analyze core (engine/browser.js). */
 export const cohortCore = () => w.ISV_COHORT_ANALYZE_CORE || null;
 
 /** The map side of the Selection Tools pane (map.js): the selection, gestures, highlights. */
 export const selectMap = () => w.PS_SELECT_MAP || null;
+
+/** The map side of the Drawing tab (drawing/drawing-tools.js): tools, style, subscribe. */
+export const drawTools = () => w.PS_DRAWING_TOOLS || null;
+
+/** The map side of the Measure tab (drawing/measure-tool.js): tools, settings, subscribe. */
+export const measureTool = () => w.PS_MEASURE_TOOL || null;
+
+/** The drawings and their layer groups (drawing/annotation-store.js). */
+export const annotations = () => w.PS_ANNOTATION_STORE || null;
+
+/** Undo and redo over the drawings (drawing/undo-redo.js): canUndo, canRedo, undo(), redo(). */
+export const undoRedo = () => w.PS_UNDO_REDO || null;
+
+/** Snapping while drawing (drawing/snapping-engine.js): config, configure(). */
+export const snapping = () => w.PS_SNAPPING_ENGINE || null;
 
 /** Turf, for geometry (bundled from npm as a classic library). */
 export const turf = () => w.turf || null;

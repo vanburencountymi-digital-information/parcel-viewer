@@ -42,6 +42,29 @@ const test = base.test.extend({
         (failed.length ? '\nFailed requests:\n  ' + failed.slice(0, 10).join('\n  ') : ''));
     }
   }, { auto: true }],
+  // Every test also fails on a Content-Security-Policy violation (DIC-2556), unless it
+  // names it with cspGuard.allow(/regex/). The policy is report-only, so a violation blocks
+  // nothing and logs nothing a test would see; this listener is what keeps the policy in
+  // infra/nginx.viewer.conf (which the e2e stack serves) honest before it is enforced.
+  // Each violation reads "<directive> blocked <url or inline/eval> at <file>:<line> on <page path>".
+  cspGuard: [async ({ page }, use, testInfo) => {
+    const violations = [];
+    const allowed = [];
+    await page.exposeBinding('__pvE2eCspViolation', (_source, v) => { violations.push(v); });
+    await page.addInitScript(() => {
+      document.addEventListener('securitypolicyviolation', (e) => {
+        window.__pvE2eCspViolation(e.effectiveDirective + ' blocked ' + (e.blockedURI || '(none)') +
+          ' at ' + (e.sourceFile || '?') + ':' + (e.lineNumber || 0) + ' on ' + location.pathname);
+      });
+    });
+    await use({ allow: (re) => allowed.push(re), violations });
+    const unexpected = violations.filter((v) => !allowed.some((re) => re.test(v)));
+    if (unexpected.length) {
+      testInfo.annotations.push({ type: 'csp', description: unexpected.join('\n') });
+      throw new Error('Content-Security-Policy violations (fix the page, or the policy in ' +
+        'infra/nginx.viewer.conf):\n  ' + [...new Set(unexpected)].slice(0, 10).join('\n  '));
+    }
+  }, { auto: true }],
 });
 
 const { expect } = base;
@@ -78,8 +101,12 @@ async function openMapControlsTab(page, tabName) {
   return page.getByRole('tabpanel', { name: tabName });
 }
 
-/** Search for `query` through the real search box and pick result `index`. Returns the result's pin. */
-async function selectParcelViaSearch(page, query = 'paw paw', index = 0) {
+/**
+ * Search for `query` through the real search box and pick result `index`. Returns the
+ * result's pin once the camera has arrived, or at once with `{ settle: false }` (for a
+ * test of what happens during the arrival).
+ */
+async function selectParcelViaSearch(page, query = 'paw paw', index = 0, { settle = true } = {}) {
   const input = ui.searchInput(page);
   if (!(await input.isVisible())) await page.getByRole('button', { name: 'Search parcels', exact: true }).click();
   await input.fill(query);
@@ -89,12 +116,36 @@ async function selectParcelViaSearch(page, query = 'paw paw', index = 0) {
   await rows.nth(index).click();
   await expect(ui.parcelPanel(page)).toBeVisible();
   await expect(page.getByTestId('parcel-info-pin')).toHaveText(pin);
+  if (!settle) return pin;
+  await waitForSearchArrival(page);
   await waitForMapIdle(page);
   return pin;
 }
 
-/** Resolve after the map finishes moving/loading (or after `ms`, whichever first). */
-async function waitForMapIdle(page, ms = 8000) {
+/**
+ * A search arrives cinematically: a tilted fly-in, a 9 s orbit, then a 2.6 s ease back to
+ * flat, north-up. The orbit is driven frame by frame, so the map can report idle in the
+ * middle of it, and the parcels loaded then are the tilted view's, not the settled one's
+ * (DIC-2553: on a slow runner a test read both and their counts disagreed). Waits until
+ * the camera has tilted and come back flat; with reduced motion or the orbit off it never
+ * tilts, so a short wait for the tilt to start is enough.
+ */
+async function waitForSearchArrival(page) {
+  const tilted = await page.waitForFunction(() => window.PS_MAP.getPitch() > 1, null, { timeout: 3000 })
+    .then(() => true, () => false);
+  if (!tilted) return;
+  await page.waitForFunction(() => {
+    const m = window.PS_MAP;
+    return m.getPitch() < 0.5 && Math.abs(m.getBearing()) < 0.5 && !m.isMoving();
+  }, null, { timeout: 45_000 });
+}
+
+/**
+ * Resolve after the map finishes moving/loading (or after `ms`, whichever first). The cap
+ * is only a backstop: on a CI runner a fly-to plus its tiles can take over 8 s, and a test
+ * that went on early read the parcels of the view it was leaving (DIC-2553).
+ */
+async function waitForMapIdle(page, ms = 20_000) {
   await page.evaluate((ms) => new Promise((resolve) => {
     const m = window.PS_MAP;
     if (!m || (m.loaded() && !m.isMoving())) return resolve();
@@ -169,6 +220,9 @@ const VIEWER_HOOKS = {
 const CONDITIONAL_HOOKS = {
   PV_CONFIG_SOURCE: "'fallback' when the viewer runs on the baked county manifest",
 };
-const ADMIN_HOOKS = { PV_ADMIN: 'the admin console state (getState)' };
+const ADMIN_HOOKS = {
+  PV_ADMIN: 'the admin console state (getState)',
+  PV_ADMIN_AUTH: 'the staff sign-in island, which admin.js reads for every API call (DIC-2389)',
+};
 
 module.exports = { VIEWER_HOOKS, CONDITIONAL_HOOKS, ADMIN_HOOKS, ui, openMapControlsTab, test, expect, gotoViewer, selectParcelViaSearch, waitForMapIdle, selectedParcelPoint, selectedPin, waitForSelectedInIndex, mapBuddy, clickGate };

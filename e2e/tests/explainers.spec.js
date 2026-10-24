@@ -82,3 +82,67 @@ test('tax description explainer renders in AI-off mode', async ({ page }) => {
   await expect(modal(page).getByRole('group', { name: 'Recorded tax description' })).toContainText('Tax description');
   await expect(modal(page).getByTestId('pv-xp-desc')).toBeVisible();
 });
+
+test('the assessment explainer charts five years of assessed value', async ({ page }) => {
+  await setup(page, 'off');
+  await openAssessment(page);
+  await expect(modal(page).getByRole('img', { name: 'Five-year assessed value history, oldest to newest' })).toBeVisible();
+});
+
+test('Print and Download HTML produce the explainer document', async ({ page }) => {
+  await setup(page, 'off');
+  const pin = await page.evaluate(() => {
+    window.__printed = [];
+    window.PV_DOC.print = (html) => { window.__printed.push(html); };
+    return window.PS_STATE.parcel.pin;
+  });
+  await openAssessment(page);
+  const m = modal(page);
+  await expect(figures(m)).toContainText('Assessed Value (AV)');
+  await m.getByRole('button', { name: 'Print', exact: true }).click();
+  const printed = await page.evaluate(() => window.__printed);
+  expect(printed).toHaveLength(1);
+  expect(printed[0]).toContain(`<h1>Parcel ${pin}</h1>`);
+  expect(printed[0]).toContain('Michigan law');
+  const download = page.waitForEvent('download');
+  await m.getByRole('button', { name: 'Download HTML', exact: true }).click();
+  expect((await download).suggestedFilename()).toBe(`assessment-${pin.replace(/[^\w.-]/g, '_')}.html`);
+});
+
+test('a parcel record that fails to load says so', async ({ page, consoleGuard }) => {
+  consoleGuard.allow(/status of 500 .*\/api\/parcel\/\d+/);
+  await setup(page, 'off');
+  await page.route(/\/api\/parcel\/\d+(\?|$)/, (r) => r.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
+  await openAssessment(page);
+  await expect(modal(page)).toContainText('Couldn’t load this parcel’s property assessment.');
+  await expect(modal(page)).toContainText('HTTP 500');
+});
+
+test('the tax description breaks the parcel number into its parts', async ({ page }) => {
+  await setup(page, 'off');
+  const pin = await page.evaluate(() => window.PS_STATE.parcel.pin);
+  await ui.parcelPanel(page).getByRole('button', { name: 'About this tax description' }).click();
+  const parts = modal(page).getByRole('group', { name: 'Recorded tax description' }).getByRole('listitem');
+  await expect(parts).toHaveCount(pin.split('-').length);
+  await expect(parts.first()).toContainText(pin.split('-')[0]);
+});
+
+// No button opens the live ledger yet; PV_WINDOWS can.
+test('the live Parcel Ledger lists the recorded events, or says there are none', async ({ page }) => {
+  await setup(page, 'off');
+  const pin = await page.evaluate(() => { window.PV_WINDOWS.open('ledger'); return window.PS_STATE.parcel.pin; });
+  const ledger = page.getByRole('dialog', { name: `Parcel Ledger — ${pin}` });
+  await expect(ledger.getByText(/^(Every event the county has recorded for this parcel|No recorded events for this parcel yet)/)).toBeVisible();
+});
+
+test('with no parcel selected, the info windows give the general overview', async ({ page }) => {
+  await gotoViewer(page);
+  await page.evaluate(() => { window.PV_TOOLS.open('assess'); });
+  const assess = page.getByRole('dialog', { name: 'About Property Assessment' });
+  await expect(assess).toContainText('Taxable Value (TV)');
+  await expect(assess).toContainText('Assessment Explainer');
+  await page.keyboard.press('Escape');
+  await page.evaluate(() => { window.PV_TOOLS.open('tax'); });
+  const tax = page.getByRole('dialog', { name: 'About the Tax Description' });
+  await expect(tax).toContainText('for taxation purposes only');
+});

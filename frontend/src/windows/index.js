@@ -13,6 +13,13 @@ import ShareWindow from './ShareWindow.vue';
 import StreetViewWindow from './StreetViewWindow.vue';
 import WhatsNewWindow from './WhatsNewWindow.vue';
 import { centroidOf, mapsUrl, resolveTarget } from './streetview.js';
+import PacketWindow from './packet/PacketWindow.vue';
+import AssessInfoWindow from './explain/AssessInfoWindow.vue';
+import ExplainerWindow from './explain/ExplainerWindow.vue';
+import TaxInfoWindow from './explain/TaxInfoWindow.vue';
+import { aiState, explainerTitle, loadExplainer } from './explain/explain.js';
+import LedgerWindow from './ledger/LedgerWindow.vue';
+import { fetchLedger } from './ledger/ledger.js';
 
 const DATA_REQUEST_FORM_URL = 'https://form.jotform.com/261544522974159';
 
@@ -66,6 +73,61 @@ export function openStreetView(modal, { win = globalThis } = {}) {
   });
 }
 
+/** The Parcel Packet for the selected parcel (wide and flush), or the note to pick one. */
+export function openPacket(modal) {
+  const parcel = viewer.selectedParcel();
+  if (!parcel) {
+    modal.open('Parcel Packet', { component: PacketWindow, props: { parcel: null } });
+    return;
+  }
+  const acc = viewer.access();
+  const withheld = !parcel.owner_name && !!(acc && acc.getState && acc.getState().withheld);
+  modal.open('Parcel Packet', { component: PacketWindow, props: { parcel, withheld } }, null, { wide: true, flush: true });
+}
+
+/**
+ * A per-parcel explainer ('assessment' or 'tax_description') for the selected parcel; with
+ * no parcel, the topic's general overview instead.
+ */
+export function openExplainer(topic, modal) {
+  const parcel = viewer.selectedParcel();
+  if (!parcel || parcel.id == null) {
+    if (topic === 'tax_description') modal.open('About the Tax Description', { component: TaxInfoWindow, props: {} });
+    else modal.open('About Property Assessment', { component: AssessInfoWindow, props: {} });
+    return;
+  }
+  const county = viewer.countyConfig();
+  const access = viewer.access();
+  const load = () => loadExplainer(topic, parcel, {
+    core: viewer.explainerCore(),
+    county,
+    apiBase: viewer.apiBase(),
+    aiBase: viewer.mapBuddyBase(),
+    access,
+    ai: aiState({ aiMode: viewer.aiMode(), prefs: viewer.prefs() }),
+  });
+  modal.open(explainerTitle(topic, parcel), {
+    component: ExplainerWindow,
+    props: {
+      topic,
+      load,
+      withheldDataUrl: () => (((access && access.getState().budget) || {}).data_url || null),
+      doc: viewer.doc(),
+      county: county.name || 'County',
+      dark: globalThis.document.documentElement.getAttribute('data-theme') === 'dark',
+    },
+  });
+}
+
+/** The live Parcel Ledger for a parcel (default: the selected one). */
+export function openLedger(modal, parcel = viewer.selectedParcel()) {
+  const id = parcel && parcel.id;
+  const load = () => fetchLedger(id, { base: viewer.apiBase(), isv: viewer.isv(), core: viewer.ledgerCore() });
+  modal.open(`Parcel Ledger${parcel && parcel.pin ? ` — ${parcel.pin}` : ''}`, {
+    component: LedgerWindow, props: { load, core: viewer.ledgerCore() },
+  });
+}
+
 // name → [title, component, props read when the window opens, modal options]
 const WINDOWS = {
   help: ['Help', HelpWindow, () => ({})],
@@ -110,7 +172,13 @@ const WINDOWS = {
 };
 
 // Windows that open some other way than "this component, now".
-const OPENERS = { streetview: openStreetView };
+const OPENERS = {
+  streetview: openStreetView,
+  packet: openPacket,
+  assess: (modal) => openExplainer('assessment', modal),
+  tax: (modal) => openExplainer('tax_description', modal),
+  ledger: (modal) => openLedger(modal),
+};
 
 export function mountWindows() {
   globalThis.PV_WINDOWS = {
@@ -125,6 +193,10 @@ export function mountWindows() {
       modal.open(title, { component, props: props() }, null, opts);
       return true;
     },
+  };
+  // The ledger's fetch, for the e2e hooks check (capabilities registered at boot, DIC-2266).
+  globalThis.PV_LEDGER = {
+    fetchLedger: (id) => fetchLedger(id, { base: viewer.apiBase(), isv: viewer.isv(), core: viewer.ledgerCore() }),
   };
   return globalThis.PV_WINDOWS;
 }

@@ -23,6 +23,7 @@ Before a testing deployment, the parcel API and Map Buddy had about 10 log calls
   - DB overload (503) and AI quota hits are **warnings**, not Sentry reports. They are load, not bugs.
   - Failures of the federal map services behind `/wms-proxy` (FEMA, USFWS, NRCS) are logged as warnings and **not** sent to Sentry. They aren't our bugs and would bury real ones.
   - Browser JavaScript errors are posted by `pv-error-beacon.js` to `POST /api/client-errors`, rate limited, and become warning log lines.
+  - Content-Security-Policy violations are posted by the browser to `POST /api/csp-report` (DIC-2556), rate limited, and become warning log lines without query strings or script samples.
   - Map Buddy logs tokens, prompt-cache reads and writes, and duration for every model call.
 - **One copy per service.** The API and Map Buddy deploy separately, so `common/` is copied into each. A test fails if the copies differ.
 

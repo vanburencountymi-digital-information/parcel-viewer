@@ -7,8 +7,8 @@
 // entry in a run (engine/browser.js, slice 3) is bundled by Rolldown into that script.
 // The dev stack serves this build too: `npm run dev` runs it with --watch.
 //
-// Vue (DIC-2389, ADR 0017): the page's <script type="module"> entry (frontend/src/main.js)
-// is Vite's own: the classic-scripts plugin leaves module tags alone, and @vitejs/plugin-vue
+// Vue (DIC-2389, ADR 0017): each page's <script type="module"> entry (frontend/src/main.js
+// for the viewer, frontend/src/admin-main.js for the console) is Vite's own: the classic-scripts plugin leaves module tags alone, and @vitejs/plugin-vue
 // compiles its .vue components. Vitest runs their tests (frontend/src/**/*.test.js).
 //
 // The pages link everything with root-absolute paths (/frontend/public/…, /admin/…), so

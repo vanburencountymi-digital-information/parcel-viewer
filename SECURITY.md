@@ -45,7 +45,7 @@ the API should not be public; the approach is decision B1, still open.** Until t
 | Vector tiles (`/tiles/`) | Anyone | nginx rate limit; read-only DB role |
 | Aerial imagery (`/aerial/`) | Anyone | nginx rate limit; tile paths only; cached |
 | `/api/wms-proxy` (federal flood / wetland / soil maps) | Anyone | HTTPS allowlist, no redirects, image types only, 5 MB cap, rate limit |
-| `/api/report-error`, `/api/client-errors` | Anyone | Per-IP and global rate limits, size limits |
+| `/api/report-error`, `/api/client-errors`, `/api/csp-report` | Anyone | Per-IP and global rate limits, size limits |
 | Map Buddy (Cloud Run) | Anyone who knows the URL | CORS allowlist, per-IP rate limits, AI quota, request-size caps |
 | Admin console page (`/admin/`) | Anyone | Page is public; **every write and layer discovery needs a staff sign-in** with access to that county |
 | Django admin (`/api/django-admin/`) | Staff | Staff accounts only; CSRF-protected forms over HTTPS |
@@ -117,10 +117,23 @@ Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
 - CSV export neutralizes spreadsheet formulas.
 - **Headers:** `X-Content-Type-Options: nosniff` everywhere; `Referrer-Policy`,
   `X-Frame-Options: SAMEORIGIN` and a Content-Security-Policy on the pages.
-- **CSP is report-only for now.** It allows `'unsafe-inline'` because `demo/index.html` has
-  inline scripts. No CDN hosts: MapLibre, Turf and proj4 are pinned npm packages
-  (package-lock integrity) bundled into the site (DIC-2180); fonts come from Google. Plan:
-  move the inline scripts out, run a clean report period with testers, then enforce.
+- **CSP is report-only for the testing window** (`$pv_csp` in `infra/nginx.viewer.conf`).
+  `script-src 'self'`: the pages have no inline scripts or handlers (DIC-2556;
+  `tools/vite/csp.test.mjs` checks). No CDN hosts: MapLibre, Turf and proj4 are pinned npm
+  packages (package-lock integrity) bundled into the site (DIC-2180), and the font is
+  self-hosted (DIC-2552). `img-src`, `connect-src` and `frame-src` list the hosts actually
+  used (map tiles and federal WMS, map glyphs, Map Buddy's Cloud Run URL, Street View,
+  JotForm), not `https:`. `style-src` keeps `'unsafe-inline'`: MapLibre and Vue set
+  element styles.
+- **Violations are reported and tested.** Browsers post them to `/api/csp-report`
+  (`report-uri`; `report-to` waits for a check on HTTPS staging), which logs one warning per
+  violation without query strings or samples. Every e2e test fails on a violation it
+  doesn't name (`cspGuard` in `e2e/tests/fixtures.js`), against the real nginx header.
+- **Enforcing** is renaming `Content-Security-Policy-Report-Only` to
+  `Content-Security-Policy` in the `add_header` lines (server block, `/demo/`, `/admin/`);
+  rollback is the reverse. It waits for a testing window with real users and clean
+  `parcel_viewer.routers.csp_reports` logs. Changing Map Buddy's URL in county config
+  needs the same change in `connect-src`.
 - **Third-party libraries:** `npm audit` covers them. MapLibre is on 6.14 (DIC-2379),
   which fixes the critical sanitizer bypass in ≤ 6.4.0 (GHSA-jrc7-96c5-q579). Its worker
   is a same-origin file in /assets/, so `worker-src 'self'` covers it; `blob:` stays for
@@ -154,6 +167,5 @@ Rotating any of these: `docs/RUNBOOK.md` → "Rotating secrets".
 | Admin console auth: a shared interim token today; real per-user auth later | Interim | DIC-463 |
 | AI quota is per instance, not shared | Anthropic spend limit is the backstop | DIC-1862 |
 | `/judge` and `/autoconfigure` (developer tools) are reachable on Map Buddy | Rate-limited and within the quota; to be locked down | DIC-1854 |
-| CSP report-only; `'unsafe-inline'` | Planned | readiness checklist 8 |
+| CSP report-only (scripts tightened, report sink in place); enforce after the testing window | Planned | DIC-2556, readiness checklist 8 |
 | GitHub secret scanning, push protection, Dependabot security alerts, Semgrep | Need a repo admin | B3 |
-| Google Fonts loaded at runtime (a third-party request per visit) | Accepted for testing | readiness checklist 8 |
