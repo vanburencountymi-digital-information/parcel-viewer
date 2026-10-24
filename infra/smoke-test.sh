@@ -5,7 +5,8 @@
 #   bash infra/smoke-test.sh http://127.0.0.1:8080 --map-buddy http://127.0.0.1:8080/map-buddy-api
 #   bash infra/smoke-test.sh https://gis.dicemi.org --rate-limit         # also bursts /api/search
 #
-# Checks the hardening from DIC-1852..1856: routes up, security headers, private files 404,
+# Checks the hardening from DIC-1852..1856: routes up, security headers (and the CSP's
+# shape and report sink, DIC-2556), private files 404,
 # API docs hidden, bad input -> 4xx, CORS locked down, Map Buddy quota on. Never calls the
 # model (no Anthropic spend). Prints PASS / WARN / FAIL per check; exits 1 on any FAIL.
 #
@@ -80,13 +81,33 @@ for path in /demo/ /admin/; do
   [ "$(hdr X-Content-Type-Options)" = "nosniff" ] && pass "$path nosniff" || fail "$path missing X-Content-Type-Options: nosniff"
   [ -n "$(hdr Referrer-Policy)" ] && pass "$path Referrer-Policy" || fail "$path missing Referrer-Policy"
   [ -n "$(hdr X-Frame-Options)" ] && pass "$path X-Frame-Options" || fail "$path missing X-Frame-Options"
-  if [ -n "$(hdr Content-Security-Policy)" ]; then pass "$path CSP (enforced)"
-  elif [ -n "$(hdr Content-Security-Policy-Report-Only)" ]; then warn "$path CSP is report-only (switch to enforced once clean)"
-  else fail "$path missing Content-Security-Policy"; fi
+  # Report-only until a clean testing window; enforcing is the header name in the
+  # add_header lines of infra/nginx.viewer.conf (DIC-2556, SECURITY.md).
+  CSP="$(hdr Content-Security-Policy)"
+  if [ -n "$CSP" ]; then pass "$path CSP (enforced)"
+  else CSP="$(hdr Content-Security-Policy-Report-Only)"
+    if [ -n "$CSP" ]; then warn "$path CSP is report-only (switch to enforced after the testing window)"
+    else fail "$path missing Content-Security-Policy"; fi
+  fi
+  if [ -n "$CSP" ]; then
+    SCRIPT_SRC=$(printf '%s' "$CSP" | tr ';' '\n' | grep -E '^ *script-src ' | head -1)
+    case "$SCRIPT_SRC" in
+      *unsafe-inline*|*unsafe-eval*) fail "$path CSP script-src allows inline/eval: $SCRIPT_SRC" ;;
+      '') fail "$path CSP has no script-src" ;;
+      *) pass "$path CSP script-src has no 'unsafe-inline'" ;;
+    esac
+    case "$CSP" in *"report-uri /api/csp-report"*) pass "$path CSP reports to /api/csp-report" ;;
+      *) fail "$path CSP has no report-uri /api/csp-report: violations go unseen" ;; esac
+    [ -n "$(hdr Reporting-Endpoints)" ] && pass "$path Reporting-Endpoints (report-to)" \
+      || warn "$path no Reporting-Endpoints header (Chromium falls back to report-uri)"
+  fi
   case "$(hdr Cache-Control)" in *no-store*) pass "$path Cache-Control no-store" ;; *) warn "$path not no-store (no content-hash build; stale JS risk)" ;; esac
 done
 req GET "$VIEWER/api/health"
 [ "$(hdr X-Content-Type-Options)" = "nosniff" ] && pass "/api/ responses nosniff" || fail "/api/ responses missing nosniff"
+# The CSP report sink (DIC-2556): a legacy-format report is accepted and logged.
+expect 204 "CSP report sink /api/csp-report"  POST "$VIEWER/api/csp-report" -H 'Content-Type: application/csp-report' \
+  --data '{"csp-report":{"document-uri":"'"$VIEWER"'/demo/","effective-directive":"img-src","blocked-uri":"https://smoke-test.invalid/x.png","disposition":"report"}}'
 case "$VIEWER" in
   https://*) req GET "$VIEWER/demo/"
              [ -n "$(hdr Strict-Transport-Security)" ] && pass "HSTS present" || warn "no Strict-Transport-Security (add with TLS, DIC-1863)" ;;
