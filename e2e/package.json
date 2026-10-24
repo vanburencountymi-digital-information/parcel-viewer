@@ -4,7 +4,8 @@
   "description": "Browser end-to-end tests for the Parcel Viewer (run against the local docker stack).",
   "scripts": {
     "test": "playwright test",
-    "report": "playwright show-report"
+    "report": "playwright show-report",
+    "test:lock": "node --test lock.test.js"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
