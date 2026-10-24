@@ -137,7 +137,13 @@
     if (panel) panel.hidden = !on;
     var mtab = el('pv-mtab-docs');
     if (mtab) { mtab.hidden = !on; mtab.setAttribute('aria-selected', on ? 'true' : 'false'); }
-    if (on && panel && panel.focus) { try { panel.focus({ preventScroll: true }); } catch (_) { } }
+    if (!on || !panel) return;
+    // The panel lives in #app, which an open dialog (an explainer citing a statute) makes
+    // inert and hides from assistive tech. Close the dialog and let it hand focus to the
+    // panel, so keyboard and screen-reader users can reach the source (DIC-2182).
+    var modal = root.PV_MODAL;
+    if (modal && modal.isOpen && modal.isOpen()) { modal.close({ returnFocus: panel }); return; }
+    if (panel.focus) { try { panel.focus({ preventScroll: true }); } catch (_) { } }
   }
 
   // Render via the curated statute corpus (the fallback resolver). Always 'coarse'/'none'.

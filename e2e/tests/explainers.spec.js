@@ -68,12 +68,14 @@ test('a statute citation opens the Sources panel on that statute', async ({ page
   const cite = modal(page).getByTestId('cite-trigger').first();
   const name = (await cite.innerText()).trim();
   await cite.click();
-  // includeHidden: the explainer dialog stays open and marks the rest of the page (where the
-  // Sources panel lives) inert + aria-hidden, so the panel is outside the accessibility tree.
-  // That's an a11y bug (DIC-2182); drop includeHidden when it's fixed.
-  const panel = page.getByRole('region', { name: 'Sources', includeHidden: true });
+  // The explainer closes so the panel is reachable: in the accessibility tree, not inert,
+  // and focused (DIC-2182). It used to stay behind the dialog's inert + aria-hidden page.
+  const panel = page.getByRole('region', { name: 'Sources' });
   await expect(panel).toBeVisible();
   await expect(panel).toContainText(name.slice(0, 20));
+  await expect(modal(page)).toBeHidden();
+  await expect(panel).toBeFocused();
+  await expect(page.locator('#app')).not.toHaveAttribute('inert');
 });
 
 test('tax description explainer renders in AI-off mode', async ({ page }) => {
