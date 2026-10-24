@@ -5,8 +5,8 @@
        num   a number; empty saves none (null); anything that isn't a number is ignored
        json  parsed JSON; until it parses, the field is marked (ac-input-err) and ignored
        bool  a checkbox
-     It keeps admin.js's data-path / data-type attributes. Other attributes (class,
-     placeholder, type="number") pass through to the input. -->
+     It keeps admin.js's data-path / data-type attributes. inputType sets the input's own
+     type (number); other attributes (class, placeholder, style) pass through. -->
 <script setup>
 import { computed, ref } from 'vue';
 
@@ -15,6 +15,7 @@ const props = defineProps({
   path: { type: String, required: true },
   type: { type: String, default: 'str' },
   value: { default: null },
+  inputType: { type: String, default: 'text' },   // the <input>'s own type, e.g. number
 });
 const bad = ref(false);   // a json field that doesn't parse yet
 
@@ -49,6 +50,7 @@ function onInput(e) {
   >
   <input
     v-else
+    :type="inputType"
     class="ac-input"
     :class="{ 'ac-input-err': bad }"
     :data-path="path"

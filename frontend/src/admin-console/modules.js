@@ -3,13 +3,14 @@
 // the shell takes its render(host) from window.PV_ADMIN_LEGACY.renderers.
 import AccessOps from './modules/AccessOps.vue';
 import CountyConfig from './modules/CountyConfig.vue';
+import DataLayers from './modules/DataLayers.vue';
 import Intelligence from './modules/Intelligence.vue';
 
 export const MODULES = [
   { id: 'county', label: 'County Configuration', icon: '◆', component: CountyConfig },
   { id: 'intelligence', label: 'Intelligence', icon: '✦', component: Intelligence },
   { id: 'styling', label: 'Styling', icon: '◑' },
-  { id: 'data', label: 'Data & Layers', icon: '▤' },
+  { id: 'data', label: 'Data & Layers', icon: '▤', component: DataLayers },
   { id: 'access', label: 'Access & Ops', icon: '◈', component: AccessOps },
   { id: 'manifest', label: 'Theme Manifest', icon: '❖' },
 ];

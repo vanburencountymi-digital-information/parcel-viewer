@@ -4,7 +4,7 @@
  * Config-as-data. The console's shell (nav, top bar, staff sign-in) and its config and
  * draft (the /config API, DIC-465, over the baked window.COUNTY; save, publish, history)
  * are Vue since DIC-2389: frontend/src/admin-console, and so are some modules
- * (County Configuration, Intelligence, Access & Ops). The modules here are still drawn as HTML strings,
+ * (County Configuration, Intelligence, Data & Layers, Access & Ops). The modules here are still drawn as HTML strings,
  * moving to Vue one at a time.
  * Each registers its render(host) in window.PV_ADMIN_LEGACY.renderers; the shell calls
  * attach(store) with its store before the first render.
@@ -33,17 +33,6 @@
   var STATE = null;
   function clone(o) { return CONSOLE.clone(o); }
 
-  // ── Staff sign-in (DIC-2151, ADR 0013) ─────────────────────────────────────
-  // The sidebar's sign-in is Vue (frontend/src/admin-console, DIC-2389). It publishes
-  // window.PV_ADMIN_AUTH; read it at call time. Without it the console behaves as
-  // signed out.
-  function auth() { return window.PV_ADMIN_AUTH || null; }
-  function hasAuth() { var a = auth(); return !!(a && a.has()); }
-  var DISCOVERY_NEEDS_AUTH = 'Layer discovery needs a staff sign-in.';
-  function authHeaders() { var a = auth(); return a ? a.headers() : {}; }
-  // A 401 while signed in means the token expired or was revoked: the sign-in forgets it.
-  function noteRefused(status) { var a = auth(); return a ? a.noteRefused(status) : false; }
-
   function flash(host, kind, msg) {
     var box = host.querySelector('#ac-flash');
     if (box) box.innerHTML = '<div class="ac-flash ac-flash-' + kind + '">' + esc(msg) + '</div>';
@@ -67,8 +56,6 @@
     if (host._editWired) return;
     host._editWired = true;
     host.addEventListener('input', function (e) {
-      // "Add a layer" pulldown (Data module) — preview the picked layer.
-      if (e.target.closest('[data-pg-pick]')) return updatePickMeta(host);
       // Layer picker (Styling module) — a view selector, works in view + edit.
       var picker = e.target.closest('[data-style-layer]');
       if (picker) { _styleLayer = picker.value; return activeRenderer()(host); }
@@ -95,8 +82,6 @@
       if (add && STATE.editing) { CONSOLE.addRow(add.getAttribute('data-add')); return activeRenderer()(host); }
       var rem = e.target.closest('[data-remove]');
       if (rem && STATE.editing) { CONSOLE.removeRow(rem.getAttribute('data-remove'), parseInt(rem.getAttribute('data-index'), 10)); return activeRenderer()(host); }
-      var addpick = e.target.closest('[data-add-pick]');
-      if (addpick) return addPickedLayer(host);
     });
   }
 
@@ -446,258 +431,6 @@
     return STATE.source === 'api' ? 'Loaded live from <code>/config</code>.' : 'Showing the baked manifest fallback.';
   }
 
-  // ── Data & Layers module (DIC-461 — read + edit) ────────────────────────────
-  // PostGIS (vector) layers are the editable focus; the legacy WMS/raster
-  // overlays are shown read-only as they're being phased out.
-  function _isPgLayer(o) { var t = String(o && o.type || '').toLowerCase(); return t === 'vector' || t === 'postgis' || t === 'mvt'; }
-  function renderData(host) {
-    var editing = STATE.editing;
-    var C = editing ? (STATE.draft || {}) : (STATE.config || {});
-    var L = C.layers || {};
-    var ts = L.tileServer || {};
-    var overlays = L.overlays || [];
-    var sources = L.dataSources || [];
-
-    // Partition overlays, keeping each one's real index into L.overlays so edits
-    // and removals target the right array slot regardless of display grouping.
-    var pg = [], ext = [];
-    overlays.forEach(function (o, i) { (_isPgLayer(o) ? pg : ext).push({ o: o, i: i }); });
-
-    function txt(path, val, ph) {
-      return '<input class="ac-input ac-input-sm" data-path="' + path + '" data-type="str" value="' +
-        esc(val == null ? '' : val) + '"' + (ph ? ' placeholder="' + esc(ph) + '"' : '') + '>';
-    }
-    function num(path, val) {
-      return '<input type="number" class="ac-input ac-input-sm" data-path="' + path + '" data-type="num" value="' +
-        esc(val == null ? '' : val) + '" style="max-width:78px">';
-    }
-    function bool(path, val) {
-      return '<input type="checkbox" data-path="' + path + '" data-type="bool"' + (val ? ' checked' : '') + '>';
-    }
-
-    var toolbar = editing
-      ? '<button class="ac-btn ac-btn-primary" data-act="save">Save draft</button>' +
-        '<button class="ac-btn ac-btn-primary" data-act="publish">Publish</button>' +
-        '<button class="ac-btn" data-act="preview">Preview in viewer</button>' +
-        '<button class="ac-btn" data-act="cancel">Cancel</button>'
-      : '<button class="ac-btn ac-btn-primary" data-act="edit">Edit layers</button>' +
-        '<button class="ac-btn" data-act="history">Version history</button>';
-    var banner = editing
-      ? '<div class="ac-banner ac-banner-edit"><span>✎</span><div><b>Editing a draft.</b> ' +
-        'Edit the PostGIS (vector) layers, tile server, and data sources, then <b>Publish</b> to make it the live layer config. ' +
-        'Legacy WMS/raster overlays are read-only — they’re being phased out.</div></div>'
-      : '<div class="ac-banner"><span>ⓘ</span><div>' + _srcNote() +
-        ' PostGIS (vector) layers served via the tile server are the editable focus; WMS/raster overlays are being phased out.</div></div>';
-
-    // Tile server (Martin) — the source of every PostGIS vector tile.
-    var tileCard =
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Tile server</h2>' +
-        '<span class="ac-card-note">serves the PostGIS vector tiles</span></div><dl class="ac-grid">' +
-        '<dt>Provider</dt><dd>' + (editing ? txt('layers.tileServer.provider', ts.provider, 'Martin') : esc(ts.provider || '—')) + '</dd>' +
-        '<dt>URL</dt><dd>' + (editing ? txt('layers.tileServer.url', ts.url, '/tiles') : '<code>' + esc(ts.url || '—') + '</code>') + '</dd></dl></div>';
-
-    // PostGIS (vector) layers — the editable registry.
-    var pgRows = pg.map(function (r) {
-      var p = 'layers.overlays.' + r.i;
-      if (editing) {
-        return '<tr><td>' + txt(p + '.label', r.o.label) + '</td>' +
-          '<td>' + txt(p + '.source', r.o.source, 'PostGIS table / Martin source') + '</td>' +
-          '<td>' + num(p + '.minZoom', r.o.minZoom) + '</td>' +
-          '<td style="text-align:center">' + bool(p + '.default', r.o.default) + '</td>' +
-          '<td><button class="ac-btn ac-btn-sm" data-remove="layers.overlays" data-index="' + r.i + '">Remove</button></td></tr>';
-      }
-      return '<tr><td>' + esc(r.o.label) + '</td><td><code>' + esc(r.o.source || '—') + '</code></td>' +
-        '<td>' + (r.o.minZoom ? ('z' + r.o.minZoom + '+') : 'all') + '</td>' +
-        '<td>' + (r.o.default ? 'on' : '') + '</td></tr>';
-    }).join('');
-    if (!pgRows) {
-      pgRows = '<tr><td colspan="' + (editing ? 5 : 4) + '" class="ac-readonly">No PostGIS layers yet' +
-        (editing ? ' — add one below.' : '.') + '</td></tr>';
-    }
-    var pgCard =
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">PostGIS layers</h2>' +
-        '<span class="ac-card-note">' + pg.length + ' vector layer(s)</span></div>' +
-        '<table class="ac-table"><thead><tr><th>Layer</th><th>Source</th><th>Min zoom</th><th>Default on</th>' +
-          (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + pgRows + '</tbody></table>' +
-        (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="layers.overlays">+ Add PostGIS layer</button></div>' : '') +
-      '</div>';
-
-    // Legacy external overlays (WMS / raster) — read-only, phasing out.
-    var extCard = ext.length
-      ? '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">External overlays</h2>' +
-          '<span class="ac-card-note">WMS / raster — being phased out</span></div>' +
-          '<table class="ac-table"><thead><tr><th>Overlay</th><th>Type</th><th>Source</th><th>Min zoom</th></tr></thead><tbody>' +
-          ext.map(function (r) {
-            return '<tr><td>' + esc(r.o.label) + '</td><td>' + esc(r.o.type) + '</td><td>' + esc(r.o.source) + '</td>' +
-              '<td>' + (r.o.minZoom ? ('z' + r.o.minZoom + '+') : 'all') + '</td></tr>';
-          }).join('') + '</tbody></table></div>'
-      : '';
-
-    // Data sources (PostGIS tables behind the layers).
-    var dsRows = sources.map(function (d, i) {
-      var p = 'layers.dataSources.' + i;
-      if (editing) {
-        return '<tr><td>' + txt(p + '.label', d.label) + '</td>' +
-          '<td>' + txt(p + '.source', d.source, 'schema.table') + '</td>' +
-          '<td><button class="ac-btn ac-btn-sm" data-remove="layers.dataSources" data-index="' + i + '">Remove</button></td></tr>';
-      }
-      return '<tr><td>' + esc(d.label) + '</td><td><code>' + esc(d.source) + '</code></td></tr>';
-    }).join('');
-    if (!dsRows) dsRows = '<tr><td colspan="' + (editing ? 3 : 2) + '" class="ac-readonly">No data sources defined.</td></tr>';
-    var dsCard =
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Data sources</h2>' +
-        '<span class="ac-card-note">PostGIS tables</span></div>' +
-        '<table class="ac-table"><thead><tr><th>Dataset</th><th>Source</th>' + (editing ? '<th></th>' : '') + '</tr></thead><tbody>' + dsRows + '</tbody></table>' +
-        (editing ? '<div class="ac-add-row"><button class="ac-btn ac-btn-sm" data-add="layers.dataSources">+ Add data source</button></div>'
-                 : '<p class="ac-readonly" style="margin-top:8px">Self-serve ingestion (upload → field-map → validate → publish, versioned) is the planned DIC-461 loader.</p>') +
-      '</div>';
-
-    // Add a layer (DIC-502) — pick a PostGIS layer the tile server can serve from
-    // an always-ready pulldown; selecting + Add registers it into the draft.
-    var pickCard =
-      '<div class="ac-card"><div class="ac-card-head"><h2 class="ac-card-title">Add a layer</h2>' +
-        '<span class="ac-card-note">PostGIS layers the tile server can serve (DIC-502)</span></div>' +
-        '<p class="ac-readonly" style="margin:0 0 10px">Pick a spatial layer already in PostGIS to add it as a viewer overlay — no developer, no DB migration.</p>' +
-        '<div class="ac-pick-row">' +
-          '<select class="ac-input ac-input-sm" id="ac-pg-pick" data-pg-pick aria-label="PostGIS layer"></select>' +
-          '<button class="ac-btn ac-btn-sm ac-btn-primary" data-add-pick>Add layer</button>' +
-        '</div>' +
-        '<div id="ac-pg-pick-meta" style="margin-top:10px"></div>' +
-      '</div>';
-
-    host.innerHTML =
-      '<div class="ac-page-head ac-page-head-row"><div>' +
-        '<h1 class="ac-page-title">Data &amp; Layers</h1>' +
-        '<p class="ac-page-sub">PostGIS layers, the tile server, and the data sources behind them.</p></div>' +
-        '<div class="ac-toolbar">' + toolbar + '</div></div>' +
-      '<div id="ac-flash" role="status" data-testid="ac-flash"></div>' + banner +
-      tileCard + pgCard + pickCard + extCard + dsCard +
-      '<div id="ac-history"></div>';
-
-    wireEditHost(host);
-    loadAvailableLayers(host);            // populate the pulldown immediately
-  }
-
-  // ── PostGIS layer discovery (DIC-502) ───────────────────────────────────────
-  // Discover spatial layers the tile server can serve (geo.<name>_tiles) and
-  // register them into the config draft as vector overlays — no developer.
-  function _titleize(id) {
-    return String(id || '').split(/[_\s]+/).map(function (w) {
-      if (/^plss$/i.test(w)) return 'PLSS';
-      return w ? w.charAt(0).toUpperCase() + w.slice(1) : w;
-    }).join(' ');
-  }
-  // A distinct default paint per geometry kind (editable later in Styling).
-  function _defaultStyle(geomType) {
-    var palette = {
-      polygon: { light: { fill: '#2F6B4F', stroke: '#1f4d39' }, dark: { fill: '#4E9A6B', stroke: '#6db38a' } },
-      line:    { light: { fill: '#1F5E80', stroke: '#1F5E80' }, dark: { fill: '#2E76A6', stroke: '#7fb6d8' } },
-      point:   { light: { fill: '#B58D4A', stroke: '#8B6535' }, dark: { fill: '#d4a862', stroke: '#b8923f' } },
-    };
-    return (palette[geomType] || palette.polygon);
-  }
-  function _overlayFromDiscovered(d) {
-    return {
-      id: d.id, label: _titleize(d.id), type: 'vector',
-      source: d.source, sourceLayer: d.sourceLayer,
-      geomType: d.geomType || 'polygon', minZoom: 12, default: false,
-      dbSource: d.dbSource, fields: d.fields || [],
-    };
-  }
-  // Populate the "add a layer" pulldown with serveable layers not yet registered.
-  // Auto-runs whenever the Data module renders, so the dropdown is always ready —
-  // adding a layer is just picking it from the list.
-  function loadAvailableLayers(host) {
-    var sel = host.querySelector('#ac-pg-pick');
-    var meta = host.querySelector('#ac-pg-pick-meta');
-    if (!sel) return;
-    sel.disabled = true;
-    // Admin-only since DIC-1872: signed out, say so instead of making a request that can
-    // only be refused.
-    if (!hasAuth()) {
-      sel.innerHTML = '<option value="">Discovery needs a staff sign-in</option>';
-      if (meta) meta.innerHTML = '<p class="ac-readonly">' + DISCOVERY_NEEDS_AUTH + '</p>';
-      return;
-    }
-    sel.innerHTML = '<option value="">Loading available layers…</option>';
-    // Admin-only since DIC-1872 (it scans every geo table): send the staff token.
-    fetch(CONSOLE.apiBase() + '/admin/discover/layers', { cache: 'no-cache', headers: authHeaders() })
-      .then(function (r) {
-        if (r.status === 401) { noteRefused(401); return Promise.reject(new Error('admin token required')); }
-        if (r.status === 403) return Promise.reject(new Error('staff only'));
-        return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status));
-      })
-      .then(function (res) {
-        var layers = (res && res.layers) || [];
-        host._discovered = {};
-        layers.forEach(function (d) { host._discovered[d.source] = d; });
-        // Exclude layers already registered (in the live draft/config).
-        var cfg = STATE.editing ? (STATE.draft || {}) : (STATE.config || {});
-        var regd = {};
-        ((cfg.layers || {}).overlays || []).forEach(function (o) {
-          if (String(o.type || '').toLowerCase() === 'vector' && o.source) regd[o.source] = true;
-        });
-        var avail = layers.filter(function (d) { return !d.registered && !regd[d.source]; });
-        if (meta) meta.innerHTML = '';
-        if (!avail.length) {
-          sel.innerHTML = '<option value="">All available layers added</option>';
-          sel.disabled = true;
-          return;
-        }
-        sel.disabled = false;
-        sel.innerHTML = '<option value="">Select a layer to add…</option>' +
-          avail.map(function (d) {
-            var bits = [d.geomType || '—'];
-            if (d.rowCount != null) bits.push(Number(d.rowCount).toLocaleString() + ' features');
-            return '<option value="' + esc(d.source) + '">' + esc(_titleize(d.id)) + ' — ' + esc(bits.join(', ')) + '</option>';
-          }).join('');
-      })
-      .catch(function (e) {
-        sel.innerHTML = '<option value="">Discovery unavailable</option>';
-        sel.disabled = true;
-        if (meta) meta.innerHTML = e.message === 'admin token required'
-          ? '<p class="ac-readonly">' + DISCOVERY_NEEDS_AUTH + '</p>'
-          : e.message === 'staff only'
-          ? '<p class="ac-readonly">Layer discovery isn’t allowed for this account (not staff, or no access to this county).</p>'
-          : '<p class="ac-readonly">Couldn’t reach the tile server / DB (' + esc(e.message) + ').</p>';
-      });
-  }
-
-  // Preview the picked layer's metadata beneath the pulldown.
-  function updatePickMeta(host) {
-    var sel = host.querySelector('#ac-pg-pick');
-    var meta = host.querySelector('#ac-pg-pick-meta');
-    if (!sel || !meta) return;
-    var d = sel.value && host._discovered && host._discovered[sel.value];
-    meta.innerHTML = d
-      ? '<dl class="ac-grid"><dt>Geometry</dt><dd>' + esc(d.geomType || '—') + '</dd>' +
-        '<dt>Features</dt><dd>' + (d.rowCount != null ? Number(d.rowCount).toLocaleString() : '—') + '</dd>' +
-        '<dt>PostGIS source</dt><dd><code>' + esc(d.dbSource || d.source) + '</code></dd>' +
-        '<dt>Tile source</dt><dd><code>' + esc(d.source) + '</code></dd></dl>'
-      : '';
-  }
-
-  // Add the layer currently selected in the pulldown. Enters edit mode first if
-  // needed, so it's a one-step "pick → add".
-  function addPickedLayer(host) {
-    var sel = host.querySelector('#ac-pg-pick');
-    if (!sel || !sel.value) { flash(host, 'err', 'Pick a layer to add first.'); return; }
-    if (!STATE.editing) CONSOLE.ensureDraft();
-    addDiscoveredLayer(host, sel.value);
-  }
-
-  function addDiscoveredLayer(host, source) {
-    var d = host._discovered && host._discovered[source];
-    if (!d || !STATE.editing) return;
-    var overlays = CONSOLE.rowsAt('layers.overlays');
-    if (overlays.some(function (o) { return o.source === source; })) return;  // already there
-    overlays.push(_overlayFromDiscovered(d));
-    // Seed a default per-layer style (DIC-460) so the viewer can paint it.
-    CONSOLE.setDraft('styling.layers.' + d.id, { label: _titleize(d.id), paint: _defaultStyle(d.geomType || 'polygon') });
-    renderData(host);                       // re-render: layer now appears under PostGIS layers; pulldown reloads without it
-    flash(host, 'ok', 'Added “' + _titleize(d.id) + '”. Publish to make it live in the viewer.');
-  }
-
   // ── Theme Manifest module (B2 manual builder · DIC-578) ─────────────────────
   // Unifies every editor slice into ONE §5 theme manifest and validates it through
   // the SAME loadManifest() gate CI + the engine boot use (C2 / DIC-583). Surfaces:
@@ -954,10 +687,9 @@
   // ── Module registry ─────────────────────────────────────────────────────────
   // The modules still drawn here, by id. The shell (frontend/src/admin-console/modules.js)
   // has the nav and the ones that are Vue already (County Configuration, Intelligence,
-  // Access & Ops); it calls attach() with its store first.
+  // Data & Layers, Access & Ops); it calls attach() with its store first.
   var RENDERERS = {
     styling: renderStyling,
-    data: renderData,
     manifest: renderManifest,
   };
   window.PV_ADMIN_LEGACY = {

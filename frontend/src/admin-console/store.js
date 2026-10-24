@@ -153,7 +153,7 @@ export function createConsoleStore({ fetch, apiBase, auth, countyKey, author, fa
   const rowsAt = (path) => draftOps.arrayAt(ensureDraft(), path);
 
   return {
-    state, countyKey, apiBase, current, loadConfig, show, request, writeErr,
+    state, auth, countyKey, apiBase, current, loadConfig, show, request, writeErr,
     edit, ensureDraft, cancel, preview, save, publish, versions, rollback,
     setDraft, addRow, removeRow, rowsAt, clone: draftOps.clone,
   };
