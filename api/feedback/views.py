@@ -1,4 +1,5 @@
-"""POST /report-error (emailed to the county) and POST /client-errors (the browser error beacon)."""
+"""POST /report-error (emailed to the county), POST /client-errors (the browser error beacon)
+and POST /csp-report (Content-Security-Policy violation reports)."""
 
 import logging
 
@@ -13,15 +14,27 @@ from rest_framework.views import APIView
 from common.error_logging_client import ErrorLoggingClient, get_error_logging_client
 from common.logging_setup import safe_for_log
 from common.throttles import check_limits, limits_for
-from common.validation import ParamSource, json_body, validate
+from common.validation import HttpError, ParamSource, json_body, validate
+from feedback.csp import ACCEPTED_TYPES, BadReport, parse_reports
 from feedback.email import send_report
 from feedback.params import ClientErrorReport, DataErrorReport
 
 log = logging.getLogger("parcel_viewer.routers.feedback")
 beacon_log = logging.getLogger("parcel_viewer.routers.client_errors")
+csp_log = logging.getLogger("parcel_viewer.routers.csp_reports")
 
 USER_AGENT_REPORT_CHARS = 500
 USER_AGENT_LOG_CHARS = 200
+# A real report is well under 2 KB (the full policy string is most of it); a Reporting API
+# batch holds a few. Anything bigger is refused unread.
+CSP_REPORT_MAX_BYTES = 16 * 1024
+
+
+def _no_content() -> HttpResponse:
+    """A 204 with no body and no Content-Type (a 204 has no body, so FastAPI sent no type)."""
+    response = HttpResponse(status=status.HTTP_204_NO_CONTENT)
+    del response["Content-Type"]
+    return response
 
 
 class PublicPostView(APIView):
@@ -114,6 +127,59 @@ class ClientErrorView(PublicPostView):
                 "user_agent": user_agent,
             },
         )
-        response = HttpResponse(status=status.HTTP_204_NO_CONTENT)
-        del response["Content-Type"]  # a 204 has no body, so FastAPI sent no type
-        return response
+        return _no_content()
+
+
+class CspReportView(PublicPostView):
+    """
+    The CSP's report sink (DIC-2556): nginx sends the policy with `report-uri /api/csp-report`
+    and `report-to csp` (Reporting-Endpoints), so a violation in a tester's browser shows up
+    in the server logs, one warning each, before the policy is enforced. Nothing is stored.
+    Takes both report formats (feedback.csp), at most CSP_REPORT_MAX_BYTES. Capped per client
+    and overall, like /client-errors (CSP_REPORT_RATE_LIMIT, CSP_REPORT_GLOBAL_LIMIT).
+    """
+
+    def post(self, request: Request) -> HttpResponse:
+        """Logs each violation as one warning line. Returns 204 with no body."""
+        declared = request.META.get("CONTENT_LENGTH") or "0"
+        if not declared.isdigit() or int(declared) > CSP_REPORT_MAX_BYTES:
+            raise HttpError(413, "Report too large")
+        content_type = (request.content_type or "").split(";", 1)[0].strip().lower()
+        if content_type not in ACCEPTED_TYPES:
+            raise HttpError(415, "Unsupported report type")
+        raw = request.body
+        if len(raw) > CSP_REPORT_MAX_BYTES:
+            raise HttpError(413, "Report too large")
+        try:
+            violations = parse_reports(raw, content_type)
+        except BadReport as exc:
+            raise HttpError(400, "Not a CSP report") from exc
+        check_limits(
+            request,
+            self,
+            limits_for(
+                "csp_reports", settings.CSP_REPORT_RATE_LIMIT, settings.CSP_REPORT_GLOBAL_LIMIT
+            ),
+        )
+        user_agent = safe_for_log(request.headers.get("User-Agent") or "", USER_AGENT_LOG_CHARS)
+        for v in violations:
+            csp_log.warning(
+                "csp %s: %s blocked %s (%s:%s:%s on %s)",
+                v.disposition or "violation",
+                v.directive,
+                v.blocked,
+                v.source,
+                v.line,
+                v.column,
+                v.document,
+                extra={
+                    "csp_directive": v.directive,
+                    "csp_blocked": v.blocked,
+                    "csp_source": v.source,
+                    "csp_line": v.line,
+                    "csp_disposition": v.disposition,
+                    "browser_page": v.document,
+                    "user_agent": user_agent,
+                },
+            )
+        return _no_content()
