@@ -105,7 +105,7 @@ test('"Select the parcel here" selects the parcel under the pointer without movi
 
 test('keyboard: Shift+F10 on the map opens it; arrows move; Escape closes without clearing the selection', async ({ page }) => {
   await gotoViewer(page);
-  await selectParcelViaSearch(page);
+  await selectParcelViaSearch(page, undefined, undefined, { settle: false });
   // No wait: the search arrival is still orbiting. Opening the menu must stop it, or the
   // map move would close the menu at once (failed that way before PS_cancelCinematic).
   await page.evaluate(() => window.PS_MAP.getCanvas().focus());

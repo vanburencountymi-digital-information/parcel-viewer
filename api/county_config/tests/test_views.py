@@ -68,6 +68,8 @@ class PublicConfigRouteTests(SimpleTestCase):
         self.assertEqual(response["Content-Type"], "application/javascript")
         self.assertEqual(response["Cache-Control"], "no-cache")
         self.assertTrue(response.content.startswith(b"window.COUNTY = {"))
+        # The viewer tells the served config from its baked fallback by this (DIC-2556).
+        self.assertIn(b'window.PV_CONFIG_SOURCE = "api";', response.content)
 
     def test_config_js_404_does_not_echo_the_county(self) -> None:
         response = self.client.get("/config.js", {"county": "x*/alert(1)/*"})

@@ -5,5 +5,23 @@ const w = globalThis;
 /** The Django API the console reads and writes (window.ADMIN_API overrides it, for testing). */
 export const apiBase = () => w.ADMIN_API || '/api';
 
+/** The county whose config the console edits. */
+export const countyKey = () => w.PV_COUNTY_KEY || 'vanburen';
+
+/** Who saves and publishes, as the config store records it. */
+export const author = () => w.PV_ADMIN_USER || 'console';
+
+/** The Map Buddy service's base URL (pv-endpoints.js), where the explainer plugins live. */
+export const mapBuddyBase = () => (w.PV_ENDPOINTS ? w.PV_ENDPOINTS.mapBuddyBase() : (w.MAP_BUDDY_API || '/map-buddy-api'));
+
+/** The baked county manifest (county-config.js), shown until /config answers. */
+export const bakedConfig = () => w.COUNTY || {};
+
+/** The modules admin.js still draws ({ renderers, attach }), or null if it didn't load. */
+export const legacyModules = () => w.PV_ADMIN_LEGACY || null;
+
 /** sessionStorage, read at call time (pv-storage-guard.js may stand in for a blocked one). */
 export const session = () => w.sessionStorage;
+
+/** localStorage, read at call time (the draft preview hands the viewer its config there). */
+export const local = () => w.localStorage;

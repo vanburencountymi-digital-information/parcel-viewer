@@ -2,13 +2,13 @@
 // main.js.
 //
 // Loaded as <script type="module"> at the end of admin/index.html. A module runs once the
-// page is parsed, after every classic script but before DOMContentLoaded, so before
-// admin.js's init(): the window hooks admin.js reads (PV_ADMIN_AUTH) exist by its first
-// render. Each island mounts on its own, so one that throws doesn't stop the others.
-import { mountStaffSignIn } from './admin-console/index.js';
+// page is parsed, after every classic script: admin.js has registered its modules
+// (PV_ADMIN_LEGACY) by then. Each island mounts on its own, so one that throws doesn't
+// stop the others.
+import { mountAdminConsole } from './admin-console/index.js';
 
 const ISLANDS = {
-  'staff-sign-in': mountStaffSignIn,
+  'admin-console': mountAdminConsole,
 };
 
 for (const [name, mount] of Object.entries(ISLANDS)) {

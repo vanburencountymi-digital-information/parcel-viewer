@@ -1,0 +1,78 @@
+# The e2e stack (DIC-2553): the dev stack and the built web image, with the parcel
+# database replaced by a small seeded fixture (e2e/fixture), so the Playwright suite runs
+# anywhere, CI included, without the shared database or any credentials. Layer it last:
+#
+#   docker compose -p pv-e2e -f infra/docker-compose.viewer.yml \
+#     -f infra/docker-compose.web-image.yml -f infra/docker-compose.e2e.yml up -d --build --wait
+#
+# PV_HTTP_PORT picks the host port (default 8080). No host ports besides that one, so it
+# runs next to a dev stack under its own project name (-p). Map Buddy starts without a
+# model key: the suite never calls the model unless E2E_AI is set.
+services:
+  # The fixture: real-shaped rows around Paw Paw, loaded once when the volume is new.
+  parcels-db:
+    image: postgis/postgis:17-3.5-alpine
+    environment:
+      POSTGRES_DB: parcels
+      POSTGRES_USER: e2e
+      POSTGRES_PASSWORD: e2e
+    volumes:
+      - ../e2e/fixture/10-schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+      - ../e2e/fixture/20-data.sql:/docker-entrypoint-initdb.d/20-data.sql:ro
+    healthcheck:
+      # Over TCP: during the init scripts Postgres listens on its socket only, so this
+      # turns healthy once the fixture has loaded.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U e2e -d parcels"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  martin:
+    environment: !override
+      - MARTIN_DATABASE_URL=postgresql://e2e:e2e@parcels-db:5432/parcels
+    # Martin finds the geo.*_tiles functions at boot, so the fixture must be in first.
+    depends_on:
+      parcels-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/health || exit 1"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  api-db:
+    ports: !reset []
+
+  django-api:
+    environment:
+      - PV_DATABASE_URL=postgis://e2e:e2e@parcels-db:5432/parcels
+      - CSRF_TRUSTED_ORIGINS=http://localhost:${PV_HTTP_PORT:-8080},http://127.0.0.1:${PV_HTTP_PORT:-8080}
+    # Django's own tables, then FEMA's zones over the fixture area (DIC-2412), so identify
+    # and the profile answer from our copy instead of FEMA's live service.
+    command:
+      - sh
+      - -c
+      - >-
+        python manage.py migrate --noinput
+        && python manage.py load_flood_zones --file /e2e/flood-zones.geojson --dfirm 26159C
+        && exec python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ../e2e/fixture/flood-zones.geojson:/e2e/flood-zones.geojson:ro
+    ports: !reset []
+    depends_on:
+      parcels-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  web:
+    depends_on: !override
+      django-api:
+        condition: service_healthy
+      martin:
+        condition: service_healthy
+      map-buddy:
+        condition: service_started
