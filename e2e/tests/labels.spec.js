@@ -15,6 +15,9 @@ async function openLabels(page) {
   await openMapControlsTab(page, 'Layers');
   await labelsToggle(page).check();
   await expect(page.getByTestId('plbl-controls')).toBeVisible();
+  // Checking the box shows the controls at once, but the label layers come once the
+  // parcel index has loaded (parcel-labels.js activate() retries until then): wait for them.
+  await page.waitForFunction(() => ['plbl-XL', 'plbl-MD', 'plbl-SM'].every((id) => window.PS_MAP.getLayer(id)));
 }
 
 const rendered = (page, prop) => page.evaluate((prop) => {
@@ -44,9 +47,10 @@ test('size buttons change label size; unchecking removes the labels', async ({ p
   await waitForMapIdle(page);
   const size = () => page.evaluate(() => JSON.stringify(window.PS_MAP.getLayoutProperty('plbl-XL', 'text-size')));
   const m = await size();
+  expect(m, 'the labels have a size before the change').toBeDefined();
   await page.getByRole('button', { name: 'Large label size' }).click();
   await expect(page.getByRole('button', { name: 'Large label size' })).toHaveClass(/active/);
-  expect(await size()).not.toBe(m);
+  await expect.poll(size).not.toBe(m);
   await labelsToggle(page).uncheck();
   await waitForMapIdle(page);
   // Polled: after a size change, MapLibre 6 can still report the previous frame's label
