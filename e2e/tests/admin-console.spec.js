@@ -455,6 +455,82 @@ test.describe('Admin console', () => {
     const dd = (scope, label) => scope.locator('dt', { hasText: new RegExp('^' + label + '$') }).locator('xpath=following-sibling::dd[1]');
     const card = (page, title) => main(page).locator('.ac-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 
+    // County Configuration (DIC-458): what each row shows from the live config, and the
+    // reference lookups.
+    test('county: shows the live identity, map defaults, endpoints and parcel-number format', async ({ page }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const pn = cfg.parcelNumber || {};
+      await gotoAdmin(page, 'county');
+      await expect(main(page)).toContainText('Loaded live from the runtime /config API');
+      const show = (v) => (v == null || v === '' ? '—' : String(v));
+      await expect(dd(card(page, 'Identity'), 'Name')).toHaveText(show(cfg.name));
+      await expect(dd(card(page, 'Identity'), 'State')).toHaveText(show(cfg.state));
+      await expect(dd(card(page, 'Identity'), 'Data request form')).toHaveText(show(cfg.forms && cfg.forms.dataRequest));
+      const mapCard = card(page, 'Map defaults');
+      await expect(dd(mapCard, 'Center \\[lng, lat\\]')).toHaveText(JSON.stringify(cfg.map.center));
+      await expect(dd(mapCard, 'Default zoom')).toHaveText(show(cfg.map.zoom));
+      await expect(dd(mapCard, 'Extent')).toHaveText(JSON.stringify(cfg.map.extent));
+      await expect(dd(card(page, 'Endpoints'), 'Map Buddy AI')).toHaveText(show(cfg.endpoints && cfg.endpoints.mapBuddy));
+      await expect(dd(card(page, 'Integrations'), 'Google Maps Embed key')).toHaveText(show(cfg.integrations && cfg.integrations.googleMapsEmbedKey));
+      const pnCard = card(page, 'Parcel number format');
+      await expect(dd(pnCard, 'Separator')).toHaveText(show(pn.separator));
+      await expect(dd(pnCard, 'Example PIN')).toHaveText(show(pn.example));
+      const segs = pn.segments || [];
+      await expect(pnCard.locator('tbody tr')).toHaveCount(Math.max(segs.length, 1));
+      if (segs.length) await expect(pnCard.locator('tbody tr').first()).toHaveText(new RegExp('^1' + segs[0].name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+      await expect(formField(main(page))).toHaveCount(0);
+    });
+
+    test('county: reference lookups open one at a time, sorted by code', async ({ page }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const pc = (cfg.labels && cfg.labels.propClass) || {};
+      const sd = (cfg.labels && cfg.labels.schoolDist) || {};
+      await gotoAdmin(page, 'county');
+      const lk = card(page, 'Reference lookups');
+      await expect(dd(lk, 'Property classes')).toHaveText(`${Object.keys(pc).length} codes View`);
+      await expect(dd(lk, 'School districts')).toHaveText(`${Object.keys(sd).length} codes View`);
+
+      const view = lk.getByRole('button', { name: 'View' });
+      await view.first().click();
+      await expect(dd(lk, 'Property classes').getByRole('button')).toHaveText('Hide');
+      const rows = lk.getByRole('table').locator('tbody tr');
+      await expect(rows).toHaveCount(Object.keys(pc).length);
+      const first = Object.keys(pc).sort()[0];
+      await expect(rows.first()).toHaveText(first + pc[first]);
+
+      await dd(lk, 'School districts').getByRole('button').click();
+      await expect(dd(lk, 'Property classes').getByRole('button')).toHaveText('View');
+      await expect(dd(lk, 'School districts').getByRole('button')).toHaveText('Hide');
+      await expect(rows).toHaveCount(Object.keys(sd).length);
+
+      await dd(lk, 'School districts').getByRole('button').click();
+      await expect(lk.getByRole('table')).toHaveCount(0);
+      await expect(lk.getByRole('button', { name: 'View' })).toHaveCount(2);
+    });
+
+    test('county: every field is in the editor, starting from the live value', async ({ page, consoleGuard }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      await stubStore(page, consoleGuard, {});
+      await gotoAdmin(page, 'county');
+      await main(page).getByRole('button', { name: 'Edit configuration' }).click();
+      await expect(main(page)).toContainText('Editing a draft.');
+      await expect(draftField(page, 'state')).toHaveValue(cfg.state || '');
+      await expect(draftField(page, 'map.center')).toHaveValue(JSON.stringify(cfg.map.center));
+      await expect(draftField(page, 'map.zoom')).toHaveValue(String(cfg.map.zoom));
+      await expect(draftField(page, 'endpoints.mapBuddy')).toHaveValue((cfg.endpoints && cfg.endpoints.mapBuddy) || '');
+      await expect(draftField(page, 'integrations.googleMapsEmbedKey')).toHaveValue((cfg.integrations && cfg.integrations.googleMapsEmbedKey) || '');
+      await expect(draftField(page, 'parcelNumber.intro')).toHaveValue((cfg.parcelNumber && cfg.parcelNumber.intro) || '');
+      await expect(card(page, 'Reference lookups')).toContainText('edit via API for now');
+      // Clearing the zoom saves no zoom rather than 0.
+      const seen = {};
+      await page.unroute('**/api/config/*/draft');
+      await stubStore(page, consoleGuard, seen);
+      await draftField(page, 'map.zoom').fill('');
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      expect(seen.saved.payload.map.zoom).toBeNull();
+    });
+
     test('access: shows the live access settings and the services, read-only', async ({ page }) => {
       const cfg = await (await page.request.get('/api/config')).json();
       const A = cfg.access || {};
