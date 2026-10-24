@@ -28,11 +28,20 @@ test('the policy reports to the API sink', () => {
   assert.deepEqual(directive('report-uri'), ['/api/csp-report']);
 });
 
+/** The page without its comments (removed until none are left, so none can hide a tag). */
+function withoutComments(html) {
+  for (let prev; prev !== html;) {
+    prev = html;
+    html = html.replace(/<!--[\s\S]*?-->/g, '');
+  }
+  return html;
+}
+
 for (const page of PAGES) {
-  const html = read(page).replace(/<!--[\s\S]*?-->/g, '');
+  const html = withoutComments(read(page));
 
   test(`${page} has no inline scripts`, () => {
-    const inline = [...html.matchAll(/<script\b([^>]*)>/g)].filter(([, attrs]) => !/\ssrc=/.test(attrs));
+    const inline = [...html.matchAll(/<script\b([^>]*)>/gi)].filter(([, attrs]) => !/\ssrc=/i.test(attrs));
     assert.deepEqual(inline.map(([tag]) => tag), []);
   });
 
