@@ -17,6 +17,8 @@
   <!-- First: reports JS errors (incl. startup) to /api/client-errors (DIC-1879). -->
   <script src="/frontend/public/js/pv-error-beacon.js"></script>
   <script src="/frontend/public/js/pv-storage-guard.js"></script>
+  <!-- Where /api and /tiles live; no inline scripts anywhere, for the CSP (DIC-2556). -->
+  <script src="/frontend/public/js/pv-runtime-config.js"></script>
 </head>
 <body>
   <a class="pv-skip-link" href="#map">Skip to map</a>
@@ -302,22 +304,13 @@
 
   </div>
 
-  <script>
-    // Runtime configuration — replaced by Vite HTML env replacement at build time.
-    // In dev, the Vite proxy maps /api, /tiles and /ws to the local services.
-    window.PS_CONFIG = {
-      API_BASE: '%VITE_API_BASE%'.indexOf('%') === 0 ? '/api' : '%VITE_API_BASE%',
-      MARTIN_URL: '%VITE_MARTIN_URL%'.indexOf('%') === 0 ? '/tiles' : '%VITE_MARTIN_URL%',
-      WS_URL: '%VITE_WS_URL%'.indexOf('%') === 0 ? '' : '%VITE_WS_URL%',
-    };
-    window.API_BASE = window.PS_CONFIG.API_BASE;
-</script>
   <!-- County manifest. The baked file is the offline fallback; config.js (served
        from the config store, DIC-465) overrides window.COUNTY at runtime when the
        API is reachable. Both are synchronous + ordered, so COUNTY is authoritative
-       before map.js parses; if config.js 404s, the baked fallback stands. -->
+       before map.js parses; if config.js 404s, the baked fallback stands (and
+       PV_CONFIG_SOURCE stays 'fallback': config.js sets it to 'api'). -->
   <script src="/frontend/public/js/county-config.js"></script>
-  <script src="/api/config.js" onerror="window.PV_CONFIG_SOURCE='fallback'"></script>
+  <script src="/api/config.js"></script>
   <!-- Service URL resolution (Map Buddy etc.) — after config, before any AI module. -->
   <script src="/frontend/public/js/pv-endpoints.js"></script>
   <!-- Data-access notices (ADR 0015): only Protected counties ever show anything. -->
@@ -408,19 +401,7 @@
   <script src="/frontend/public/js/pv-vision.js"></script>
   <!-- Map Buddy AI assistant — remove these two lines to detach -->
   <script src="/map-buddy/js/map-buddy.js"></script>
-  <script>
-    // Map Buddy runs as a standalone Cloud Run service; its URL comes from county config
-    // via pv-endpoints.js (DIC-1856), the same resolution every AI module uses.
-    (function () {
-      var apiBase = PV_ENDPOINTS.mapBuddyBase();
-      // Capability gating (Phase 2): only mount Map Buddy when the manifest/feature-flags
-      // enable it. Default-on (PV_CAPS absent → mount). The B1 AI-mode toggle still governs
-      // on/off visibility separately; this governs whether the surface exists at all.
-      if (!window.PV_CAPS || PV_CAPS.isEnabled('mapBuddy')) {
-        MapBuddy.mount({ apiBase: apiBase });
-      }
-    })();
-  </script>
+  <script src="/frontend/public/js/pv-map-buddy-mount.js"></script>
   <!-- Vue islands (DIC-2389, ADR 0017): panels moved to Vue components, starting with the
        Compare tray and table (DIC-589). A module runs after the page is parsed, so after
        every classic script above: the window hooks the islands read exist by then. -->

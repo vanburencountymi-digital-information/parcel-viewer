@@ -182,7 +182,8 @@ fails if they differ or if code hard-codes it.
 - **Sentry** through an injected `ErrorLoggingClient`, a no-op until `SENTRY_DSN` is set.
   Load and outages (database busy, AI quota, federal map services down) are logged as
   warnings, not sent to Sentry.
-- **Browser errors** reach the API through `pv-error-beacon.js` → `/api/client-errors`.
+- **Browser errors** reach the API through `pv-error-beacon.js` → `/api/client-errors`;
+  CSP violations through the browser's own reports → `/api/csp-report`.
 - **Health:** `/api/health` (503 when the database is down); Map Buddy `/health` and `/status`.
 - **AI cost:** each model call logs its token counts, including cache reads.
 

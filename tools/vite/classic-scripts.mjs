@@ -26,8 +26,8 @@
 // page (the engine's, or another converted viewer file's) reads its window hook instead of
 // bundling a copy (see module-hooks.mjs).
 //
-// Left alone: module/async/defer scripts, scripts with any attribute besides src (e.g.
-// /api/config.js's onerror), remote and /api/ URLs, and a lone local app script (so the
+// Left alone: module/async/defer scripts, scripts with any attribute besides src, remote
+// and /api/ URLs (/api/config.js), and a lone local app script (so the
 // baked county-config.js stays its own tag just before /api/config.js). Libraries from
 // /node_modules/ (MapLibre, Turf, proj4) always get bundles of their own. Build only; the dev
 // stack serves this build too (`npm run dev` = `vite build --watch`, on the host).

@@ -77,10 +77,12 @@ What still blocks a deploy:
 - [x] `.github/dependabot.yml` pointed at `/backend`, deleted with FastAPI, so that update job failed weekly. It now covers `/api` (pip and docker) like the other services.
 - [x] Atkinson Hyperlegible is self-hosted; `fonts.googleapis.com` and `fonts.gstatic.com` are out of the CSP.
 
-**Open: CSP enforcement** (in progress, csp-enforce session, under DIC-1851):
-- [ ] The policy is `Content-Security-Policy-Report-Only` with **no report sink**, so nobody sees violations. Add `report-uri /api/csp-report` and a rate-limited Django view that logs reports.
-- [ ] Drop `'unsafe-inline'` from `script-src` (2 inline scripts in `demo/index.html`) and narrow `img-src` / `connect-src` / `frame-src` from `https:` to the hosts in use.
-- [ ] Fail e2e tests on any `securitypolicyviolation`, so the suite in CI keeps the policy honest.
+**CSP enforcement** (DIC-2556, under DIC-1851):
+- [x] Report sink: `report-uri /api/csp-report`; a rate-limited Django view logs one warning per violation, without query strings or samples.
+- [x] `script-src 'self'`: the inline scripts and the `onerror` handler in `demo/index.html` moved to files; `img-src` / `connect-src` / `frame-src` list the hosts in use instead of `https:`.
+- [x] Every e2e test fails on a `securitypolicyviolation` it doesn't name, so the suite in CI keeps the policy honest.
+- [ ] Staff HTML under `/api/` (Swagger at `/api/docs` loads from `cdn.jsdelivr.net`; Django admin) gets the same header: self-host Swagger UI or give it its own policy before enforcing.
+- [ ] Add `report-to` (Reporting API) once it is seen delivering on HTTPS staging; over plain HTTP Chromium queued its reports but never sent them.
 - [ ] After a clean report window with testers, switch the header to enforcing (only the header name changes; one-line rollback).
 
 ## 4. What has been verified (and how to re-run it)
@@ -160,7 +162,7 @@ What still blocks a deploy:
 | Issue | Impact | Tracking |
 |---|---|---|
 | ~~**E2E suite isn't in CI**~~ **Fixed:** the `E2E` workflow runs the whole suite on every PR against a seeded fixture database (1,773 parcels around Paw Paw, owners replaced by stand-ins) | CI covers the fixture area only; runs against staging or the real data stay a manual check | DIC-2553 |
-| **CSP is report-only** | No script-injection enforcement yet, and no report sink | report sink and stricter `script-src` in progress; enforce after a clean report window (section 3) |
+| **CSP is report-only** | No script-injection enforcement yet; the policy is tight (`script-src 'self'`, listed hosts) and violations reach `/api/csp-report` and fail e2e | enforce after a clean report period with testers (DIC-2556, section 3) |
 | **mypy exemption list** for pre-existing modules | Type-checked but not fully annotated | ADR 0003 |
 | **Annotation store has no persistence** | Drawings are per-session | product decision |
 | **Parcel Packet is sample content** | Testers may think it's real | brief testers |

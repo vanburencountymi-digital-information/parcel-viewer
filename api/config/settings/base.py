@@ -304,6 +304,9 @@ REPORT_ERROR_RATE_LIMIT = env.str("REPORT_ERROR_RATE_LIMIT", default="5/hour")
 REPORT_ERROR_GLOBAL_LIMIT = env.str("REPORT_ERROR_GLOBAL_LIMIT", default="100/day")
 CLIENT_ERROR_RATE_LIMIT = env.str("CLIENT_ERROR_RATE_LIMIT", default="20/minute")
 CLIENT_ERROR_GLOBAL_LIMIT = env.str("CLIENT_ERROR_GLOBAL_LIMIT", default="5000/day")
+# CSP reports (DIC-2556): one page load can report several violations, hence above 20.
+CSP_REPORT_RATE_LIMIT = env.str("CSP_REPORT_RATE_LIMIT", default="30/minute")
+CSP_REPORT_GLOBAL_LIMIT = env.str("CSP_REPORT_GLOBAL_LIMIT", default="5000/day")
 
 # Data-error report email. Without PV_SMTP_HOST, /report-error answers 503
 # "email_not_configured" and the viewer shows a try-again state.
