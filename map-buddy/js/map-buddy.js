@@ -1289,7 +1289,8 @@
       return null;
     },
 
-    // ── Measurement (append an info bubble — model can't see the result) ───────
+    // ── Measurement (append an info bubble; the server returns the same numbers
+    //    to the model, agent.py _measure_tool, DIC-2434) ──────────────────────
     measure_parcel: function (p) {
       var a = _api(), f = _resolveParcel(p.pin); if (!a || !f) return null;
       var pin = f.properties.pin || f.properties.PIN, info = a.quickParcelInfo(pin);
