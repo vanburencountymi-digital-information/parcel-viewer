@@ -66,7 +66,7 @@ test('a ?url import publishes the file in /assets/ (content-hashed) and returns 
 test('the viewer loads no script or stylesheet from a CDN', () => {
   for (const page of ['demo/index.html', 'admin/index.html']) {
     const html = readFileSync(resolve(repo, page), 'utf8');
-    assert.doesNotMatch(html, /<(script|link)\b[^>]*(src|href)="https?:\/\/(?!fonts\.(googleapis|gstatic)\.com)/, page);
+    assert.doesNotMatch(html, /<(script|link)\b[^>]*(src|href)="https?:\/\//, page);
   }
 });
 
