@@ -93,7 +93,7 @@ Set in `.env`; compose passes them through the `x-django-environment` block of `
 | `SECURE_SSL_REDIRECT` | `1` | Django's HTTPS backstop behind the TLS proxy. `0` only when serving over plain HTTP. |
 | `SECURE_HSTS_SECONDS` | `0` | HSTS from Django; normally set where TLS terminates instead (DIC-1863 Q3). |
 | `PV_ACCESS_MODE` / `PV_DETAIL_BUDGET` / `PV_SERVICE_KEYS` | per county / `5000` / unset | Data access for counties that sell data (ADR 0015). |
-| `PV_TRUSTED_PROXY_HOPS` | `0` | Leave at `0` on the VM: the client address is nginx's `X-Real-IP`. On Cloud Run, the proxies that append to `X-Forwarded-For`: `2` behind the load balancer, `1` without (ADR 0018). Also read by the web image. |
+| `PV_TRUSTED_PROXY_HOPS` | `0` | Leave at `0` on the VM: the client address is nginx's `X-Real-IP`. On Cloud Run behind the Cloudflare Worker, also `0`: nginx takes the client from the Worker's header and sends it as `X-Real-IP` (that nginx change is the next PR, ADR 0018 part 2). Reached on `run.app` without the Worker, `1`: the entry Google's front end appends to `X-Forwarded-For` (ADR 0018). Also read by the web image. |
 | `LOG_FORMAT` | `json` | Set by the compose file. |
 
 The rest are below ("Shared API settings"). Staff sign in with accounts (DIC-2151); there is no shared admin key.
@@ -114,7 +114,7 @@ The rest are below ("Shared API settings"). Staff sign in with accounts (DIC-215
 - **`/aerial/` only relays tile paths** (`/aerial/{z}/{y}/{x}`); anything else is a 404, and the cache key is the tile, so query strings can't fill the cache.
 - **`/map-buddy-api/`** comes from an include: 404 in production (`infra/nginx/map-buddy-api.prod.conf`), a proxy to the local container in dev (`…dev.conf`).
 - `/` redirects to `/demo/` with a relative `Location` (correct behind any proxy or port). `*.md` files and `/engine/test/` are a 404.
-  ⚠ Keys on `$pv_client_ip`: the socket peer on the VM. Behind Cloud Run or a load balancer, set `PV_TRUSTED_PROXY_HOPS` on the web image (ADR 0018), or every user shares one bucket.
+  ⚠ Keys on `$pv_client_ip`: the socket peer on the VM. On Cloud Run without the Cloudflare Worker, set `PV_TRUSTED_PROXY_HOPS=1` on the web image (ADR 0018), or every user shares one bucket.
 - **Security headers:** `X-Content-Type-Options: nosniff` everywhere; `Referrer-Policy`, `X-Frame-Options: SAMEORIGIN` and a **report-only** `Content-Security-Policy` on the viewer and admin pages. The CSP string is defined once in the `map $host $pv_csp` block; violations post to `/api/csp-report` and show in the API's logs (`parcel_viewer.routers.csp_reports`). Switch it to enforced (the header name in the three `add_header` lines) once the testing window's logs are clean. **HSTS** goes wherever TLS terminates (DIC-1863 Q3).
   ⚠ nginx drops server-level `add_header`s in any location that sets its own — if you add a location with `add_header`, repeat the security headers there.
 - **Private files:** only `/map-buddy/js/` and `/map-buddy/css/` are served (everything else under `/map-buddy/` is a 404), and dotfiles (`.env`, `.git`) are a 404 from every static root.
