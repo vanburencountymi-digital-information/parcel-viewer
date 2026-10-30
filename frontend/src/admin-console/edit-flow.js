@@ -20,6 +20,8 @@ export function useEditFlow(store) {
   return {
     flash,
     history,
+    /** A module's own message (e.g. "Pick a layer to add first."). */
+    say(ok, message) { show({ ok, message }); },
     edit() { fresh(); store.edit(); },
     cancel() { fresh(); store.cancel(); },
     preview() { show(store.preview()); },

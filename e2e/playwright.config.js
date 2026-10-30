@@ -13,6 +13,7 @@ const ci = !!process.env.CI;
 
 module.exports = defineConfig({
   testDir: './tests',
+  globalSetup: require.resolve('./global-setup'),   // full runs take turns (DIC-2436)
   // A CI runner renders the map in software, about a third slower than a laptop: the tests
   // that load the viewer twice need the extra time there.
   timeout: ci ? 90_000 : 60_000,

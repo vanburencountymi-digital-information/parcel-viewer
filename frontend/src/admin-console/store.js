@@ -5,7 +5,9 @@
 //
 // The state is shallowReactive: the shell reacts to which module is open, editing, and a
 // newly loaded config, while the config and draft objects themselves stay plain, so
-// the editors can change them in place and the engine can clone them.
+// the editors can change them in place and the engine can clone them. `rev` counts the
+// editors' changes to the draft, for a view that shows something derived from it (a
+// list that gained a row, a field that depends on another).
 import { shallowReactive } from 'vue';
 import * as draftOps from './draft.js';
 
@@ -18,6 +20,7 @@ export function createConsoleStore({ fetch, apiBase, auth, countyKey, author, fa
     source: 'fallback',  // 'api' once /config answered
     editing: false,
     draft: null,         // a copy of the config while editing
+    rev: 0,              // bumped on each setDraft / addRow / removeRow
   });
   const configPath = (rest) => '/config/' + countyKey + rest;
 
@@ -139,13 +142,18 @@ export function createConsoleStore({ fetch, apiBase, auth, countyKey, author, fa
   }
 
   // The editors' field changes, on the draft. Ignored unless editing.
-  const setDraft = (path, value) => { if (state.editing) draftOps.setPath(state.draft, path, value); };
-  const addRow = (path) => { if (state.editing) draftOps.arrayAdd(state.draft, path); };
-  const removeRow = (path, idx) => { if (state.editing) draftOps.arrayRemove(state.draft, path, idx); };
+  function changed(op) {
+    if (!state.editing) return;
+    op(state.draft);
+    state.rev++;
+  }
+  const setDraft = (path, value) => changed((d) => draftOps.setPath(d, path, value));
+  const addRow = (path) => changed((d) => draftOps.arrayAdd(d, path));
+  const removeRow = (path, idx) => changed((d) => draftOps.arrayRemove(d, path, idx));
   const rowsAt = (path) => draftOps.arrayAt(ensureDraft(), path);
 
   return {
-    state, countyKey, apiBase, current, loadConfig, show, request, writeErr,
+    state, auth, countyKey, apiBase, current, loadConfig, show, request, writeErr,
     edit, ensureDraft, cancel, preview, save, publish, versions, rollback,
     setDraft, addRow, removeRow, rowsAt, clone: draftOps.clone,
   };

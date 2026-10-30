@@ -24,6 +24,20 @@ npx playwright show-report          # HTML report with traces/screenshots of fai
 | `E2E_AI` | unset | `1` runs the AI chat tests, which call the real model (costs a little) |
 | `E2E_MAP_BUDDY_API` | unset | A Map Buddy on its own origin (as in production), e.g. `http://127.0.0.1:8095`. Needed when `E2E_BASE_URL` is a production-configured stack, whose nginx has no `/map-buddy-api/` proxy (see `infra/DEPLOY-CHECKLIST.md` → "Rehearse locally") |
 
+### Full runs take turns
+
+Several sessions can share one machine, and two full suites at once starve each other's
+browsers into bogus timeouts. So a full run first takes a lock file
+(`%TEMP%\parcel-viewer-e2e.lock`, set up in `global-setup.js` / `lock.js`). A second full
+run waits and says which run holds the lock (pid, branch, folder, base URL, how long it has
+been running). A lock left by a crashed or killed run clears itself: its process is gone,
+or its 30-second heartbeat has stopped for 5 minutes.
+
+Targeted runs (spec files, `--grep`, `--last-failed`) don't take the lock, and neither does
+CI. `E2E_LOCK=1` forces the lock on, `E2E_LOCK=0` turns it off, and
+`E2E_LOCK_TIMEOUT_MIN` (default 120) is how long a run waits before giving up. The lock's
+own tests: `npm run test:lock`.
+
 ## On the fixture database (as CI runs it)
 
 `fixture/` is a small copy of the parcel database, so the suite runs without the shared
@@ -74,6 +88,7 @@ the specs that touch them — never as a blanket rule.
 | `map-click` | A real mouse click on the canvas selects the parcel |
 | `assessment-years` | AV history labels (panel chart, explainer chart, facts sent to the AI) follow the data's roll year, not the calendar; a county-config `assessing.rollYear` overrides it (DIC-1878) |
 | `context-menu` | Right-click menu: opens at the pointer; every copy row puts exactly its shown text on the clipboard, at the clicked point; select-here keeps the camera; Shift+F10 / arrows / Esc (selection kept, stops a search orbit); a right-drag doesn't open it; map move / outside click close it; Google Maps + Street View links |
+| `map-buddy-chat` | Map Buddy's chat panel with `/chat` stubbed (no model call): open / collapse / resize and what's remembered, welcome ideas by parcel, the composer (Enter, Shift+Enter, locked while a turn runs), Markdown rendered safely, action chips and sources, suggestion chips, info and result bubbles, the history sent back, every failure message, and the panel API |
 | `map-buddy-commands` | Every command that opens a window/tool/mode: it closes, releases the map-click gate, and a real click still selects a parcel (regression guard for DIC-1875) |
 | `tool-windows` | Every Help & tools menu window and parcel tool: open, close by button, close by Esc, focus not lost |
 | `map-controls` | Every Select / Measure / Draw tool arms and exits, releasing the gate and restoring panning |

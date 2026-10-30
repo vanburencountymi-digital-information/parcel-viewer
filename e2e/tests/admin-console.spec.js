@@ -15,6 +15,9 @@ const authBox = (page) => page.getByTestId('ac-auth');
 // Any editable form field (text, number, select, checkbox…).
 const formField = (scope) => ['textbox', 'spinbutton', 'combobox', 'listbox', 'checkbox', 'radio', 'slider']
   .map((role) => scope.getByRole(role)).reduce((a, b) => a.or(b));
+// The value next to a row's label (a <dt> / <dd> pair), and a module's card by its title.
+const dd = (scope, label) => scope.locator('dt', { hasText: new RegExp('^' + label + '$') }).locator('xpath=following-sibling::dd[1]');
+const card = (page, title) => main(page).locator('.ac-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
 
 async function gotoAdmin(page, mod = 'county') {
   await page.goto('/admin/#' + mod);
@@ -201,6 +204,68 @@ test.describe('Admin console', () => {
       await expect(authBox(page).getByRole('button', { name: 'Sign in' })).toBeVisible();
       await expect.poll(() => seen.logoutAuth).toBe('Token ' + TOKEN);
       expect(await page.evaluate(() => sessionStorage.getItem('pv-admin-auth'))).toBeNull();
+    });
+
+    // Layer discovery (DIC-502), signed in: pick a serveable layer, see what it is, add it.
+    const DISCOVERED = [
+      { id: 'drain_lines', source: 'drain_lines_tiles', sourceLayer: 'drain_lines', geomType: 'line', rowCount: 1234,
+        dbSource: 'geo.drain_lines', fields: ['name', 'kind'] },
+      { id: 'parks', source: 'parks_tiles', sourceLayer: 'parks', geomType: 'polygon', registered: true },
+      { id: 'subdivisions', source: 'subdivisions_tiles', geomType: 'polygon' },   // already in the config
+      { id: 'wells', source: 'wells_tiles', geomType: 'point' },
+    ];
+    const pick = (page) => main(page).getByRole('combobox', { name: 'PostGIS layer' });
+
+    test('discovery lists the layers not yet added; picking one shows what it is; Add puts it in the draft', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 404/);
+      const seen = {};
+      await stubSignIn(page, seen);
+      await page.route('**/api/admin/discover/layers*', (route) => route.fulfill({ json: { layers: DISCOVERED } }));
+      await page.route('**/api/config/*/draft', async (route) => {
+        if (route.request().method() === 'GET') return route.fulfill({ status: 404, json: {} });
+        seen.saved = route.request().postDataJSON();
+        await route.fulfill({ json: { ok: true } });
+      });
+      await gotoAdmin(page, 'data');
+      await signIn(page);
+
+      await expect(pick(page)).toBeEnabled();
+      await expect(pick(page).locator('option')).toHaveText(['Select a layer to add…', 'Drain Lines — line, 1,234 features', 'Wells — point']);
+      await main(page).getByRole('button', { name: 'Add layer' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Pick a layer to add first.');
+
+      await pick(page).selectOption('drain_lines_tiles');
+      const meta = main(page).locator('#ac-pg-pick-meta');
+      await expect(meta.locator('dd')).toHaveText(['line', '1,234', 'geo.drain_lines', 'drain_lines_tiles']);
+
+      await main(page).getByRole('button', { name: 'Add layer' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Added “Drain Lines”. Publish to make it live in the viewer.');
+      await expect(main(page).getByRole('button', { name: 'Save draft' })).toBeVisible();   // now editing
+      await expect(card(page, 'PostGIS layers').locator('[data-path$=".label"]').last()).toHaveValue('Drain Lines');
+      await expect(pick(page).locator('option')).toHaveText(['Select a layer to add…', 'Wells — point']);
+
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      const p = seen.saved.payload;
+      expect(p.layers.overlays.at(-1)).toEqual({ id: 'drain_lines', label: 'Drain Lines', type: 'vector', source: 'drain_lines_tiles',
+        sourceLayer: 'drain_lines', geomType: 'line', minZoom: 12, default: false, dbSource: 'geo.drain_lines', fields: ['name', 'kind'] });
+      expect(p.styling.layers.drain_lines).toEqual({ label: 'Drain Lines',
+        paint: { light: { fill: '#1F5E80', stroke: '#1F5E80' }, dark: { fill: '#2E76A6', stroke: '#7fb6d8' } } });
+    });
+
+    test('discovery says why when there is nothing to add, it is not allowed, or the DB is down', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of (403|500)/);
+      await stubSignIn(page, {});
+      const replies = [{ json: { layers: [DISCOVERED[1]] } }, { status: 403, json: {} }, { status: 500, json: {} }];
+      await page.route('**/api/admin/discover/layers*', (route) => route.fulfill(replies.shift()));
+      await gotoAdmin(page, 'county');
+      await signIn(page);
+      for (const text of [/All available layers added/, /isn’t allowed for this account/, /Couldn’t reach the tile server \/ DB \(HTTP 500\)/]) {
+        await navItem(page, 'data').click();
+        await expect(main(page)).toContainText(text);
+        await expect(pick(page)).toBeDisabled();
+        await navItem(page, 'county').click();
+      }
     });
 
     test('a refused sign-in says why and keeps the form', async ({ page, consoleGuard }) => {
@@ -451,9 +516,417 @@ test.describe('Admin console', () => {
     });
 
     // Access & Ops (DIC-462): what each row shows, and that its editor sends each field
-    // with its type. `dd` is the value next to a row's label.
-    const dd = (scope, label) => scope.locator('dt', { hasText: new RegExp('^' + label + '$') }).locator('xpath=following-sibling::dd[1]');
-    const card = (page, title) => main(page).locator('.ac-card').filter({ has: page.getByRole('heading', { name: title, exact: true }) });
+    // with its type.
+
+    // County Configuration (DIC-458): what each row shows from the live config, and the
+    // reference lookups.
+    test('county: shows the live identity, map defaults, endpoints and parcel-number format', async ({ page }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const pn = cfg.parcelNumber || {};
+      await gotoAdmin(page, 'county');
+      await expect(main(page)).toContainText('Loaded live from the runtime /config API');
+      const show = (v) => (v == null || v === '' ? '—' : String(v));
+      await expect(dd(card(page, 'Identity'), 'Name')).toHaveText(show(cfg.name));
+      await expect(dd(card(page, 'Identity'), 'State')).toHaveText(show(cfg.state));
+      await expect(dd(card(page, 'Identity'), 'Data request form')).toHaveText(show(cfg.forms && cfg.forms.dataRequest));
+      const mapCard = card(page, 'Map defaults');
+      await expect(dd(mapCard, 'Center \\[lng, lat\\]')).toHaveText(JSON.stringify(cfg.map.center));
+      await expect(dd(mapCard, 'Default zoom')).toHaveText(show(cfg.map.zoom));
+      await expect(dd(mapCard, 'Extent')).toHaveText(JSON.stringify(cfg.map.extent));
+      await expect(dd(card(page, 'Endpoints'), 'Map Buddy AI')).toHaveText(show(cfg.endpoints && cfg.endpoints.mapBuddy));
+      await expect(dd(card(page, 'Integrations'), 'Google Maps Embed key')).toHaveText(show(cfg.integrations && cfg.integrations.googleMapsEmbedKey));
+      const pnCard = card(page, 'Parcel number format');
+      await expect(dd(pnCard, 'Separator')).toHaveText(show(pn.separator));
+      await expect(dd(pnCard, 'Example PIN')).toHaveText(show(pn.example));
+      const segs = pn.segments || [];
+      await expect(pnCard.locator('tbody tr')).toHaveCount(Math.max(segs.length, 1));
+      if (segs.length) await expect(pnCard.locator('tbody tr').first()).toHaveText(new RegExp('^1' + segs[0].name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+      await expect(formField(main(page))).toHaveCount(0);
+    });
+
+    test('county: reference lookups open one at a time, sorted by code', async ({ page }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const pc = (cfg.labels && cfg.labels.propClass) || {};
+      const sd = (cfg.labels && cfg.labels.schoolDist) || {};
+      await gotoAdmin(page, 'county');
+      const lk = card(page, 'Reference lookups');
+      await expect(dd(lk, 'Property classes')).toHaveText(`${Object.keys(pc).length} codes View`);
+      await expect(dd(lk, 'School districts')).toHaveText(`${Object.keys(sd).length} codes View`);
+
+      const view = lk.getByRole('button', { name: 'View' });
+      await view.first().click();
+      await expect(dd(lk, 'Property classes').getByRole('button')).toHaveText('Hide');
+      const rows = lk.getByRole('table').locator('tbody tr');
+      await expect(rows).toHaveCount(Object.keys(pc).length);
+      const first = Object.keys(pc).sort()[0];
+      await expect(rows.first()).toHaveText(first + pc[first]);
+
+      await dd(lk, 'School districts').getByRole('button').click();
+      await expect(dd(lk, 'Property classes').getByRole('button')).toHaveText('View');
+      await expect(dd(lk, 'School districts').getByRole('button')).toHaveText('Hide');
+      await expect(rows).toHaveCount(Object.keys(sd).length);
+
+      await dd(lk, 'School districts').getByRole('button').click();
+      await expect(lk.getByRole('table')).toHaveCount(0);
+      await expect(lk.getByRole('button', { name: 'View' })).toHaveCount(2);
+    });
+
+    test('county: every field is in the editor, starting from the live value', async ({ page, consoleGuard }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      await stubStore(page, consoleGuard, {});
+      await gotoAdmin(page, 'county');
+      await main(page).getByRole('button', { name: 'Edit configuration' }).click();
+      await expect(main(page)).toContainText('Editing a draft.');
+      await expect(draftField(page, 'state')).toHaveValue(cfg.state || '');
+      await expect(draftField(page, 'map.center')).toHaveValue(JSON.stringify(cfg.map.center));
+      await expect(draftField(page, 'map.zoom')).toHaveValue(String(cfg.map.zoom));
+      await expect(draftField(page, 'endpoints.mapBuddy')).toHaveValue((cfg.endpoints && cfg.endpoints.mapBuddy) || '');
+      await expect(draftField(page, 'integrations.googleMapsEmbedKey')).toHaveValue((cfg.integrations && cfg.integrations.googleMapsEmbedKey) || '');
+      await expect(draftField(page, 'parcelNumber.intro')).toHaveValue((cfg.parcelNumber && cfg.parcelNumber.intro) || '');
+      await expect(card(page, 'Reference lookups')).toContainText('edit via API for now');
+      // Clearing the zoom saves no zoom rather than 0.
+      const seen = {};
+      await page.unroute('**/api/config/*/draft');
+      await stubStore(page, consoleGuard, seen);
+      await draftField(page, 'map.zoom').fill('');
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      expect(seen.saved.payload.map.zoom).toBeNull();
+    });
+
+    // Data & Layers (DIC-461): the tile server, the PostGIS layers (editable), the WMS /
+    // raster overlays (read-only), and the data sources.
+    const isPg = (o) => ['vector', 'postgis', 'mvt'].includes(String(o.type || '').toLowerCase());
+    const zoomText = (o) => (o.minZoom ? `z${o.minZoom}+` : 'all');
+
+    test('data: shows the tile server, layers, overlays and sources as the live config has them', async ({ page }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const L = cfg.layers || {};
+      const overlays = L.overlays || [];
+      await gotoAdmin(page, 'data');
+      await expect(main(page)).toContainText('Loaded live from /config.');
+      const ts = card(page, 'Tile server');
+      await expect(dd(ts, 'Provider')).toHaveText((L.tileServer && L.tileServer.provider) || '—');
+      await expect(dd(ts, 'URL')).toHaveText((L.tileServer && L.tileServer.url) || '—');
+      const pg = overlays.filter(isPg);
+      const pgCard = card(page, 'PostGIS layers');
+      await expect(pgCard).toContainText(`${pg.length} vector layer(s)`);
+      await expect(pgCard.locator('tbody tr')).toHaveText(pg.map((o) => o.label + (o.source || '—') + zoomText(o) + (o.default ? 'on' : '')));
+      const ext = overlays.filter((o) => !isPg(o));
+      await expect(card(page, 'External overlays').locator('tbody tr')).toHaveText(ext.map((o) => o.label + o.type + o.source + zoomText(o)));
+      const ds = L.dataSources || [];
+      await expect(card(page, 'Data sources').locator('tbody tr')).toHaveText(ds.map((d) => d.label + d.source));
+      await expect(card(page, 'Data sources')).toContainText('Self-serve ingestion');
+      await expect(main(page).getByRole('combobox', { name: 'PostGIS layer' })).toBeDisabled();
+    });
+
+    test('data: the editor edits the PostGIS layers and data sources; overlays stay read-only', async ({ page, consoleGuard }) => {
+      const cfg = await (await page.request.get('/api/config')).json();
+      const overlays = cfg.layers.overlays;
+      const firstPg = overlays.findIndex(isPg);
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'data');
+      await main(page).getByRole('button', { name: 'Edit layers' }).click();
+      await expect(main(page)).toContainText('Editing a draft.');
+      await expect(draftField(page, `layers.overlays.${firstPg}.label`)).toHaveValue(overlays[firstPg].label);
+      await expect(formField(card(page, 'External overlays'))).toHaveCount(0);
+
+      await draftField(page, 'layers.tileServer.url').fill('/tiles-2');
+      await draftField(page, `layers.overlays.${firstPg}.minZoom`).fill('9');
+      await draftField(page, `layers.overlays.${firstPg}.default`).check();
+      const pgRows = card(page, 'PostGIS layers').locator('tbody tr');
+      const before = await pgRows.count();
+      await main(page).getByRole('button', { name: '+ Add PostGIS layer' }).click();
+      await expect(pgRows).toHaveCount(before + 1);
+      await draftField(page, `layers.overlays.${overlays.length}.source`).fill('new_tiles');
+      const dsRows = card(page, 'Data sources').locator('tbody tr');
+      const dsBefore = await dsRows.count();
+      await main(page).getByRole('button', { name: '+ Add data source' }).click();
+      await expect(dsRows).toHaveCount(dsBefore + 1);
+      await card(page, 'Data sources').getByRole('button', { name: 'Remove' }).first().click();
+      await expect(dsRows).toHaveCount(dsBefore);
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+
+      const L = seen.saved.payload.layers;
+      expect(L.tileServer.url).toBe('/tiles-2');
+      expect(L.overlays[firstPg]).toMatchObject({ minZoom: 9, default: true });
+      expect(L.overlays.at(-1)).toEqual({ id: '', label: 'New PostGIS layer', type: 'vector', source: 'new_tiles', minZoom: 0, default: false });
+      expect(L.dataSources).toHaveLength(cfg.layers.dataSources.length);
+      expect(L.dataSources[0]).toEqual(cfg.layers.dataSources[1]);
+    });
+
+    // Styling (DIC-460 / DIC-503), against a stubbed /config with known styling: a polygon
+    // layer with a choropleth, a line layer and a point layer.
+    const STYLED = {
+      name: 'Styled County',
+      layers: { overlays: [
+        { id: 'roads', label: 'Roads', type: 'vector', source: 'roads_tiles', geomType: 'line', fields: ['name', 'feature_type'] },
+        { id: 'wells', label: 'Wells', type: 'vector', source: 'wells_tiles', geomType: 'point' },
+      ] },
+      styling: {
+        colorScheme: 'harvest', theme: 'light', basemap: 'parcels',
+        schemes: [{ id: 'harvest', label: 'Harvest', accent: '#a3473b', interactive: '#2f6b4f' }, { id: 'lake', label: 'Lake', accent: '#1f5e80', interactive: '#7fb6d8' }],
+        labels: { defaultField: 'owner', defaultSize: 'medium', fields: ['owner', 'pin'], zoom: { largeParcels: 13, smallParcels: 15 } },
+        layers: {
+          parcels: { label: 'Parcels', paint: { light: { fill: '#f5f0e8', stroke: '#6b5d4f' }, dark: { fill: '#2a2420', stroke: '#9a8b7c' } },
+            choropleth: { enabled: true, attribute: 'prop_class', mode: 'categorical', transform: 'classGroup', fallback: '#cccccc', opacity: 0.2,
+              fields: ['prop_class', 'gis_acres'], categories: [{ value: '4', label: 'Residential', color: '#e8c07d' }], stops: [] } },
+          roads: { label: 'Roads', line: { width: 2, opacity: 0.9, dash: 'dashed', casingWidth: 1, light: { color: '#333333' }, dark: {} },
+            labels: { enabled: true, field: 'name', size: 11, minZoom: 14 } },
+          wells: { label: 'Wells', point: { radius: 4, strokeWidth: 1, light: { color: '#b58d4a' }, dark: {} } },
+        },
+      },
+    };
+    async function gotoStyled(page, cfg = STYLED) {
+      await page.route('**/api/config', (route) => route.fulfill({ json: cfg }));
+      await gotoAdmin(page, 'styling');
+      await expect(status(page)).toHaveText('Live config · read-only');
+    }
+    const stylePick = (page) => card(page, 'Layer styling').getByRole('combobox').first();
+
+    test('styling: shows the schemes, theme, the picked layer by its geometry, and parcel labels', async ({ page }) => {
+      await gotoStyled(page);
+      const schemes = card(page, 'Color scheme');
+      await expect(schemes).toContainText('default: harvest');
+      await expect(schemes.locator('.ac-scheme')).toHaveText(['Harvest default', 'Lake']);
+      await expect(schemes.locator('.is-active')).toHaveText('Harvest default');
+      await expect(dd(card(page, 'Theme & basemap'), 'Default theme')).toHaveText('light');
+      await expect(dd(card(page, 'Theme & basemap'), 'Base layer')).toHaveText('parcels');
+
+      // Parcels: polygon paint, the choropleth with its categories, and no label fields.
+      const ls = card(page, 'Layer styling');
+      await expect(stylePick(page).locator('option')).toHaveText(['Parcels', 'Roads', 'Wells']);
+      await expect(ls).toContainText('fill, stroke & choropleth');
+      await expect(dd(ls, 'Light — fill')).toHaveText('#f5f0e8');
+      await expect(dd(card(page, 'Choropleth'), 'Mode')).toHaveText('categorical · classGroup');
+      await expect(dd(card(page, 'Choropleth'), 'Opacity')).toHaveText('0.2');
+      await expect(card(page, 'Categories').locator('tbody tr')).toHaveText(['#e8c07d4Residential']);
+      await expect(card(page, 'Labels')).toContainText('text at each feature');
+      await expect(dd(card(page, 'Labels'), 'Labels')).toHaveText('Off');
+
+      // A line layer: width, dash, casing; its labels along the line; no choropleth.
+      await stylePick(page).selectOption('roads');
+      await expect(ls).toContainText('line — casing, dash & glow');
+      await expect(dd(ls, 'Width')).toHaveText('2 px');
+      await expect(dd(ls, 'Dash')).toHaveText('dashed');
+      await expect(dd(ls, 'Glow width')).toHaveText('— blurred halo (0 = none)');
+      await expect(ls).toContainText('Width-by-type needs');
+      await expect(card(page, 'Choropleth')).toHaveCount(0);
+      await expect(card(page, 'Labels')).toContainText('text along the line');
+      await expect(dd(card(page, 'Labels'), 'Size · min zoom')).toHaveText('11px · z14+');
+
+      // A point layer whose tiles have no attributes.
+      await stylePick(page).selectOption('wells');
+      await expect(ls).toContainText('point — radius & stroke');
+      await expect(dd(ls, 'Radius')).toHaveText('4 px');
+      await expect(card(page, 'Labels')).toContainText('This layer’s tiles expose no label-able attributes.');
+
+      const pl = card(page, 'Parcel labels');
+      await expect(dd(pl, 'Default field')).toHaveText('owner');
+      await expect(dd(pl, 'Zoom — large / small')).toHaveText('large 13+, small 15+');
+      await expect(formField(main(page)).filter({ hasNot: page.locator('[data-style-layer]') })).toHaveCount(1);   // only the picker
+    });
+
+    test('styling: edits the scheme, the paint, the choropleth ramp and labels, and saves them', async ({ page, consoleGuard }) => {
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoStyled(page);
+      await main(page).getByRole('button', { name: 'Edit styling' }).click();
+      await expect(main(page)).toContainText('Editing a draft.');
+      await card(page, 'Color scheme').getByRole('button', { name: /Lake/ }).click();
+      await expect(card(page, 'Color scheme').locator('.is-active')).toHaveText('Lake default');
+      await draftField(page, 'styling.theme').selectOption('dark');
+      await draftField(page, 'styling.layers.parcels.paint.light.fill').fill('#112233');
+      await draftField(page, 'styling.layers.parcels.choropleth.opacity').fill('0.35');
+
+      // Switching the mode swaps the ramp; rows add and remove.
+      await draftField(page, 'styling.layers.parcels.choropleth.mode').selectOption('graduated');
+      await expect(card(page, 'Color stops').locator('tbody')).toHaveText('No stops yet — add one below.');
+      await expect(card(page, 'Categories')).toHaveCount(0);
+      await main(page).getByRole('button', { name: '+ Add stop' }).click();
+      await main(page).getByRole('button', { name: '+ Add stop' }).click();
+      await draftField(page, 'styling.layers.parcels.choropleth.stops.1.min').fill('100000');
+      await card(page, 'Color stops').getByRole('button', { name: 'Remove' }).first().click();
+      await expect(card(page, 'Color stops').locator('tbody tr')).toHaveCount(1);
+
+      // The picker keeps the edits while it moves between layers.
+      await stylePick(page).selectOption('roads');
+      await draftField(page, 'styling.layers.roads.line.dash').selectOption('dotted');
+      await draftField(page, 'styling.layers.roads.labels.enabled').uncheck();
+      await stylePick(page).selectOption('parcels');
+      await expect(draftField(page, 'styling.layers.parcels.paint.light.fill')).toHaveValue('#112233');
+      await draftField(page, 'styling.labels.zoom.largeParcels').fill('12');
+
+      await main(page).getByRole('button', { name: 'Save draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Draft saved.');
+      const S = seen.saved.payload.styling;
+      expect(S).toMatchObject({ colorScheme: 'lake', theme: 'dark', labels: { zoom: { largeParcels: 12 } } });
+      expect(S.layers.parcels.paint.light.fill).toBe('#112233');
+      expect(S.layers.parcels.choropleth).toMatchObject({ mode: 'graduated', opacity: 0.35, stops: [{ min: 100000, label: '', color: '#888888' }] });
+      expect(S.layers.roads.line.dash).toBe('dotted');
+      expect(S.layers.roads.labels.enabled).toBe(false);
+    });
+
+    test('styling: a config without styling says so; one without layers says that', async ({ page }) => {
+      await gotoStyled(page, { name: 'Plain County' });
+      await expect(main(page)).toContainText('No styling config in the manifest yet.');
+      await page.unroute('**/api/config');
+      await page.route('**/api/config', (route) => route.fulfill({ json: { name: 'Plain County', styling: { schemes: [], labels: {} } } }));
+      await page.reload();
+      await expect(card(page, 'Layer styling')).toContainText('No stylable layers in the manifest yet.');
+      await expect(card(page, 'Choropleth')).toHaveCount(0);
+    });
+
+    // Theme Manifest (DIC-578/579/580): assembled from the modules and validated by the
+    // engine, the raw editor, save / publish into the draft, export, and autoconfigure.
+    // Map Buddy's /health and /autoconfigure are always stubbed here: autoconfigure would
+    // call the live model.
+    const raw = (page) => main(page).locator('#ac-mf-raw');
+    const mfResult = (page) => main(page).locator('#ac-mf-result');
+    async function stubAi(page, { healthy = true, refinement = null } = {}) {
+      const seen = { autoconfigure: [] };
+      await page.route('**/health', (route) => route.fulfill(healthy ? { json: { ok: true } } : { status: 503, json: {} }));
+      await page.route('**/autoconfigure', async (route) => {
+        seen.autoconfigure.push(route.request().postDataJSON());
+        await route.fulfill({ json: refinement ? { ok: true, refinement } : { ok: false } });
+      });
+      return seen;
+    }
+
+    test('manifest: assembled from the modules, schema-valid, with its capabilities and the full JSON', async ({ page }) => {
+      await stubAi(page);
+      await gotoAdmin(page, 'manifest');
+      await expect(main(page)).toContainText('Assembled from the current module values (not yet saved).');
+      await expect(main(page)).toContainText(/Schema-valid theme manifest \(v[\d.]+, tenant vanburen\)/);
+      const manifest = JSON.parse(await raw(page).inputValue());
+      expect(manifest.tenant).toBe('vanburen');
+      const caps = Object.keys(manifest.capabilities || {});
+      const rows = card(page, 'Capabilities & AI mode').locator('tbody tr');
+      await expect(rows).toHaveCount(Math.max(caps.length, 1));
+      if (caps.length) await expect(rows.first().locator('td').first()).toHaveText(caps[0]);
+    });
+
+    test('manifest: Validate says what is wrong with the edited JSON', async ({ page }) => {
+      await stubAi(page);
+      await gotoAdmin(page, 'manifest');
+      const good = await raw(page).inputValue();
+      await raw(page).fill('{ not json');
+      await main(page).getByRole('button', { name: 'Validate' }).click();
+      await expect(mfResult(page)).toContainText('✗ Invalid JSON:');
+      const broken = JSON.parse(good);
+      broken.manifestVersion = '99.0';   // newer than the engine supports
+      await raw(page).fill(JSON.stringify(broken));
+      await main(page).getByRole('button', { name: 'Validate' }).click();
+      await expect(mfResult(page)).toContainText('✗');
+      await expect(mfResult(page)).not.toContainText('Invalid JSON');
+      await raw(page).fill(good);
+      await main(page).getByRole('button', { name: 'Validate' }).click();
+      await expect(mfResult(page)).toHaveText(/^✓ Schema-valid/);
+    });
+
+    test('manifest: Save puts the edited manifest in the draft and shows it as saved; Re-assemble starts over', async ({ page, consoleGuard }) => {
+      await stubAi(page);
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'manifest');
+      const edited = JSON.parse(await raw(page).inputValue());
+      edited.branding = { ...(edited.branding || {}), name: 'Edited Name' };
+      await raw(page).fill(JSON.stringify(edited));
+      await main(page).getByRole('button', { name: 'Save to draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Manifest saved to draft. Reopen to confirm it round-trips.');
+      expect(seen.saved.author).toBe('console');
+      expect(seen.saved.payload.manifest.branding.name).toBe('Edited Name');
+      expect(seen.saved.payload.name).toBeTruthy();   // the rest of the config rides along
+      await expect(main(page)).toContainText('Showing the saved manifest from the config store.');
+      expect(JSON.parse(await raw(page).inputValue()).branding.name).toBe('Edited Name');
+
+      await main(page).getByRole('button', { name: 'Re-assemble from modules' }).click();
+      await expect(main(page)).toContainText('Assembled from the current module values');
+      expect(JSON.parse(await raw(page).inputValue()).branding.name).not.toBe('Edited Name');
+    });
+
+    test('manifest: an invalid manifest is never saved; Publish publishes a valid one', async ({ page, consoleGuard }) => {
+      await stubAi(page);
+      const seen = {};
+      await stubStore(page, consoleGuard, seen);
+      await gotoAdmin(page, 'manifest');
+      const good = await raw(page).inputValue();
+      const broken = JSON.parse(good);
+      broken.manifestVersion = '99.0';   // newer than the engine supports
+      await raw(page).fill(JSON.stringify(broken));
+      await main(page).getByRole('button', { name: 'Save to draft' }).click();
+      await expect(page.getByTestId('ac-flash')).toContainText('Manifest is not schema-valid — fix it before saving:');
+      expect(seen.saved).toBeUndefined();
+
+      await raw(page).fill(good);
+      await main(page).getByRole('button', { name: 'Publish' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Published version 7.');
+      expect(seen.published).toEqual({ author: 'console', note: 'Published theme manifest from console' });
+      expect(seen.saved.payload.manifest).toEqual(JSON.parse(good));
+    });
+
+    test('manifest: Export downloads the manifest; Export edited downloads the editor’s JSON', async ({ page }) => {
+      await stubAi(page);
+      await gotoAdmin(page, 'manifest');
+      const current = JSON.parse(await raw(page).inputValue());
+      let download = page.waitForEvent('download');
+      await main(page).getByRole('button', { name: 'Export', exact: true }).click();
+      let file = await download;
+      expect(file.suggestedFilename()).toBe((current.id || 'theme') + '.manifest.json');
+      expect(JSON.parse(await (await file.createReadStream()).toArray().then((c) => Buffer.concat(c).toString()))).toEqual(current);
+
+      await raw(page).fill(JSON.stringify({ id: 'edited-theme', x: 1 }));
+      download = page.waitForEvent('download');
+      await main(page).getByRole('button', { name: 'Export edited' }).click();
+      file = await download;
+      expect(file.suggestedFilename()).toBe('edited-theme.manifest.json');
+    });
+
+    test('manifest: autoconfigure drops a draft in the editor and shows the AI review (stubbed)', async ({ page }) => {
+      const ai = await stubAi(page, { refinement: { rationale: 'Looks <b>fine</b>.', suggestions: [{ field: 'map.zoom', change: 'zoom in', why: 'small county' }] } });
+      await gotoAdmin(page, 'manifest');
+      const ac = card(page, 'AI autoconfigure (draft)');
+      await ac.locator('#ac-ac-topic').fill('zoning');
+      await ac.locator('#ac-ac-intent').selectOption('staff');
+      await raw(page).fill('{}');
+      await ac.getByRole('button', { name: 'Generate draft' }).click();
+      await expect(ac.locator('#ac-ac-result')).toContainText('✓ schema-valid draft · ');
+      await expect(ac.locator('#ac-ac-refine')).toContainText('AI review: Looks <b>fine</b>.');
+      await expect(ac.locator('#ac-ac-refine li')).toHaveText('map.zoom — zoom in (small county)');
+      const draft = JSON.parse(await raw(page).inputValue());
+      expect(draft.tenant).toBe('vanburen');
+      expect(ai.autoconfigure).toHaveLength(1);
+      expect(ai.autoconfigure[0].brief).toMatchObject({ topic: 'zoning', intent: 'staff', ai: true, tenant: 'vanburen' });
+      expect(ai.autoconfigure[0].draft).toEqual(draft);
+    });
+
+    test('manifest: with the AI service down, autoconfigure says so and stays deterministic', async ({ page, consoleGuard }) => {
+      consoleGuard.allow(/status of 503/);
+      const ai = await stubAi(page, { healthy: false });
+      await gotoAdmin(page, 'manifest');
+      const ac = card(page, 'AI autoconfigure (draft)');
+      await expect(ac.locator('#ac-ac-health')).toHaveText(/AI service unreachable — autoconfigure runs in deterministic baseline mode/);
+      await ac.getByRole('button', { name: 'Generate draft' }).click();
+      await expect(ac.locator('#ac-ac-result')).toContainText('✓ schema-valid draft (AI refinement skipped — service unreachable) · ');
+      await expect(ac.locator('#ac-ac-refine')).toBeEmpty();
+      // Unticking the assistant: no AI asked either.
+      await ac.locator('#ac-ac-ai').uncheck();
+      await ac.getByRole('button', { name: 'Generate draft' }).click();
+      expect(ai.autoconfigure).toHaveLength(0);
+    });
+
+    test('manifest: history and Restore stay on the Theme Manifest', async ({ page, consoleGuard }) => {
+      await stubAi(page);
+      await stubStore(page, consoleGuard, {}, { versions: [{ version: 5, note: 'Theme', created_by: 'jerry', created_at: '2026-06-01T08:00:00Z' }] });
+      await gotoAdmin(page, 'manifest');
+      await main(page).getByRole('button', { name: 'Version history' }).click();
+      await expect(main(page)).toContainText('1 published version(s)');
+      await main(page).getByRole('button', { name: 'Restore' }).click();
+      await expect(page.getByTestId('ac-flash')).toHaveText('Restored v5 as version 8.');
+      await expect(main(page).getByRole('heading', { level: 1 })).toHaveText('Theme Manifest');
+    });
 
     test('access: shows the live access settings and the services, read-only', async ({ page }) => {
       const cfg = await (await page.request.get('/api/config')).json();

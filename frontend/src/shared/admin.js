@@ -14,11 +14,13 @@ export const author = () => w.PV_ADMIN_USER || 'console';
 /** The Map Buddy service's base URL (pv-endpoints.js), where the explainer plugins live. */
 export const mapBuddyBase = () => (w.PV_ENDPOINTS ? w.PV_ENDPOINTS.mapBuddyBase() : (w.MAP_BUDDY_API || '/map-buddy-api'));
 
+/** The engine's manifest hooks (engine/window-hooks.js), or null when the engine isn't on the page. */
+export const manifestAssembler = () => w.ISV_MANIFEST_ASSEMBLE || null;
+export const manifestLoader = () => w.ISV_LOAD_MANIFEST || null;
+export const themeComposer = () => w.ISV_THEME_COMPOSER_CORE || null;
+
 /** The baked county manifest (county-config.js), shown until /config answers. */
 export const bakedConfig = () => w.COUNTY || {};
-
-/** The modules admin.js still draws ({ renderers, attach }), or null if it didn't load. */
-export const legacyModules = () => w.PV_ADMIN_LEGACY || null;
 
 /** sessionStorage, read at call time (pv-storage-guard.js may stand in for a blocked one). */
 export const session = () => w.sessionStorage;
