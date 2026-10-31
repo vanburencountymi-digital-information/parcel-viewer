@@ -8,6 +8,7 @@ All environment-specific values come from environment variables (django-environ)
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import django_stubs_ext
 import environ
@@ -92,10 +93,12 @@ INSTALLED_APPS = [
     "environment",
 ]
 
-# Request ids outermost (every response, CORS rejections included, gets one), then
-# security headers, so a CORS preflight answered by CorsMiddleware still gets them.
+# Request ids outermost (every response, CORS rejections included, gets one), then the
+# liveness probe (before host checks, ADR 0018), then security headers, so a CORS preflight
+# answered by CorsMiddleware still gets them.
 MIDDLEWARE = [
     "common.middleware.RequestIdMiddleware",
+    "common.middleware.LivenessMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "common.middleware.CorsMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
@@ -150,13 +153,19 @@ def _database(
     if not url:
         raise ImproperlyConfigured(f"{url_var} must be set.")
     config = env.db_url_config(url, engine=POSTGIS)
+    # A Unix socket goes in the URL percent-encoded (postgis://user:pw@%2Fcloudsql%2F<instance>
+    # /db, the Cloud SQL connector on Cloud Run, ADR 0018); django-environ leaves it encoded.
+    config["HOST"] = unquote(config.get("HOST") or "")
     session = f"-c statement_timeout={STATEMENT_TIMEOUT_MS}"
     if read_only:
         # The current reader login can also write (it is shared with parcel-studio), so
         # read-only is enforced on the session until a dedicated read-only role exists.
         session += " -c default_transaction_read_only=on"
     config["CONN_MAX_AGE"] = 0  # required by the pool; the pool keeps connections
+    # Options in the URL's query string are kept (sslmode=require for a database reached
+    # over a public IP, ADR 0018); the ones below are ours and win.
     config["OPTIONS"] = {
+        **config.get("OPTIONS", {}),
         # check: test each connection before handing it out, so one the server or the
         # network dropped while idle is replaced instead of failing the request with a 503.
         "pool": {
@@ -221,11 +230,10 @@ STORAGES = {
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
-    # How many proxies sit in front of the app, so throttles see the real client address.
-    "NUM_PROXIES": env.int("THROTTLE_NUM_PROXIES", default=None),
+    # Keyed on the client address (TRUSTED_PROXY_HOPS below), like every other limit.
     "DEFAULT_THROTTLE_CLASSES": [
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
+        "common.throttles.ClientAnonRateThrottle",
+        "common.throttles.ClientUserRateThrottle",
     ],
     "DEFAULT_THROTTLE_RATES": {
         "anon": env.str("THROTTLE_ANON", default="120/min"),
@@ -247,6 +255,11 @@ REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["common.renderers.FastApiCompatibleJSONRenderer"],
     "DEFAULT_PARSER_CLASSES": ["rest_framework.parsers.JSONParser"],
 }
+
+# The client address for rate limits, the data-access meter and logs (ADR 0018). 0: behind
+# our nginx on the VM, which sets X-Real-IP. On Cloud Run, the number of Google proxies that
+# append to X-Forwarded-For: 1 with nothing in front, 2 behind an external load balancer.
+TRUSTED_PROXY_HOPS = env.int("PV_TRUSTED_PROXY_HOPS", default=0)
 
 # County config (DIC-465): the default county and the config store's switches, named as
 # the FastAPI backend named them. The shared admin key (PV_ADMIN_TOKEN) is retired here
