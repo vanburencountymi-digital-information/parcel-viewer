@@ -170,7 +170,7 @@ Alternatives:
   - the DSN as a secret;
   - `SENTRY_ENVIRONMENT` set to `staging` or `production`;
   - the nightly backup job reporting failures, as the pipeline's does.
-  
+
   Browser errors are a later step: the CSP report sink (`/api/csp-report`) already covers policy violations.
 
 ### 9. Map Buddy: stays where it is for now
