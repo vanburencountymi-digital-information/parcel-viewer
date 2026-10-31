@@ -1076,6 +1076,10 @@ def _build_user_message(
 # then act on it. PARCEL_API_BASE is the in-cluster API (http://django-api:8000) locally
 # and the deployed API URL in prod.
 PARCEL_API_BASE = os.getenv("PARCEL_API_BASE", "http://django-api:8000").rstrip("/")
+# Map Buddy's own key for the parcel API (ADR 0015, DIC-2202). Map Buddy meters its own
+# users, so with the key its lookups aren't charged to one shared budget in a Protected
+# county. It goes only to PARCEL_API_BASE (a deploy setting), never to federal services.
+PV_SERVICE_KEY = os.getenv("PV_SERVICE_KEY", "").strip()
 DATA_TOOLS = {"search_parcels", "get_parcel_info", "get_environmental_info"}
 # Browser commands with cost rules enforced here before they're forwarded (DIC-2135).
 VISION_TOOLS = {"look_at_map", "offer_map_look"}
@@ -1217,7 +1221,10 @@ def _query_environment(lng: float, lat: float) -> dict:
 
 
 def _http_get_json(path: str):
-    req = urllib.request.Request(PARCEL_API_BASE + path, headers={"Accept": "application/json"})
+    headers = {"Accept": "application/json"}
+    if PV_SERVICE_KEY:
+        headers["X-PV-Service-Key"] = PV_SERVICE_KEY
+    req = urllib.request.Request(PARCEL_API_BASE + path, headers=headers)
     with urllib.request.urlopen(req, timeout=8) as r:
         return json.loads(r.read().decode())
 

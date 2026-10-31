@@ -59,6 +59,7 @@ script, `*.md` files, engine tests. `infra/smoke-test.sh` checks each of these r
 | Secret | Production home | Seen by |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Secret Manager `MAP_BUDDY_ANTHROPIC_API_KEY`, mounted into Cloud Run by `map-buddy/deploy.sh` | Map Buddy only |
+| `PV_SERVICE_KEY` (Map Buddy's parcel API key, ADR 0015) | Secret Manager, mounted into Cloud Run by `map-buddy/deploy.sh` when `PV_SERVICE_KEY_SECRET` names it; the same key in the API's `PV_SERVICE_KEYS` | Map Buddy and `django-api`; sent only to `PARCEL_API_BASE` |
 | `PV_DATABASE_URL` (read role) | The VM's `.env` (not in git) | `django-api` only |
 | `MARTIN_DATABASE_URL` (`martin_ro`, SELECT-only) | The VM's `.env` | `martin` only |
 | `PV_WRITER_DATABASE_URL` (`pv_writer`, `config` schema only) | The VM's `.env` / Secret Manager | `django-api` only |
