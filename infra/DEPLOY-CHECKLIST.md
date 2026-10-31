@@ -92,7 +92,7 @@ Set in `.env`; compose passes them through the `x-django-environment` block of `
 | `GUNICORN_WORKERS` / `GUNICORN_THREADS` / `DB_POOL_MAX` | `1` / `4` / `4` | Size with the DB connection budget (step 4): every worker has its own pools. |
 | `SECURE_SSL_REDIRECT` | `1` | Django's HTTPS backstop behind the TLS proxy. `0` only when serving over plain HTTP. |
 | `SECURE_HSTS_SECONDS` | `0` | HSTS from Django; normally set where TLS terminates instead (DIC-1863 Q3). |
-| `PV_ACCESS_MODE` / `PV_DETAIL_BUDGET` / `PV_SERVICE_KEYS` | per county / `5000` / unset | Data access for counties that sell data (ADR 0015). |
+| `PV_ACCESS_MODE` / `PV_DETAIL_BUDGET` / `PV_SERVICE_KEYS` | per county / `5000` / unset | Data access for counties that sell data (ADR 0015). `PV_SERVICE_KEYS` is `name:key,…`; list Map Buddy's `PV_SERVICE_KEY` as `mapbuddy:<key>` (DIC-2202). |
 | `LOG_FORMAT` | `json` | Set by the compose file. |
 
 The rest are below ("Shared API settings"). Staff sign in with accounts (DIC-2151); there is no shared admin key.
@@ -126,6 +126,7 @@ The rest are below ("Shared API settings"). Staff sign in with accounts (DIC-215
 | `ALLOWED_ORIGINS` | `https://gis.dicemi.org` (`VIEWER_ORIGINS`) | No localhost in prod. Must include the live viewer origin or AI fails in the browser. |
 | `PARCEL_API_BASE` | `https://gis.dicemi.org/api` | The agent's parcel lookups; override at launch. |
 | `MAP_BUDDY_TENANT` | `vanburen` | Quota + cache tenant; no longer read from requests. |
+| `PV_SERVICE_KEY` | secret, only when `PV_SERVICE_KEY_SECRET=<secret name>` is set | Sent as `X-PV-Service-Key` on parcel API calls, so Map Buddy's lookups aren't charged to one shared budget in a Protected county (ADR 0015, DIC-2202). The API's `PV_SERVICE_KEYS` must list the same key as `mapbuddy:<key>`. Without it, Map Buddy is metered like any visitor. |
 | `AI_QUOTA_DEFAULT` / `AI_QUOTA_WINDOW` | `200` / `86400` | 200 AI calls per rolling 24h. ⚠ **Not a hard ceiling** until DIC-1862: each instance counts separately, and an instance that scales to zero and restarts starts again at 0. The Anthropic spend limit is the real backstop. `AI_QUOTA_OVERRIDES` sets per-tenant limits. |
 | `--max-instances` / `--concurrency` / `--timeout` | `3` / `20` / `300` | `MAX_INSTANCES`, `CONCURRENCY`, `REQUEST_TIMEOUT` in `deploy.sh`. |
 | `MAP_BUDDY_API_DOCS` | unset (off) | **Leave unset in prod.** |
