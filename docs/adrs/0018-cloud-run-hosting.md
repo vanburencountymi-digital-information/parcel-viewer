@@ -6,6 +6,8 @@ Proposed (DIC-2554). Answers readiness blocker B9 (`docs/READINESS-CHECKLIST.md`
 
 **Revised 2026-10-30.** The first version (2026-10-23) put a Google load balancer with Cloud Armor in front of three Cloud Run services. Maria's review on DIC-1863 (2026-10-29) called that overkill, and asked us to follow the team's standard deployment instead: Cloudflare in front of Cloud Run, as `dice-document-pipeline-api` does. She also asked for app-level rate limiting, a look at Neon for the database, OpenTofu for staging and prod, Secret Manager and Sentry. This version does that. Choices that are still open are marked **[Maria]**: Drake is leaving, and the team's Cloudflare account and standards are hers.
 
+**Revised 2026-11-04.** Maria's comment on #105 (2026-11-03): parcel data is moving out of db-dice into a private database owned by one Django/DRF service, `parcel-data-api` (Knox token auth). Every consumer, the viewer included, becomes a token-authenticated client of it. So the viewer and Martin no longer connect to db-dice: there is no parcel database URL, no Cloud SQL connector and no db-dice connection budget in this design. Where tiles come from (a Martin sidecar reading the new database, or the API itself) is still open on Maria's side, so this version leaves it open and holds the pieces that depend on it. The Cloudflare, Worker, origin-lock and OpenTofu parts are unchanged.
+
 ## Context
 
 On 2026-10-19 Maria recommended on DIC-1863 that the viewer run on **Cloud Run in its own GCP project**, not on the shared e2-small VM. The site is public and read-only, so rate limiting has to work both in the app and in front of it.
@@ -15,8 +17,8 @@ Everything in `infra/` was written for one VM running Docker Compose (`infra/doc
 | Piece | On the VM | What Cloud Run changes |
 |---|---|---|
 | `web` (nginx) | Static Vite bundle, security headers and CSP, `/api/` and `/tiles/` routing, gzip, the `/aerial/` proxy with a 1 GB disk cache, `limit_req` per IP | No shared disk (the filesystem is memory), no Docker DNS, the port comes from `$PORT`, and requests arrive through a proxy, so `$remote_addr` isn't the client |
-| `django-api` | gunicorn, 1 worker × 4 threads, pools of 4; reached only from nginx | Probes call the container directly |
-| `martin` | Tiles from db-dice, pool of 8 | Its pool counts against db-dice once per instance |
+| `django-api` | gunicorn, 1 worker × 4 threads, pools of 4; reads parcels from db-dice; reached only from nginx | Probes call the container directly; parcels come from `parcel-data-api`, not db-dice |
+| `martin` | Tiles from db-dice, pool of 8 | Must not read db-dice; the tile source is open (section 7) |
 | `django-db` | A Postgres container with a volume | No volumes: it needs a home |
 | TLS | The host proxy or Certbot | Cloudflare |
 | Secrets | `.env` on the host | Secret Manager |
@@ -33,17 +35,17 @@ Everything in `infra/` was written for one VM running Docker Compose (`infra/doc
 
 **Fixed points:**
 - **DNS:** `dicemi.org` is in the team's Cloudflare account. `vanburencountymi.gov` is county IT's DNS (CJ Johnson), not Cloudflare. Source: Drake's "Where does DNS for ___ live?" Linear document, 2026-10-29.
-- **db-dice** (shared Cloud SQL PostGIS) stays where it is. Other apps and the county data pipeline write to it. Measured 2026-10-30: `max_connections` 50, and the database the viewer reads is **272 MB**. Its biggest tables are `geo.parcel_geometry` (50 MB) and `geo.address_points` (37 MB).
+- **Parcel data comes from `parcel-data-api`,** not db-dice (Maria, 2026-11-03). Parcel data moves out of db-dice into a private database owned by that one Django/DRF service, and every consumer calls it with a Knox token. The viewer's server-side code calls it with a service token that stays on the server; the browser never sees it. The viewer's public routes and ADR 0015's metering stay in the viewer. The API contract is being confirmed on Linear. For scale, the parcel data the viewer reads today is **272 MB** (measured in db-dice 2026-10-30; the biggest tables are `geo.parcel_geometry`, 50 MB, and `geo.address_points`, 37 MB).
 - **Map Buddy** already runs on Cloud Run in `core-db-475718`.
 
 **What makes the viewer unlike the pipeline:**
 - **It's a map, so traffic is mostly tiles.** One pan or zoom asks for dozens of tiles, and a long session asks for hundreds. The pipeline gets a few API calls a day.
-- **It has three processes, not one:** nginx, Django and Martin. Martin is an upstream binary, so it can't check an origin-lock header itself.
+- **It has two or three processes, not one:** nginx and Django, plus Martin if tiles stay with a Martin sidecar (section 7). Martin is an upstream binary, so it can't check an origin-lock header itself.
 - **Every page load reads Django's own database.** `/api/config.js` reads the published county config from the config store. Identify and Map Buddy read flood zones from it too (`/api/environment`, DIC-2414).
 
 ## Decision (proposed)
 
-### 1. Shape: Cloudflare → a Worker → one Cloud Run service with three containers
+### 1. Shape: Cloudflare → a Worker → one Cloud Run service with nginx and Django
 
 ```
 gis.dicemi.org ──> Cloudflare (TLS, managed WAF, rate-limit rule, Access on the admin)
@@ -51,18 +53,19 @@ gis.dicemi.org ──> Cloudflare (TLS, managed WAF, rate-limit rule, Access on 
                         └─ pv-viewer.run.app: one Cloud Run service
                             ├─ nginx   (ingress, $PORT): pages, headers, CSP, gzip, /aerial/,
                             │          limit_req, origin lock
-                            ├─ django  (127.0.0.1:8000): /api/
-                            └─ martin  (127.0.0.1:3000): /tiles/
+                            ├─ django  (127.0.0.1:8000): /api/ ──> parcel-data-api (service token)
+                            └─ /tiles/: open (section 7): a Martin sidecar on 127.0.0.1:3000
+                                        reading parcel-data-api's database, or the API itself
 ```
 
-- **One service, three containers.** Cloud Run runs an ingress container plus sidecars, which share `localhost`. This is the compose layout almost unchanged. nginx keeps every rule already tested: the headers and CSP, `/` → `/demo/`, the page fallbacks, the 404s for `.md`, dotfiles and `/map-buddy/`, gzip on the API's GeoJSON, and the `/aerial/` proxy. Only its upstreams change, from compose names to `127.0.0.1`.
+- **One service, nginx plus sidecars.** Cloud Run runs an ingress container plus sidecars, which share `localhost`. This is the compose layout almost unchanged. nginx keeps every rule already tested: the headers and CSP, `/` → `/demo/`, the page fallbacks, the 404s for `.md`, dotfiles and `/map-buddy/`, gzip on the API's GeoJSON, and the `/aerial/` proxy. Only its upstreams change, from compose names to `127.0.0.1`.
 - **Why one service:**
   - The Worker forwards everything to one `run.app` host, as the pipeline's Worker does.
-  - The origin lock is checked once, in nginx, and so it covers `/tiles/` too. Split into three services, Martin's `run.app` address would be open to anyone.
+  - The origin lock is checked once, in nginx, and so it covers `/tiles/` too. If Martin stays and ran as its own service, its `run.app` address would be open to anyone.
   - Nothing is proxied twice, and nginx doesn't have to call other services over HTTPS.
-  - One warm instance (section 9) keeps all three processes warm.
-- **The cost of one service:** the three scale together, and an instance reserves the sum of their CPU and memory. At test traffic that's fine. If tiles ever need to scale apart from the API, Martin can move to its own service behind nginx later.
-- **Startup order:** container dependencies start Django and Martin before nginx. Each container has its own startup probe. Django's probe uses `/health/live` (part 2).
+  - One warm instance (section 11) keeps every process warm.
+- **The cost of one service:** the containers scale together, and an instance reserves the sum of their CPU and memory. At test traffic that's fine. If tiles ever need to scale apart from the API, Martin can move to its own service behind nginx later.
+- **Startup order:** container dependencies start Django (and Martin, if kept) before nginx. Each container has its own startup probe. Django's probe uses `/health/live` (part 2).
 - **Migrations** run as a Cloud Run job from the API image (`python manage.py migrate --noinput`) before a new revision takes traffic, as `django-migrate` does in compose.
 - **Ingress is "all",** because the Worker reaches the service on its public `run.app` address. The origin lock (section 3) is what refuses everyone else.
 
@@ -77,14 +80,14 @@ Alternatives:
 - **It follows the pipeline's Worker** (`deploy/terraform/prod/worker/index.js` there). It forwards the request to the `run.app` host, adds `X-Origin-Secret`, and puts the public hostname in `X-Forwarded-Host`.
 - **It also sends the client's address** in a header of our own, `X-PV-Client-IP`, copied from `CF-Connecting-IP` on the incoming request. nginx trusts that header only when the secret matches (section 4). This doesn't depend on which address Cloudflare uses when a Worker calls an outside origin, which the pipeline still had to check on prod (its ADR 0041).
 - **Workers Paid ($5 a month), not Free.** The Free plan stops at 100,000 requests a day, and then the site is down until midnight UTC. Tiles alone could reach that with a few hundred map sessions in a day. The paid plan includes 10 million requests a month.
-- **Edge caching, to try on staging:** the Worker can let Cloudflare cache content-hashed `/assets/` for a long time and `/tiles/` for a short TTL. That takes load off Cloud Run and db-dice. Admin and API responses are never cached. This isn't part of the first deploy.
+- **Edge caching, to try on staging:** the Worker can let Cloudflare cache content-hashed `/assets/` for a long time and `/tiles/` for a short TTL. That takes load off Cloud Run and `parcel-data-api`. Admin and API responses are never cached. This isn't part of the first deploy.
 - The Worker, its custom domain and its settings live in OpenTofu (section 10). The secret is set on the Worker by hand, so it stays out of OpenTofu's state, as in the pipeline.
 
 ### 3. Origin lock, in nginx
 
 - **nginx checks the secret.** When `PV_ORIGIN_LOCK_SECRET` is set, any request whose `X-Origin-Secret` doesn't match gets a plain 403. That covers pages, `/api/`, `/tiles/` and `/aerial/`.
 - **One exception:** Cloud Run's probes call the containers directly, without the header, so the probe path is exempt.
-- **Django and Martin listen only on `127.0.0.1`,** so nothing reaches them except through nginx.
+- **Django (and Martin, if kept) listen only on `127.0.0.1`,** so nothing reaches them except through nginx.
 - **The public hostname:** nginx forwards a fixed public host to Django, from `PV_PUBLIC_HOST`, rather than the incoming `Host` (the `run.app` name). So `ALLOWED_HOSTS` and `CSRF_TRUSTED_ORIGINS` work unchanged, and Django never has to trust `X-Forwarded-Host`.
 - **An empty secret switches the lock off.** That's the default, so the VM and local development are unaffected. The rollout order is the pipeline's: route through the Worker first, then turn the lock on.
 
@@ -116,11 +119,17 @@ Alternatives:
 
 ### 7. Databases
 
-**db-dice (the parcel data) stays on Cloud SQL.** It's shared, other systems write to it, and moving it is not the viewer's call.
-- **Access:** through the Cloud SQL connector built into Cloud Run. The viewer's service account gets `roles/cloudsql.client` in db-dice's project. There are no authorized networks and no static egress IP. Part 2 already reads the connector's socket in a database URL.
-- **Connection budget (B2):** per instance, the API's parcels pool (4) plus Martin's pool (4, down from 8) makes 8. At `--max-instances 2` that's **16**, the same as the VM stopgap. Other clients peaked at 16, so db-dice stays at 32 of its 47 usable connections.
+**Parcel data: the viewer is a client of `parcel-data-api`, and connects to no parcel database.** (Maria, 2026-11-03.)
+- **What changes in the viewer:** the parcel views (`api/parcels/`) stop reading `PV_DATABASE_URL` and call `parcel-data-api` from the server. The browser keeps calling the viewer's own `/api/` routes, so the public routes, the throttles and ADR 0015's meter stay where they are. How the calls map onto the contract waits for it to be confirmed on Linear.
+- **The token:** a Knox service token in Secret Manager (section 8), sent as `Authorization: Token <token>` (Knox's default prefix, unless the API is configured otherwise). Only the django container gets it.
+- **No db-dice connection, connector or budget.** The viewer needs no `roles/cloudsql.client` on db-dice and adds nothing to its 50 connections. Load on the parcel data becomes `parcel-data-api`'s to size; the viewer's share is bounded by its own instance cap and limits.
+- **Tiles are open. [Maria]** Martin must not be pointed at db-dice. Two options are on the table on Maria's side:
+  - a Martin sidecar (section 1) reading `parcel-data-api`'s database, with a read-only role and a small pool;
+  - tiles served by `parcel-data-api` itself (for example `django-vectortiles`), which nginx proxies or the Worker routes to, and Martin goes away.
 
-**Django's own database: Neon, as Maria suggested, with the limits spelled out. [Maria]**
+  Until that's settled, nothing that assumes Martin's database (its sidecar, its pool, nginx's `/tiles/` upstream on Cloud Run) gets built. The VM keeps today's Martin.
+
+**Django's own database: Neon, as Maria suggested, with the limits spelled out. [Maria]** This is separate from the parcel data and not affected by the change above.
 - **What it holds:**
   - staff accounts and Knox tokens;
   - ADR 0015's usage counters;
@@ -152,12 +161,12 @@ Alternatives:
   |---|---|
   | `pv-django-secret-key` → `SECRET_KEY` | django, migrate job |
   | `pv-django-database-url` → `DATABASE_URL` (Neon) | django, migrate job, backup job |
-  | `pv-parcels-database-url` → `PV_DATABASE_URL` | django |
-  | `pv-martin-database-url` → `MARTIN_DATABASE_URL` | martin |
+  | `pv-parcel-data-api-token` → the Knox service token for `parcel-data-api` (variable name set with the client) | django |
   | `pv-origin-lock-secret` → `PV_ORIGIN_LOCK_SECRET` | nginx (and set by hand on the Worker) |
   | `pv-smtp-password`, `pv-service-keys` | django |
   | `pv-sentry-dsn` → `SENTRY_DSN` | django, jobs |
 
+- **No parcel database URL** for Django or Martin: parcels come from `parcel-data-api` (section 7). If tiles stay with Martin, its database secret comes with that decision.
 - **Passwords in URLs** must be percent-encoded (`@` → `%40`).
 - **One runtime service account** for the service, with access only to these secrets. The deploy uses its own deployer account.
 - **Deploys,** as in the pipeline:
@@ -206,7 +215,7 @@ Alternatives:
 
 | Item | Production | Staging |
 |---|---|---|
-| Cloud Run `pv-viewer`: 1 warm instance (nginx 0.25 vCPU, Django 1 vCPU, Martin 0.5 vCPU, about 1.5 GiB, CPU only while serving) | ~$15–25 | ~$0–3 (scales to zero) |
+| Cloud Run `pv-viewer`: 1 warm instance (nginx 0.25 vCPU, Django 1 vCPU, Martin 0.5 vCPU if kept, about 1.5 GiB, CPU only while serving) | ~$15–25 | ~$0–3 (scales to zero) |
 | Cloudflare: Free zone plan (WAF, 1 rate rule, Access up to 50 users) | $0 | $0 |
 | Cloudflare Workers Paid (covers the whole account) | $5 | (shared) |
 | Neon: Free plan; paid plan once it outgrows it (section 7) | $0 at first | $0 |
@@ -218,20 +227,18 @@ Alternatives:
 - **These are estimates from published rates, not quotes.**
 - **Compared with the first version,** this is down from ~$55–85 (the load balancer and Cloud Armor came to about $30 of it).
 - **The warm instance** (`--min-instances 1`) is there because GeoDjango takes seconds to cold-start, and the first map move would otherwise wait for it.
-- **Not included:** Map Buddy's cost, which is Anthropic tokens capped by its spend limit (B6).
+- **Not included:** Map Buddy's cost, which is Anthropic tokens capped by its spend limit (B6), and `parcel-data-api` with its database, which aren't the viewer's.
 
 ### Still to decide
 
 - **[Maria]:**
-  - the GCP project (name, billing, region; us-central1 sits next to db-dice);
+  - the GCP project (name, billing, region; ideally the region `parcel-data-api` runs in);
+  - `parcel-data-api`'s contract for the viewer (endpoints, the service token, its own rate limits);
+  - where tiles come from: a Martin sidecar on the new database, or the API (section 7);
   - Neon for production, or Cloud SQL (section 7);
   - Cloud Build or GitHub Actions for deploys;
   - whether one Cloudflare rate rule is enough (section 5).
 - **[Maria + county IT]:** the county hostname (section 6).
-- **[db-dice's owner, now that Drake is leaving]:**
-  - `roles/cloudsql.client` for the viewer's service account;
-  - the 16-connection budget;
-  - a dedicated read-only role (the reader login can still write, and that's enforced only per session today).
 
 ## Part 2: code prep
 
@@ -243,24 +250,28 @@ Alternatives:
   - **This also fixes a bug on the VM:** DRF's default throttles keyed on the whole `X-Forwarded-For` when one was sent, so a client could reset its login limit by changing the header.
   - `THROTTLE_NUM_PROXIES` is gone.
 - **The aerial cache fits in memory.** `PV_AERIAL_CACHE_MAX` (for example `64m`) shrinks nginx's 1 GB cache, since Cloud Run's disk is the instance's memory.
-- **A liveness probe that needs neither the database nor the public host.** `GET /health/live` is answered before host validation and the HTTPS redirect, so an outage at db-dice or Neon doesn't get healthy instances restarted. `/health` (with the database check) stays for uptime checks.
-- **Database URLs that don't assume compose.** A percent-encoded Unix socket host (the Cloud SQL connector) is decoded, and the URL's own options (`sslmode=require`, which Neon needs) are kept.
+- **A liveness probe that needs neither the database nor the public host.** `GET /health/live` is answered before host validation and the HTTPS redirect, so an outage at Neon or `parcel-data-api` doesn't get healthy instances restarted. `/health` (with the database check) stays for uptime checks.
+- **Database URLs that don't assume compose.** The URL's own options (`sslmode=require`, which Neon needs) are kept, and a percent-encoded Unix socket host is decoded (the Cloud SQL connector, should Django's own database go to Cloud SQL instead of Neon).
 - **Tests** cover both paths: `api/common/tests/test_throttles.py`, `test_settings.py`, `test_middleware.py`, and `infra/test-web-image-cloud-run.sh` in CI.
 
 **Next, once this ADR is accepted** (a separate PR, together with the OpenTofu files):
-- the web image's upstreams set from the environment (`127.0.0.1` on Cloud Run, compose names on the VM);
+- the web image's `/api/` upstream set from the environment (`127.0.0.1` on Cloud Run, compose names on the VM);
 - nginx's origin lock and the trusted `X-PV-Client-IP`, with tests in `infra/test-web-image-cloud-run.sh`;
 - a fixed public `Host` to Django from `PV_PUBLIC_HOST`;
 - the Worker script;
-- Martin's pool at 4;
 - the nightly backup job;
 - the OpenTofu module.
+
+**Held until Maria confirms the API contract and the tile decision:**
+- the parcel views as a client of `parcel-data-api`, with its service token;
+- anything for tiles on Cloud Run: a Martin sidecar and its pool, or nginx's `/tiles/` route to the API.
 
 ## Consequences
 
 - **Cloudflare becomes part of the site.** If the Worker or the zone is misconfigured, the site is down even when Cloud Run is fine. The rollback is to turn the lock off (an empty secret) and point DNS at another path. Rotating the origin secret means changing it on the Worker and in Secret Manager together; requests fail in between.
 - **gzip, request ids and the security headers stay in nginx,** because every request still goes through it. The first version's gzip gap (the load balancer routing `/api/` past nginx) no longer applies.
-- **Each limit counts in its own place.** The Cloudflare rule is exact. nginx's limits and the app's throttles count per instance, which is acceptable while `--max-instances` is 2. Raising the instance cap means redoing the db-dice budget and these limits.
+- **Each limit counts in its own place.** The Cloudflare rule is exact. nginx's limits and the app's throttles count per instance, which is acceptable while `--max-instances` is 2. Raising the instance cap means redoing these limits, and telling `parcel-data-api`'s owners.
+- **The viewer depends on `parcel-data-api`.** If it's down or slow, identify, search and the parcel details fail; pages, the config and the aerials still load. Its latency is added to every parcel request, so the two should run in the same region.
 - **Neon's free hours are a real ceiling for a public site** (section 7). Watch them in the first week.
 - **The deploy docs need rewriting** for this path: `infra/DEPLOY-CHECKLIST.md`, `infra/HANDOFF-DRAKE-DEPLOY.md` (which assumes Drake), `SECURITY.md` (the limits in front of the app, TLS), and `infra/smoke-test.sh` (point it at the Cloudflare host; add `/api/health/live`). The compose files stay, for local work and as the fallback.
 - **Images are built from release tags** (B7) into Artifact Registry, not on a host.
