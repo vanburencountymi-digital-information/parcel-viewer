@@ -6,7 +6,7 @@ Proposed (DIC-2554). Answers readiness blocker B9 (`docs/READINESS-CHECKLIST.md`
 
 **Revised 2026-10-30.** The first version (2026-10-23) put a Google load balancer with Cloud Armor in front of three Cloud Run services. Maria's review on DIC-1863 (2026-10-29) called that overkill, and asked us to follow the team's standard deployment instead: Cloudflare in front of Cloud Run, as `dice-document-pipeline-api` does. She also asked for app-level rate limiting, a look at Neon for the database, OpenTofu for staging and prod, Secret Manager and Sentry. This version does that. Choices that are still open are marked **[Maria]**: Drake is leaving, and the team's Cloudflare account and standards are hers.
 
-**Revised 2026-11-04.** Maria's comment on #105 (2026-11-03): parcel data is moving out of db-dice into a private database owned by one Django/DRF service, `parcel-data-api` (Knox token auth). Every consumer, the viewer included, becomes a token-authenticated client of it. So the viewer and Martin no longer connect to db-dice: there is no parcel database URL, no Cloud SQL connector and no db-dice connection budget in this design. Where tiles come from (a Martin sidecar reading the new database, or the API itself) is still open on Maria's side, so this version leaves it open and holds the pieces that depend on it. The Cloudflare, Worker, origin-lock and OpenTofu parts are unchanged.
+**Revised 2026-11-04.** Maria's comment on #105 (2026-11-03): parcel data is moving out of db-dice into a private database owned by one Django/DRF service, `parcel-data-api` (Knox token auth). Every consumer, the viewer included, becomes a token-authenticated client of it. So the viewer and Martin no longer connect to db-dice: there is no parcel database URL, no Cloud SQL connector and no db-dice connection budget in this design. Where tiles come from (a Martin sidecar reading the new database, or the API itself) is still open on Maria's side, so this version leaves it open and holds the pieces that depend on it. The Cloudflare, Worker and origin-lock parts are unchanged. A second comment the same day asked for OpenTofu to follow `did-vaultwarden`'s model: a 24-hour bootstrap token that creates the other tokens, so each part's permissions are recorded in code (section 10). That model deploys from GitHub Actions through Workload Identity Federation, so this version picks GitHub Actions over Cloud Build.
 
 ## Context
 
@@ -168,12 +168,12 @@ Alternatives:
 
 - **No parcel database URL** for Django or Martin: parcels come from `parcel-data-api` (section 7). If tiles stay with Martin, its database secret comes with that decision.
 - **Passwords in URLs** must be percent-encoded (`@` → `%40`).
-- **One runtime service account** for the service, with access only to these secrets. The deploy uses its own deployer account.
+- **One runtime service account** for the service, with access only to these secrets. The deploy uses its own deployer account. Both, and every grant, are in the bootstrap root (section 10).
 - **Deploys,** as in the pipeline:
   - a merge to `main` tags a release (B7);
   - the release builds the images into Artifact Registry in the viewer project, runs the migrate job, and updates **staging**;
   - **production** is a promotion of a version already running on staging;
-  - the trigger is Cloud Build or GitHub Actions with Workload Identity Federation, so there are no keys in GitHub. **[Maria]**
+  - the trigger is GitHub Actions with Workload Identity Federation (section 10), so there are no keys in GitHub.
 - **Sentry** is already in the code: `api/common/error_logging_client.py` (sentry-sdk) and Map Buddy's copy of it. An empty `SENTRY_DSN` turns it off. Deploying needs:
   - a Sentry project for the viewer;
   - the DSN as a secret;
@@ -189,26 +189,43 @@ Alternatives:
 - **Its own open items need a new owner now that Drake is leaving:** the outdated build on Cloud Run (AI quota off, `/docs` public), the quota store (DIC-1862) and the spend limit (B6).
 - **Later:** the same Worker could route `/map-buddy-api/` to it. That gives one origin and puts Cloudflare in front of its paid endpoints.
 
-### 10. Infrastructure as code: one OpenTofu module, as in the pipeline
+### 10. Infrastructure as code: OpenTofu with a bootstrap root, as in `did-vaultwarden`
 
-- **Layout:** `deploy/tofu/modules/viewer`, plus thin `staging/` and `prod/` folders that call it. Each folder has its own settings file and its own state in its own private R2 bucket.
-- **The module covers:**
-  - the project's APIs and the service accounts;
-  - Artifact Registry;
-  - the secrets (names and access; not their values);
-  - the Cloud Run service, its migrate job and its backup job;
-  - the Cloudflare Worker and its custom domain;
-  - the WAF and rate-limit rulesets;
-  - the Access application for the admin.
-- **Providers:** Google through gcloud's credentials or a deployer service account; Cloudflare through a token limited to Workers Scripts, DNS, Zone WAF and Access on the `dicemi.org` zone.
+Revised 2026-11-04 at Maria's request (#105): the token and permission model follows `did-vaultwarden` (`tofu/bootstrap/`, `tofu/bootstrap/ci.tf` there), so every credential the project uses, and what it may do, is recorded in code.
+
+- **Layout:**
+  - `deploy/tofu/bootstrap/`: run by a person, rarely. It creates what the other roots depend on, including every runtime token and service account.
+  - `deploy/tofu/modules/viewer/`, plus thin `envs/staging/` and `envs/prod/` roots that call it.
+  - State for every root in one private R2 bucket (`pv-tfstate`), one state file per root.
+- **One human-held Cloudflare bootstrap token, live for 24 hours.** A person creates it right before a bootstrap run, with a 24-hour expiry and the start date left empty, and deletes it afterward. Its scope is only:
+  - Account: API Tokens Edit, and Workers R2 Storage Edit (the state and backup buckets);
+  - Zone `dicemi.org` only (never "All zones"): DNS Edit.
+
+  It's never stored. The local R2 state keys are derived from it (token id, and `sha256` of the value), so they stop working when it's deleted.
+- **The bootstrap root creates the runtime tokens** as account-owned tokens (`cloudflare_account_token`; the user-level `cloudflare_api_token` resource can't be reached with the bootstrap token). Each has the narrowest scope that works, and its value is written straight into a Secret Manager secret:
+
+  | Token | Scope | Read by |
+  |---|---|---|
+  | `pv-deploy-cloudflare` | zone `dicemi.org`: Workers Routes, DNS, Zone WAF; account: Workers Scripts, Access apps | the deploy workflow (env roots) |
+  | `pv-ci-tfstate` | bucket `pv-tfstate`: R2 Item Read + Write | the deploy workflow |
+  | `pv-backup-write` | the backup bucket: R2 Item Write | the nightly backup job |
+
+  The exact permission groups are pinned by id in the code, as `did-vaultwarden` does. Those token values land in OpenTofu state, which is why state sits in a private bucket only the CI and bootstrap credentials can read.
+- **GCP side, also in the bootstrap root:**
+  - the project's APIs, Secret Manager containers (no values), Artifact Registry;
+  - the runtime service account, with `secretAccessor` on only the secrets its containers read (section 8);
+  - Workload Identity Federation for GitHub Actions: a pool whose condition pins this repo and its owner by numeric id and `refs/heads/main`, and a deployer service account that only the deploy workflow file (`job_workflow_ref`) can impersonate. No Google key and no secret is stored in GitHub; CI reads its Cloudflare and state credentials from Secret Manager.
+  - The deployer's roles are listed one by one (Cloud Run admin on the viewer's service and jobs, `serviceAccountUser` on the runtime account only, Artifact Registry writer, `secretAccessor` on its own two secrets), not `editor`.
+  - The person running bootstrap uses their own `gcloud auth application-default login`.
+- **The module covers** what changes per environment: the Cloud Run service, its migrate and backup jobs, the Worker and its custom domain, the WAF and rate-limit rulesets, and the Access application for the admin.
 - **Images are changed by each deploy,** so OpenTofu ignores them.
 - **Staging differs by module inputs:** `gis-staging.dicemi.org`, no nightly backup, `--min-instances 0`. It keeps the Worker and the origin lock. That differs from the pipeline, whose staging has no Worker: here the Worker, the lock, the client IP and edge caching are the riskiest parts, so staging should test them.
-- **Still by hand:**
-  - the Neon projects;
-  - the R2 buckets;
-  - secret values;
+- **Still by hand** (values, never permissions):
+  - the bootstrap token, each time bootstrap runs;
+  - the Neon projects and their connection strings;
+  - other secret values (Django's key, SMTP, the `parcel-data-api` service token, the origin secret), added with `gcloud secrets versions add`;
   - Zero Trust switched on once;
-  - the deploy trigger's GitHub connection;
+  - four non-secret GitHub repo variables from `tofu output` (the WIF provider and the deployer account);
   - the first staff login.
 
 ### 11. Rough monthly cost (list prices, limited test traffic)
@@ -236,7 +253,6 @@ Alternatives:
   - `parcel-data-api`'s contract for the viewer (endpoints, the service token, its own rate limits);
   - where tiles come from: a Martin sidecar on the new database, or the API (section 7);
   - Neon for production, or Cloud SQL (section 7);
-  - Cloud Build or GitHub Actions for deploys;
   - whether one Cloudflare rate rule is enough (section 5).
 - **[Maria + county IT]:** the county hostname (section 6).
 
