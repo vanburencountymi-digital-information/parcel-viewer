@@ -54,7 +54,7 @@ class MeteredRouteTestCase(TestCase):
         policy.clear_cache()
         self.addCleanup(policy.clear_cache)
         self.repository = create_autospec(ParcelRepository, instance=True)
-        patcher = patch("parcels.views.ParcelRepository", return_value=self.repository)
+        patcher = patch("parcels.sources.sql.ParcelRepository", return_value=self.repository)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.client = APIClient(HTTP_X_REAL_IP="203.0.113.5")

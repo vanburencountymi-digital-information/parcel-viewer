@@ -8,6 +8,8 @@ psycopg[binary,pool]
 whitenoise
 gunicorn
 sentry-sdk
+# HTTP client for parcel-data-api (DIC-2802): pooled, with per-phase timeouts
+httpx
 # Request validation with FastAPI's exact 422 errors during the port (ADR 0012)
 pydantic
 

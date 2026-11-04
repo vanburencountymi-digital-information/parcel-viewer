@@ -24,7 +24,7 @@ DRAWN = {
 class CohortViewTests(SimpleTestCase):
     def setUp(self) -> None:
         self.repository = create_autospec(ParcelRepository, instance=True)
-        patcher = patch("parcels.views.ParcelRepository", return_value=self.repository)
+        patcher = patch("parcels.sources.sql.ParcelRepository", return_value=self.repository)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.client = APIClient()
@@ -95,7 +95,7 @@ class CohortGeographiesViewTests(SimpleTestCase):
         views._geographies_cache.clear()
         self.addCleanup(views._geographies_cache.clear)
         self.repository = create_autospec(ParcelRepository, instance=True)
-        patcher = patch("parcels.views.ParcelRepository", return_value=self.repository)
+        patcher = patch("parcels.sources.sql.ParcelRepository", return_value=self.repository)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.client = APIClient()

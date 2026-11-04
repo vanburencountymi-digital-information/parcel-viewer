@@ -24,7 +24,7 @@ def _wrapped(cause: Exception) -> OperationalError:
 class DatabaseErrorTests(SimpleTestCase):
     def setUp(self) -> None:
         self.repository = create_autospec(ParcelRepository, instance=True)
-        patcher = patch("parcels.views.ParcelRepository", return_value=self.repository)
+        patcher = patch("parcels.sources.sql.ParcelRepository", return_value=self.repository)
         patcher.start()
         self.addCleanup(patcher.stop)
         self.client = APIClient(raise_request_exception=False)

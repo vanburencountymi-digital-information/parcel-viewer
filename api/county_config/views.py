@@ -34,6 +34,7 @@ JAVASCRIPT = "application/javascript"
 # Never echo the county into a script body: "*/" in it would end the comment (DIC-1872).
 UNKNOWN_COUNTY_SCRIPT = "/* Parcel Viewer: unknown county */"
 DISCOVERY_FAILED = "layer discovery failed"
+DISCOVERY_UNAVAILABLE = "layer discovery isn't available with parcel-data-api yet"
 _discovery_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
 
 
@@ -106,6 +107,14 @@ class DiscoverLayersView(AdminView):
         require_staff(request)
         county = _county(request)
         require_county(request, county)
+        if settings.PARCEL_SOURCE == "api":
+            # Discovery reads Martin's tile functions from the parcel database's catalogue.
+            # With parcel-data-api there's no such database here; where tiles come from is
+            # still open (ADR 0018 section 7), so this waits for that decision (DIC-2802).
+            return Response(
+                {"error": DISCOVERY_UNAVAILABLE, "layers": []},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         cached = _discovery_cache.get(county)
         if cached and time.monotonic() - cached[0] < float(settings.DISCOVERY_CACHE_S):
             return Response({"layers": cached[1]})
