@@ -3,6 +3,8 @@
 - A lost or refused database connection is an outage, not a bug: 503
   {"error": "database unavailable, try again"}, logged as a warning (DIC-1872).
 - A statement timeout or no free pooled connection is load: 503 {"error": "database busy, try again"}.
+- The same two answers when parcel data comes from parcel-data-api and it is down or busy
+  (parcels.sources.errors, DIC-2802), so the front end can't tell the sources apart.
 - A rate limit is {"error": "Rate limit exceeded: ..."} (slowapi's shape).
 - A wrong method is {"detail": "Method Not Allowed"}; an unknown path {"detail": "Not Found"};
   an unhandled error plain text "Internal Server Error", never the exception (DIC-1855).
@@ -19,6 +21,8 @@ from rest_framework import status
 from rest_framework.exceptions import MethodNotAllowed
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
+
+from parcels.sources.errors import ParcelSourceBusy, ParcelSourceUnavailable
 
 log = logging.getLogger("parcel_viewer.api")
 
@@ -38,6 +42,11 @@ def api_exception_handler(exc: Exception, context: dict[str, Any]) -> Response |
     """DRF's handler, with the FastAPI backend's answers for the cases above."""
     request = context.get("request")
     path = request.path_info if request is not None else ""
+    if isinstance(exc, ParcelSourceBusy):
+        return Response(DATABASE_BUSY, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+    if isinstance(exc, ParcelSourceUnavailable):
+        # parcels.sources.http has logged the cause (an error if it's our misconfiguration).
+        return Response(DATABASE_UNAVAILABLE, status=status.HTTP_503_SERVICE_UNAVAILABLE)
     if isinstance(exc, OperationalError | QueryCanceled | PoolTimeout):
         if _is_busy(exc):
             log.warning("database busy: %s on %s", type(exc).__name__, path)

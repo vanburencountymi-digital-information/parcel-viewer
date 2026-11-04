@@ -187,6 +187,19 @@ DATABASES = {
     ),
 }
 DATABASE_ROUTERS = ["common.db_routers.DatabaseRouter"]
+
+# Where parcel data comes from (DIC-2802, docs/parcel-data-api-client-plan.md): `sql` reads
+# the PARCELS database above; `api` calls parcel-data-api with a Knox service token. The
+# token stays on the server (on Cloud Run, from Secret Manager; ADR 0018 section 8).
+PARCEL_SOURCE = env.str("PV_PARCEL_SOURCE", default="sql").strip().lower()
+PARCEL_DATA_API_BASE = env.str("PARCEL_DATA_API_BASE", default="")
+PARCEL_DATA_API_TOKEN = env.str("PARCEL_DATA_API_TOKEN", default="")
+PARCEL_DATA_API_TOKEN_PREFIX = env.str("PARCEL_DATA_API_TOKEN_PREFIX", default="Token")
+PARCEL_DATA_API_CONNECT_TIMEOUT_S = env.float("PARCEL_DATA_API_CONNECT_TIMEOUT_S", default=2.0)
+PARCEL_DATA_API_READ_TIMEOUT_S = env.float("PARCEL_DATA_API_READ_TIMEOUT_S", default=5.0)
+PARCEL_DATA_API_COHORT_TIMEOUT_S = env.float("PARCEL_DATA_API_COHORT_TIMEOUT_S", default=15.0)
+PARCEL_DATA_API_HEALTH_TIMEOUT_S = env.float("PARCEL_DATA_API_HEALTH_TIMEOUT_S", default=2.0)
+PARCEL_DATA_API_HEALTH_CACHE_S = env.float("PARCEL_DATA_API_HEALTH_CACHE_S", default=15.0)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 

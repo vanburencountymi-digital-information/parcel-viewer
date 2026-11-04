@@ -1,4 +1,4 @@
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 
 from common.enums import DatabaseAlias
 from common.services import HealthService
@@ -25,6 +25,17 @@ class HealthServiceTests(SimpleTestCase):
         HealthService(ping=ping).check()
 
         self.assertEqual(checked, [DatabaseAlias.PARCELS])
+
+    @override_settings(PARCEL_SOURCE="api")
+    def test_with_parcel_data_api_it_asks_the_api_not_the_database(self) -> None:
+        for answer in (True, False):
+            with self.subTest(answer):
+                service = HealthService(
+                    ping=lambda alias: self.fail("pinged a database"),
+                    source_ping=lambda answer=answer: answer,
+                )
+
+                self.assertEqual(service.check().ok, answer)
 
 
 class HealthServiceDatabaseTests(TestCase):

@@ -1,6 +1,7 @@
 """Parcel read routes: property card, bbox parcels, search, history, road snapping, Street View.
 
-Views stay thin (team standard): validate the parameters, call the repository, present.
+Views stay thin (team standard): validate the parameters, call the parcel source, present.
+The source is SQL or parcel-data-api (PV_PARCEL_SOURCE, DIC-2802); the views can't tell.
 """
 
 import logging
@@ -10,7 +11,6 @@ from typing import Any
 
 from access.auth import OptionalTokenAuthentication
 from access.meter import finish, meter_rows
-from django.db import DataError, InternalError
 from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
@@ -31,7 +31,9 @@ from parcels.params import (
     SearchQuery,
     StreetViewQuery,
 )
-from parcels.repositories import MAX_SEARCH_TOKENS, ParcelRepository
+from parcels.repositories import MAX_SEARCH_TOKENS
+from parcels.sources import ParcelSource, get_parcel_source
+from parcels.sources.errors import ParcelSourceRejected
 
 log = logging.getLogger(__name__)
 
@@ -57,10 +59,10 @@ class PublicParcelView(APIView):
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "parcel_read"
 
-    def __init__(self, repository: ParcelRepository | None = None, **kwargs: Any) -> None:
-        """Takes an optional repository (injected in tests)."""
+    def __init__(self, source: ParcelSource | None = None, **kwargs: Any) -> None:
+        """Takes an optional parcel source (injected in tests)."""
         super().__init__(**kwargs)
-        self.repository = repository or ParcelRepository()
+        self.source = source or get_parcel_source()
 
     def query(self, request: Request, model: type[Any]) -> Any:
         """Takes the request and a parameter model. Returns the validated query parameters."""
@@ -72,7 +74,7 @@ class ParcelDetailView(PublicParcelView):
     def get(self, request: Request, parcel_id: str) -> Response:
         """Returns one parcel as a GeoJSON Feature, or 404."""
         path = validate(ParcelPath, {"parcel_id": parcel_id}, ParamSource.PATH)
-        row = self.repository.get_parcel(path.parcel_id)
+        row = self.source.get_parcel(path.parcel_id)
         if row is None:
             raise HttpError(status.HTTP_404_NOT_FOUND, NOT_FOUND)
         metered = meter_rows(request, [row])
@@ -85,7 +87,7 @@ class ParcelHistoryView(PublicParcelView):
         path = validate(ParcelPath, {"parcel_id": parcel_id}, ParamSource.PATH)
         params = self.query(request, HistoryQuery)
         return Response(
-            presenters.history_events(self.repository.history(path.parcel_id, params.limit))
+            presenters.history_events(self.source.history(path.parcel_id, params.limit))
         )
 
 
@@ -94,7 +96,7 @@ class ParcelsInBboxView(PublicParcelView):
         """Returns the parcels in a lng/lat box as a FeatureCollection (at most `limit`)."""
         params = self.query(request, BboxQuery)
         west, south, east, north = parse_bbox(params.bbox)
-        rows = self.repository.in_bbox(west, south, east, north, params.limit)
+        rows = self.source.in_bbox(west, south, east, north, params.limit)
         metered = meter_rows(request, rows)
         return finish(Response(presenters.feature_collection(rows)), metered, len(rows))
 
@@ -106,7 +108,7 @@ class SearchView(PublicParcelView):
         tokens = params.q.split()[:MAX_SEARCH_TOKENS]
         if not tokens:
             return Response({"results": []})
-        rows = self.repository.search(tokens, params.limit)
+        rows = self.source.search(tokens, params.limit)
         metered = meter_rows(request, rows)
         return finish(Response(presenters.search_results(rows)), metered, len(rows))
 
@@ -115,7 +117,7 @@ class NearestRoadView(PublicParcelView):
     def get(self, request: Request) -> Response:
         """Returns the closest point on the nearest road, or the point as given if none."""
         params = self.query(request, PointQuery)
-        row = self.repository.nearest_road_point(params.lng, params.lat)
+        row = self.source.nearest_road_point(params.lng, params.lat)
         return Response(presenters.nearest_road(row, params.lng, params.lat))
 
 
@@ -123,7 +125,7 @@ class StreetViewTargetView(PublicParcelView):
     def get(self, request: Request) -> Response:
         """Returns where a Street View camera should stand for a parcel, and what it faces."""
         params = self.query(request, StreetViewQuery)
-        return Response(presenters.streetview_target(self.repository.streetview_target(params.id)))
+        return Response(presenters.streetview_target(self.source.streetview_target(params.id)))
 
 
 class CohortView(PublicParcelView):
@@ -135,28 +137,28 @@ class CohortView(PublicParcelView):
         """
         body = validate(CohortBody, json_body(request), ParamSource.BODY)
         limit = max(1, min(int(body.limit or 3000), MAX_COHORT_PARCELS))
+        selector = body.selector or {}
         try:
-            predicate, params, resolved = build_predicate(body.selector or {}, limit)
+            # Validates the selector here, whatever the source, so bad input is a 400
+            # before any query or network call; the label comes from it too.
+            _, _, resolved = build_predicate(selector, limit)
         except CohortSelectorError as exc:
             raise HttpError(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
         try:
-            rows = self.repository.cohort(predicate, params, limit)
-            center = self.repository.cohort_center(predicate, params)
-            parcel_id = (body.selector or {}).get("parcel_id")
-            if resolved.get("type") == "buffer" and parcel_id is not None:
-                # Label a buffer by the parcel number people know, not the internal id.
-                pin = self.repository.parcel_number(int(parcel_id))
-                if pin:
-                    resolved["label"] = (
-                        resolved["label"].rsplit(" parcel ", 1)[0] + " parcel " + pin
-                    )
-        except (DataError, InternalError) as exc:
-            # Behind build_predicate's validation (DIC-1872): anything PostGIS still rejects
-            # in the caller's area is the caller's input, so a 400. Outages are 503s.
-            log.warning("cohort: database rejected the selector: %s", type(exc).__name__)
+            result = self.source.cohort(selector, limit)
+        except ParcelSourceRejected as exc:
+            # Anything the source still rejects in the caller's area is the caller's input,
+            # so a 400. Outages are 503s.
+            log.warning("cohort: the parcel source rejected the selector: %s", exc)
             raise HttpError(status.HTTP_400_BAD_REQUEST, AREA_ERROR) from exc
+        rows = result.rows
+        if result.pin:
+            # Label a buffer by the parcel number people know, not the internal id.
+            resolved["label"] = resolved["label"].rsplit(" parcel ", 1)[0] + " parcel " + result.pin
         metered = meter_rows(request, rows)
-        return finish(Response(presenters.cohort(rows, center, resolved)), metered, len(rows))
+        return finish(
+            Response(presenters.cohort(rows, result.center, resolved)), metered, len(rows)
+        )
 
 
 class CohortGeographiesView(PublicParcelView):
@@ -174,7 +176,7 @@ class CohortGeographiesView(PublicParcelView):
         if cached and time.monotonic() - cached[0] < GEOGRAPHIES_TTL_S:
             geographies = cached[1]
         else:
-            geographies = self.repository.geographies(source)
+            geographies = self.source.geographies(key)
             _geographies_cache[key] = (time.monotonic(), geographies)
         # The type is echoed as the caller wrote it, as FastAPI does.
         return Response({"type": params.type, "geographies": geographies})

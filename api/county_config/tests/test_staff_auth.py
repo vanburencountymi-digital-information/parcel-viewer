@@ -181,3 +181,15 @@ class DiscoverLayersRouteTests(TestCase):
 
         self.assertEqual(response.status_code, 403)
         mock_discover.assert_not_called()
+
+    @override_settings(PARCEL_SOURCE="api")
+    @patch("county_config.views.discover_layers", autospec=True, return_value=[])
+    def test_with_parcel_data_api_it_is_a_503_without_scanning(self, mock_discover) -> None:
+        response = self.client.get("/admin/discover/layers", **self.auth)
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json(),
+            {"error": "layer discovery isn't available with parcel-data-api yet", "layers": []},
+        )
+        mock_discover.assert_not_called()
