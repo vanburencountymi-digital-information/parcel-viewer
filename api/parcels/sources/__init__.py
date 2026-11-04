@@ -33,48 +33,42 @@ class CohortResult:
 
 
 class ParcelSource(Protocol):
-    """Every parcel read the viewer's routes make (docs/parcel-data-api-needs.md, section 2)."""
+    """Every parcel read the viewer's routes make (docs/parcel-data-api-needs.md, section 2).
+
+    The method bodies are just docstrings: this is an interface, and the implementations are
+    parcels.sources.sql and parcels.sources.http."""
 
     def get_parcel(self, parcel_id: int) -> dict[str, Any] | None:
         """Takes a parcel id. Returns its full row (with geojson), or None if absent or archived."""
-        ...
 
     def in_bbox(
         self, west: float, south: float, east: float, north: float, limit: int
     ) -> list[dict[str, Any]]:
         """Takes a lng/lat bounding box and a row cap. Returns feature rows (with geojson)."""
-        ...
 
     def search(self, tokens: list[str], limit: int) -> list[dict[str, Any]]:
         """Takes search words and a row cap. Returns matching rows, best match first."""
-        ...
 
     def history(self, parcel_id: int, limit: int) -> list[dict[str, Any]]:
         """Takes a parcel id and a row cap. Returns its ledger events, newest first."""
-        ...
 
     def nearest_road_point(self, lng: float, lat: float) -> dict[str, Any] | None:
         """Takes a lng/lat point. Returns the closest point on the nearest road, or None."""
-        ...
 
     def streetview_target(self, parcel_id: int) -> dict[str, Any] | None:
         """Takes a parcel id. Returns its Street View anchor, road point and address point."""
-        ...
 
     def cohort(self, selector: dict[str, Any], limit: int) -> CohortResult:
         """
         Takes a selector that cohort_query.build_predicate has already accepted, and a cap.
         Returns the cohort. Raises ParcelSourceRejected if the source can't process the area.
         """
-        ...
 
     def geographies(self, kind: str) -> list[dict[str, Any]]:
         """Takes a key of cohort_query.GEOGRAPHY_SOURCES. Returns [{id, name}] by name."""
-        ...
 
     def ping(self) -> bool:
         """Returns True if the source answers (for /health)."""
-        ...
 
 
 _lock = threading.Lock()
