@@ -16,10 +16,10 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from accounts.params import LoginBody
+from common.throttles import ClientScopedThrottle
 from common.validation import HttpError, ParamSource, json_body, validate
 
 log = logging.getLogger(__name__)
@@ -39,7 +39,7 @@ def _drop_old_tokens(user: object) -> None:
 class LoginView(APIView):
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientScopedThrottle]
     throttle_scope = "login"
 
     def post(self, request: Request) -> Response:
@@ -69,7 +69,7 @@ class SignedInView(APIView):
 
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientScopedThrottle]
     throttle_scope = "admin"
 
 

@@ -213,6 +213,9 @@ jobs:
             --add-host django-api:127.0.0.1 \
             parcel-viewer-web:ci nginx -t
 
+      - name: Cloud Run settings (PORT, proxy hops, aerial cache; ADR 0018)
+        run: bash infra/test-web-image-cloud-run.sh parcel-viewer-web:ci
+
   # The nginx config and the compose files must be valid, and production must never
   # get the dev Map Buddy proxy (DIC-1871, DIC-1874). No containers are started.
   infra-config:

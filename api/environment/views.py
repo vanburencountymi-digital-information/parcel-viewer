@@ -11,9 +11,9 @@ from pydantic import BaseModel, Field
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
+from common.throttles import ClientScopedThrottle
 from common.validation import ParamSource, query_params, validate
 from environment.flood import FloodAnswer, flood_at
 from environment.models import DatasetLoad
@@ -65,7 +65,7 @@ class EnvironmentView(APIView):
 
     authentication_classes = []
     permission_classes = [AllowAny]
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientScopedThrottle]
     throttle_scope = "parcel_read"
 
     def get(self, request: Request) -> Response:
