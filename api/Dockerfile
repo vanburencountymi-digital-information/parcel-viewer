@@ -3,7 +3,7 @@
 #
 #   make build && make up     start the API (and its local Postgres) beside the viewer stack
 #   make test                 run the test suite
-FROM python:3.12-slim AS base
+FROM python:3.15-slim AS base
 
 # The nearest git tag at build time, passed in by `make build`. Read by settings as APP_VERSION.
 ARG APP_VERSION=0.0.0
